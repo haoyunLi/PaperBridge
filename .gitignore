@@ -1,0 +1,31 @@
+# macOS
+.DS_Store
+
+# Python cache from the earlier prototype
+__pycache__/
+*.pyc
+
+# Xcode user-specific files
+*.xcuserstate
+xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# Build artifacts
+build/
+DerivedData/
+.build/
+*.dSYM/
+
+# Swift / tooling caches
+.swiftpm/
+Package.resolved
+
+# Editor and local temp files
+.idea/
+.vscode/
+*.swp
+*.tmp
