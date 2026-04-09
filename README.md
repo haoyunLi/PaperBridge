@@ -41,14 +41,24 @@ It can also:
 
 ## Quick Start
 
-### 1. Clone the repository
+### 1. Create a normal project folder on your Mac
+
+To avoid macOS permission problems, do not build this app inside `Documents` or `Downloads`.
+Use a normal folder such as `~/Projects` instead:
+
+```bash
+mkdir -p ~/Projects
+cd ~/Projects
+```
+
+### 2. Clone the repository
 
 ```bash
 git clone https://github.com/haoyunLi/PaperBridge.git
-cd PDF_paper_reader
+cd PaperBridge
 ```
 
-### 2. Complete Xcode first-launch setup once
+### 3. Complete Xcode first-launch setup once
 
 Run these once on a new Mac:
 
@@ -58,7 +68,7 @@ sudo xcodebuild -license accept
 sudo xcodebuild -runFirstLaunch
 ```
 
-### 3. Install and start Ollama
+### 4. Install and start Ollama
 
 Install Ollama from:
 
@@ -74,7 +84,7 @@ ollama serve
 
 If the Ollama macOS app is already open, the service may already be running.
 
-### 4. Pull at least one translation model
+### 5. Pull at least one translation model
 
 The default translation direction in the app is:
 
@@ -90,7 +100,7 @@ ollama pull translategemma:12b
 
 You can also use smaller or larger models if they fit your Mac better.
 
-### 5. Build the macOS app from Terminal
+### 6. Build the macOS app from Terminal
 
 From the project root:
 
@@ -115,8 +125,11 @@ open "build/Build/Products/Release/PaperBridge.app"
 For users who want the exact terminal-only workflow:
 
 ```bash
+mkdir -p ~/Projects
+cd ~/Projects
+
 git clone https://github.com/haoyunLi/PaperBridge.git
-cd PDF_paper_reader
+cd PaperBridge
 
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 sudo xcodebuild -license accept
@@ -257,6 +270,7 @@ Then choose:
 
 - The app processes PDFs locally.
 - Ollama calls go only to your local Ollama server.
+- Building under `~/Projects` is recommended to avoid macOS protected-folder issues.
 - The translation direction is configurable. English to Simplified Chinese is only the default, not the only option.
 - Long paragraphs are chunked only for translation reliability.
 - If one paragraph translation fails, the rest continue.
@@ -316,4 +330,3 @@ The native macOS app does not use Python at runtime.
 - Ollama TranslateGemma library: [https://ollama.com/library/translategemma](https://ollama.com/library/translategemma)
 - Ollama Gemma 4 library: [https://ollama.com/library/gemma4](https://ollama.com/library/gemma4)
 - Ollama download page: [https://ollama.com/download/mac](https://ollama.com/download/mac)
-# PaperBridge
