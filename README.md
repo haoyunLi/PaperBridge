@@ -44,7 +44,7 @@ It can also:
 ### 1. Clone the repository
 
 ```bash
-git clone <YOUR_GITHUB_REPO_URL>
+git clone https://github.com/haoyunLi/PaperBridge.git
 cd PDF_paper_reader
 ```
 
@@ -115,7 +115,7 @@ open "build/Build/Products/Release/PaperBridge.app"
 For users who want the exact terminal-only workflow:
 
 ```bash
-git clone <YOUR_GITHUB_REPO_URL>
+git clone https://github.com/haoyunLi/PaperBridge.git
 cd PDF_paper_reader
 
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
