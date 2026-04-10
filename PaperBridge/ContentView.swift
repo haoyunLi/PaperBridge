@@ -77,10 +77,64 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Paste Text")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        ZStack(alignment: .topLeading) {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(Color(nsColor: .textBackgroundColor))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+
+                            TextEditor(text: manualInputBinding)
+                                .font(.system(.body, design: .default))
+                                .scrollContentBackground(.hidden)
+                                .padding(8)
+
+                            if viewModel.manualInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text("Paste an abstract, a section, or a full paper here.")
+                                    .font(.callout)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 16)
+                                    .allowsHitTesting(false)
+                            }
+                        }
+                        .frame(minHeight: 150)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                viewModel.loadTextInput()
+                            } label: {
+                                Label("Load Text", systemImage: "text.badge.plus")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(!viewModel.canLoadInputText)
+
+                            Button("Clear") {
+                                viewModel.manualInputText = ""
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(viewModel.manualInputText.isEmpty || viewModel.isBusy)
+                        }
+
+                        Text("Pasted text uses the same translation, summary, explanation, and Markdown export flow as PDFs.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
                     if let paper = viewModel.loadedPaper {
                         Divider()
 
-                        statRow(label: "File", value: paper.name)
+                        statRow(label: paper.name.hasSuffix(".pdf") ? "File" : "Source", value: paper.name)
                         statRow(label: "Paragraphs", value: "\(paper.paragraphs.count)")
                         statRow(label: "Characters", value: "\(paper.cleanedText.count)")
                         if paper.excludedReferenceCount > 0 {
@@ -294,10 +348,10 @@ struct ContentView: View {
         ContentUnavailableView {
             VStack(spacing: 14) {
                 appIconBadge(size: 88)
-                Label("Drop a PDF to Begin", systemImage: "doc.on.doc.fill")
+                Label("Add a Paper to Begin", systemImage: "doc.on.doc.fill")
             }
         } description: {
-            Text("Import an academic paper PDF or drag one into this window. Translation, summary, and explanation stay local and call Ollama on your Mac.")
+            Text("Import an academic paper PDF, or paste text in the sidebar. Translation, summary, explanation, and export stay local and call Ollama on your Mac.")
         } actions: {
             Button("Open PDF") {
                 viewModel.showImporter()
@@ -334,6 +388,11 @@ struct ContentView: View {
 
                 if let summaries = viewModel.summaries {
                     summaryPanel(summaries: summaries)
+                }
+
+                if let connectedTranslation = viewModel.connectedTranslation,
+                   !connectedTranslation.text.isEmpty {
+                    connectedTranslationPanel(result: connectedTranslation)
                 }
 
                 if !viewModel.explanationText.isEmpty {
@@ -397,6 +456,30 @@ struct ContentView: View {
                     textPanel(title: "\(summaries.sourceLanguage.displayName) Summary", body: summaries.sourceSummary)
                     textPanel(title: "\(summaries.targetLanguage.displayName) Summary", body: summaries.targetSummary)
                 }
+            }
+        }
+    }
+
+    private func connectedTranslationPanel(result: ConnectedTranslationResult) -> some View {
+        SurfaceCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label("Connected Full Translation", systemImage: "text.append")
+                        .font(.title3.weight(.semibold))
+
+                    Spacer()
+
+                    Text(result.targetLanguage.displayName)
+                        .foregroundStyle(.secondary)
+                }
+
+                if result.failedBatchCount > 0 {
+                    Text("\(result.failedBatchCount) batch\(result.failedBatchCount == 1 ? "" : "es") failed and were marked inline.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                textPanel(title: result.targetLanguage.displayName, body: result.text)
             }
         }
     }
@@ -586,6 +669,13 @@ struct ContentView: View {
         Binding(
             get: { viewModel.settings[keyPath: keyPath] },
             set: { viewModel.settings[keyPath: keyPath] = $0 }
+        )
+    }
+
+    private var manualInputBinding: Binding<String> {
+        Binding(
+            get: { viewModel.manualInputText },
+            set: { viewModel.manualInputText = $0 }
         )
     }
 

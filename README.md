@@ -10,7 +10,8 @@ It can also:
 
 - generate a whole-paper summary in the source and target languages
 - explain a selected paragraph in simpler language
-- export the aligned translation as Markdown
+- export both the aligned bilingual view and a connected full-paper translation as Markdown
+- accept pasted text directly when you do not want to load a PDF
 
 ## Features
 
@@ -18,11 +19,13 @@ It can also:
 - Local PDF extraction with `PDFKit`
 - Local Ollama inference with `URLSession`
 - Selectable translation direction
+- PDF upload and pasted-text input
 - Automatic detection of installed Ollama models
 - Model dropdowns for translation, summary, and explanation
 - Progress bar during translation
 - Paragraph-by-paragraph processing with failure isolation
 - Automatic skipping of detected reference sections
+- Connected full-paper translation view
 - Markdown export
 
 ## Requirements
@@ -258,7 +261,7 @@ Then choose:
 
 1. Launch `PaperBridge.app`.
 2. Make sure Ollama is running locally.
-3. Open a PDF or drag one into the window.
+3. Open a PDF, drag one into the window, or paste text into the sidebar.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Confirm the model selections in the left sidebar.
 6. Click `Translate Paper`.
@@ -269,11 +272,13 @@ Then choose:
 ## Behavior Notes
 
 - The app processes PDFs locally.
+- The app can also process pasted text locally without needing a PDF file.
 - Ollama calls go only to your local Ollama server.
 - Building under `~/Projects` is recommended to avoid macOS protected-folder issues.
 - The translation direction is configurable. English to Simplified Chinese is only the default, not the only option.
 - Long paragraphs are chunked only for translation reliability.
 - If one paragraph translation fails, the rest continue.
+- The app also generates a connected full-paper translation so the exported Markdown includes a smoother, context-aware target-language version in addition to the aligned paragraph view.
 - If the app can confidently detect a `References` or `Bibliography` section, it skips that section instead of translating it.
 
 ## Troubleshooting

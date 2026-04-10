@@ -159,8 +159,17 @@ struct SummaryResult: Hashable {
     let targetSummary: String
 }
 
+struct ConnectedTranslationResult: Hashable {
+    let sourceLanguage: ReaderLanguage
+    let targetLanguage: ReaderLanguage
+    let text: String
+    let batchCount: Int
+    let failedBatchCount: Int
+}
+
 enum ReaderError: LocalizedError {
     case noPaperLoaded
+    case noInputText
     case noParagraphsDetected
     case noSelectedParagraph
     case droppedFileMustBePDF
@@ -170,6 +179,8 @@ enum ReaderError: LocalizedError {
         switch self {
         case .noPaperLoaded:
             return "Open a PDF before starting translation, summary, or explanation."
+        case .noInputText:
+            return "Paste some text before loading it into the reader."
         case .noParagraphsDetected:
             return "The PDF opened successfully, but no paragraphs were detected after cleaning the extracted text."
         case .noSelectedParagraph:
@@ -210,6 +221,19 @@ enum PromptLibrary {
         Produce only the \(targetLanguage.displayName) translation, without any additional explanations or commentary. Please translate the following \(sourceLanguage.displayName) text into \(targetLanguage.displayName):
 
         \(chunk)
+        """
+    }
+
+    static func connectedTranslationPrompt(for batch: String, from sourceLanguage: ReaderLanguage, to targetLanguage: ReaderLanguage) -> String {
+        """
+        Translate the following academic paper excerpt from \(sourceLanguage.displayName) (\(sourceLanguage.translationCode)) into \(targetLanguage.displayName) (\(targetLanguage.translationCode)).
+        Use the larger passage context to keep terminology and phrasing consistent across the excerpt.
+        Preserve scientific meaning, named entities, gene symbols, protein names, units, equations, citations, and reference markers.
+        Preserve paragraph breaks when they appear in the source.
+        Return only the translated excerpt text.
+
+        Paper excerpt:
+        \(batch)
         """
     }
 

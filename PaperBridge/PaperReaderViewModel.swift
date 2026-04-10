@@ -6,11 +6,13 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var settings = AppSettings()
     @Published var loadedPaper: PaperDocument?
     @Published var paragraphResults: [ParagraphResult] = []
+    @Published var connectedTranslation: ConnectedTranslationResult?
     @Published var summaries: SummaryResult?
     @Published var explanationLanguage: ReaderLanguage = .english
     @Published var explanationText = ""
+    @Published var manualInputText = ""
     @Published var selectedParagraphID: Int?
-    @Published var statusMessage = "Open a PDF or drag one into the window."
+    @Published var statusMessage = "Open a PDF, paste text, or drag one into the window."
     @Published var progressValue = 0.0
     @Published var isBusy = false
     @Published var errorMessage: String?
@@ -30,6 +32,7 @@ final class PaperReaderViewModel: ObservableObject {
     private var chunkTranslationCache: [String: String] = [:]
     private var paragraphTranslationCache: [String: ParagraphTranslationSnapshot] = [:]
     private var paperTranslationCache: [String: [ParagraphResult]] = [:]
+    private var connectedTranslationCache: [String: ConnectedTranslationResult] = [:]
     private var summaryCache: [String: SummaryResult] = [:]
     private var explanationCache: [String: String] = [:]
 
@@ -48,6 +51,10 @@ final class PaperReaderViewModel: ObservableObject {
 
     var canTranslate: Bool {
         loadedPaper != nil && !isBusy
+    }
+
+    var canLoadInputText: Bool {
+        !manualInputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isBusy
     }
 
     var canSummarize: Bool {
@@ -162,20 +169,14 @@ final class PaperReaderViewModel: ObservableObject {
     func loadPDF(from url: URL) {
         startTask(initialStatus: "Loading PDF...") {
             let paper = try await self.readPaper(from: url)
-            self.loadedPaper = paper
-            self.paragraphResults = paper.paragraphs.enumerated().map { index, paragraph in
-                ParagraphResult(id: index + 1, original: paragraph)
-            }
-            self.selectedParagraphID = self.paragraphResults.first?.id
-            self.summaries = nil
-            self.explanationText = ""
-            self.progressValue = 0
-            self.restoreCachedOutputsIfAvailable(for: paper)
-            if paper.excludedReferenceCount > 0 {
-                self.statusMessage = "Loaded \(paper.name) with \(paper.paragraphs.count) paragraphs. Skipped \(paper.excludedReferenceCount) reference paragraphs."
-            } else {
-                self.statusMessage = "Loaded \(paper.name) with \(paper.paragraphs.count) paragraphs."
-            }
+            self.applyLoadedPaper(paper)
+        }
+    }
+
+    func loadTextInput() {
+        startTask(initialStatus: "Preparing pasted text...") {
+            let paper = try self.readTextInput(self.manualInputText)
+            self.applyLoadedPaper(paper)
         }
     }
 
@@ -190,40 +191,77 @@ final class PaperReaderViewModel: ObservableObject {
             let cacheKey = Hashing.sha256(
                 "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)"
             )
-
-            if let cached = self.paperTranslationCache[cacheKey] {
-                self.paragraphResults = cached
-                self.progressValue = 1
-                self.statusMessage = "Using cached translations for this paper and settings."
-                return
-            }
+            let connectedCacheKey = Hashing.sha256("\(cacheKey)|connected")
+            let cachedParagraphs = self.paperTranslationCache[cacheKey]
+            let cachedConnected = self.connectedTranslationCache[connectedCacheKey]
 
             try await self.ollamaClient.ensureModelAvailable(baseURL: settings.ollamaBaseURL, model: settings.translationModel)
 
-            var workingResults = paper.paragraphs.enumerated().map { index, paragraph in
+            var workingResults = cachedParagraphs ?? paper.paragraphs.enumerated().map { index, paragraph in
                 ParagraphResult(id: index + 1, original: paragraph)
             }
+            let connectedBatches = cachedConnected == nil
+                ? TextProcessing.buildTextBatches(paper.paragraphs, maxChars: TextProcessing.connectedTranslationBatchChars)
+                : []
+            let totalSteps = max(
+                (cachedParagraphs == nil ? workingResults.count : 0) + connectedBatches.count,
+                1
+            )
+            var completedSteps = 0
 
             self.paragraphResults = workingResults
-            let totalCount = max(workingResults.count, 1)
 
-            for index in workingResults.indices {
-                try Task.checkCancellation()
+            if cachedParagraphs == nil {
+                for index in workingResults.indices {
+                    try Task.checkCancellation()
 
-                self.statusMessage = "Translating paragraph \(index + 1) of \(workingResults.count)"
-                let snapshot = try await self.translateParagraph(workingResults[index].original, settings: settings)
+                    self.statusMessage = "Translating paragraph \(index + 1) of \(workingResults.count)"
+                    let snapshot = try await self.translateParagraph(workingResults[index].original, settings: settings)
 
-                workingResults[index].translation = snapshot.translation
-                workingResults[index].status = snapshot.status
-                workingResults[index].errorMessage = snapshot.errorMessage
-                workingResults[index].chunkCount = snapshot.chunkCount
+                    workingResults[index].translation = snapshot.translation
+                    workingResults[index].status = snapshot.status
+                    workingResults[index].errorMessage = snapshot.errorMessage
+                    workingResults[index].chunkCount = snapshot.chunkCount
 
-                self.paragraphResults = workingResults
-                self.progressValue = Double(index + 1) / Double(totalCount)
+                    self.paragraphResults = workingResults
+                    completedSteps += 1
+                    self.progressValue = Double(completedSteps) / Double(totalSteps)
+                }
+
+                self.paperTranslationCache[cacheKey] = workingResults
+            } else {
+                self.progressValue = connectedBatches.isEmpty ? 1 : 0
             }
 
-            self.paperTranslationCache[cacheKey] = workingResults
-            self.statusMessage = "Translation finished."
+            if let cachedConnected {
+                self.connectedTranslation = cachedConnected
+            } else {
+                let connectedResult = try await self.translateConnectedPaper(
+                    paper,
+                    settings: settings,
+                    batches: connectedBatches
+                ) { status in
+                    self.statusMessage = status
+                } onBatchFinished: {
+                    completedSteps += 1
+                    self.progressValue = Double(completedSteps) / Double(totalSteps)
+                }
+
+                self.connectedTranslation = connectedResult
+                self.connectedTranslationCache[connectedCacheKey] = connectedResult
+            }
+
+            let usedCaches = cachedParagraphs != nil || cachedConnected != nil
+            if usedCaches, cachedParagraphs != nil, cachedConnected != nil {
+                self.progressValue = 1
+                self.statusMessage = "Using cached translations for this paper and settings."
+            } else if let connectedTranslation = self.connectedTranslation, connectedTranslation.failedBatchCount > 0 {
+                self.progressValue = 1
+                self.statusMessage = "Translation finished with \(connectedTranslation.failedBatchCount) connected-translation batch failures."
+            } else {
+                self.progressValue = 1
+                self.statusMessage = "Translation finished."
+            }
         }
     }
 
@@ -386,6 +424,25 @@ final class PaperReaderViewModel: ObservableObject {
         }
     }
 
+    private func applyLoadedPaper(_ paper: PaperDocument) {
+        loadedPaper = paper
+        paragraphResults = paper.paragraphs.enumerated().map { index, paragraph in
+            ParagraphResult(id: index + 1, original: paragraph)
+        }
+        selectedParagraphID = paragraphResults.first?.id
+        connectedTranslation = nil
+        summaries = nil
+        explanationText = ""
+        progressValue = 0
+        restoreCachedOutputsIfAvailable(for: paper)
+
+        if paper.excludedReferenceCount > 0 {
+            statusMessage = "Loaded \(paper.name) with \(paper.paragraphs.count) paragraphs. Skipped \(paper.excludedReferenceCount) reference paragraphs."
+        } else {
+            statusMessage = "Loaded \(paper.name) with \(paper.paragraphs.count) paragraphs."
+        }
+    }
+
     private func readPaper(from url: URL) async throws -> PaperDocument {
         let hasAccess = url.startAccessingSecurityScopedResource()
         defer {
@@ -423,6 +480,55 @@ final class PaperReaderViewModel: ObservableObject {
 
         let paper = PaperDocument(
             name: url.lastPathComponent,
+            checksum: checksum,
+            cleanedText: bodyText,
+            paragraphs: trimmedPaper.bodyParagraphs,
+            excludedReferenceParagraphs: trimmedPaper.referenceParagraphs,
+            referenceSectionTitle: trimmedPaper.heading
+        )
+
+        extractedPaperCache[checksum] = paper
+        return paper
+    }
+
+    private func readTextInput(_ text: String) throws -> PaperDocument {
+        let trimmedInput = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedInput.isEmpty else {
+            throw ReaderError.noInputText
+        }
+
+        let checksum = Hashing.sha256(trimmedInput)
+        if let cached = extractedPaperCache[checksum] {
+            return cached
+        }
+
+        let normalizedInput = trimmedInput.replacingOccurrences(of: "\r", with: "\n")
+        let extractedParagraphs: [String]
+
+        if normalizedInput.contains("\n\n") {
+            let cleanedText = TextProcessing.cleanExtractedText(normalizedInput)
+            extractedParagraphs = TextProcessing.postProcessParagraphs(
+                TextProcessing.splitIntoParagraphs(cleanedText)
+            )
+        } else if normalizedInput.contains("\n") {
+            extractedParagraphs = TextProcessing.rebuildParagraphs(fromPageText: normalizedInput)
+        } else {
+            extractedParagraphs = TextProcessing.postProcessParagraphs([normalizedInput])
+        }
+
+        guard !extractedParagraphs.isEmpty else {
+            throw ReaderError.noParagraphsDetected
+        }
+
+        let trimmedPaper = TextProcessing.excludeReferenceSection(from: extractedParagraphs)
+        guard !trimmedPaper.bodyParagraphs.isEmpty else {
+            throw ReaderError.noParagraphsDetected
+        }
+
+        let bodyText = trimmedPaper.bodyParagraphs.joined(separator: "\n\n")
+
+        let paper = PaperDocument(
+            name: "Pasted Text",
             checksum: checksum,
             cleanedText: bodyText,
             paragraphs: trimmedPaper.bodyParagraphs,
@@ -495,6 +601,65 @@ final class PaperReaderViewModel: ObservableObject {
         return translation
     }
 
+    private func translateConnectedPaper(
+        _ paper: PaperDocument,
+        settings: AppSettings,
+        batches: [String],
+        onStatusChange: @escaping @MainActor (String) -> Void,
+        onBatchFinished: @escaping @MainActor () -> Void
+    ) async throws -> ConnectedTranslationResult {
+        let effectiveBatches = batches.isEmpty
+            ? TextProcessing.buildTextBatches(paper.paragraphs, maxChars: TextProcessing.connectedTranslationBatchChars)
+            : batches
+
+        guard !effectiveBatches.isEmpty else {
+            return ConnectedTranslationResult(
+                sourceLanguage: settings.sourceLanguage,
+                targetLanguage: settings.targetLanguage,
+                text: "",
+                batchCount: 0,
+                failedBatchCount: 0
+            )
+        }
+
+        var translatedBatches: [String] = []
+        var failedBatchCount = 0
+
+        for (index, batch) in effectiveBatches.enumerated() {
+            try Task.checkCancellation()
+            onStatusChange("Generating connected full translation \(index + 1) of \(effectiveBatches.count)")
+
+            do {
+                let translation = try await self.ollamaClient.generate(
+                    baseURL: settings.ollamaBaseURL,
+                    model: settings.translationModel,
+                    prompt: PromptLibrary.connectedTranslationPrompt(
+                        for: batch,
+                        from: settings.sourceLanguage,
+                        to: settings.targetLanguage
+                    ),
+                    systemPrompt: PromptLibrary.translationSystemPrompt(targetLanguage: settings.targetLanguage)
+                )
+                translatedBatches.append(translation)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                failedBatchCount += 1
+                translatedBatches.append("[Connected translation failed for batch \(index + 1)] \(error.localizedDescription)")
+            }
+
+            onBatchFinished()
+        }
+
+        return ConnectedTranslationResult(
+            sourceLanguage: settings.sourceLanguage,
+            targetLanguage: settings.targetLanguage,
+            text: translatedBatches.joined(separator: "\n\n"),
+            batchCount: effectiveBatches.count,
+            failedBatchCount: failedBatchCount
+        )
+    }
+
     private func restoreCachedOutputsIfAvailable(for paper: PaperDocument) {
         let translationKey = Hashing.sha256(
             "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)"
@@ -502,6 +667,9 @@ final class PaperReaderViewModel: ObservableObject {
         if let cachedTranslations = paperTranslationCache[translationKey] {
             paragraphResults = cachedTranslations
         }
+
+        let connectedKey = Hashing.sha256("\(translationKey)|connected")
+        connectedTranslation = connectedTranslationCache[connectedKey]
 
         let summaryKey = Hashing.sha256(
             "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.summaryModel)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)"
@@ -532,6 +700,19 @@ final class PaperReaderViewModel: ObservableObject {
             lines.append("## Whole-paper summary (\(summaries.targetLanguage.displayName))")
             lines.append("")
             lines.append(summaries.targetSummary)
+            lines.append("")
+        }
+
+        if let connectedTranslation, !connectedTranslation.text.isEmpty {
+            lines.append("## Connected Full Translation (\(connectedTranslation.targetLanguage.displayName))")
+            lines.append("")
+
+            if connectedTranslation.failedBatchCount > 0 {
+                lines.append("> \(connectedTranslation.failedBatchCount) connected-translation batch(es) failed and were marked inline below.")
+                lines.append("")
+            }
+
+            lines.append(connectedTranslation.text)
             lines.append("")
         }
 
