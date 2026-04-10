@@ -7,11 +7,35 @@ PROJECT_PATH="$PROJECT_DIR/PaperBridge.xcodeproj"
 SCHEME_NAME="PaperBridge"
 BUILD_DIR="$PROJECT_DIR/build"
 APP_PATH="$BUILD_DIR/Build/Products/Release/PaperBridge.app"
-XCODE_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
+DEFAULT_XCODE_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
 
-if [[ ! -d "$XCODE_DEVELOPER_DIR" ]]; then
-  echo "Xcode.app was not found at /Applications/Xcode.app"
-  echo "Install full Xcode first, then run this script again."
+resolve_developer_dir() {
+  if [[ -n "${DEVELOPER_DIR:-}" && -x "${DEVELOPER_DIR}/usr/bin/xcodebuild" ]]; then
+    printf '%s\n' "$DEVELOPER_DIR"
+    return 0
+  fi
+
+  if command -v xcode-select >/dev/null 2>&1; then
+    local selected_dir
+    selected_dir="$(xcode-select -p 2>/dev/null || true)"
+    if [[ -n "$selected_dir" && -x "${selected_dir}/usr/bin/xcodebuild" ]]; then
+      printf '%s\n' "$selected_dir"
+      return 0
+    fi
+  fi
+
+  if [[ -x "${DEFAULT_XCODE_DEVELOPER_DIR}/usr/bin/xcodebuild" ]]; then
+    printf '%s\n' "$DEFAULT_XCODE_DEVELOPER_DIR"
+    return 0
+  fi
+
+  return 1
+}
+
+if ! XCODE_DEVELOPER_DIR="$(resolve_developer_dir)"; then
+  echo "Full Xcode was not found."
+  echo "Install Xcode, or run:"
+  echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer"
   exit 1
 fi
 

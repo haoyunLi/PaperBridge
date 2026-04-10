@@ -1,3 +1,0 @@
-# This repository now ships as a native macOS SwiftUI app.
-# No Python dependencies are required to build or run the Xcode project.
-# This file is intentionally kept for GitHub/repository compatibility.

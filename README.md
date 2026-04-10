@@ -71,6 +71,19 @@ sudo xcodebuild -license accept
 sudo xcodebuild -runFirstLaunch
 ```
 
+`build_app.sh` should work on another person's Mac without editing it, as long as:
+
+- full Xcode is installed
+- Xcode has finished first-launch setup
+- `xcode-select` points to the Xcode developer directory
+
+If their Xcode app is in the normal location, they usually do not need to change anything.
+If they installed or renamed Xcode in a different location, they only need to point `xcode-select` at that Xcode once, for example:
+
+```bash
+sudo xcode-select -s "/Applications/Xcode-beta.app/Contents/Developer"
+```
+
 ### 4. Install and start Ollama
 
 Install Ollama from:
@@ -110,6 +123,8 @@ From the project root:
 ```bash
 ./build_app.sh
 ```
+
+The script builds relative to the repository folder, so users do not need to edit personal paths inside the script.
 
 If the build succeeds, the generated app will be here:
 
@@ -324,11 +339,6 @@ Try launching it from Terminal:
 ```bash
 open "build/Build/Products/Release/PaperBridge.app"
 ```
-
-## Notes About `requirements.txt`
-
-`requirements.txt` is kept only because the repository originally started as a Python prototype and you asked to keep it for GitHub.
-The native macOS app does not use Python at runtime.
 
 ## Sources
 
