@@ -117,6 +117,25 @@ enum TranslationStatus: String, Hashable {
     case failed
 }
 
+enum ReaderDisplayMode: String, CaseIterable, Identifiable {
+    case bilingual
+    case sourceOnly
+    case translationOnly
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .bilingual:
+            return "Bilingual"
+        case .sourceOnly:
+            return "Original"
+        case .translationOnly:
+            return "Translation"
+        }
+    }
+}
+
 struct ParagraphTranslationSnapshot: Hashable {
     let translation: String
     let status: TranslationStatus
@@ -172,6 +191,7 @@ enum ReaderError: LocalizedError {
     case noInputText
     case noParagraphsDetected
     case noSelectedParagraph
+    case emptyParagraphEdit
     case droppedFileMustBePDF
     case failedToReadFile(String)
 
@@ -185,6 +205,8 @@ enum ReaderError: LocalizedError {
             return "The PDF opened successfully, but no paragraphs were detected after cleaning the extracted text."
         case .noSelectedParagraph:
             return "Choose a paragraph before asking for an explanation."
+        case .emptyParagraphEdit:
+            return "A paragraph cannot be empty. Enter text or cancel the edit."
         case .droppedFileMustBePDF:
             return "Drop a PDF file to load it into the reader."
         case .failedToReadFile(let details):

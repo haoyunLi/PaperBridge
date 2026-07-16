@@ -1,0 +1,1 @@
+# PaperBridge is a native SwiftUI app and has no Python dependencies.

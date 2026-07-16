@@ -7,8 +7,10 @@ struct PaperBridgeApp: App {
     var body: some Scene {
         WindowGroup("PaperBridge") {
             ContentView(viewModel: viewModel)
-                .frame(minWidth: 1220, minHeight: 780)
+                .frame(minWidth: 900, minHeight: 560)
         }
+        .defaultSize(width: 1080, height: 700)
+        .windowResizability(.contentMinSize)
         .windowStyle(.hiddenTitleBar)
     }
 }

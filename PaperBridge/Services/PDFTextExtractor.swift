@@ -47,25 +47,39 @@ struct PDFTextExtractor {
         }
 
         let filteredLinesByPage = filterRepeatedPageDecorations(in: pageExtractions)
-        var paragraphs: [String] = []
+        var paragraphsByPage: [[String]] = []
 
         for (pageIndex, extraction) in pageExtractions.enumerated() {
             let filteredLines = pageIndex < filteredLinesByPage.count ? filteredLinesByPage[pageIndex] : extraction.lines
             if !filteredLines.isEmpty {
-                paragraphs.append(contentsOf: TextProcessing.rebuildParagraphs(from: filteredLines, pageBounds: extraction.bounds))
+                paragraphsByPage.append(
+                    TextProcessing.rebuildParagraphs(
+                        from: filteredLines,
+                        pageBounds: extraction.bounds,
+                        postProcess: false
+                    )
+                )
                 continue
             }
 
             if let fallbackPageText = extraction.fallbackText {
-                paragraphs.append(contentsOf: TextProcessing.rebuildParagraphs(fromPageText: fallbackPageText))
+                paragraphsByPage.append(
+                    TextProcessing.rebuildParagraphs(
+                        fromPageText: fallbackPageText,
+                        postProcess: false
+                    )
+                )
             }
         }
 
-        guard !paragraphs.isEmpty else {
+        let stitchedParagraphs = TextProcessing.stitchPageParagraphs(paragraphsByPage)
+        let repairedParagraphs = TextProcessing.postProcessParagraphs(stitchedParagraphs)
+
+        guard !repairedParagraphs.isEmpty else {
             throw PDFTextExtractorError.noReadableText
         }
 
-        return paragraphs.joined(separator: "\n\n")
+        return repairedParagraphs.joined(separator: "\n\n")
     }
 
     private func extractLines(from page: PDFPage) -> [ExtractedTextLine] {
@@ -168,6 +182,7 @@ struct PDFTextExtractor {
     private func pageDecorationSignature(for text: String) -> String {
         text
             .lowercased()
+            .replacingOccurrences(of: #"\d+"#, with: "#", options: .regularExpression)
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }

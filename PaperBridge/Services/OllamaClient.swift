@@ -2,6 +2,7 @@ import Foundation
 
 enum OllamaClientError: LocalizedError {
     case invalidBaseURL(String)
+    case nonLocalBaseURL(String)
     case unreachable(String)
     case invalidResponse
     case httpError(String)
@@ -13,6 +14,8 @@ enum OllamaClientError: LocalizedError {
         switch self {
         case .invalidBaseURL(let baseURL):
             return "The Ollama base URL is invalid: \(baseURL)"
+        case .nonLocalBaseURL(let baseURL):
+            return "PaperBridge only connects to Ollama on this Mac. Use localhost, 127.0.0.1, or ::1 instead of \(baseURL)."
         case .unreachable(let baseURL):
             return "Could not reach Ollama at \(baseURL). Make sure Ollama is running locally and the API is available."
         case .invalidResponse:
@@ -75,12 +78,11 @@ final class OllamaClient {
             throw OllamaClientError.invalidResponse
         }
 
-        let payload = try decode(OllamaTagsResponse.self, from: data)
-
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw OllamaClientError.httpError(String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)")
         }
 
+        let payload = try decode(OllamaTagsResponse.self, from: data)
         let models = payload.models.compactMap { $0.model ?? $0.name }
         return Array(Set(models)).sorted()
     }
@@ -115,12 +117,14 @@ final class OllamaClient {
             throw OllamaClientError.invalidResponse
         }
 
-        let decoded = try decode(OllamaGenerateResponse.self, from: data)
-
         if !(200..<300).contains(httpResponse.statusCode) {
-            throw OllamaClientError.httpError(decoded.error ?? String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)")
+            let decoded = try? JSONDecoder().decode(OllamaGenerateResponse.self, from: data)
+            throw OllamaClientError.httpError(
+                decoded?.error ?? String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
+            )
         }
 
+        let decoded = try decode(OllamaGenerateResponse.self, from: data)
         if let error = decoded.error, !error.isEmpty {
             throw OllamaClientError.httpError(error)
         }
@@ -134,15 +138,28 @@ final class OllamaClient {
 
     private func makeURL(baseURL: String, path: String) throws -> URL {
         let trimmed = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed) else {
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host?.lowercased() else {
             throw OllamaClientError.invalidBaseURL(baseURL)
         }
+
+        let localHosts = ["localhost", "127.0.0.1", "::1"]
+        guard localHosts.contains(host) || host.hasSuffix(".localhost") else {
+            throw OllamaClientError.nonLocalBaseURL(baseURL)
+        }
+
         return url.appending(path: path)
     }
 
     private func perform(_ request: URLRequest, baseURL: String) async throws -> (Data, URLResponse) {
         do {
             return try await session.data(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
         } catch {
             throw OllamaClientError.unreachable(baseURL)
         }

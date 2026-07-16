@@ -82,9 +82,20 @@ enum TextProcessing {
                 let trimmed = rawParagraph.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !trimmed.isEmpty else { return nil }
 
-                let flattened = replaceMatches(in: trimmed, pattern: "\\s*\\n\\s*", template: " ")
-                let normalized = replaceMatches(in: flattened, pattern: "\\s{2,}", template: " ")
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let lines = trimmed
+                    .components(separatedBy: .newlines)
+                    .map(normalizeExtractedLine)
+                    .filter { !$0.isEmpty }
+                guard let firstLine = lines.first else { return nil }
+
+                let normalized: String
+                if lines.count > 1,
+                   startsMajorSection(firstLine) || isLikelySectionHeading(firstLine) {
+                    let body = joinParagraphLines(Array(lines.dropFirst()))
+                    normalized = body.isEmpty ? firstLine : firstLine + "\n" + body
+                } else {
+                    normalized = joinParagraphLines(lines)
+                }
 
                 return normalized.isEmpty ? nil : normalized
             }
@@ -92,7 +103,7 @@ enum TextProcessing {
         return paragraphs.joined(separator: "\n\n")
     }
 
-    static func rebuildParagraphs(fromPageText text: String) -> [String] {
+    static func rebuildParagraphs(fromPageText text: String, postProcess: Bool = true) -> [String] {
         let normalized = text
             .replacingOccurrences(of: "\r", with: "\n")
             .replacingOccurrences(of: "\u{00AD}", with: "")
@@ -150,10 +161,14 @@ enum TextProcessing {
         }
 
         flush()
-        return postProcessParagraphs(paragraphs)
+        return postProcess ? postProcessParagraphs(paragraphs) : paragraphs
     }
 
-    static func rebuildParagraphs(from lines: [ExtractedTextLine], pageBounds: CGRect) -> [String] {
+    static func rebuildParagraphs(
+        from lines: [ExtractedTextLine],
+        pageBounds: CGRect,
+        postProcess: Bool = true
+    ) -> [String] {
         let normalizedLines = lines.map {
             ExtractedTextLine(
                 text: normalizeExtractedLine($0.text),
@@ -219,7 +234,7 @@ enum TextProcessing {
         }
 
         flush()
-        return postProcessParagraphs(paragraphs)
+        return postProcess ? postProcessParagraphs(paragraphs) : paragraphs
     }
 
     static func splitIntoParagraphs(_ text: String) -> [String] {
@@ -237,12 +252,19 @@ enum TextProcessing {
             return (paragraphs, [], nil)
         }
 
-        let searchStartIndex = max(Int(Double(paragraphs.count) * 0.45), 3)
+        let searchStartIndex = max(Int(Double(paragraphs.count) * 0.15), 3)
 
         if let explicitReferenceStart = detectExplicitReferenceHeading(in: paragraphs, searchStartIndex: searchStartIndex) {
+            let referenceEndIndex = detectReferenceSectionEnd(
+                in: paragraphs,
+                referenceStartIndex: explicitReferenceStart.index
+            )
+            let trailingBody = referenceEndIndex < paragraphs.count
+                ? Array(paragraphs.suffix(from: referenceEndIndex))
+                : []
             return (
-                Array(paragraphs.prefix(explicitReferenceStart.index)),
-                Array(paragraphs.suffix(from: explicitReferenceStart.index)),
+                Array(paragraphs.prefix(explicitReferenceStart.index)) + trailingBody,
+                Array(paragraphs[explicitReferenceStart.index..<referenceEndIndex]),
                 explicitReferenceStart.heading
             )
         }
@@ -431,7 +453,10 @@ enum TextProcessing {
             expanded.append(contentsOf: splitParagraphAroundInlineSectionMarkers(paragraph))
         }
 
-        let mergedOpening = mergeOpeningFragments(expanded)
+        let withoutVisualRuns = removeVisualArtifactRuns(expanded)
+        let mergedPanelCaptions = mergePanelLabelsWithCaptions(withoutVisualRuns)
+        let mergedEquations = mergeEquationRuns(mergedPanelCaptions)
+        let mergedOpening = mergeOpeningFragments(mergedEquations)
         let withoutFrontMatter = removeLeadingMetadataParagraphs(from: mergedOpening)
         let mergedHeadings = mergeSectionLabelsWithFollowingBody(withoutFrontMatter)
         let withoutRunningHeaders = stripRepeatedRunningHeaders(from: mergedHeadings)
@@ -473,7 +498,47 @@ enum TextProcessing {
 
         let sentenceClosed = ensureSentenceClosedParagraphs(normalized)
         let readable = splitLongReadableParagraphs(sentenceClosed)
-        return readable.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return readable
+            .map(formatLeadingSectionHeading)
+            .map(formatTrailingEquation)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    static func splitForReading(_ paragraph: String, targetChars: Int = 900) -> [String] {
+        let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        guard trimmed.count > targetChars else { return [trimmed] }
+
+        let sentences = splitIntoSentences(trimmed)
+        guard sentences.count > 1 else { return [trimmed] }
+
+        return packSegments(sentences, maxChars: targetChars)
+    }
+
+    static func mergeForReading(_ left: String, _ right: String) -> String {
+        joinParagraphLines([left, right])
+    }
+
+    static func stitchPageParagraphs(_ pages: [[String]]) -> [String] {
+        var stitched: [String] = []
+
+        for page in pages {
+            var pageParagraphs = page
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            guard !pageParagraphs.isEmpty else { continue }
+
+            if let previous = stitched.last,
+               let first = pageParagraphs.first,
+               shouldStitchPageBoundary(previous, first) {
+                stitched[stitched.count - 1] = mergeForReading(previous, first)
+                pageParagraphs.removeFirst()
+            }
+
+            stitched.append(contentsOf: pageParagraphs)
+        }
+
+        return stitched
     }
 
     private static func replaceMatches(in text: String, pattern: String, template: String) -> String {
@@ -670,6 +735,160 @@ enum TextProcessing {
         return merged
     }
 
+    private static func mergeEquationRuns(_ paragraphs: [String]) -> [String] {
+        guard !paragraphs.isEmpty else { return [] }
+
+        var merged: [String] = []
+        var equationBuffer: [String] = []
+
+        func flushEquationBuffer() {
+            guard !equationBuffer.isEmpty else { return }
+            merged.append(equationBuffer.joined(separator: " "))
+            equationBuffer.removeAll()
+        }
+
+        for paragraph in paragraphs {
+            let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            if isLikelyEquationFragment(trimmed) || isLikelyIsolatedSymbolicFragment(trimmed) {
+                equationBuffer.append(trimmed)
+            } else {
+                flushEquationBuffer()
+                merged.append(trimmed)
+            }
+        }
+
+        flushEquationBuffer()
+        return merged
+    }
+
+    private static func mergePanelLabelsWithCaptions(_ paragraphs: [String]) -> [String] {
+        var merged: [String] = []
+        var index = 0
+
+        while index < paragraphs.count {
+            let current = paragraphs[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            if isPanelLabelFragment(current) {
+                var labels: [String] = []
+                var cursor = index
+
+                while cursor < paragraphs.count {
+                    let candidate = paragraphs[cursor].trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard isPanelLabelFragment(candidate) else { break }
+                    labels.append(candidate)
+                    cursor += 1
+                }
+
+                if cursor < paragraphs.count {
+                    let next = paragraphs[cursor].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if isLikelyCaption(next) {
+                        merged.append(mergeForReading(labels.joined(separator: " "), next))
+                        index = cursor + 1
+                        continue
+                    }
+                }
+
+                // Bare panel letters come from figure artwork, not the paper prose.
+                index = cursor
+                continue
+            }
+
+            if !current.isEmpty {
+                merged.append(current)
+            }
+            index += 1
+        }
+
+        return merged
+    }
+
+    private static func isPanelLabelSequence(_ text: String) -> Bool {
+        text.range(of: #"^[A-Z](?:\s+[A-Z]){1,10}$"#, options: .regularExpression) != nil
+    }
+
+    private static func isPanelLabelFragment(_ text: String) -> Bool {
+        text.range(of: #"^[A-Z]$"#, options: .regularExpression) != nil || isPanelLabelSequence(text)
+    }
+
+    private static func removeVisualArtifactRuns(_ paragraphs: [String]) -> [String] {
+        var cleaned: [String] = []
+        var candidateRun: [String] = []
+
+        func flushCandidateRun() {
+            guard !candidateRun.isEmpty else { return }
+
+            let strongArtifactCount = candidateRun.filter(isStrongVisualArtifact).count
+            let explicitEquationCount = candidateRun.filter(hasExplicitEquationSyntax).count
+            let shouldRemove =
+                candidateRun.count >= 5 &&
+                strongArtifactCount >= 4 &&
+                explicitEquationCount < max(2, candidateRun.count / 2)
+
+            if !shouldRemove {
+                cleaned.append(contentsOf: candidateRun)
+            }
+            candidateRun.removeAll()
+        }
+
+        for paragraph in paragraphs {
+            let trimmed = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+
+            if isVisualRunCandidate(trimmed) {
+                candidateRun.append(trimmed)
+            } else {
+                flushCandidateRun()
+                cleaned.append(trimmed)
+            }
+        }
+
+        flushCandidateRun()
+        return cleaned
+    }
+
+    private static func isVisualRunCandidate(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 260 else { return false }
+        guard !startsMajorSection(trimmed),
+              !startsWithGenericNumberedHeading(trimmed),
+              !isReferenceHeading(trimmed),
+              !isLikelyCaption(trimmed),
+              !isLikelyFrontMatterMetadata(trimmed) else {
+            return false
+        }
+
+        let wordCount = trimmed.split(whereSeparator: \.isWhitespace).count
+        guard wordCount <= 24 else { return false }
+        guard !endsSentence(trimmed) else { return false }
+
+        return trimmed.count <= 40 ||
+            isLikelyPlotArtifact(trimmed) ||
+            isLikelyTableRow(trimmed) ||
+            isLikelyDenseTableBlock(trimmed) ||
+            isLikelyDenseNumericArtifact(trimmed) ||
+            isLikelyStandaloneChartLabel(trimmed) ||
+            isLikelyIsolatedSymbolicFragment(trimmed) ||
+            isLikelyShortStructuralFragment(trimmed)
+    }
+
+    private static func isStrongVisualArtifact(_ text: String) -> Bool {
+        text.count <= 35 ||
+            isLikelyPlotArtifact(text) ||
+            isLikelyTableRow(text) ||
+            isLikelyDenseTableBlock(text) ||
+            isLikelyDenseNumericArtifact(text) ||
+            isLikelyStandaloneChartLabel(text) ||
+            isLikelyIsolatedSymbolicFragment(text)
+    }
+
+    private static func hasExplicitEquationSyntax(_ text: String) -> Bool {
+        text.range(
+            of: #"(?:=|:=|≤|≥|≈|≠|∑|∫|∂|∆|→|←|↔|∈|\([0-9]+\)$)"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     private static func removeLeadingMetadataParagraphs(from paragraphs: [String]) -> [String] {
         guard paragraphs.count > 1 else { return paragraphs }
 
@@ -850,8 +1069,12 @@ enum TextProcessing {
             }
 
             if result.hasSuffix("-"), startsWithLetterOrDigit(trimmed) {
-                result.removeLast()
-                result += trimmed
+                if shouldRemoveLineBreakHyphen(left: result, right: trimmed) {
+                    result.removeLast()
+                    result += trimmed
+                } else {
+                    result += trimmed
+                }
                 continue
             }
 
@@ -862,7 +1085,7 @@ enum TextProcessing {
             }
         }
 
-        return replaceMatches(in: result, pattern: "\\s{2,}", template: " ")
+        return replaceMatches(in: result, pattern: #"[\t ]{2,}"#, template: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -1043,6 +1266,74 @@ enum TextProcessing {
             .trimmingCharacters(in: .punctuationCharacters.union(.whitespacesAndNewlines))
     }
 
+    private static func formatLeadingSectionHeading(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.contains("\n"), trimmed.count >= 30 else { return trimmed }
+
+        let pattern = #"^(?:(\d+(?:\.\d+)*)\s+)?(Abstract|Introduction|Background|Related Work|Methods?|Methodology|Materials and Methods|Experimental Setup|Experiments?|Evaluation|Results?|Discussion|Conclusions?|Appendix|Acknowledg(?:e)?ments)([.:])?\s+"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return trimmed
+        }
+
+        let fullRange = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        guard let match = regex.firstMatch(in: trimmed, range: fullRange),
+              match.range.location == 0,
+              let matchedRange = Range(match.range(at: 0), in: trimmed),
+              let headingNameRange = Range(match.range(at: 2), in: trimmed) else {
+            return trimmed
+        }
+
+        let heading = trimmed[..<matchedRange.upperBound]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let remainder = trimmed[matchedRange.upperBound...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard remainder.count >= 20 else { return trimmed }
+
+        let headingName = String(trimmed[headingNameRange])
+        let headingLetters = headingName.filter(\.isLetter)
+        let isUppercaseHeading = !headingLetters.isEmpty && headingLetters.allSatisfy(\.isUppercase)
+        let hasNumbering = match.range(at: 1).location != NSNotFound
+        let hasPunctuation = match.range(at: 3).location != NSNotFound
+        let remainderStartsUppercase = remainder.range(
+            of: #"^[\"'“‘(\[]*[A-Z]"#,
+            options: .regularExpression
+        ) != nil
+
+        guard hasNumbering || hasPunctuation || isUppercaseHeading || remainderStartsUppercase else {
+            return trimmed
+        }
+
+        return heading + "\n" + remainder
+    }
+
+    private static func formatTrailingEquation(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 12,
+              let regex = try? NSRegularExpression(pattern: #"[.!?]\s+"#) else {
+            return trimmed
+        }
+
+        let fullRange = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
+        for match in regex.matches(in: trimmed, range: fullRange).reversed() {
+            guard let matchRange = Range(match.range, in: trimmed) else { continue }
+
+            let equation = trimmed[matchRange.upperBound...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !equation.isEmpty,
+                  equation.count <= 160,
+                  isLikelyEquationFragment(equation) else {
+                continue
+            }
+
+            let punctuationEnd = trimmed.index(after: matchRange.lowerBound)
+            let prose = trimmed[..<punctuationEnd]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return prose + "\n" + equation
+        }
+
+        return trimmed
+    }
+
     private static func mergeSentenceFragments(_ fragments: [String]) -> [String] {
         guard !fragments.isEmpty else { return [] }
 
@@ -1072,7 +1363,8 @@ enum TextProcessing {
 
     private static func shouldMergeSentenceFragment(_ current: String, with next: String) -> Bool {
         guard !current.isEmpty, !next.isEmpty else { return false }
-        guard !endsSentence(current) else { return false }
+        let endsWithAbbreviation = endsWithAcademicAbbreviation(current)
+        guard endsWithAbbreviation || !endsSentence(current) else { return false }
         guard !isReferenceHeading(current) else { return false }
         guard !(looksLikeTitleFragment(current) && looksLikeAuthorLine(next)) else { return false }
         guard !isLikelySectionHeading(current),
@@ -1081,6 +1373,7 @@ enum TextProcessing {
               !isLikelyPlotArtifact(current),
               !isReferenceHeading(current),
               !isLikelyDenseTableBlock(current),
+              !isLikelyDenseNumericArtifact(current),
               !isLikelyTableRow(current),
               !isLikelyIsolatedSymbolicFragment(current),
               !isLikelyAlgorithmArtifact(current) else {
@@ -1091,11 +1384,16 @@ enum TextProcessing {
               !isLikelyCaption(next),
               !isReferenceHeading(next),
               !isLikelyDenseTableBlock(next),
+              !isLikelyDenseNumericArtifact(next),
               !isLikelyTableRow(next),
               !isLikelyAlgorithmArtifact(next),
               !isLikelyIsolatedSymbolicFragment(next),
               !isLikelyStandaloneChartLabel(next) else {
             return false
+        }
+
+        if endsWithAbbreviation {
+            return true
         }
 
         if endsWithContinuationMarker(current) {
@@ -1112,7 +1410,13 @@ enum TextProcessing {
     private static func detectExplicitReferenceHeading(in paragraphs: [String], searchStartIndex: Int) -> (index: Int, heading: String)? {
         for index in searchStartIndex..<paragraphs.count {
             let candidate = paragraphs[index]
-            guard isReferenceHeading(candidate) else { continue }
+            let matchedHeading: String?
+            if isReferenceHeading(candidate) {
+                matchedHeading = candidate
+            } else {
+                matchedHeading = leadingReferenceHeadingSplit(in: candidate)?.first
+            }
+            guard let matchedHeading else { continue }
 
             let trailingParagraphs = Array(paragraphs.dropFirst(index + 1).prefix(12))
             let referenceLikeCount = trailingParagraphs.filter(isLikelyReferenceEntry).count
@@ -1121,14 +1425,52 @@ enum TextProcessing {
                 Double(referenceLikeCount) / Double(trailingParagraphs.count) >= 0.45
             )
 
-            guard hasEnoughEvidence || index >= Int(Double(paragraphs.count) * 0.75) else {
+            guard hasEnoughEvidence ||
+                    isReferenceHeading(candidate) ||
+                    index >= Int(Double(paragraphs.count) * 0.75) else {
                 continue
             }
 
-            return (index, candidate)
+            return (index, matchedHeading)
         }
 
         return nil
+    }
+
+    private static func detectReferenceSectionEnd(
+        in paragraphs: [String],
+        referenceStartIndex: Int
+    ) -> Int {
+        guard referenceStartIndex + 1 < paragraphs.count else {
+            return paragraphs.count
+        }
+
+        for index in (referenceStartIndex + 1)..<paragraphs.count {
+            let candidate = paragraphs[index].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !candidate.isEmpty, !isLikelyReferenceEntry(candidate) else { continue }
+
+            if startsPostReferenceSection(candidate) {
+                return index
+            }
+        }
+
+        return paragraphs.count
+    }
+
+    private static func startsPostReferenceSection(_ text: String) -> Bool {
+        if text.range(
+            of: #"^(?i:(?:STAR[+\s-]*METHODS|RESOURCE AVAILABILITY|METHOD DETAILS|EXPERIMENTAL MODEL AND SUBJECT DETAILS|KEY RESOURCES TABLE|QUANTIFICATION AND STATISTICAL ANALYSIS|SUPPLEMENTAL INFORMATION|SUPPLEMENTARY (?:INFORMATION|MATERIALS?|FIGURES?)|APPENDIX))(?:[.:\s]|$)"#,
+            options: .regularExpression
+        ) != nil {
+            return true
+        }
+
+        let firstLine = text.components(separatedBy: .newlines).first ?? text
+        let normalized = normalizeHeading(firstLine)
+        return normalized == "method" ||
+            normalized == "methods" ||
+            normalized == "materials and methods" ||
+            normalized == "appendix"
     }
 
     private static func detectImplicitReferenceSectionStart(in paragraphs: [String], searchStartIndex: Int) -> Int? {
@@ -1265,9 +1607,14 @@ enum TextProcessing {
 
     private static func isLikelyCaption(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count <= 400 else { return false }
+        guard trimmed.count <= 1800 else { return false }
 
-        let normalized = normalizeHeading(trimmed)
+        let withoutPanelLabels = replaceMatches(
+            in: trimmed,
+            pattern: #"^(?:[A-Z](?:\s+[A-Z]){0,8})\s+(?=(?:Fig(?:ure)?|Table|Equation|Eq|Algorithm)\b)"#,
+            template: ""
+        )
+        let normalized = normalizeHeading(withoutPanelLabels)
         return captionPrefixes.contains { prefix in
             normalized.range(
                 of: #"^\#(prefix)\.?\s*\d+[a-z]?(?:[:.\-]\s*|\s+)"#,
@@ -1387,6 +1734,23 @@ enum TextProcessing {
         return (numberMatches >= 10 && datasetSignals >= 2) || (trimmed.contains("±") && numberMatches >= 6)
     }
 
+    private static func isLikelyDenseNumericArtifact(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 45, trimmed.count <= 1200 else { return false }
+        guard !endsSentence(trimmed),
+              !isLikelyCaption(trimmed),
+              !startsMajorSection(trimmed),
+              !isReferenceHeading(trimmed),
+              !hasExplicitEquationSyntax(trimmed) else {
+            return false
+        }
+
+        let numberMatches = countMatches(in: trimmed, pattern: #"\d+(?:\.\d+)?"#)
+        let letters = trimmed.filter(\.isLetter).count
+        let letterRatio = Double(letters) / Double(max(trimmed.count, 1))
+        return numberMatches >= 10 && letterRatio < 0.30
+    }
+
     private static func isLikelyAlgorithmArtifact(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 20, trimmed.count <= 2200 else { return false }
@@ -1495,6 +1859,14 @@ enum TextProcessing {
             return false
         }
 
+        if isLikelyPublicationBoilerplate(current) {
+            return true
+        }
+
+        if isLikelySectionHeading(current) || isReferenceHeading(current) || isLikelyCaption(current) {
+            return false
+        }
+
         if let previous, isLikelyFrontMatterMetadata(previous), looksLikeMetadataTail(current) {
             return false
         }
@@ -1503,7 +1875,7 @@ enum TextProcessing {
             return true
         }
 
-        if isLikelyDenseTableBlock(current) {
+        if isLikelyDenseTableBlock(current) || isLikelyDenseNumericArtifact(current) {
             return true
         }
 
@@ -1518,25 +1890,10 @@ enum TextProcessing {
         }
 
         if isLikelyIsolatedSymbolicFragment(current) {
-            if current.count > 25 {
-                if let previous,
-                   !endsSentence(previous),
-                   !isLikelyCaption(previous),
-                   !isLikelyTableRow(previous),
-                   !isLikelyDenseTableBlock(previous) {
-                    return false
-                }
-
-                if let next,
-                   !startsWithMajorSectionLead(next),
-                   !isLikelyCaption(next),
-                   !isLikelyTableRow(next),
-                   !isLikelyDenseTableBlock(next) {
-                    return false
-                }
-            }
-
-            return true
+            let isNearVisualStructure =
+                previous.map { isLikelyCaption($0) || isLikelyTableRow($0) || isLikelyDenseTableBlock($0) } == true ||
+                next.map { isLikelyCaption($0) || isLikelyTableRow($0) || isLikelyDenseTableBlock($0) } == true
+            return isNearVisualStructure
         }
 
         if isLikelyShortStructuralFragment(current) {
@@ -1566,6 +1923,22 @@ enum TextProcessing {
         return false
     }
 
+    private static func isLikelyPublicationBoilerplate(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= 220 else { return false }
+
+        let patterns = [
+            #"(?i)\b(?:all rights reserved|open access article under|creative commons license)\b"#,
+            #"(?i)\b(?:elsevier|springer nature|wiley)\s+(?:inc\.|ltd\.|llc|group)?"#,
+            #"(?:©|ª)\s*(?:19|20)\d{2}"#,
+            #"(?i)^copyright\s+(?:©\s*)?(?:19|20)\d{2}"#
+        ]
+
+        return patterns.contains { pattern in
+            trimmed.range(of: pattern, options: .regularExpression) != nil
+        }
+    }
+
     private static func shouldMergeParagraph(_ current: String, intoPrevious previous: String, next: String?) -> Bool {
         if isLikelyFrontMatterMetadata(previous), looksLikeMetadataTail(current) {
             return true
@@ -1579,6 +1952,7 @@ enum TextProcessing {
         guard !isLikelyCaption(previous) else { return false }
         guard !isReferenceHeading(previous) else { return false }
         guard !isReferenceHeading(current) else { return false }
+
         guard !isLikelySectionHeading(current),
               !startsWithGenericNumberedHeading(current),
               !startsWithMajorSectionLead(current),
@@ -1587,20 +1961,20 @@ enum TextProcessing {
               !isLikelyPlotArtifact(current),
               !isLikelyTableRow(current),
               !isLikelyDenseTableBlock(current),
-              !isLikelyIsolatedSymbolicFragment(current),
+              !isLikelyDenseNumericArtifact(current),
               !isLikelyAlgorithmArtifact(current),
               !isLikelyStandaloneChartLabel(current) else {
             return false
+        }
+
+        if isLikelyEquationFragment(current) || isLikelyIsolatedSymbolicFragment(current) {
+            return true
         }
 
         let previousEndsSentence = endsSentence(previous)
 
         if isHyphenatedCarryoverFragment(current) {
             return true
-        }
-
-        if isLikelyEquationFragment(current) {
-            return !previousEndsSentence || isLikelyEquationFragment(previous) || previous.hasSuffix(":")
         }
 
         if endsWithIncompletePhrase(previous) {
@@ -1641,6 +2015,7 @@ enum TextProcessing {
               !isLikelyPlotArtifact(current),
               !isLikelyTableRow(current),
               !isLikelyDenseTableBlock(current),
+              !isLikelyDenseNumericArtifact(current),
               !isLikelyIsolatedSymbolicFragment(current),
               !isLikelyAlgorithmArtifact(current) else {
             return false
@@ -1653,6 +2028,7 @@ enum TextProcessing {
               !isLikelyFrontMatterMetadata(next),
               !isLikelyTableRow(next),
               !isLikelyDenseTableBlock(next),
+              !isLikelyDenseNumericArtifact(next),
               !isLikelyAlgorithmArtifact(next),
               !isLikelyIsolatedSymbolicFragment(next),
               !isLikelyStandaloneChartLabel(next) else {
@@ -1660,7 +2036,10 @@ enum TextProcessing {
         }
 
         if isLikelyEquationFragment(current) || isLikelyEquationFragment(next) {
-            return true
+            return !endsSentence(current) && (
+                current.hasSuffix(":") ||
+                next.range(of: #"^[,;:=\)\]]"#, options: .regularExpression) != nil
+            )
         }
 
         if isHyphenatedCarryoverFragment(current) || endsWithIncompletePhrase(current) {
@@ -1671,15 +2050,66 @@ enum TextProcessing {
             return true
         }
 
-        if next.range(of: #"^[a-z0-9\(\[]"#, options: .regularExpression) != nil {
+        if hasUnclosedDelimiter(current) {
             return true
         }
 
-        if current.count >= 120 {
+        if next.range(of: #"^[,;:\)\]a-z]"#, options: .regularExpression) != nil {
             return true
         }
 
-        return true
+        return false
+    }
+
+    private static func shouldStitchPageBoundary(_ previous: String, _ next: String) -> Bool {
+        let left = previous.trimmingCharacters(in: .whitespacesAndNewlines)
+        let right = next.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !left.isEmpty, !right.isEmpty, !endsSentence(left) else { return false }
+
+        guard !isLikelySectionHeading(left),
+              !startsWithMajorSectionLead(left),
+              !isReferenceHeading(left),
+              !isLikelyCaption(left),
+              !isLikelyEquationFragment(left),
+              !isLikelyPlotArtifact(left),
+              !isLikelyTableRow(left),
+              !isLikelyDenseTableBlock(left),
+              !isLikelyDenseNumericArtifact(left),
+              !isLikelyAlgorithmArtifact(left),
+              !isLikelyFrontMatterMetadata(left) else {
+            return false
+        }
+
+        guard !isLikelySectionHeading(right),
+              !startsWithMajorSectionLead(right),
+              !isReferenceHeading(right),
+              !isLikelyCaption(right),
+              !isLikelyEquationFragment(right),
+              !isLikelyPlotArtifact(right),
+              !isLikelyTableRow(right),
+              !isLikelyDenseTableBlock(right),
+              !isLikelyDenseNumericArtifact(right),
+              !isLikelyAlgorithmArtifact(right),
+              !startsBulletOrNumberedItem(right) else {
+            return false
+        }
+
+        if left.hasSuffix("-") ||
+            endsWithIncompletePhrase(left) ||
+            hasUnclosedDelimiter(left) ||
+            right.range(of: #"^[,;:\)\]a-z]"#, options: .regularExpression) != nil {
+            return true
+        }
+
+        let leftWordCount = left.split(whereSeparator: \.isWhitespace).count
+        let rightWordCount = right.split(whereSeparator: \.isWhitespace).count
+        let leftLetterRatio = Double(left.filter(\.isLetter).count) / Double(max(left.count, 1))
+        let rightLetterRatio = Double(right.filter(\.isLetter).count) / Double(max(right.count, 1))
+
+        return leftWordCount >= 5 &&
+            rightWordCount >= 3 &&
+            leftLetterRatio >= 0.55 &&
+            rightLetterRatio >= 0.55
     }
 
     private static func shouldMergeParagraph(_ current: String, withNext next: String) -> Bool {
@@ -1691,6 +2121,7 @@ enum TextProcessing {
               !isLikelyPlotArtifact(current),
               !isLikelyTableRow(current),
               !isLikelyDenseTableBlock(current),
+              !isLikelyDenseNumericArtifact(current),
               !isLikelyIsolatedSymbolicFragment(current),
               !isLikelyAlgorithmArtifact(current),
               !isLikelyStandaloneChartLabel(current) else {
@@ -1700,6 +2131,7 @@ enum TextProcessing {
         guard !(looksLikeTitleFragment(current) && looksLikeAuthorLine(next)) else { return false }
         guard !isLikelyTableRow(next),
               !isLikelyDenseTableBlock(next),
+              !isLikelyDenseNumericArtifact(next),
               !isLikelyAlgorithmArtifact(next),
               !isLikelyIsolatedSymbolicFragment(next),
               !isLikelyStandaloneChartLabel(next),
@@ -1736,6 +2168,18 @@ enum TextProcessing {
     }
 
     private static func mergeParagraphs(_ left: String, _ right: String) -> String {
+        let trimmedLeft = left.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedRight = right.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if !trimmedLeft.contains("\n"),
+           startsMajorSection(trimmedLeft) || isLikelySectionHeading(trimmedLeft) {
+            return trimmedLeft + "\n" + trimmedRight
+        }
+
+        if isLikelyEquationFragment(trimmedRight) || isLikelyIsolatedSymbolicFragment(trimmedRight) {
+            return trimmedLeft + "\n" + trimmedRight
+        }
+
         let merged = joinParagraphLines([left, right])
         if isLikelyFrontMatterMetadata(left), looksLikeMetadataTail(right), !endsSentence(merged) {
             return merged + "."
@@ -1769,14 +2213,69 @@ enum TextProcessing {
 
         let patterns = [
             #"(?i)\b(?:in case of|such as|because of|due to|instead of|as well as|rather than|compared with|compared to|with respect to|with regard to)$"#,
-            #"(?i)\b(?:of|to|for|with|without|from|into|onto|upon|via|than|that|which|where|while|when|whose)$"#
+            #"(?i)\b(?:a|an|the|and|or|but|if|is|are|was|were|be|been|being|by|of|to|for|with|without|from|into|onto|upon|via|than|that|which|where|while|when|whose)$"#
         ]
 
         return patterns.contains { trimmed.range(of: $0, options: .regularExpression) != nil }
     }
 
     private static func endsSentence(_ line: String) -> Bool {
-        line.range(of: #"[.!?]["')\]]?$"#, options: .regularExpression) != nil
+        var normalized = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        normalized = replaceMatches(
+            in: normalized,
+            pattern: #"(?:\s*\[[0-9,\s–-]+\])+$"#,
+            template: ""
+        )
+        return normalized.range(of: #"[.!?]["')\]]?$"#, options: .regularExpression) != nil
+    }
+
+    private static func endsWithAcademicAbbreviation(_ text: String) -> Bool {
+        text.range(
+            of: #"(?i)(?:\b(?:fig|figs|eq|eqs|sec|secs|chap|chaps|ref|refs|no|nos|vol|vols|vs|cf|approx|dept|univ|dr|prof|e\.g|i\.e|et al)\.)$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    private static func hasUnclosedDelimiter(_ text: String) -> Bool {
+        let pairs: [(Character, Character)] = [("(", ")"), ("[", "]"), ("{", "}")]
+        return pairs.contains { opening, closing in
+            text.filter { $0 == opening }.count > text.filter { $0 == closing }.count
+        }
+    }
+
+    private static func shouldRemoveLineBreakHyphen(left: String, right: String) -> Bool {
+        guard let first = right.first, first.isLetter || first.isNumber else { return false }
+
+        let leftWithoutHyphen = left.dropLast()
+        let previousToken = leftWithoutHyphen
+            .split(whereSeparator: \.isWhitespace)
+            .last
+            .map(String.init) ?? ""
+
+        guard !previousToken.isEmpty else { return false }
+
+        // Preserve established compounds such as "state-of-the-" + "art".
+        if previousToken.contains("-") {
+            return false
+        }
+
+        let nextToken = right
+            .split(whereSeparator: \.isWhitespace)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .punctuationCharacters)
+            .lowercased() ?? ""
+        let compoundSuffixes: Set<String> = [
+            "aware", "based", "class", "dependent", "dimensional", "domain",
+            "driven", "free", "level", "like", "order", "range", "related",
+            "resolution", "scale", "space", "specific", "stage", "step", "term",
+            "time", "wise"
+        ]
+        if compoundSuffixes.contains(nextToken) {
+            return false
+        }
+
+        return first.isLowercase || previousToken.count <= 5
     }
 
     private static func startsWithGenericNumberedHeading(_ text: String) -> Bool {

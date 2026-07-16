@@ -10,7 +10,8 @@ It can also:
 
 - generate a whole-paper summary in the source and target languages
 - explain a selected paragraph in simpler language
-- export both the aligned bilingual view and a connected full-paper translation as Markdown
+- optionally create a second, connected full-paper translation for smoother context
+- export available summaries, connected translation, and aligned paragraphs as Markdown
 - accept pasted text directly when you do not want to load a PDF
 
 ## Features
@@ -24,13 +25,17 @@ It can also:
 - Model dropdowns for translation, summary, and explanation
 - Progress bar during translation
 - Paragraph-by-paragraph processing with failure isolation
-- Automatic skipping of detected reference sections
-- Connected full-paper translation view
+- Cross-page word and sentence repair without character-based sentence cuts
+- Filtering of repeated headers, footers, and runs of extracted chart labels
+- Automatic skipping of detected reference sections, including papers with methods after references
+- Search plus bilingual, original-only, and translation-only reading modes
+- Manual paragraph edit, split, merge, reflow, undo, and failed-translation retry controls
+- Optional connected full-paper translation view
 - Markdown export
 
 ## Requirements
 
-- macOS
+- macOS 14 or later
 - Full Xcode installed from the Mac App Store
 - Ollama installed locally: [https://ollama.com/download/mac](https://ollama.com/download/mac)
 
@@ -39,8 +44,10 @@ It can also:
 - `PaperBridge.xcodeproj`: Xcode project
 - `PaperBridge/`: SwiftUI app source
 - `build_app.sh`: one-command terminal build script
+- `test_text_processing.sh`: paragraph-processing regression tests
+- `Tests/`: command-line regression test source
 - `README.md`: setup and usage guide
-- `requirements.txt`: kept only for repository compatibility
+- `requirements.txt`: kept for repository compatibility; the native app has no Python packages
 
 ## Quick Start
 
@@ -279,28 +286,44 @@ Then choose:
 3. Open a PDF, drag one into the window, or paste text into the sidebar.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Confirm the model selections in the left sidebar.
-6. Click `Translate Paper`.
-7. Optionally click `Generate Summary`.
-8. Optionally select a paragraph, choose an explanation language, and click `Explain Selected Paragraph`.
-9. Optionally click `Export Markdown`.
+6. Review the extracted paragraphs before translation. Open a paragraph's `...` menu to edit, split, merge, or reflow it at complete sentences.
+7. Click `Translate Paper` for the aligned paragraph-by-paragraph translation.
+8. Optionally click `Connected Translation` for a separate context-aware full translation. This is a second model pass and can take longer.
+9. Optionally click `Summary`.
+10. Optionally select a paragraph, choose an explanation language, and click `Explain Selection`.
+11. Click `Export` to export all results currently available as Markdown.
 
 ## Behavior Notes
 
 - The app processes PDFs locally.
 - The app can also process pasted text locally without needing a PDF file.
-- Ollama calls go only to your local Ollama server.
+- Ollama calls are restricted to `localhost`, `127.0.0.1`, or `::1` on your Mac.
 - Building under `~/Projects` is recommended to avoid macOS protected-folder issues.
 - The translation direction is configurable. English to Simplified Chinese is only the default, not the only option.
 - Long paragraphs are chunked only for translation reliability.
+- Translation chunks are split at sentence or clause boundaries whenever possible, then reassembled into one translated paragraph.
+- Major section headings such as `Abstract`, `Introduction`, and `Methods` stay in the same translation paragraph as their opening text, but appear on their own line for readability.
 - If one paragraph translation fails, the rest continue.
-- The app also generates a connected full-paper translation so the exported Markdown includes a smoother, context-aware target-language version in addition to the aligned paragraph view.
-- If the app can confidently detect a `References` or `Bibliography` section, it skips that section instead of translating it.
+- Failed paragraphs have an individual `Retry` button.
+- Connected full-paper translation is optional and is not run automatically with `Translate Paper`.
+- If the app confidently detects a `References` or `Bibliography` section, it excludes that section while preserving a later methods or supplemental section when present.
+- PDF layouts vary. The paragraph menu and undo button are the safe fallback when an equation, unusual heading, or figure layout cannot be inferred automatically.
+
+## Paragraph Regression Tests
+
+After changing text extraction or paragraph rules, run:
+
+```bash
+./test_text_processing.sh
+```
+
+The tests cover cross-page words, incomplete phrases, citations, numbered and inline section headings, compound hyphens, equations, chart-label runs, numeric plot data, and references that appear before a later method or methods section.
 
 ## Troubleshooting
 
-### `./build_app.sh` says Xcode first-launch setup is incomplete
+### The build reports missing Xcode components or an unaccepted license
 
-Run:
+The script may print a note when Xcode's first-launch status cannot be checked. It will still try the real build. If that build fails with a setup or license error, run:
 
 ```bash
 sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
@@ -339,6 +362,10 @@ Try launching it from Terminal:
 ```bash
 open "build/Build/Products/Release/PaperBridge.app"
 ```
+
+### Finder or the Dock still shows an old or generic icon
+
+Quit any older copy of PaperBridge, rebuild with `./build_app.sh`, and open the app from `build/Build/Products/Release`. macOS caches app icons by bundle identifier, so opening the newest build once may be required before Finder and the Dock refresh it.
 
 ## Sources
 
