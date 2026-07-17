@@ -3,22 +3,21 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
+    private static let compactInspectorBreakpoint: CGFloat = 1_180
+    private static let compactInspectorMinHeight: CGFloat = 230
+    private static let compactInspectorMaxHeight: CGFloat = 340
+
     @ObservedObject var viewModel: PaperReaderViewModel
     @State private var isDropTargeted = false
     @State private var isPasteTextExpanded = false
     @FocusState private var isManualInputFocused: Bool
 
     var body: some View {
-        HSplitView {
-            documentSidebar
-                .frame(minWidth: 250, idealWidth: 280, maxWidth: 330)
-
-            detail
-                .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
-                .inspector(isPresented: $viewModel.isInspectorPresented) {
-                    SelectionInspectorView(viewModel: viewModel)
-                        .inspectorColumnWidth(min: 280, ideal: 330, max: 420)
-                }
+        GeometryReader { geometry in
+            responsiveRootLayout(
+                usesBottomInspector: geometry.size.width < Self.compactInspectorBreakpoint,
+                availableHeight: geometry.size.height
+            )
         }
         .tint(PaperBridgeTheme.accent)
         .fileImporter(
@@ -56,10 +55,57 @@ struct ContentView: View {
             if !viewModel.hasAvailableModels {
                 viewModel.refreshAvailableModels()
             }
+            viewModel.refreshMinerUStatus()
         }
         .onChange(of: viewModel.settings.ollamaBaseURL) { _, _ in
             viewModel.scheduleModelRefresh()
         }
+        .onChange(of: viewModel.settings.minerUExecutablePath) { _, _ in
+            viewModel.scheduleMinerUStatusRefresh()
+        }
+    }
+
+    private func responsiveRootLayout(
+        usesBottomInspector: Bool,
+        availableHeight: CGFloat
+    ) -> some View {
+        HSplitView {
+            documentSidebar
+                .frame(minWidth: 250, idealWidth: 280, maxWidth: 330)
+
+            if usesBottomInspector {
+                compactDetail(availableHeight: availableHeight)
+                    .frame(minWidth: 560, maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                detail
+                    .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
+                    .inspector(isPresented: $viewModel.isInspectorPresented) {
+                        SelectionInspectorView(viewModel: viewModel)
+                            .inspectorColumnWidth(min: 280, ideal: 330, max: 420)
+                    }
+            }
+        }
+    }
+
+    private func compactDetail(availableHeight: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            detail
+                .frame(minHeight: 320, maxHeight: .infinity)
+
+            if viewModel.isInspectorPresented {
+                Divider()
+
+                SelectionInspectorView(viewModel: viewModel, placement: .bottomDrawer)
+                    .frame(
+                        height: min(
+                            Self.compactInspectorMaxHeight,
+                            max(Self.compactInspectorMinHeight, availableHeight * 0.36)
+                        )
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.isInspectorPresented)
     }
 
     private var documentSidebar: some View {
@@ -187,6 +233,9 @@ struct ContentView: View {
                 .lineLimit(3)
 
             statRow(label: "Paragraphs", value: "\(paper.paragraphs.count)")
+            if let extractionEngine = paper.extractionEngine {
+                statRow(label: "Parser", value: extractionEngine.displayName)
+            }
             statRow(label: "Translated", value: "\(viewModel.translatedCount)")
             if viewModel.failedCount > 0 {
                 statRow(label: "Failed", value: "\(viewModel.failedCount)")
@@ -302,8 +351,44 @@ struct ContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Divider()
+
+            HStack(spacing: 8) {
+                if viewModel.isRefreshingMinerU {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Circle()
+                        .fill(viewModel.minerUStatus.isAvailable ? PaperBridgeTheme.sidebarAccent : Color.orange)
+                        .frame(width: 7, height: 7)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.minerUStatus.isAvailable ? "MinerU ready" : "MinerU unavailable")
+                        .font(.callout.weight(.semibold))
+                    Text(viewModel.minerUStatus.message)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                }
+
+                Spacer(minLength: 4)
+
+                Button {
+                    viewModel.refreshMinerUStatus()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.isRefreshingMinerU)
+            }
+
+            Label("PDFKit facsimile always available", systemImage: "doc.viewfinder")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
             SettingsLink {
-                Label("Models & Settings", systemImage: "gearshape")
+                Label("Parser, Models & Settings", systemImage: "gearshape")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
@@ -370,7 +455,7 @@ struct ContentView: View {
                         .lineLimit(1)
 
                     Text(
-                        "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.paragraphResults.count) paragraphs"
+                        "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -419,7 +504,7 @@ struct ContentView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(maxWidth: 410)
+        .frame(maxWidth: 540)
     }
 
     @ViewBuilder
@@ -458,7 +543,12 @@ struct ContentView: View {
                 Button {
                     viewModel.prepareMarkdownExport()
                 } label: {
-                    Label("Export Markdown", systemImage: "square.and.arrow.down")
+                    Label(
+                        viewModel.loadedPaper?.hasMarkdownBundle == true
+                            ? "Export Markdown Bundle"
+                            : "Export Markdown",
+                        systemImage: "square.and.arrow.down"
+                    )
                 }
                 .disabled(!viewModel.canExport)
             } label: {
@@ -481,6 +571,12 @@ struct ContentView: View {
 
     private var primaryWorkspaceActionTitle: String {
         switch viewModel.workspaceMode {
+        case .preview:
+            if viewModel.translatedCount == viewModel.paragraphResults.count,
+               !viewModel.paragraphResults.isEmpty {
+                return "Translated"
+            }
+            return viewModel.translatedCount > 0 ? "Resume Translation" : "Translate Document"
         case .reader:
             if viewModel.translatedCount == viewModel.paragraphResults.count,
                !viewModel.paragraphResults.isEmpty {
@@ -501,6 +597,8 @@ struct ContentView: View {
 
     private var primaryWorkspaceActionIcon: String {
         switch viewModel.workspaceMode {
+        case .preview:
+            return "character.book.closed.fill"
         case .reader:
             return "character.book.closed.fill"
         case .summary:
@@ -513,6 +611,8 @@ struct ContentView: View {
     @ViewBuilder
     private var workspaceContent: some View {
         switch viewModel.workspaceMode {
+        case .preview:
+            previewWorkspace
         case .reader:
             readerWorkspace
         case .summary:
@@ -522,6 +622,71 @@ struct ContentView: View {
         }
     }
 
+    private var previewWorkspace: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                statusStrip
+
+                SurfaceCard(contentPadding: 14) {
+                    HStack(spacing: 14) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Full Document Preview")
+                                .font(.title3.weight(.semibold))
+                            Text(previewWorkspaceDescription)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                        displayModePicker
+                            .frame(maxWidth: 340)
+                    }
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+
+            Divider()
+
+            if let originalPDFURL = viewModel.previewOriginalPDFURL {
+                PDFDocumentView(
+                    pdfURL: originalPDFURL,
+                    annotations: viewModel.annotations(for: .paper, side: .original),
+                    onSelection: viewModel.captureTextSelection
+                )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                MarkdownPreviewView(
+                    markdown: viewModel.previewMarkdown,
+                    title: viewModel.loadedPaper?.name ?? "PaperBridge Preview",
+                    resourceDirectory: viewModel.previewResourceDirectory,
+                    selectionScope: .paper,
+                    defaultSelectionSide: viewModel.displayMode == .translationOnly
+                        ? .translation
+                        : .original,
+                    annotations: viewModel.annotations(for: .paper),
+                    onSelection: viewModel.captureTextSelection
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private var previewWorkspaceDescription: String {
+        if viewModel.loadedPaper?.hasFacsimileMarkdown == true {
+            return viewModel.displayMode == .sourceOnly
+                ? "Exact native PDF rendering with original formulas, figures, and page layout; no OCR is used."
+                : "Original page facsimiles stay intact while selectable text is shown with translation."
+        }
+        if viewModel.loadedPaper?.extractionEngine == .minerU,
+           viewModel.displayMode == .sourceOnly,
+           viewModel.loadedPaper?.originalPDFURL != nil {
+            return "Exact native PDF rendering. Switch to Bilingual for MinerU's structured reading view with figures, tables, headings, and formulas."
+        }
+        return "MinerU structured reading view with local images, tables, headings, and LaTeX formulas; page coordinates are intentionally reflowed."
+    }
+
     private var readerWorkspace: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -529,24 +694,37 @@ struct ContentView: View {
                     statusStrip
                     readerControls
 
-                    if viewModel.visibleParagraphResults.isEmpty {
+                    if viewModel.visibleReaderItems.isEmpty {
                         ContentUnavailableView(
-                            "No Matching Paragraphs",
-                            systemImage: "text.magnifyingglass",
-                            description: Text("Try a different search term.")
+                            viewModel.paragraphResults.isEmpty
+                                ? "No Selectable Text Layer"
+                                : "No Matching Paragraphs",
+                            systemImage: viewModel.paragraphResults.isEmpty
+                                ? "doc.viewfinder"
+                                : "text.magnifyingglass",
+                            description: Text(
+                                viewModel.paragraphResults.isEmpty
+                                    ? "The original PDF remains available in Paper view. Translation without OCR requires selectable text in the PDF."
+                                    : "Try a different search term."
+                            )
                         )
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 48)
                     } else {
-                        ForEach(viewModel.visibleParagraphResults) { paragraph in
-                            if let sectionTitle = TextProcessing.detectedSectionTitle(
-                                in: paragraph.original
-                            ) {
-                                sectionMarker(sectionTitle)
-                            }
+                        ForEach(viewModel.visibleReaderItems) { item in
+                            switch item {
+                            case .paragraph(let paragraph):
+                                if let sectionTitle = TextProcessing.detectedSectionTitle(
+                                    in: paragraph.original
+                                ) {
+                                    sectionMarker(sectionTitle)
+                                }
 
-                            paragraphCard(paragraph)
-                                .id(paragraph.id)
+                                paragraphCard(paragraph)
+                                    .id(paragraph.id)
+                            case .resource(let resource):
+                                readerResourceBlock(resource)
+                            }
                         }
                     }
                 }
@@ -570,7 +748,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Paper Reader")
                             .font(.title3.weight(.semibold))
-                        Text("Select text to open translation, explanation, highlight, and note tools.")
+                        Text(readerWorkspaceSubtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -602,6 +780,93 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var readerWorkspaceSubtitle: String {
+        if viewModel.loadedPaper?.hasStructuredMarkdown == true {
+            return "MinerU paragraph order with figures, tables, and formulas preserved in place. Select text for research tools."
+        }
+        return "Select text to open translation, explanation, highlight, and note tools."
+    }
+
+    private func readerResourceBlock(_ resource: ReaderResourceBlock) -> some View {
+        SurfaceCard(contentPadding: 14) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Label(resourceDisplayName(resource.kind), systemImage: resourceIcon(resource.kind))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PaperBridgeTheme.accent)
+                    Spacer()
+                    Text("PRESERVED FROM SOURCE")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+
+                MarkdownPreviewView(
+                    markdown: resource.markdown,
+                    title: resourceDisplayName(resource.kind),
+                    resourceDirectory: viewModel.previewResourceDirectory,
+                    presentation: .embedded
+                )
+                .frame(height: resourcePreviewHeight(resource.kind))
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(PaperBridgeTheme.border)
+                )
+            }
+        }
+    }
+
+    private func resourceDisplayName(_ kind: MarkdownSegmentKind) -> String {
+        switch kind {
+        case .image:
+            return "Figure"
+        case .formula:
+            return "Formula"
+        case .table:
+            return "Table"
+        case .code:
+            return "Code"
+        case .rawHTML:
+            return "Document Element"
+        case .heading, .paragraph, .listItem, .quote, .separator:
+            return "Source Element"
+        }
+    }
+
+    private func resourceIcon(_ kind: MarkdownSegmentKind) -> String {
+        switch kind {
+        case .image:
+            return "photo"
+        case .formula:
+            return "function"
+        case .table:
+            return "tablecells"
+        case .code:
+            return "chevron.left.forwardslash.chevron.right"
+        case .rawHTML:
+            return "doc.richtext"
+        case .heading, .paragraph, .listItem, .quote, .separator:
+            return "doc"
+        }
+    }
+
+    private func resourcePreviewHeight(_ kind: MarkdownSegmentKind) -> CGFloat {
+        switch kind {
+        case .image:
+            return 460
+        case .formula:
+            return 150
+        case .table:
+            return 320
+        case .code:
+            return 240
+        case .rawHTML:
+            return 300
+        case .heading, .paragraph, .listItem, .quote, .separator:
+            return 220
         }
     }
 
@@ -681,7 +946,7 @@ struct ContentView: View {
                 } else {
                     generationEmptyState(
                         title: "Connected Full Translation",
-                        description: "Run an optional context-aware second pass that reads larger sections for smoother terminology and transitions.",
+                        description: fullTranslationWorkspaceDescription,
                         icon: "text.append",
                         buttonTitle: "Generate Full Translation",
                         action: viewModel.generateConnectedTranslation
@@ -691,6 +956,16 @@ struct ContentView: View {
             .padding(22)
             .frame(maxWidth: 1020, alignment: .topLeading)
         }
+    }
+
+    private var fullTranslationWorkspaceDescription: String {
+        if viewModel.loadedPaper?.hasStructuredMarkdown == true {
+            return "Translate the complete MinerU document while preserving headings, formulas, tables, figures, and reading order."
+        }
+        if viewModel.loadedPaper?.hasFacsimileMarkdown == true {
+            return "Translate the selectable text layer while retaining the exact original PDF and page facsimiles as immutable visual context."
+        }
+        return "Run an optional context-aware second pass that reads larger sections for smoother terminology and transitions."
     }
 
     @ViewBuilder
@@ -714,8 +989,14 @@ struct ContentView: View {
                     }
 
                     if viewModel.isBusy {
-                        ProgressView(value: viewModel.progressValue)
-                            .tint(PaperBridgeTheme.accent)
+                        if viewModel.isProgressIndeterminate {
+                            ProgressView()
+                                .progressViewStyle(.linear)
+                                .tint(PaperBridgeTheme.accent)
+                        } else {
+                            ProgressView(value: viewModel.progressValue)
+                                .tint(PaperBridgeTheme.accent)
+                        }
                     }
                 }
             }
@@ -805,6 +1086,7 @@ struct ContentView: View {
                         } label: {
                             Label("Edit or Split...", systemImage: "pencil")
                         }
+                        .disabled(!viewModel.canEditParagraphStructure)
 
                         Divider()
 
@@ -813,20 +1095,21 @@ struct ContentView: View {
                         } label: {
                             Label("Merge with Previous", systemImage: "arrow.up.to.line")
                         }
-                        .disabled(isFirst)
+                        .disabled(isFirst || !viewModel.canEditParagraphStructure)
 
                         Button {
                             viewModel.mergeParagraphWithNext(paragraph.id)
                         } label: {
                             Label("Merge with Next", systemImage: "arrow.down.to.line")
                         }
-                        .disabled(isLast)
+                        .disabled(isLast || !viewModel.canEditParagraphStructure)
 
                         Button {
                             viewModel.reflowParagraph(paragraph.id)
                         } label: {
                             Label("Reflow at Full Sentences", systemImage: "text.insert")
                         }
+                        .disabled(!viewModel.canEditParagraphStructure)
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -915,22 +1198,30 @@ struct ContentView: View {
                     HStack(alignment: .top, spacing: 18) {
                         textPanel(
                             title: summaries.sourceLanguage.displayName,
-                            body: summaries.sourceSummary
+                            body: summaries.sourceSummary,
+                            scope: .summarySource,
+                            side: .original
                         )
                         textPanel(
                             title: summaries.targetLanguage.displayName,
-                            body: summaries.targetSummary
+                            body: summaries.targetSummary,
+                            scope: .summaryTarget,
+                            side: .translation
                         )
                     }
 
                     VStack(alignment: .leading, spacing: 18) {
                         textPanel(
                             title: summaries.sourceLanguage.displayName,
-                            body: summaries.sourceSummary
+                            body: summaries.sourceSummary,
+                            scope: .summarySource,
+                            side: .original
                         )
                         textPanel(
                             title: summaries.targetLanguage.displayName,
-                            body: summaries.targetSummary
+                            body: summaries.targetSummary,
+                            scope: .summaryTarget,
+                            side: .translation
                         )
                     }
                 }
@@ -955,11 +1246,43 @@ struct ContentView: View {
                         .foregroundStyle(.orange)
                 }
 
-                Text(result.text)
-                    .font(.system(size: 16, weight: .regular, design: .serif))
-                    .lineSpacing(5)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                if result.isStructuredMarkdown == true {
+                    MarkdownPreviewView(
+                        markdown: result.text,
+                        title: "\(viewModel.loadedPaper?.name ?? "Paper") — \(result.targetLanguage.displayName)",
+                        resourceDirectory: viewModel.previewResourceDirectory,
+                        selectionScope: .fullTranslation,
+                        defaultSelectionSide: .translation,
+                        annotations: viewModel.annotations(
+                            for: .fullTranslation,
+                            side: .translation
+                        ),
+                        onSelection: viewModel.captureTextSelection
+                    )
+                    .frame(minHeight: 640)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(PaperBridgeTheme.border)
+                    )
+                } else {
+                    SelectableAcademicText(
+                        text: result.text,
+                        paragraphID: 0,
+                        side: .translation,
+                        annotations: viewModel.annotations(
+                            for: .fullTranslation,
+                            side: .translation
+                        ),
+                        font: NSFont(name: "NewYork-Regular", size: 16) ??
+                            NSFont.systemFont(ofSize: 16),
+                        lineSpacing: 5,
+                        scope: .fullTranslation,
+                        locator: "full-translation",
+                        onSelection: viewModel.captureTextSelection
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 20)
+                }
             }
         }
     }
@@ -991,18 +1314,30 @@ struct ContentView: View {
         }
     }
 
-    private func textPanel(title: String, body: String) -> some View {
+    private func textPanel(
+        title: String,
+        body: String,
+        scope: TextSelectionScope,
+        side: ReaderTextSide
+    ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
             Text(title.uppercased())
                 .font(.caption2.weight(.bold))
                 .tracking(0.8)
                 .foregroundStyle(PaperBridgeTheme.accent)
 
-            Text(body)
-                .font(.body)
-                .lineSpacing(4)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            SelectableAcademicText(
+                text: body,
+                paragraphID: 0,
+                side: side,
+                annotations: viewModel.annotations(for: scope, side: side),
+                font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                lineSpacing: 4,
+                scope: scope,
+                locator: scope.rawValue,
+                onSelection: viewModel.captureTextSelection
+            )
+            .frame(maxWidth: .infinity, minHeight: 20)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -1037,7 +1372,7 @@ struct ContentView: View {
                 Text("Read deeply. Translate locally.")
                     .font(.system(size: 38, weight: .semibold, design: .serif))
 
-                Text("Open a PDF or paste text. PaperBridge reconstructs natural paragraphs, translates with Ollama, and keeps your reading notes on this Mac.")
+                Text("Open a PDF or paste text. Built-in PDFKit can preserve the exact pages without OCR; optional MinerU adds semantic Markdown and LaTeX. Translation stays local in Ollama.")
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1056,7 +1391,7 @@ struct ContentView: View {
             HStack(spacing: 20) {
                 Label("Drag and drop", systemImage: "hand.draw")
                 Label("Local recovery", systemImage: "internaldrive")
-                Label("Markdown export", systemImage: "doc.plaintext")
+                Label("Markdown + assets", systemImage: "doc.plaintext")
             }
             .font(.caption)
             .foregroundStyle(.secondary)

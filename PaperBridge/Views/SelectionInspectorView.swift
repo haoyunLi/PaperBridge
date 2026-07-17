@@ -1,7 +1,13 @@
 import SwiftUI
 
 struct SelectionInspectorView: View {
+    enum Placement {
+        case sidebar
+        case bottomDrawer
+    }
+
     @ObservedObject var viewModel: PaperReaderViewModel
+    var placement: Placement = .sidebar
     @State private var noteDraft = ""
 
     var body: some View {
@@ -15,9 +21,11 @@ struct SelectionInspectorView: View {
                     selectionEmptyState
                 }
 
-                Divider()
-
-                paragraphExplanationPanel
+                if viewModel.activeTextSelection?.scope == .reader ||
+                    viewModel.activeTextSelection == nil {
+                    Divider()
+                    paragraphExplanationPanel
+                }
 
                 if !viewModel.annotations.isEmpty {
                     Divider()
@@ -51,10 +59,13 @@ struct SelectionInspectorView: View {
             Button {
                 viewModel.isInspectorPresented = false
             } label: {
-                Image(systemName: "sidebar.right")
+                Image(systemName: placement == .bottomDrawer ? "xmark" : "sidebar.right")
             }
             .buttonStyle(.borderless)
-            .help("Hide inspector")
+            .help(placement == .bottomDrawer ? "Close inspector drawer" : "Hide inspector")
+            .accessibilityLabel(
+                placement == .bottomDrawer ? "Close inspector drawer" : "Hide inspector"
+            )
         }
     }
 
@@ -62,7 +73,9 @@ struct SelectionInspectorView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Label(
-                    "Paragraph \(selection.paragraphID)",
+                    selection.scope == .reader
+                        ? "Paragraph \(selection.paragraphID)"
+                        : selection.scope.displayName,
                     systemImage: selection.side == .original
                         ? "doc.text"
                         : "character.book.closed"
@@ -228,10 +241,10 @@ struct SelectionInspectorView: View {
                 .font(.system(size: 24, weight: .medium))
                 .foregroundStyle(PaperBridgeTheme.accent)
 
-            Text("Select any text in the original or translation.")
+            Text("Select text in any reading workspace.")
                 .font(.headline)
 
-            Text("PaperBridge will capture the exact range so you can translate, explain, highlight, or attach a note without leaving the reader.")
+            Text("PaperBridge captures selections from Paper, Reader, Summary, and Full Translation so you can translate, explain, highlight, or attach a note in one inspector.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -313,7 +326,9 @@ struct SelectionInspectorView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
-                            Text("P\(annotation.paragraphID) · \(annotation.side.displayName)")
+                            Text(annotation.resolvedScope == .reader
+                                ? "P\(annotation.paragraphID) · \(annotation.side.displayName)"
+                                : "\(annotation.resolvedScope.displayName) · \(annotation.side.displayName)")
                                 .font(.caption.weight(.semibold))
                             Spacer()
                             if let color = annotation.highlightColor {

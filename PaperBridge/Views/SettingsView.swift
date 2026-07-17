@@ -6,6 +6,11 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
+            parsingTab
+                .tabItem {
+                    Label("Document Parsing", systemImage: "doc.richtext")
+                }
+
             modelsTab
                 .tabItem {
                     Label("Models", systemImage: "cpu")
@@ -21,13 +26,14 @@ struct SettingsView: View {
                     Label("Local Data", systemImage: "internaldrive")
                 }
         }
-        .frame(width: 620, height: 490)
+        .frame(width: 660, height: 540)
         .padding(18)
         .tint(PaperBridgeTheme.accent)
         .task {
             if !viewModel.hasAvailableModels {
                 viewModel.refreshAvailableModels()
             }
+            viewModel.refreshMinerUStatus()
         }
         .alert(
             "Remove all saved PaperBridge data?",
@@ -39,6 +45,119 @@ struct SettingsView: View {
             }
         } message: {
             Text("This removes saved papers, translations, summaries, highlights, notes, and settings from this Mac. Original PDF files are not changed.")
+        }
+    }
+
+    private var parsingTab: some View {
+        Form {
+            Section("PDF Parsing") {
+                HStack {
+                    Label {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(viewModel.minerUStatus.isAvailable ? "MinerU ready" : "MinerU unavailable")
+                                .fontWeight(.medium)
+                            Text(viewModel.minerUStatus.message)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    } icon: {
+                        if viewModel.isRefreshingMinerU {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(
+                                systemName: viewModel.minerUStatus.isAvailable
+                                    ? "checkmark.circle.fill"
+                                    : "exclamationmark.triangle.fill"
+                            )
+                            .foregroundStyle(
+                                viewModel.minerUStatus.isAvailable
+                                    ? PaperBridgeTheme.accent
+                                    : Color.orange
+                            )
+                        }
+                    }
+
+                    Spacer()
+                    Button("Check Again") {
+                        viewModel.refreshMinerUStatus()
+                    }
+                    .disabled(viewModel.isRefreshingMinerU)
+                }
+
+                Picker("PDF parser", selection: settingBinding(\.pdfExtractionMode)) {
+                    ForEach(PDFExtractionMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+
+                Text(viewModel.settings.pdfExtractionMode.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Picker("MinerU backend", selection: settingBinding(\.minerUBackend)) {
+                    ForEach(MinerUBackend.allCases) { backend in
+                        Text(backend.displayName).tag(backend)
+                    }
+                }
+                .disabled(viewModel.settings.pdfExtractionMode == .pdfKitOnly)
+
+                Text(viewModel.settings.minerUBackend.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .disabled(viewModel.settings.pdfExtractionMode == .pdfKitOnly)
+
+                TextField(
+                    "MinerU executable (auto-detect when empty)",
+                    text: settingBinding(\.minerUExecutablePath)
+                )
+                .font(.system(.body, design: .monospaced))
+                .disabled(viewModel.settings.pdfExtractionMode == .pdfKitOnly)
+
+                HStack {
+                    Text("Common custom path: ~/.paperbridge-mineru/bin/mineru")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Use Auto-Detect") {
+                        viewModel.settings.minerUExecutablePath = ""
+                        viewModel.refreshMinerUStatus()
+                    }
+                    .disabled(
+                        viewModel.settings.minerUExecutablePath.isEmpty ||
+                            viewModel.settings.pdfExtractionMode == .pdfKitOnly
+                    )
+                }
+            }
+
+            Section("PDFKit Facsimile (No OCR)") {
+                Label("Exact original PDF in the native viewer", systemImage: "doc.viewfinder")
+                Label("Page images retain formulas, figures, tables, and layout", systemImage: "photo.stack")
+                Label("Existing selectable text is used for translation and analysis", systemImage: "text.cursor")
+
+                Text("This built-in fallback needs no Python package, OCR model, or download. An image-only scanned PDF can still be previewed and exported exactly, but it cannot be translated or summarized until an OCR parser supplies text.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("What MinerU Adds") {
+                Label("Section hierarchy and reading order", systemImage: "list.bullet.indent")
+                Label("Images, captions, tables, and local asset links", systemImage: "photo.on.rectangle")
+                Label("Display and inline formulas as LaTeX", systemImage: "function")
+
+                Text("MinerU is optional. When installed, it adds semantic Markdown and reconstructed LaTeX for more editable exports. PaperBridge stores its output locally; PDFKit remains available as an independent parser choice and automatic fallback.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
+        .onChange(of: viewModel.settings.minerUExecutablePath) { _, _ in
+            viewModel.scheduleMinerUStatusRefresh()
         }
     }
 

@@ -1,1 +1,3 @@
-# PaperBridge is a native SwiftUI app and has no Python dependencies.
+# PaperBridge itself is native SwiftUI, and its built-in PDFKit facsimile needs
+# no Python packages. This optional dependency adds semantic Markdown and LaTeX.
+mineru[all]

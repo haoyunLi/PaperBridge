@@ -1,7 +1,23 @@
+import AppKit
 import SwiftUI
+
+final class PaperBridgeAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let bundledIcon = Bundle.main
+            .url(forResource: "AppIcon", withExtension: "icns")
+            .flatMap(NSImage.init(contentsOf:))
+        let fallbackIcon = NSImage(named: "BrandMark")
+
+        if let icon = bundledIcon ?? fallbackIcon {
+            NSApplication.shared.applicationIconImage = icon
+        }
+    }
+}
 
 @main
 struct PaperBridgeApp: App {
+    @NSApplicationDelegateAdaptor(PaperBridgeAppDelegate.self)
+    private var appDelegate
     @StateObject private var viewModel = PaperReaderViewModel()
 
     var body: some Scene {
@@ -41,7 +57,7 @@ struct PaperBridgeApp: App {
 
                 Divider()
 
-                Button("Export Markdown...") {
+                Button("Export Markdown or Bundle...") {
                     viewModel.prepareMarkdownExport()
                 }
                 .keyboardShortcut("e", modifiers: [.command, .shift])

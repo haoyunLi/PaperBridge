@@ -66,6 +66,13 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
+# Register this exact build so Finder, the Dock, and Open With refresh bundle metadata.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+touch "$APP_PATH"
+if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -f "$APP_PATH" >/dev/null 2>&1 || true
+fi
+
 cat <<EOF
 
 Build finished successfully.

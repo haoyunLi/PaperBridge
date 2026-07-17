@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -62,6 +63,7 @@ final class PaperReaderViewModel: ObservableObject {
     @Published private(set) var canUndoParagraphEdit = false
     @Published var statusMessage = "Open a PDF, paste text, or drag one into the window."
     @Published var progressValue = 0.0
+    @Published var isProgressIndeterminate = false
     @Published var isBusy = false
     @Published var errorMessage: String?
     @Published var isImporterPresented = false
@@ -70,6 +72,11 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var availableModels: [String] = []
     @Published var isRefreshingModels = false
     @Published var modelRefreshError: String?
+    @Published var minerUStatus = MinerUToolStatus(
+        executablePath: nil,
+        message: "MinerU status has not been checked yet."
+    )
+    @Published var isRefreshingMinerU = false
     @Published var isInspectorPresented = false {
         didSet {
             guard isInspectorPresented != oldValue else { return }
@@ -87,9 +94,12 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var navigationRequest: ParagraphNavigationRequest?
 
     let ollamaClient = OllamaClient()
+    let minerUService = MinerUService()
     private let workspaceStore: WorkspaceStore
+    private let markdownBundleExporter = MarkdownBundleExporter()
     private var activeTask: Task<Void, Never>?
     private var modelRefreshTask: Task<Void, Never>?
+    private var minerUStatusTask: Task<Void, Never>?
     private var paragraphUndoStack: [ParagraphEditSnapshot] = []
     var selectionTask: Task<Void, Never>?
 
@@ -134,9 +144,7 @@ final class PaperReaderViewModel: ObservableObject {
                 translationCacheKey(for: workspace.paper, settings: settings)
             ] = workspace.paragraphResults
         } else {
-            paragraphResults = workspace.paper.paragraphs.enumerated().map { index, paragraph in
-                ParagraphResult(id: index + 1, original: paragraph)
-            }
+            paragraphResults = Self.makeParagraphResults(for: workspace.paper)
             connectedTranslation = nil
             summaries = nil
             explanationText = ""
@@ -148,7 +156,9 @@ final class PaperReaderViewModel: ObservableObject {
     deinit {
         activeTask?.cancel()
         modelRefreshTask?.cancel()
+        minerUStatusTask?.cancel()
         selectionTask?.cancel()
+        minerUService.cancelCurrentRun()
     }
 
     var translatedCount: Int {
@@ -160,7 +170,7 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     var canTranslate: Bool {
-        loadedPaper != nil && !isBusy
+        !paragraphResults.isEmpty && !isBusy
     }
 
     var canLoadInputText: Bool {
@@ -168,11 +178,11 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     var canSummarize: Bool {
-        loadedPaper != nil && !isBusy
+        loadedPaper?.paragraphs.isEmpty == false && !isBusy
     }
 
     var canGenerateConnectedTranslation: Bool {
-        loadedPaper != nil && !isBusy
+        loadedPaper?.paragraphs.isEmpty == false && !isBusy
     }
 
     var canExplain: Bool {
@@ -180,20 +190,28 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     var canExport: Bool {
-        !paragraphResults.isEmpty && !isBusy
+        guard !isBusy else { return false }
+        return !paragraphResults.isEmpty || loadedPaper?.hasMarkdownBundle == true
+    }
+
+    var canEditParagraphStructure: Bool {
+        loadedPaper?.hasStructuredMarkdown != true && !isBusy
     }
 
     var canPerformPrimaryWorkspaceAction: Bool {
         guard loadedPaper != nil, !isBusy else { return false }
 
         switch workspaceMode {
+        case .preview:
+            return canTranslate && paragraphResults.contains { $0.status != .ok }
         case .reader:
-            return paragraphResults.contains { $0.status != .ok }
+            return canTranslate && paragraphResults.contains { $0.status != .ok }
         case .summary:
-            return summaries == nil
+            return canSummarize && summaries == nil
         case .fullTranslation:
-            return connectedTranslation == nil ||
-                connectedTranslation?.failedBatchCount ?? 0 > 0
+            return canGenerateConnectedTranslation && (connectedTranslation == nil ||
+                (connectedTranslation?.failedBatchCount ?? 0) > 0
+            )
         }
     }
 
@@ -211,6 +229,23 @@ final class PaperReaderViewModel: ObservableObject {
         }
     }
 
+    var visibleReaderItems: [ReaderFlowItem] {
+        let query = paragraphSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            return visibleParagraphResults.map(ReaderFlowItem.paragraph)
+        }
+
+        guard let segments = loadedPaper?.markdownSegments, !segments.isEmpty else {
+            return paragraphResults.map(ReaderFlowItem.paragraph)
+        }
+
+        let items = AcademicMarkdownProcessor.readerFlowItems(
+            segments: segments,
+            results: paragraphResults
+        )
+        return items.isEmpty ? paragraphResults.map(ReaderFlowItem.paragraph) : items
+    }
+
     var defaultExportFilename: String {
         guard let loadedPaper else { return "paper_bilingual.md" }
         let stem = URL(fileURLWithPath: loadedPaper.name)
@@ -219,11 +254,119 @@ final class PaperReaderViewModel: ObservableObject {
         return stem + "_bilingual.md"
     }
 
+    var previewMarkdown: String {
+        guard let paper = loadedPaper else { return "" }
+        let segments = paper.markdownSegments
+        let translatedBody = paragraphResults.map { result in
+            result.status == .ok ? result.translation : result.original
+        }.joined(separator: "\n\n")
+        let bilingualBody = paragraphResults.map { result in
+            let translation = result.status == .ok ? result.translation : "[Translation unavailable]"
+            return result.original + "\n\n> **\(settings.targetLanguage.displayName) translation**\n> " + translation
+        }.joined(separator: "\n\n")
+
+        switch displayMode {
+        case .sourceOnly:
+            return paper.sourceMarkdown ?? paper.paragraphs.joined(separator: "\n\n")
+        case .translationOnly:
+            if let structuredTranslation = structuredTranslationMarkdown(
+                for: paper,
+                results: paragraphResults
+            ) {
+                return structuredTranslation
+            }
+            if paper.hasFacsimileMarkdown, let facsimile = paper.sourceMarkdown {
+                return facsimileTranslationMarkdown(
+                    facsimile: facsimile,
+                    translatedBody: translatedBody
+                )
+            }
+            return translatedBody
+        case .bilingual:
+            if let segments {
+                return AcademicMarkdownProcessor.bilingualMarkdown(
+                    segments: segments,
+                    results: paragraphResults,
+                    targetLanguage: settings.targetLanguage
+                )
+            }
+            if paper.hasFacsimileMarkdown, let facsimile = paper.sourceMarkdown {
+                return facsimileBilingualMarkdown(
+                    facsimile: facsimile,
+                    bilingualBody: bilingualBody
+                )
+            }
+            return bilingualBody
+        }
+    }
+
+    private func structuredTranslationMarkdown(
+        for paper: PaperDocument,
+        results: [ParagraphResult]
+    ) -> String? {
+        guard let segments = paper.markdownSegments, !segments.isEmpty else { return nil }
+        return AcademicMarkdownProcessor.translatedMarkdown(
+            segments: segments,
+            results: results
+        )
+    }
+
+    var previewResourceDirectory: URL? {
+        loadedPaper?.markdownResourceURL
+    }
+
+    var previewOriginalPDFURL: URL? {
+        guard displayMode == .sourceOnly else { return nil }
+        return loadedPaper?.originalPDFURL
+    }
+
+    private func facsimileTranslationMarkdown(
+        facsimile: String,
+        translatedBody: String
+    ) -> String {
+        let body = translatedBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "> No selectable text was found. Translation requires a PDF text layer or an OCR parser."
+            : translatedBody
+        return """
+        \(facsimile.trimmingCharacters(in: .whitespacesAndNewlines))
+
+        # \(settings.targetLanguage.displayName) translation of selectable text
+
+        \(body)
+        """ + "\n"
+    }
+
+    private func facsimileBilingualMarkdown(
+        facsimile: String,
+        bilingualBody: String
+    ) -> String {
+        let body = bilingualBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "> No selectable text was found. The original pages remain available above, but model-free translation is not possible for a scanned image-only PDF."
+            : bilingualBody
+        return """
+        \(facsimile.trimmingCharacters(in: .whitespacesAndNewlines))
+
+        # Extracted bilingual text
+
+        \(body)
+        """ + "\n"
+    }
+
     var hasAvailableModels: Bool {
         !availableModels.isEmpty
     }
 
     var documentSections: [DocumentSection] {
+        if let markdownSections = loadedPaper?.markdownSegments?.compactMap({ segment -> DocumentSection? in
+            guard segment.kind == .heading,
+                  let paragraphID = segment.paragraphID,
+                  let title = segment.analysisText,
+                  !title.isEmpty else { return nil }
+            return DocumentSection(paragraphID: paragraphID, title: title)
+        }), !markdownSections.isEmpty {
+            return markdownSections
+        }
+
         let detected = paragraphResults.compactMap { paragraph -> DocumentSection? in
             guard let title = TextProcessing.detectedSectionTitle(in: paragraph.original) else {
                 return nil
@@ -258,6 +401,8 @@ final class PaperReaderViewModel: ObservableObject {
 
     func performPrimaryWorkspaceAction() {
         switch workspaceMode {
+        case .preview:
+            translatePaper()
         case .reader:
             translatePaper()
         case .summary:
@@ -309,6 +454,7 @@ final class PaperReaderViewModel: ObservableObject {
         displayMode = .bilingual
         isInspectorPresented = false
         isBusy = false
+        isProgressIndeterminate = false
         isSelectionLookupBusy = false
         progressValue = 0
         manualInputText = ""
@@ -359,6 +505,38 @@ final class PaperReaderViewModel: ObservableObject {
         }
     }
 
+    func refreshMinerUStatus() {
+        minerUStatusTask?.cancel()
+        let configuredPath = settings.minerUExecutablePath
+        minerUStatusTask = Task { [weak self] in
+            guard let self else { return }
+            self.isRefreshingMinerU = true
+            let status = await Task.detached(priority: .utility) {
+                self.minerUService.status(configuredPath: configuredPath)
+            }.value
+            guard !Task.isCancelled else {
+                self.isRefreshingMinerU = false
+                return
+            }
+            self.minerUStatus = status
+            self.isRefreshingMinerU = false
+        }
+    }
+
+    func scheduleMinerUStatusRefresh() {
+        minerUStatusTask?.cancel()
+        minerUStatusTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(450))
+                try Task.checkCancellation()
+                self.refreshMinerUStatus()
+            } catch {
+                return
+            }
+        }
+    }
+
     func scheduleModelRefresh() {
         modelRefreshTask?.cancel()
         modelRefreshTask = Task { [weak self] in
@@ -376,8 +554,10 @@ final class PaperReaderViewModel: ObservableObject {
 
     func cancelCurrentTask() {
         activeTask?.cancel()
+        minerUService.cancelCurrentRun()
         activeTask = nil
         isBusy = false
+        isProgressIndeterminate = false
         statusMessage = "The current task was cancelled."
         progressValue = 0
         persistWorkspace()
@@ -440,9 +620,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.paragraphResults.map(\.original) == paper.paragraphs
             var workingResults = currentResultsMatchPaper
                 ? self.paragraphResults
-                : paper.paragraphs.enumerated().map { index, paragraph in
-                    ParagraphResult(id: index + 1, original: paragraph)
-                }
+                : Self.makeParagraphResults(for: paper)
             self.paragraphResults = workingResults
 
             if settings.sourceLanguage != settings.targetLanguage {
@@ -462,11 +640,12 @@ final class PaperReaderViewModel: ObservableObject {
 
                 self.statusMessage = "Translating paragraph \(index + 1) of \(workingResults.count)"
                 let snapshot = try await self.translateParagraph(
-                    workingResults[index].original,
+                    workingResults[index],
                     settings: settings
                 )
 
                 workingResults[index].translation = snapshot.translation
+                workingResults[index].translationMarkdown = snapshot.translationMarkdown
                 workingResults[index].status = snapshot.status
                 workingResults[index].errorMessage = snapshot.errorMessage
                 workingResults[index].chunkCount = snapshot.chunkCount
@@ -511,13 +690,80 @@ final class PaperReaderViewModel: ObservableObject {
                 return
             }
 
-            if settings.sourceLanguage == settings.targetLanguage {
+            if let segments = paper.markdownSegments, !segments.isEmpty {
+                if settings.sourceLanguage != settings.targetLanguage {
+                    try await self.ollamaClient.ensureModelAvailable(
+                        baseURL: settings.ollamaBaseURL,
+                        model: settings.translationModel
+                    )
+                }
+
+                var workingResults = self.paragraphResults.map(\.original) == paper.paragraphs
+                    ? self.paragraphResults
+                    : Self.makeParagraphResults(for: paper)
+
+                for index in workingResults.indices {
+                    try Task.checkCancellation()
+                    self.statusMessage = "Translating structured Markdown block \(index + 1) of \(workingResults.count)"
+
+                    if workingResults[index].status != .ok {
+                        let snapshot = try await self.translateParagraph(
+                            workingResults[index],
+                            settings: settings
+                        )
+                        workingResults[index].translation = snapshot.translation
+                        workingResults[index].translationMarkdown = snapshot.translationMarkdown
+                        workingResults[index].status = snapshot.status
+                        workingResults[index].errorMessage = snapshot.errorMessage
+                        workingResults[index].chunkCount = snapshot.chunkCount
+                        self.paragraphResults = workingResults
+                    }
+                    self.progressValue = Double(index + 1) / Double(max(workingResults.count, 1))
+                }
+
+                let failures = workingResults.filter { $0.status == .failed }.count
+                let markdown = self.structuredTranslationMarkdown(
+                    for: paper,
+                    results: workingResults
+                ) ?? paper.sourceMarkdown ?? ""
                 let result = ConnectedTranslationResult(
                     sourceLanguage: settings.sourceLanguage,
                     targetLanguage: settings.targetLanguage,
-                    text: paper.paragraphs.joined(separator: "\n\n"),
+                    text: markdown,
+                    batchCount: workingResults.count,
+                    failedBatchCount: failures,
+                    isStructuredMarkdown: true
+                )
+                self.paragraphResults = workingResults
+                self.paperTranslationCache[
+                    self.translationCacheKey(for: paper, settings: settings)
+                ] = workingResults
+                self.connectedTranslation = result
+                if failures == 0 {
+                    self.connectedTranslationCache[cacheKey] = result
+                }
+                self.progressValue = 1
+                self.statusMessage = failures == 0
+                    ? "Structure-preserving full translation finished. Formulas, images, tables, and references were retained."
+                    : "Structure-preserving translation finished with \(failures) failed block(s); original blocks were retained in those positions."
+                self.persistWorkspace()
+                return
+            }
+
+            if settings.sourceLanguage == settings.targetLanguage {
+                let body = paper.paragraphs.joined(separator: "\n\n")
+                let result = ConnectedTranslationResult(
+                    sourceLanguage: settings.sourceLanguage,
+                    targetLanguage: settings.targetLanguage,
+                    text: paper.hasFacsimileMarkdown && paper.sourceMarkdown != nil
+                        ? self.facsimileTranslationMarkdown(
+                            facsimile: paper.sourceMarkdown ?? "",
+                            translatedBody: body
+                        )
+                        : body,
                     batchCount: 1,
-                    failedBatchCount: 0
+                    failedBatchCount: 0,
+                    isStructuredMarkdown: paper.hasFacsimileMarkdown
                 )
                 self.connectedTranslation = result
                 self.connectedTranslationCache[cacheKey] = result
@@ -537,7 +783,7 @@ final class PaperReaderViewModel: ObservableObject {
                 maxChars: TextProcessing.connectedTranslationBatchChars
             )
             var completedBatches = 0
-            let result = try await self.translateConnectedPaper(
+            let translatedResult = try await self.translateConnectedPaper(
                 paper,
                 settings: settings,
                 batches: batches
@@ -546,6 +792,23 @@ final class PaperReaderViewModel: ObservableObject {
             } onBatchFinished: {
                 completedBatches += 1
                 self.progressValue = Double(completedBatches) / Double(max(batches.count, 1))
+            }
+
+            let result: ConnectedTranslationResult
+            if paper.hasFacsimileMarkdown, let facsimile = paper.sourceMarkdown {
+                result = ConnectedTranslationResult(
+                    sourceLanguage: translatedResult.sourceLanguage,
+                    targetLanguage: translatedResult.targetLanguage,
+                    text: self.facsimileTranslationMarkdown(
+                        facsimile: facsimile,
+                        translatedBody: translatedResult.text
+                    ),
+                    batchCount: translatedResult.batchCount,
+                    failedBatchCount: translatedResult.failedBatchCount,
+                    isStructuredMarkdown: true
+                )
+            } else {
+                result = translatedResult
             }
 
             self.connectedTranslation = result
@@ -579,10 +842,11 @@ final class PaperReaderViewModel: ObservableObject {
             }
 
             let snapshot = try await self.translateParagraph(
-                self.paragraphResults[index].original,
+                self.paragraphResults[index],
                 settings: settings
             )
             self.paragraphResults[index].translation = snapshot.translation
+            self.paragraphResults[index].translationMarkdown = snapshot.translationMarkdown
             self.paragraphResults[index].status = snapshot.status
             self.paragraphResults[index].errorMessage = snapshot.errorMessage
             self.paragraphResults[index].chunkCount = snapshot.chunkCount
@@ -844,8 +1108,106 @@ final class PaperReaderViewModel: ObservableObject {
             return
         }
 
+        if paper.hasMarkdownBundle {
+            let panel = NSOpenPanel()
+            panel.title = "Export PaperBridge Markdown Bundle"
+            panel.message = "Choose a folder. PaperBridge will create a bundle containing original, translated, bilingual, and analysis Markdown plus every preserved local asset."
+            panel.prompt = "Export Here"
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+            panel.begin { [weak self] response in
+                guard response == .OK, let destination = panel.url else { return }
+                Task { @MainActor [weak self] in
+                    self?.exportStructuredMarkdownBundle(to: destination, paper: paper)
+                }
+            }
+            return
+        }
+
         exportDocument = MarkdownDocument(text: buildMarkdownExport(for: paper))
         isExporterPresented = true
+    }
+
+    private func exportStructuredMarkdownBundle(to destination: URL, paper: PaperDocument) {
+        startTask(initialStatus: "Exporting Markdown and referenced assets...") {
+            self.isProgressIndeterminate = true
+            let hasAccess = destination.startAccessingSecurityScopedResource()
+            defer {
+                if hasAccess {
+                    destination.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            guard let sourceMarkdown = paper.sourceMarkdown,
+                  paper.markdownResourceURL != nil else {
+                throw MarkdownBundleExporterError.noDocuments
+            }
+            let translationMarkdown: String
+            let bilingualMarkdown: String
+            if let segments = paper.markdownSegments {
+                translationMarkdown = self.structuredTranslationMarkdown(
+                    for: paper,
+                    results: self.paragraphResults
+                ) ?? sourceMarkdown
+                bilingualMarkdown = AcademicMarkdownProcessor.bilingualMarkdown(
+                    segments: segments,
+                    results: self.paragraphResults,
+                    targetLanguage: self.settings.targetLanguage
+                )
+            } else if paper.hasFacsimileMarkdown {
+                let translatedBody = self.paragraphResults.map { result in
+                    result.status == .ok ? result.translation : result.original
+                }.joined(separator: "\n\n")
+                let bilingualBody = self.paragraphResults.map { result in
+                    let translation = result.status == .ok
+                        ? result.translation
+                        : "[Translation unavailable]"
+                    return result.original + "\n\n> **\(self.settings.targetLanguage.displayName) translation**\n> " + translation
+                }.joined(separator: "\n\n")
+                translationMarkdown = self.facsimileTranslationMarkdown(
+                    facsimile: sourceMarkdown,
+                    translatedBody: translatedBody
+                )
+                bilingualMarkdown = self.facsimileBilingualMarkdown(
+                    facsimile: sourceMarkdown,
+                    bilingualBody: bilingualBody
+                )
+            } else {
+                throw MarkdownBundleExporterError.noDocuments
+            }
+            var documents = [
+                "paper_original.md": sourceMarkdown,
+                "paper_translation_\(self.settings.targetLanguage.translationCode).md": translationMarkdown,
+                "paper_bilingual_\(self.settings.sourceLanguage.translationCode)_\(self.settings.targetLanguage.translationCode).md": bilingualMarkdown,
+                "paper_analysis_notes.md": self.buildMarkdownExport(for: paper)
+            ]
+            if let connectedTranslation = self.connectedTranslation,
+               connectedTranslation.isStructuredMarkdown == true,
+               !connectedTranslation.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                documents[
+                    "paper_full_translation_\(self.settings.targetLanguage.translationCode).md"
+                ] = paper.hasStructuredMarkdown
+                    ? translationMarkdown
+                    : connectedTranslation.text
+            }
+            let result = try self.markdownBundleExporter.export(
+                paperName: paper.name,
+                documents: documents,
+                assetSourceDirectory: paper.markdownResourceURL,
+                to: destination
+            )
+            self.isProgressIndeterminate = false
+            self.progressValue = 1
+
+            if result.missingAssetPaths.isEmpty {
+                self.statusMessage = "Exported Markdown bundle with \(result.copiedAssetCount) referenced asset(s) to \(result.directoryURL.lastPathComponent)."
+            } else {
+                self.statusMessage = "Exported Markdown bundle, but \(result.missingAssetPaths.count) referenced asset(s) could not be found."
+            }
+            NSWorkspace.shared.activateFileViewerSelecting([result.directoryURL])
+        }
     }
 
     func handleExportCompletion(_ result: Result<URL, Error>) {
@@ -863,20 +1225,24 @@ final class PaperReaderViewModel: ObservableObject {
         isBusy = true
         statusMessage = initialStatus
         progressValue = 0
+        isProgressIndeterminate = false
 
         activeTask = Task { [weak self] in
             guard let self else { return }
             do {
                 try await operation()
                 self.isBusy = false
+                self.isProgressIndeterminate = false
             } catch is CancellationError {
                 self.isBusy = false
                 self.progressValue = 0
+                self.isProgressIndeterminate = false
                 self.statusMessage = "The current task was cancelled."
                 self.persistWorkspace()
             } catch {
                 self.isBusy = false
                 self.progressValue = 0
+                self.isProgressIndeterminate = false
                 self.presentError(error.localizedDescription)
                 self.persistWorkspace()
             }
@@ -932,21 +1298,24 @@ final class PaperReaderViewModel: ObservableObject {
             annotations = []
             bookmarkedParagraphIDs = []
             selectedParagraphID = paper.paragraphs.indices.first.map { $0 + 1 }
+            workspaceMode = paper.sourceMarkdown?.isEmpty == false ? .preview : .reader
         }
 
-        paragraphResults = paper.paragraphs.enumerated().map { index, paragraph in
-            ParagraphResult(id: index + 1, original: paragraph)
-        }
+        paragraphResults = Self.makeParagraphResults(for: paper)
         connectedTranslation = nil
         summaries = nil
         explanationText = ""
         restoreCachedOutputsIfAvailable(for: paper)
 
+        let engine = paper.extractionEngine?.displayName ?? "local extraction"
+        var status = "Loaded \(paper.name) with \(paper.paragraphs.count) analysis paragraphs using \(engine)."
         if paper.excludedReferenceCount > 0 {
-            statusMessage = "Loaded \(paper.name) with \(paper.paragraphs.count) paragraphs. Skipped \(paper.excludedReferenceCount) reference paragraphs."
-        } else {
-            statusMessage = "Loaded \(paper.name) with \(paper.paragraphs.count) paragraphs."
+            status += " Kept \(paper.excludedReferenceCount) reference blocks in the document but excluded them from AI tasks."
         }
+        if let warning = paper.extractionWarning {
+            status += " Note: \(warning)"
+        }
+        statusMessage = status
     }
 
     private func readPaper(from url: URL) async throws -> PaperDocument {
@@ -967,17 +1336,117 @@ final class PaperReaderViewModel: ObservableObject {
         }
 
         let checksum = Hashing.sha256(data)
-        if let cached = extractedPaperCache[checksum] {
+        let extractionCacheKey = Hashing.sha256(
+            "\(checksum)|\(settings.pdfExtractionMode.rawValue)|\(settings.minerUBackend.rawValue)|\(settings.minerUExecutablePath)"
+        )
+        if let cached = extractedPaperCache[extractionCacheKey] {
             return cached
         }
 
         let fileName = url.lastPathComponent
-        let paper = try await Task.detached(priority: .userInitiated) {
-            try Self.buildPaper(fromPDFData: data, name: fileName, checksum: checksum)
-        }.value
+        if settings.pdfExtractionMode != .pdfKitOnly {
+            statusMessage = "MinerU is reconstructing document layout, formulas, tables, and images..."
+            isProgressIndeterminate = true
 
-        extractedPaperCache[checksum] = paper
+            do {
+                let extraction = try await minerUService.extract(
+                    pdfData: data,
+                    originalFilename: fileName,
+                    checksum: checksum,
+                    configuredPath: settings.minerUExecutablePath,
+                    backend: settings.minerUBackend
+                )
+                try Task.checkCancellation()
+                isProgressIndeterminate = false
+                let paper = try Self.buildPaper(
+                    fromMinerUMarkdown: extraction.markdown,
+                    resourceDirectory: extraction.resourceDirectoryURL,
+                    name: fileName,
+                    checksum: checksum
+                )
+                extractedPaperCache[extractionCacheKey] = paper
+                return paper
+            } catch is CancellationError {
+                isProgressIndeterminate = false
+                throw CancellationError()
+            } catch {
+                isProgressIndeterminate = false
+                if settings.pdfExtractionMode == .minerUOnly {
+                    throw error
+                }
+
+                statusMessage = "MinerU could not parse this PDF. Using the model-free PDFKit facsimile..."
+                let paper = try await readWithPDFKit(
+                    data: data,
+                    fileName: fileName,
+                    checksum: checksum,
+                    fallbackWarning: error.localizedDescription
+                )
+                extractedPaperCache[extractionCacheKey] = paper
+                return paper
+            }
+        }
+
+        let paper = try await readWithPDFKit(
+            data: data,
+            fileName: fileName,
+            checksum: checksum,
+            fallbackWarning: nil
+        )
+
+        extractedPaperCache[extractionCacheKey] = paper
         return paper
+    }
+
+    private func readWithPDFKit(
+        data: Data,
+        fileName: String,
+        checksum: String,
+        fallbackWarning: String?
+    ) async throws -> PaperDocument {
+        statusMessage = "PDFKit is preserving the original pages without OCR..."
+        isProgressIndeterminate = true
+        defer { isProgressIndeterminate = false }
+
+        var archive: PDFVisualArchive?
+        var warnings = [fallbackWarning].compactMap { $0 }
+        do {
+            archive = try await Task.detached(priority: .userInitiated) {
+                try PDFVisualArchiveService().archive(
+                    pdfData: data,
+                    checksum: checksum
+                )
+            }.value
+            if let archive {
+                let failedPageCount = archive.pageCount -
+                    archive.renderedPageCount -
+                    archive.omittedPageCount
+                if archive.omittedPageCount > 0 {
+                    warnings.append(
+                        "For long-document safety, PNG previews were limited to the first \(archive.pageCount - archive.omittedPageCount) pages; the exact original PDF still contains every page."
+                    )
+                }
+                if failedPageCount > 0 {
+                    warnings.append(
+                        "PDFKit could not generate preview images for \(failedPageCount) page(s); the exact original PDF is still preserved."
+                    )
+                }
+            }
+        } catch {
+            warnings.append(error.localizedDescription)
+        }
+
+        statusMessage = "Extracting the PDF's selectable text layer without OCR..."
+        let extractionWarning = warnings.isEmpty ? nil : warnings.joined(separator: " ")
+        return try await Task.detached(priority: .userInitiated) {
+            try Self.buildPaper(
+                fromPDFData: data,
+                name: fileName,
+                checksum: checksum,
+                visualArchive: archive,
+                extractionWarning: extractionWarning
+            )
+        }.value
     }
 
     private func readTextInput(_ text: String) async throws -> PaperDocument {
@@ -999,9 +1468,9 @@ final class PaperReaderViewModel: ObservableObject {
         return paper
     }
 
-    private func translateParagraph(_ paragraph: String, settings: AppSettings) async throws -> ParagraphTranslationSnapshot {
+    private func translateParagraph(_ paragraph: ParagraphResult, settings: AppSettings) async throws -> ParagraphTranslationSnapshot {
         let cacheKey = Hashing.sha256(
-            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)|\(paragraph)"
+            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)|\(paragraph.sourceMarkdown ?? paragraph.original)"
         )
         if let cached = paragraphTranslationCache[cacheKey] {
             return cached
@@ -1009,7 +1478,8 @@ final class PaperReaderViewModel: ObservableObject {
 
         if settings.sourceLanguage == settings.targetLanguage {
             let snapshot = ParagraphTranslationSnapshot(
-                translation: paragraph,
+                translation: paragraph.original,
+                translationMarkdown: paragraph.sourceMarkdown,
                 status: .ok,
                 errorMessage: nil,
                 chunkCount: 1
@@ -1018,7 +1488,73 @@ final class PaperReaderViewModel: ObservableObject {
             return snapshot
         }
 
-        let chunks = TextProcessing.chunkParagraph(paragraph, maxChars: settings.maxParagraphChars)
+        if let sourceMarkdown = paragraph.sourceMarkdown {
+            let payload = AcademicMarkdownProcessor.protectForTranslation(sourceMarkdown)
+            let chunks = TextProcessing.chunkParagraph(
+                payload.text,
+                maxChars: settings.maxParagraphChars
+            )
+            var translatedChunks: [String] = []
+
+            do {
+                for chunk in chunks {
+                    try Task.checkCancellation()
+                    translatedChunks.append(
+                        try await ollamaClient.generate(
+                            baseURL: settings.ollamaBaseURL,
+                            model: settings.translationModel,
+                            prompt: PromptLibrary.markdownTranslationPrompt(
+                                for: chunk,
+                                from: settings.sourceLanguage,
+                                to: settings.targetLanguage
+                            ),
+                            systemPrompt: PromptLibrary.translationSystemPrompt(
+                                targetLanguage: settings.targetLanguage
+                            )
+                        )
+                    )
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                return ParagraphTranslationSnapshot(
+                    translation: "",
+                    translationMarkdown: nil,
+                    status: .failed,
+                    errorMessage: error.localizedDescription,
+                    chunkCount: chunks.count
+                )
+            }
+
+            do {
+                let joined = translatedChunks.joined(
+                    separator: sourceMarkdown.contains("\n") ? "\n" : " "
+                )
+                let restored = try AcademicMarkdownProcessor.restoreProtectedTokens(
+                    in: joined,
+                    from: payload
+                )
+                let snapshot = ParagraphTranslationSnapshot(
+                    translation: AcademicMarkdownProcessor.plainText(from: restored),
+                    translationMarkdown: restored,
+                    status: .ok,
+                    errorMessage: nil,
+                    chunkCount: chunks.count
+                )
+                paragraphTranslationCache[cacheKey] = snapshot
+                return snapshot
+            } catch {
+                return ParagraphTranslationSnapshot(
+                    translation: "",
+                    translationMarkdown: nil,
+                    status: .failed,
+                    errorMessage: error.localizedDescription,
+                    chunkCount: chunks.count
+                )
+            }
+        }
+
+        let chunks = TextProcessing.chunkParagraph(paragraph.original, maxChars: settings.maxParagraphChars)
         var translatedChunks: [String] = []
 
         do {
@@ -1031,6 +1567,7 @@ final class PaperReaderViewModel: ObservableObject {
         } catch {
             return ParagraphTranslationSnapshot(
                 translation: "",
+                translationMarkdown: nil,
                 status: .failed,
                 errorMessage: error.localizedDescription,
                 chunkCount: chunks.count
@@ -1039,6 +1576,7 @@ final class PaperReaderViewModel: ObservableObject {
 
         let snapshot = ParagraphTranslationSnapshot(
             translation: translatedChunks.joined(separator: " "),
+            translationMarkdown: nil,
             status: .ok,
             errorMessage: nil,
             chunkCount: chunks.count
@@ -1137,12 +1675,77 @@ final class PaperReaderViewModel: ObservableObject {
     nonisolated private static func buildPaper(
         fromPDFData data: Data,
         name: String,
-        checksum: String
+        checksum: String,
+        visualArchive: PDFVisualArchive?,
+        extractionWarning: String?
     ) throws -> PaperDocument {
-        let rawText = try PDFTextExtractor().extractText(from: data)
+        let rawText: String
+        do {
+            rawText = try PDFTextExtractor().extractText(from: data)
+        } catch {
+            guard let visualArchive else { throw error }
+            return visualOnlyPaper(
+                name: name,
+                checksum: checksum,
+                visualArchive: visualArchive,
+                extractionWarning: joinedWarnings(
+                    extractionWarning,
+                    "No selectable text layer was found. The original pages are available, but translation requires selectable text or an OCR parser."
+                )
+            )
+        }
+
         let cleanedText = TextProcessing.cleanExtractedText(rawText)
         let paragraphs = TextProcessing.splitIntoParagraphs(cleanedText)
-        return try buildPaper(name: name, checksum: checksum, paragraphs: paragraphs)
+        do {
+            return try buildPaper(
+                name: name,
+                checksum: checksum,
+                paragraphs: paragraphs,
+                extractionEngine: .pdfKit,
+                extractionWarning: extractionWarning,
+                sourceMarkdown: visualArchive?.markdown,
+                markdownResourceDirectory: visualArchive?.resourceDirectoryURL.path
+            )
+        } catch {
+            guard let visualArchive else { throw error }
+            return visualOnlyPaper(
+                name: name,
+                checksum: checksum,
+                visualArchive: visualArchive,
+                extractionWarning: joinedWarnings(
+                    extractionWarning,
+                    "No reliable body paragraphs were found in the selectable text layer. Visual preview and export remain available."
+                )
+            )
+        }
+    }
+
+    nonisolated private static func buildPaper(
+        fromMinerUMarkdown markdown: String,
+        resourceDirectory: URL,
+        name: String,
+        checksum: String
+    ) throws -> PaperDocument {
+        let parsed = AcademicMarkdownProcessor.parse(markdown)
+        let structured = AcademicMarkdownProcessor.assignParagraphs(in: parsed)
+        guard !structured.paragraphs.isEmpty else {
+            throw ReaderError.noParagraphsDetected
+        }
+
+        return PaperDocument(
+            name: name,
+            checksum: checksum,
+            cleanedText: structured.paragraphs.joined(separator: "\n\n"),
+            paragraphs: structured.paragraphs,
+            excludedReferenceParagraphs: structured.referenceParagraphs,
+            referenceSectionTitle: structured.referenceHeading,
+            sourceMarkdown: markdown,
+            markdownResourceDirectory: resourceDirectory.path,
+            markdownSegments: structured.segments,
+            extractionEngine: .minerU,
+            extractionWarning: nil
+        )
     }
 
     nonisolated private static func buildPaper(
@@ -1164,13 +1767,23 @@ final class PaperReaderViewModel: ObservableObject {
             paragraphs = TextProcessing.postProcessParagraphs([normalizedInput])
         }
 
-        return try buildPaper(name: name, checksum: checksum, paragraphs: paragraphs)
+        return try buildPaper(
+            name: name,
+            checksum: checksum,
+            paragraphs: paragraphs,
+            extractionEngine: .pastedText,
+            extractionWarning: nil
+        )
     }
 
     nonisolated private static func buildPaper(
         name: String,
         checksum: String,
-        paragraphs: [String]
+        paragraphs: [String],
+        extractionEngine: DocumentExtractionEngine,
+        extractionWarning: String?,
+        sourceMarkdown: String? = nil,
+        markdownResourceDirectory: String? = nil
     ) throws -> PaperDocument {
         guard !paragraphs.isEmpty else {
             throw ReaderError.noParagraphsDetected
@@ -1188,8 +1801,60 @@ final class PaperReaderViewModel: ObservableObject {
             cleanedText: bodyText,
             paragraphs: trimmedPaper.bodyParagraphs,
             excludedReferenceParagraphs: trimmedPaper.referenceParagraphs,
-            referenceSectionTitle: trimmedPaper.heading
+            referenceSectionTitle: trimmedPaper.heading,
+            sourceMarkdown: sourceMarkdown,
+            markdownResourceDirectory: markdownResourceDirectory,
+            extractionEngine: extractionEngine,
+            extractionWarning: extractionWarning
         )
+    }
+
+    nonisolated private static func visualOnlyPaper(
+        name: String,
+        checksum: String,
+        visualArchive: PDFVisualArchive,
+        extractionWarning: String?
+    ) -> PaperDocument {
+        PaperDocument(
+            name: name,
+            checksum: checksum,
+            cleanedText: "",
+            paragraphs: [],
+            excludedReferenceParagraphs: [],
+            referenceSectionTitle: nil,
+            sourceMarkdown: visualArchive.markdown,
+            markdownResourceDirectory: visualArchive.resourceDirectoryURL.path,
+            extractionEngine: .pdfKit,
+            extractionWarning: extractionWarning
+        )
+    }
+
+    nonisolated private static func joinedWarnings(
+        _ first: String?,
+        _ second: String
+    ) -> String {
+        [first, second]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    nonisolated private static func makeParagraphResults(for paper: PaperDocument) -> [ParagraphResult] {
+        let sourceMarkdownByParagraphID = Dictionary(
+            uniqueKeysWithValues: (paper.markdownSegments ?? []).compactMap { segment -> (Int, String)? in
+                guard let paragraphID = segment.paragraphID else { return nil }
+                return (paragraphID, segment.source)
+            }
+        )
+
+        return paper.paragraphs.enumerated().map { index, paragraph in
+            let paragraphID = index + 1
+            return ParagraphResult(
+                id: paragraphID,
+                original: paragraph,
+                sourceMarkdown: sourceMarkdownByParagraphID[paragraphID]
+            )
+        }
     }
 
     private func normalizedManualParagraphs(from text: String) -> [String] {
@@ -1215,6 +1880,10 @@ final class PaperReaderViewModel: ObservableObject {
         message: String
     ) {
         guard let paper = loadedPaper, !paragraphs.isEmpty else { return }
+        guard !paper.hasStructuredMarkdown else {
+            statusMessage = "MinerU Markdown controls this document's layout. Edit the exported Markdown instead of reflowing analysis blocks."
+            return
+        }
 
         if recordUndo {
             let oldSelectedIndex = selectedParagraphID.flatMap { selectedID in
@@ -1241,7 +1910,9 @@ final class PaperReaderViewModel: ObservableObject {
             return ParagraphResult(
                 id: index + 1,
                 original: paragraph,
+                sourceMarkdown: reusable.sourceMarkdown,
                 translation: reusable.translation,
+                translationMarkdown: reusable.translationMarkdown,
                 status: reusable.status,
                 errorMessage: reusable.errorMessage,
                 chunkCount: reusable.chunkCount
@@ -1292,9 +1963,7 @@ final class PaperReaderViewModel: ObservableObject {
             settings.translationModel != oldSettings.translationModel
 
         if paragraphTranslationChanged {
-            paragraphResults = paper.paragraphs.enumerated().map { index, paragraph in
-                ParagraphResult(id: index + 1, original: paragraph)
-            }
+            paragraphResults = Self.makeParagraphResults(for: paper)
         }
 
         if connectedTranslationChanged {
@@ -1331,7 +2000,7 @@ final class PaperReaderViewModel: ObservableObject {
 
     private func connectedTranslationCacheKey(for paper: PaperDocument, settings: AppSettings) -> String {
         Hashing.sha256(
-            "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|connected"
+            "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|connected|rich-v2:\(paper.hasStructuredMarkdown):\(paper.hasFacsimileMarkdown)"
         )
     }
 

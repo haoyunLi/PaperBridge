@@ -8,8 +8,10 @@ extension PaperReaderViewModel {
     var activeSelectionAnnotation: PaperAnnotation? {
         guard let selection = activeTextSelection else { return nil }
         return annotations.first {
-            $0.paragraphID == selection.paragraphID &&
+            $0.resolvedScope == selection.scope &&
+                $0.paragraphID == selection.paragraphID &&
                 $0.side == selection.side &&
+                $0.locator == selection.locator &&
                 $0.rangeLocation == selection.rangeLocation &&
                 $0.rangeLength == selection.rangeLength &&
                 $0.quote == selection.text
@@ -18,7 +20,19 @@ extension PaperReaderViewModel {
 
     func annotations(for paragraphID: Int, side: ReaderTextSide) -> [PaperAnnotation] {
         annotations.filter {
-            $0.paragraphID == paragraphID && $0.side == side
+            $0.resolvedScope == .reader &&
+                $0.paragraphID == paragraphID &&
+                $0.side == side
+        }
+    }
+
+    func annotations(
+        for scope: TextSelectionScope,
+        side: ReaderTextSide? = nil
+    ) -> [PaperAnnotation] {
+        annotations.filter { annotation in
+            annotation.resolvedScope == scope &&
+                (side == nil || annotation.side == side)
         }
     }
 
@@ -36,7 +50,9 @@ extension PaperReaderViewModel {
         }
 
         activeTextSelection = selection
-        selectedParagraphID = selection.paragraphID
+        if selection.scope == .reader {
+            selectedParagraphID = selection.paragraphID
+        }
         isInspectorPresented = true
         restoreSelectionLookupCache(for: selection)
     }
@@ -86,6 +102,9 @@ extension PaperReaderViewModel {
                     quote: selection.text,
                     rangeLocation: selection.rangeLocation,
                     rangeLength: selection.rangeLength,
+                    scope: selection.scope,
+                    context: selection.context,
+                    locator: selection.locator,
                     highlightColor: color
                 )
             )
@@ -110,6 +129,9 @@ extension PaperReaderViewModel {
                     quote: selection.text,
                     rangeLocation: selection.rangeLocation,
                     rangeLength: selection.rangeLength,
+                    scope: selection.scope,
+                    context: selection.context,
+                    locator: selection.locator,
                     note: trimmed
                 )
             )
@@ -127,27 +149,55 @@ extension PaperReaderViewModel {
     }
 
     func activateAnnotation(_ annotation: PaperAnnotation) {
-        guard let paragraph = paragraphResults.first(where: { $0.id == annotation.paragraphID }) else {
-            return
-        }
+        let scope = annotation.resolvedScope
+        if scope == .reader {
+            guard let paragraph = paragraphResults.first(where: { $0.id == annotation.paragraphID }) else {
+                return
+            }
 
-        let context = annotation.side == .original
-            ? paragraph.original
-            : paragraph.translation
-        guard let range = annotation.resolvedRange(in: context) else {
+            let context = annotation.side == .original
+                ? paragraph.original
+                : paragraph.translation
+            guard let range = annotation.resolvedRange(in: context) else {
+                navigateToParagraph(annotation.paragraphID)
+                return
+            }
+
             navigateToParagraph(annotation.paragraphID)
+            captureTextSelection(
+                ReaderTextSelection(
+                    paragraphID: annotation.paragraphID,
+                    side: annotation.side,
+                    text: (context as NSString).substring(with: range),
+                    context: context,
+                    rangeLocation: range.location,
+                    rangeLength: range.length
+                )
+            )
             return
         }
 
-        navigateToParagraph(annotation.paragraphID)
+        workspaceMode = scope.workspaceMode
+        if scope == .paper {
+            displayMode = annotation.side == .original ? .sourceOnly : .translationOnly
+        }
+
+        let context = annotation.context?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? annotation.context ?? annotation.quote
+            : annotation.quote
+        let range = annotation.resolvedRange(in: context) ?? (context as NSString).range(of: annotation.quote)
+        guard range.location != NSNotFound else { return }
+
         captureTextSelection(
             ReaderTextSelection(
+                scope: scope,
                 paragraphID: annotation.paragraphID,
                 side: annotation.side,
-                text: (context as NSString).substring(with: range),
+                text: annotation.quote,
                 context: context,
                 rangeLocation: range.location,
-                rangeLength: range.length
+                rangeLength: range.length,
+                locator: annotation.locator
             )
         )
     }
@@ -337,8 +387,10 @@ extension PaperReaderViewModel {
 
     private func annotationIndex(for selection: ReaderTextSelection) -> Int? {
         annotations.firstIndex {
-            $0.paragraphID == selection.paragraphID &&
+            $0.resolvedScope == selection.scope &&
+                $0.paragraphID == selection.paragraphID &&
                 $0.side == selection.side &&
+                $0.locator == selection.locator &&
                 $0.rangeLocation == selection.rangeLocation &&
                 $0.rangeLength == selection.rangeLength &&
                 $0.quote == selection.text

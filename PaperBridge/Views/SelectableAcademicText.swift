@@ -9,6 +9,8 @@ struct SelectableAcademicText: NSViewRepresentable {
     var font = NSFont(name: "NewYork-Regular", size: 16) ?? NSFont.systemFont(ofSize: 16)
     var textColor = NSColor.labelColor
     var lineSpacing: CGFloat = 5
+    var scope: TextSelectionScope = .reader
+    var locator: String?
     let onSelection: (ReaderTextSelection) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -145,12 +147,14 @@ struct SelectableAcademicText: NSViewRepresentable {
 
             parent.onSelection(
                 ReaderTextSelection(
+                    scope: parent.scope,
                     paragraphID: parent.paragraphID,
                     side: parent.side,
                     text: selectedText,
                     context: parent.text,
                     rangeLocation: range.location,
-                    rangeLength: range.length
+                    rangeLength: range.length,
+                    locator: parent.locator
                 )
             )
         }

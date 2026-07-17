@@ -1,7 +1,20 @@
-# PaperBridge
+<p align="center">
+  <img src="PaperBridge/Assets.xcassets/AppIcon.appiconset/appicon_512x512.png" width="132" alt="PaperBridge app icon">
+</p>
 
-`PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode.
-It reads academic PDFs locally, sends prompts to your local Ollama server, and shows the paper in aligned source/target order:
+<h1 align="center">PaperBridge</h1>
+
+<p align="center">
+  <strong>A local-first academic paper reader for macOS.</strong><br>
+  Preserve the original PDF, read a structured paper, and translate or analyze it with local Ollama models.
+</p>
+
+<p align="center">
+  <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-only</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU optional</code> &nbsp; <code>Ollama</code>
+</p>
+
+`PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. Analysis prompts are sent only to your local Ollama server.
+The bilingual reader remains available in aligned source/target order:
 
 - original paragraph
 - translated paragraph
@@ -13,15 +26,71 @@ It can also:
 - highlight selected text, attach notes, and bookmark paragraphs
 - explain a full selected paragraph in simpler language
 - optionally create a second, connected full-paper translation for smoother context
-- export available summaries, connected translation, and aligned paragraphs as Markdown
+- preview either the exact original PDF or MinerU Markdown with headings, tables, figures, and LaTeX formulas
+- create a structure-preserving full translation without changing formulas or image paths
+- export original, translated, bilingual, and analysis Markdown with referenced assets
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
+
+## App Preview
+
+### Bilingual paragraph reader
+
+<p align="center">
+  <img src="docs/images/paperbridge-reader.jpg" width="920" alt="PaperBridge bilingual paragraph reader showing an English paragraph and its Simplified Chinese translation">
+</p>
+
+<p align="center"><sub>An actual local Ollama translation in the paragraph reader. Each block keeps the source and translation together and supports selection tools, notes, bookmarks, explanation, and retry.</sub></p>
+
+### Figures stay in the MinerU reading order
+
+<p align="center">
+  <img src="docs/images/paperbridge-reader-figure.jpg" width="920" alt="PaperBridge Reader preserving a MinerU figure immediately after its related paragraph">
+</p>
+
+<p align="center"><sub>Figures, tables, standalone formulas, code, and supported document elements are not sent for translation. They appear once, at their original MinerU position between the surrounding bilingual paragraph cards.</sub></p>
+
+### Structured bilingual reading and exact-source verification
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/paperbridge-bilingual.jpg" alt="PaperBridge structured bilingual paper view showing an English paragraph and its Simplified Chinese translation"></td>
+    <td width="50%"><img src="docs/images/paperbridge-original.jpg" alt="PaperBridge exact original PDF view"></td>
+  </tr>
+  <tr>
+    <td><strong>Structured bilingual view</strong><br>MinerU reconstructs the reading order while local Ollama translations appear directly beside their source paragraphs, with figures, tables, and LaTeX retained in place.</td>
+    <td><strong>Exact original view</strong><br>PDFKit renders the byte-for-byte source PDF so page layout, figures, fonts, and formulas can always be checked.</td>
+  </tr>
+</table>
+
+The screenshots above are from the running app. MinerU produces a semantic reading view rather than a pixel-identical copy; the `Original` view remains the visual source of truth.
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A["Open a PDF"] --> B["Keep the exact source PDF"]
+    A --> C{"Choose a local parser"}
+    C -->|"MinerU, optional"| D["Structured Markdown, images, tables, LaTeX"]
+    C -->|"No OCR models"| E["PDFKit text layer and page facsimiles"]
+    D --> F["Local Ollama models"]
+    E --> F
+    F --> G["Bilingual reader, summary, explanation"]
+    B --> H["Exact original preview"]
+    D --> I["Markdown bundle with assets"]
+    E --> I
+    B --> I
+```
+
+PDF parsing, translation, summary, explanation, preview generation, and caching happen on the Mac. PaperBridge does not require a cloud API.
 
 ## Features
 
 - Native macOS app, not a browser app
 - Clean three-pane workspace with document outline, reader, and research inspector
-- Local PDF extraction with `PDFKit`
+- MinerU-first parsing with a built-in, no-OCR `PDFKit` facsimile fallback
+- Exact native PDF preview plus high-resolution page images for portable Markdown export
+- Offline WebKit + bundled MathJax preview for formulas, images, and tables
 - Local Ollama inference with `URLSession`
 - Selectable translation direction
 - PDF upload and pasted-text input
@@ -29,23 +98,42 @@ It can also:
 - Dedicated model settings for translation, summary, paragraph explanation, and quick lookup
 - Progress bar during translation
 - Paragraph-by-paragraph processing with failure isolation
-- Cross-page word and sentence repair without character-based sentence cuts
+- MinerU reading-order reconstruction for multi-column and complex academic layouts
+- MinerU figures, tables, standalone formulas, and code interleaved with the corresponding Reader paragraphs
+- One structure-preserving translation document shared by Translation preview, Full Translation, and Markdown export
+- PDFKit selectable-text extraction with cross-page word and sentence repair
 - Filtering of repeated headers, footers, and runs of extracted chart labels
 - Automatic skipping of detected reference sections, including papers with methods after references
 - Search plus bilingual, original-only, and translation-only reading modes
 - Section outline navigation and paragraph bookmarks
-- Selected-text translation, explanation, three-color highlights, and notes
+- Selected-text translation, explanation, three-color highlights, and notes across Paper, Reader, Summary, and Full Translation
 - Automatic local workspace recovery between launches
 - Native menu commands and keyboard shortcuts
 - Manual paragraph edit, split, merge, reflow, undo, and failed-translation retry controls
-- Optional connected full-paper translation view
-- Markdown export
+- Structure-preserving full-paper translation view
+- Markdown bundle export with referenced assets; generated full translations receive their own Markdown file, and PDFKit bundles include the original PDF and facsimile pages
 
 ## Requirements
 
 - macOS 14 or later
 - Full Xcode installed from the Mac App Store
+- Python 3.10 through 3.13 only if you choose to install optional MinerU
+- MinerU recommends at least 16 GB RAM; the built-in PDFKit mode does not have this requirement
 - Ollama installed locally: [https://ollama.com/download/mac](https://ollama.com/download/mac)
+
+MinerU and its OCR/layout models are not required. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
+
+## PDF Preservation Modes
+
+| Mode | Extra parser/model | What is preserved | What can be translated |
+| --- | --- | --- | --- |
+| MinerU | Optional local MinerU installation | Byte-for-byte original PDF plus structured Markdown, headings, reading order, images, tables, and reconstructed LaTeX | Parsed semantic text while formulas and assets remain protected |
+| PDFKit facsimile | None; built into macOS | Byte-for-byte original PDF, native PDF view, and high-resolution page images with formulas, figures, and layout unchanged | Only text already embedded as a selectable PDF text layer |
+| Image-only scan in PDFKit mode | None | Exact visual pages and export bundle | Nothing reliably; translation, summary, and explanation stay disabled until OCR supplies text |
+
+Markdown is a semantic, reflowable format, so MinerU does not reproduce PDF coordinates, columns, pagination, fonts, or every OCR glyph exactly. PaperBridge therefore keeps the byte-for-byte source PDF beside MinerU's Markdown. Use `Original` for the exact native PDF and `Bilingual` for the structured reading view. The translated text remains a separate layer; it is not placed back over the original page coordinates.
+
+PDFKit facsimile deliberately does not guess formulas or rebuild document structure. This is why it can preserve the visual source exactly without an OCR model.
 
 ## Project Structure
 
@@ -54,8 +142,9 @@ It can also:
 - `build_app.sh`: one-command terminal build script
 - `test_text_processing.sh`: paragraph-processing regression tests
 - `Tests/`: command-line regression test source
+- `docs/images/`: README screenshots captured from the running app
 - `README.md`: setup and usage guide
-- `requirements.txt`: kept for repository compatibility; the native app has no Python packages
+- `requirements.txt`: MinerU Python dependency used by the native app as a local command-line parser
 
 ## Quick Start
 
@@ -99,7 +188,37 @@ If they installed or renamed Xcode in a different location, they only need to po
 sudo xcode-select -s "/Applications/Xcode-beta.app/Contents/Developer"
 ```
 
-### 4. Install and start Ollama
+### 4. Optional: install MinerU in an isolated environment
+
+Skip this step if you want the built-in PDFKit facsimile with no OCR/parser models. MinerU is a separate local Python tool that adds semantic Markdown and LaTeX reconstruction; PaperBridge itself remains a native Swift app.
+
+To use MinerU, install it once into a dedicated environment:
+
+```bash
+python3 -m venv ~/.paperbridge-mineru
+source ~/.paperbridge-mineru/bin/activate
+python -m pip install --upgrade pip uv
+uv pip install -r requirements.txt
+mineru --version
+mineru-models-download --source auto --model_type pipeline
+deactivate
+```
+
+The model-download command is optional but recommended: it downloads the Pipeline models before the first paper is opened, rather than during the first parse. PaperBridge uses `Pipeline / Mac compatible` by default. MinerU 3.4's own automatic default is the higher-memory hybrid engine, which may download additional models; choose it only when your Mac has enough memory and you specifically want that backend.
+
+PaperBridge automatically checks these common locations:
+
+```text
+~/.paperbridge-mineru/bin/mineru
+~/.local/bin/mineru
+/opt/homebrew/bin/mineru
+/usr/local/bin/mineru
+```
+
+For another environment, open `PaperBridge > Settings > Document Parsing` and enter the full path to its `mineru` executable.
+The first MinerU parse may download local parsing models and therefore takes longer and temporarily requires internet access. Later parsing runs locally, and PaperBridge caches each generated Markdown workspace. None of this is needed for `PDFKit facsimile (no OCR)`.
+
+### 5. Install and start Ollama
 
 Install Ollama from:
 
@@ -115,7 +234,7 @@ ollama serve
 
 If the Ollama macOS app is already open, the service may already be running.
 
-### 5. Pull at least one translation model
+### 6. Pull at least one translation model
 
 The default translation direction in the app is:
 
@@ -131,7 +250,7 @@ ollama pull translategemma:12b
 
 You can also use smaller or larger models if they fit your Mac better.
 
-### 6. Build the macOS app from Terminal
+### 7. Build the macOS app from Terminal
 
 From the project root:
 
@@ -174,6 +293,8 @@ ollama serve
 ./build_app.sh
 open "build/Build/Products/Release/PaperBridge.app"
 ```
+
+This minimal flow builds and runs PaperBridge without MinerU or any OCR model. If you want structured Markdown parsing, complete optional step 4 before launching the app.
 
 ## How the App Uses Models
 
@@ -292,16 +413,41 @@ Then choose:
 
 1. Launch `PaperBridge.app`.
 2. Make sure Ollama is running locally.
-3. Open a PDF, drag one into the window, or paste text into the sidebar.
+3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; optional MinerU may take several minutes on its first document.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
-5. Open `Models & Settings` to choose the four task models and translation chunk limit.
-6. Review the extracted paragraphs. Use the outline to jump between sections, or open a paragraph's `...` menu to edit, split, merge, or reflow it at complete sentences.
-7. Click `Translate` for aligned paragraph-by-paragraph translation. If a run is interrupted, the same button resumes unfinished paragraphs.
-8. Select any text in the original or translation to open the Research Inspector. From there you can translate, explain, highlight, or attach a note to the exact selection.
-9. Use the bookmark button on a paragraph to add it to the sidebar's bookmark list.
-10. Open the `Summary` workspace for source- and target-language summaries.
-11. Open `Full Translation` for an optional second, context-aware translation pass.
-12. Choose `More > Export Markdown` to export all available reading results, highlights, notes, and bookmarks.
+5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
+6. Start in the `Paper` workspace. For any PDF, `Original` uses Apple's native PDF viewer with the unchanged source file. For MinerU papers, `Bilingual` renders the reflowed structured Markdown, formulas, figures, tables, and section hierarchy.
+7. Open `Reader` for clean analysis blocks and the aligned bilingual reading workflow. Manual paragraph repair is available only for PDFKit or pasted-text documents because MinerU controls structured Markdown layout.
+8. Click `Translate` for aligned block-by-block translation. Formula, image, URL, code, and HTML tokens are protected before requests are sent to Ollama.
+9. Select text in `Paper`, `Reader`, either `Summary` panel, or `Full Translation` to open the Research Inspector. From there you can translate, explain, highlight, or attach a note to the exact selection.
+10. Use the bookmark button on a paragraph to add it to the sidebar's bookmark list.
+11. Open the `Summary` workspace for source- and target-language summaries.
+12. Open `Full Translation` for an optional context-aware translation. MinerU retains non-language Markdown blocks in place; PDFKit keeps the visual original unchanged and adds translation as a separate text layer.
+13. Choose `More > Export Markdown Bundle` and select a destination folder.
+
+For MinerU papers, the export folder contains:
+
+```text
+paper_original.md
+paper_translation_<language>.md
+paper_bilingual_<source>_<target>.md
+paper_analysis_notes.md
+original.pdf
+images and other locally referenced assets
+```
+
+For PDFKit facsimile papers, the export folder contains:
+
+```text
+paper_original.md
+paper_translation_<language>.md
+paper_bilingual_<source>_<target>.md
+paper_analysis_notes.md
+original.pdf
+pages/page-0001.png, page-0002.png, ...
+```
+
+`original.pdf` is copied without modification in both MinerU and PDFKit exports. PDFKit page PNG files additionally make the visual paper portable in Markdown viewers that cannot embed a PDF directly.
 
 ## Keyboard Shortcuts
 
@@ -321,11 +467,15 @@ PaperBridge stores recovery data only on the current Mac:
 ~/Library/Application Support/PaperBridge
 ```
 
-This includes app settings, the most recent workspace, translated paragraphs, summaries, bookmarks, highlights, and notes. Use `Models & Settings > Local Data` to clear this recovery data.
+This includes app settings, MinerU Markdown/assets, the most recent workspace, translated blocks, summaries, bookmarks, highlights, and notes. Use `Parser, Models & Settings > Local Data` to clear this recovery data.
 
 ## Behavior Notes
 
-- The app processes PDFs locally.
+- MinerU and PDFKit process PDFs locally. Initial MinerU model installation/download is the only optional parser setup step that requires internet access.
+- MinerU Markdown follows the paper's detected semantic structure and reading order, not its exact page geometry. The unchanged `original.pdf` remains the source of truth for visual comparison.
+- PDFKit facsimile uses only Apple frameworks already included with macOS. It saves an unchanged original PDF plus page images, so equations and figures remain visually exact even when semantic extraction is imperfect.
+- To prevent very long papers from consuming excessive disk space, portable PNG previews are capped at the first 120 pages. The unchanged `original.pdf` and native PDF viewer still contain every page.
+- Without OCR, an image-only scanned PDF has no text to send to Ollama. PaperBridge still enables exact preview and Markdown bundle export, but disables translation, summary, and explanation.
 - The app can also process pasted text locally without needing a PDF file.
 - Ollama calls are restricted to `localhost`, `127.0.0.1`, or `::1` on your Mac.
 - Building under `~/Projects` is recommended to avoid macOS protected-folder issues.
@@ -333,12 +483,12 @@ This includes app settings, the most recent workspace, translated paragraphs, su
 - Long paragraphs are chunked only for translation reliability.
 - Translation chunks are split at sentence or clause boundaries whenever possible, then reassembled into one translated paragraph.
 - PDF line-wrap fragments such as `mea- sure` and `out- perform` are repaired while established compounds such as `model-based` remain hyphenated.
-- Major section headings such as `Abstract`, `Introduction`, and `Methods` stay in the same translation paragraph as their opening text, but appear on their own line for readability.
+- MinerU headings remain independent Markdown heading blocks and drive the document outline.
 - If one paragraph translation fails, the rest continue.
 - Failed paragraphs have an individual `Retry` button.
-- Connected full-paper translation is optional and is not run automatically with `Translate Paper`.
-- If the app confidently detects a `References` or `Bibliography` section, it excludes that section while preserving a later methods or supplemental section when present.
-- PDF layouts vary. The paragraph menu and undo button are the safe fallback when an equation, unusual heading, or figure layout cannot be inferred automatically.
+- Full-paper translation is optional and is not run automatically with the reader translation.
+- If the app confidently detects a `References` or `Bibliography` section, it excludes those blocks from translation, summary, and explanation while retaining the original references in preview and exported Markdown.
+- If MinerU fails and fallback is enabled, PaperBridge explains the reason and switches to the model-free PDFKit facsimile plus its selectable-text reconstruction pipeline.
 
 ## Paragraph Regression Tests
 
@@ -348,7 +498,7 @@ After changing text extraction or paragraph rules, run:
 ./test_text_processing.sh
 ```
 
-The tests cover cross-page words, spaced PDF word fragments, incomplete phrases, citations, numbered and inline section headings, compound hyphens, equations, chart-label runs, numeric plot data, and references that appear before a later method or methods section.
+The tests cover cross-page words, spaced PDF word fragments, incomplete phrases, citations, headings, equations, chart-label runs, references, MinerU Markdown segmentation, protected formula/image tokens, structure-preserving reconstruction, asset discovery, MinerU process execution, exact PDF facsimile archiving, page rendering, cache reuse, and failed-output recovery.
 
 ## Troubleshooting
 
@@ -378,6 +528,30 @@ ollama pull translategemma:12b
 
 Then relaunch the app or click `Refresh Models`.
 
+### PaperBridge says MinerU is unavailable
+
+You can ignore this message if you do not want OCR/parser models. Open `Settings > Document Parsing`, choose `PDFKit facsimile (no OCR)`, and continue without installing Python dependencies.
+
+Digital PDFs with selectable text support translation, summary, and explanation in this mode. Image-only scans support exact preview and export only.
+
+If you do want MinerU, verify the dedicated environment:
+
+```bash
+~/.paperbridge-mineru/bin/mineru --version
+```
+
+If that works, open `PaperBridge > Settings > Document Parsing` and set:
+
+```text
+~/.paperbridge-mineru/bin/mineru
+```
+
+The GUI app does not inherit every shell-specific `PATH`, which is why PaperBridge supports both common-path discovery and an explicit executable path.
+
+### MinerU parsing is slow or uses too much memory
+
+Open `Settings > Document Parsing` and choose `Pipeline / Mac compatible (recommended)`, or choose `PDFKit facsimile (no OCR)`. The first MinerU run is normally the slowest because models may still be downloading or warming up.
+
 ### Translation is too slow
 
 Try a smaller local model, such as:
@@ -396,10 +570,29 @@ open "build/Build/Products/Release/PaperBridge.app"
 
 ### Finder or the Dock still shows an old or generic icon
 
-Quit any older copy of PaperBridge, rebuild with `./build_app.sh`, and open the app from `build/Build/Products/Release`. macOS caches app icons by bundle identifier, so opening the newest build once may be required before Finder and the Dock refresh it.
+Quit any older copy of PaperBridge, rebuild with `./build_app.sh`, and open the app from `build/Build/Products/Release`. The build script registers that exact app path with LaunchServices, and PaperBridge also refreshes its running icon from the bundled `AppIcon.icns`.
+
+If the Dock still keeps an older cached image, restart only the Dock once:
+
+```bash
+killall Dock
+```
+
+Then reopen:
+
+```bash
+open "build/Build/Products/Release/PaperBridge.app"
+```
 
 ## Sources
 
+- MinerU repository: [https://github.com/opendatalab/MinerU](https://github.com/opendatalab/MinerU)
+- MinerU official quick start: [https://opendatalab.github.io/MinerU/quick_start/](https://opendatalab.github.io/MinerU/quick_start/)
+- MinerU model download/source guide: [https://opendatalab.github.io/MinerU/usage/model_source/](https://opendatalab.github.io/MinerU/usage/model_source/)
+- MinerU CLI documentation: [https://opendatalab.github.io/MinerU/usage/cli_tools/](https://opendatalab.github.io/MinerU/usage/cli_tools/)
+- MinerU output formats: [https://opendatalab.github.io/MinerU/reference/output_files/](https://opendatalab.github.io/MinerU/reference/output_files/)
+- Apple PDFKit `PDFPage` documentation: [https://developer.apple.com/documentation/PDFKit/PDFPage](https://developer.apple.com/documentation/PDFKit/PDFPage)
+- Apple PDFKit `PDFSelection` documentation: [https://developer.apple.com/documentation/pdfkit/pdfselection](https://developer.apple.com/documentation/pdfkit/pdfselection)
 - Ollama TranslateGemma library: [https://ollama.com/library/translategemma](https://ollama.com/library/translategemma)
 - Ollama Gemma 4 library: [https://ollama.com/library/gemma4](https://ollama.com/library/gemma4)
 - Ollama download page: [https://ollama.com/download/mac](https://ollama.com/download/mac)
