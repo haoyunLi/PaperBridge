@@ -9,26 +9,34 @@ It reads academic PDFs locally, sends prompts to your local Ollama server, and s
 It can also:
 
 - generate a whole-paper summary in the source and target languages
-- explain a selected paragraph in simpler language
+- translate or explain an exact text selection without leaving the reader
+- highlight selected text, attach notes, and bookmark paragraphs
+- explain a full selected paragraph in simpler language
 - optionally create a second, connected full-paper translation for smoother context
 - export available summaries, connected translation, and aligned paragraphs as Markdown
 - accept pasted text directly when you do not want to load a PDF
+- restore the most recent paper, translations, reading position, bookmarks, and annotations
 
 ## Features
 
 - Native macOS app, not a browser app
+- Clean three-pane workspace with document outline, reader, and research inspector
 - Local PDF extraction with `PDFKit`
 - Local Ollama inference with `URLSession`
 - Selectable translation direction
 - PDF upload and pasted-text input
 - Automatic detection of installed Ollama models
-- Model dropdowns for translation, summary, and explanation
+- Dedicated model settings for translation, summary, paragraph explanation, and quick lookup
 - Progress bar during translation
 - Paragraph-by-paragraph processing with failure isolation
 - Cross-page word and sentence repair without character-based sentence cuts
 - Filtering of repeated headers, footers, and runs of extracted chart labels
 - Automatic skipping of detected reference sections, including papers with methods after references
 - Search plus bilingual, original-only, and translation-only reading modes
+- Section outline navigation and paragraph bookmarks
+- Selected-text translation, explanation, three-color highlights, and notes
+- Automatic local workspace recovery between launches
+- Native menu commands and keyboard shortcuts
 - Manual paragraph edit, split, merge, reflow, undo, and failed-translation retry controls
 - Optional connected full-paper translation view
 - Markdown export
@@ -178,6 +186,7 @@ Inside the app, you can choose:
 - translation model
 - summary model
 - explanation model
+- quick lookup model for selected-text translation and explanation
 
 The app is not fixed to one language pair. English to Simplified Chinese is only the default.
 
@@ -285,13 +294,34 @@ Then choose:
 2. Make sure Ollama is running locally.
 3. Open a PDF, drag one into the window, or paste text into the sidebar.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
-5. Confirm the model selections in the left sidebar.
-6. Review the extracted paragraphs before translation. Open a paragraph's `...` menu to edit, split, merge, or reflow it at complete sentences.
-7. Click `Translate Paper` for the aligned paragraph-by-paragraph translation.
-8. Optionally click `Connected Translation` for a separate context-aware full translation. This is a second model pass and can take longer.
-9. Optionally click `Summary`.
-10. Optionally select a paragraph, choose an explanation language, and click `Explain Selection`.
-11. Click `Export` to export all results currently available as Markdown.
+5. Open `Models & Settings` to choose the four task models and translation chunk limit.
+6. Review the extracted paragraphs. Use the outline to jump between sections, or open a paragraph's `...` menu to edit, split, merge, or reflow it at complete sentences.
+7. Click `Translate` for aligned paragraph-by-paragraph translation. If a run is interrupted, the same button resumes unfinished paragraphs.
+8. Select any text in the original or translation to open the Research Inspector. From there you can translate, explain, highlight, or attach a note to the exact selection.
+9. Use the bookmark button on a paragraph to add it to the sidebar's bookmark list.
+10. Open the `Summary` workspace for source- and target-language summaries.
+11. Open `Full Translation` for an optional second, context-aware translation pass.
+12. Choose `More > Export Markdown` to export all available reading results, highlights, notes, and bookmarks.
+
+## Keyboard Shortcuts
+
+- `Command-O`: open a PDF
+- `Command-Return`: translate or resume
+- `Command-Shift-E`: export Markdown
+- `Command-Shift-I`: show the Research Inspector
+- `Command-Shift-T`: translate selected text
+- `Command-Option-E`: explain selected text
+- `Command-Shift-H`: highlight selected text in amber
+
+## Local Recovery and Privacy
+
+PaperBridge stores recovery data only on the current Mac:
+
+```text
+~/Library/Application Support/PaperBridge
+```
+
+This includes app settings, the most recent workspace, translated paragraphs, summaries, bookmarks, highlights, and notes. Use `Models & Settings > Local Data` to clear this recovery data.
 
 ## Behavior Notes
 
@@ -302,6 +332,7 @@ Then choose:
 - The translation direction is configurable. English to Simplified Chinese is only the default, not the only option.
 - Long paragraphs are chunked only for translation reliability.
 - Translation chunks are split at sentence or clause boundaries whenever possible, then reassembled into one translated paragraph.
+- PDF line-wrap fragments such as `mea- sure` and `out- perform` are repaired while established compounds such as `model-based` remain hyphenated.
 - Major section headings such as `Abstract`, `Introduction`, and `Methods` stay in the same translation paragraph as their opening text, but appear on their own line for readability.
 - If one paragraph translation fails, the rest continue.
 - Failed paragraphs have an individual `Retry` button.
@@ -317,7 +348,7 @@ After changing text extraction or paragraph rules, run:
 ./test_text_processing.sh
 ```
 
-The tests cover cross-page words, incomplete phrases, citations, numbered and inline section headings, compound hyphens, equations, chart-label runs, numeric plot data, and references that appear before a later method or methods section.
+The tests cover cross-page words, spaced PDF word fragments, incomplete phrases, citations, numbered and inline section headings, compound hyphens, equations, chart-label runs, numeric plot data, and references that appear before a later method or methods section.
 
 ## Troubleshooting
 

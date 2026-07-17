@@ -70,6 +70,26 @@ struct TextProcessingRegression {
             output: ["We use a model-based objective."]
         )
 
+        expect(
+            name: "spaced PDF word fragments",
+            input: [
+                "The natu- ral mea- sure lets our model out- perform the baseline and supports re- search."
+            ],
+            output: [
+                "The natural measure lets our model outperform the baseline and supports research."
+            ]
+        )
+
+        expect(
+            name: "spaced PDF compound fragments",
+            input: [
+                "We compare a well- known model- based method with T- cell data and end- to-end training."
+            ],
+            output: [
+                "We compare a well-known model-based method with T-cell data and end-to-end training."
+            ]
+        )
+
         let headingOutput = TextProcessing.postProcessParagraphs([
             "Loss Function",
             "The loss combines two terms."

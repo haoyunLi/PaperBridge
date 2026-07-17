@@ -17,6 +17,12 @@
 		A10000002000000000000008 /* Hashing.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000008 /* Hashing.swift */; };
 		A10000002000000000000009 /* MarkdownDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000009 /* MarkdownDocument.swift */; };
 		A1000000200000000000000A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000000A /* Assets.xcassets */; };
+		A1000000200000000000000B /* PaperReaderViewModel+Selection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000000C /* PaperReaderViewModel+Selection.swift */; };
+		A1000000200000000000000C /* WorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000000D /* WorkspaceStore.swift */; };
+		A1000000200000000000000D /* PaperBridgeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000000E /* PaperBridgeUI.swift */; };
+		A1000000200000000000000E /* SelectableAcademicText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000000F /* SelectableAcademicText.swift */; };
+		A1000000200000000000000F /* SelectionInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000010 /* SelectionInspectorView.swift */; };
+		A10000002000000000000010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000011 /* SettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +37,12 @@
 		A10000001000000000000009 /* MarkdownDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownDocument.swift; sourceTree = "<group>"; };
 		A1000000100000000000000A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A1000000100000000000000B /* PaperBridge.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PaperBridge.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000000100000000000000C /* PaperReaderViewModel+Selection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PaperReaderViewModel+Selection.swift"; sourceTree = "<group>"; };
+		A1000000100000000000000D /* WorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkspaceStore.swift; sourceTree = "<group>"; };
+		A1000000100000000000000E /* PaperBridgeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaperBridgeUI.swift; sourceTree = "<group>"; };
+		A1000000100000000000000F /* SelectableAcademicText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectableAcademicText.swift; sourceTree = "<group>"; };
+		A10000001000000000000010 /* SelectionInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelectionInspectorView.swift; sourceTree = "<group>"; };
+		A10000001000000000000011 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -59,8 +71,10 @@
 				A10000001000000000000002 /* ContentView.swift */,
 				A10000001000000000000003 /* Models.swift */,
 				A10000001000000000000004 /* PaperReaderViewModel.swift */,
+				A1000000100000000000000C /* PaperReaderViewModel+Selection.swift */,
 				A10000004000000000000004 /* Services */,
 				A10000004000000000000005 /* Utilities */,
+				A10000004000000000000006 /* Views */,
 				A1000000100000000000000A /* Assets.xcassets */,
 			);
 			path = PaperBridge;
@@ -80,6 +94,7 @@
 				A10000001000000000000005 /* OllamaClient.swift */,
 				A10000001000000000000006 /* PDFTextExtractor.swift */,
 				A10000001000000000000007 /* TextProcessing.swift */,
+				A1000000100000000000000D /* WorkspaceStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -91,6 +106,17 @@
 				A10000001000000000000009 /* MarkdownDocument.swift */,
 			);
 			path = Utilities;
+			sourceTree = "<group>";
+		};
+		A10000004000000000000006 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A1000000100000000000000E /* PaperBridgeUI.swift */,
+				A1000000100000000000000F /* SelectableAcademicText.swift */,
+				A10000001000000000000010 /* SelectionInspectorView.swift */,
+				A10000001000000000000011 /* SettingsView.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -168,9 +194,15 @@
 				A10000002000000000000003 /* Models.swift in Sources */,
 				A10000002000000000000005 /* OllamaClient.swift in Sources */,
 				A10000002000000000000004 /* PaperReaderViewModel.swift in Sources */,
+				A1000000200000000000000B /* PaperReaderViewModel+Selection.swift in Sources */,
 				A10000002000000000000001 /* PaperBridgeApp.swift in Sources */,
 				A10000002000000000000006 /* PDFTextExtractor.swift in Sources */,
 				A10000002000000000000007 /* TextProcessing.swift in Sources */,
+				A1000000200000000000000C /* WorkspaceStore.swift in Sources */,
+				A1000000200000000000000D /* PaperBridgeUI.swift in Sources */,
+				A1000000200000000000000E /* SelectableAcademicText.swift in Sources */,
+				A1000000200000000000000F /* SelectionInspectorView.swift in Sources */,
+				A10000002000000000000010 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

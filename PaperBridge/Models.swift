@@ -1,16 +1,17 @@
 import Foundation
 
-struct AppSettings: Hashable {
+struct AppSettings: Hashable, Codable {
     var ollamaBaseURL = "http://localhost:11434"
     var translationModel = "translategemma:12b"
     var summaryModel = "translategemma:12b"
     var explainModel = "translategemma:12b"
+    var quickLookupModel = "translategemma:12b"
     var sourceLanguage: ReaderLanguage = .english
     var targetLanguage: ReaderLanguage = .simplifiedChinese
     var maxParagraphChars = 1800
 }
 
-enum ReaderLanguage: String, CaseIterable, Identifiable, Hashable {
+enum ReaderLanguage: String, CaseIterable, Identifiable, Hashable, Codable {
     case english
     case simplifiedChinese
     case traditionalChinese
@@ -111,13 +112,13 @@ enum ReaderLanguage: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
-enum TranslationStatus: String, Hashable {
+enum TranslationStatus: String, Hashable, Codable {
     case pending
     case ok
     case failed
 }
 
-enum ReaderDisplayMode: String, CaseIterable, Identifiable {
+enum ReaderDisplayMode: String, CaseIterable, Identifiable, Codable {
     case bilingual
     case sourceOnly
     case translationOnly
@@ -136,14 +137,151 @@ enum ReaderDisplayMode: String, CaseIterable, Identifiable {
     }
 }
 
-struct ParagraphTranslationSnapshot: Hashable {
+enum ReaderWorkspaceMode: String, CaseIterable, Identifiable, Codable {
+    case reader
+    case summary
+    case fullTranslation
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .reader:
+            return "Reader"
+        case .summary:
+            return "Summary"
+        case .fullTranslation:
+            return "Full Translation"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .reader:
+            return "text.book.closed"
+        case .summary:
+            return "list.bullet.rectangle"
+        case .fullTranslation:
+            return "text.append"
+        }
+    }
+}
+
+enum ReaderTextSide: String, Hashable, Codable {
+    case original
+    case translation
+
+    var displayName: String {
+        switch self {
+        case .original:
+            return "Original"
+        case .translation:
+            return "Translation"
+        }
+    }
+}
+
+struct ReaderTextSelection: Hashable {
+    let paragraphID: Int
+    let side: ReaderTextSide
+    let text: String
+    let context: String
+    let rangeLocation: Int
+    let rangeLength: Int
+
+    var identity: String {
+        "\(paragraphID)|\(side.rawValue)|\(rangeLocation)|\(rangeLength)|\(text)"
+    }
+}
+
+enum PaperHighlightColor: String, CaseIterable, Identifiable, Codable {
+    case amber
+    case teal
+    case coral
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .amber:
+            return "Amber"
+        case .teal:
+            return "Teal"
+        case .coral:
+            return "Coral"
+        }
+    }
+}
+
+struct PaperAnnotation: Identifiable, Hashable, Codable {
+    let id: UUID
+    let paragraphID: Int
+    let side: ReaderTextSide
+    let quote: String
+    let rangeLocation: Int
+    let rangeLength: Int
+    var highlightColor: PaperHighlightColor?
+    var note: String
+    let createdAt: Date
+
+    init(
+        id: UUID = UUID(),
+        paragraphID: Int,
+        side: ReaderTextSide,
+        quote: String,
+        rangeLocation: Int,
+        rangeLength: Int,
+        highlightColor: PaperHighlightColor? = nil,
+        note: String = "",
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.paragraphID = paragraphID
+        self.side = side
+        self.quote = quote
+        self.rangeLocation = rangeLocation
+        self.rangeLength = rangeLength
+        self.highlightColor = highlightColor
+        self.note = note
+        self.createdAt = createdAt
+    }
+
+    func resolvedRange(in text: String) -> NSRange? {
+        let nsText = text as NSString
+        let savedRange = NSRange(location: rangeLocation, length: rangeLength)
+        if savedRange.location != NSNotFound,
+           savedRange.location >= 0,
+           savedRange.length > 0,
+           NSMaxRange(savedRange) <= nsText.length,
+           nsText.substring(with: savedRange) == quote {
+            return savedRange
+        }
+
+        let recoveredRange = nsText.range(of: quote)
+        return recoveredRange.location == NSNotFound ? nil : recoveredRange
+    }
+}
+
+struct DocumentSection: Identifiable, Hashable {
+    let paragraphID: Int
+    let title: String
+
+    var id: Int { paragraphID }
+}
+
+struct ParagraphNavigationRequest: Equatable {
+    let id = UUID()
+    let paragraphID: Int
+}
+
+struct ParagraphTranslationSnapshot: Hashable, Codable {
     let translation: String
     let status: TranslationStatus
     let errorMessage: String?
     let chunkCount: Int
 }
 
-struct ParagraphResult: Identifiable, Hashable {
+struct ParagraphResult: Identifiable, Hashable, Codable {
     let id: Int
     let original: String
     var translation: String = ""
@@ -158,7 +296,7 @@ struct ParagraphResult: Identifiable, Hashable {
     }
 }
 
-struct PaperDocument: Hashable {
+struct PaperDocument: Hashable, Codable {
     let name: String
     let checksum: String
     let cleanedText: String
@@ -171,14 +309,14 @@ struct PaperDocument: Hashable {
     }
 }
 
-struct SummaryResult: Hashable {
+struct SummaryResult: Hashable, Codable {
     let sourceLanguage: ReaderLanguage
     let targetLanguage: ReaderLanguage
     let sourceSummary: String
     let targetSummary: String
 }
 
-struct ConnectedTranslationResult: Hashable {
+struct ConnectedTranslationResult: Hashable, Codable {
     let sourceLanguage: ReaderLanguage
     let targetLanguage: ReaderLanguage
     let text: String
@@ -295,6 +433,44 @@ enum PromptLibrary {
 
         Paragraph:
         \(paragraph)
+        """
+    }
+
+    static func selectionTranslationPrompt(
+        selection: String,
+        context: String,
+        from sourceLanguage: ReaderLanguage,
+        to targetLanguage: ReaderLanguage
+    ) -> String {
+        """
+        Translate the selected academic text from \(sourceLanguage.displayName) into \(targetLanguage.displayName).
+        Use the surrounding paragraph only to resolve terminology, pronouns, abbreviations, and ambiguity.
+        Preserve scientific meaning, symbols, units, named entities, and citation markers.
+        Return only the translation of the selected text.
+
+        Selected text:
+        \(selection)
+
+        Surrounding paragraph:
+        \(context)
+        """
+    }
+
+    static func selectionExplanationPrompt(
+        selection: String,
+        context: String,
+        language: ReaderLanguage
+    ) -> String {
+        """
+        Explain the selected academic text in \(language.simpleDescription).
+        Use the surrounding paragraph for context.
+        Be concise and accurate, and do not invent claims.
+
+        Selected text:
+        \(selection)
+
+        Surrounding paragraph:
+        \(context)
         """
     }
 }

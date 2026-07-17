@@ -59,11 +59,20 @@ enum TextProcessing {
         "center",
         "medical center"
     ]
+    private static let hyphenatedCompoundSuffixes: Set<String> = [
+        "aware", "based", "cell", "class", "dependent", "defined",
+        "dimensional", "domain", "driven", "free", "level", "like",
+        "making", "order", "range", "related", "resolution", "reviewed",
+        "scale", "source", "space", "specific", "stage", "step",
+        "supervised", "term", "time", "to", "trained", "tuning",
+        "validation", "wise", "known"
+    ]
 
     static func normalizeExtractedLine(_ text: String) -> String {
         let noTabs = text.replacingOccurrences(of: "\t", with: " ")
         let singleLine = replaceMatches(in: noTabs, pattern: "\\s*\\n\\s*", template: " ")
-        return replaceMatches(in: singleLine, pattern: "\\s{2,}", template: " ")
+        let repaired = repairSpacedHyphenation(singleLine)
+        return replaceMatches(in: repaired, pattern: "\\s{2,}", template: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -241,6 +250,19 @@ enum TextProcessing {
         text.components(separatedBy: "\n\n")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    static func detectedSectionTitle(in paragraph: String) -> String? {
+        let formatted = formatLeadingSectionHeading(paragraph)
+        guard let firstLine = formatted
+            .components(separatedBy: .newlines)
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }),
+            isLikelySectionHeading(firstLine) else {
+            return nil
+        }
+
+        return firstLine
     }
 
     static func excludeReferenceSection(from paragraphs: [String]) -> (
@@ -450,7 +472,8 @@ enum TextProcessing {
 
         var expanded: [String] = []
         for paragraph in paragraphs {
-            expanded.append(contentsOf: splitParagraphAroundInlineSectionMarkers(paragraph))
+            let repaired = repairSpacedHyphenation(paragraph)
+            expanded.append(contentsOf: splitParagraphAroundInlineSectionMarkers(repaired))
         }
 
         let withoutVisualRuns = removeVisualArtifactRuns(expanded)
@@ -2265,17 +2288,48 @@ enum TextProcessing {
             .map(String.init)?
             .trimmingCharacters(in: .punctuationCharacters)
             .lowercased() ?? ""
-        let compoundSuffixes: Set<String> = [
-            "aware", "based", "class", "dependent", "dimensional", "domain",
-            "driven", "free", "level", "like", "order", "range", "related",
-            "resolution", "scale", "space", "specific", "stage", "step", "term",
-            "time", "wise"
-        ]
-        if compoundSuffixes.contains(nextToken) {
+        if hyphenatedCompoundSuffixes.contains(nextToken) {
             return false
         }
 
         return first.isLowercase || previousToken.count <= 5
+    }
+
+    private static func repairSpacedHyphenation(_ text: String) -> String {
+        let pattern = #"\b([A-Za-z]{1,30}(?:-[A-Za-z]{1,30})*)-\s+([a-z][A-Za-z]{1,30})\b"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return text
+        }
+
+        let source = text as NSString
+        let matches = regex.matches(
+            in: text,
+            range: NSRange(location: 0, length: source.length)
+        )
+        guard !matches.isEmpty else { return text }
+
+        let repaired = NSMutableString(string: text)
+        for match in matches.reversed() {
+            guard match.numberOfRanges == 3,
+                  match.range(at: 1).location != NSNotFound,
+                  match.range(at: 2).location != NSNotFound else {
+                continue
+            }
+
+            let leftToken = source.substring(with: match.range(at: 1))
+            let rightToken = source.substring(with: match.range(at: 2))
+            let replacement: String
+
+            if shouldRemoveLineBreakHyphen(left: leftToken + "-", right: rightToken) {
+                replacement = leftToken + rightToken
+            } else {
+                replacement = leftToken + "-" + rightToken
+            }
+
+            repaired.replaceCharacters(in: match.range, with: replacement)
+        }
+
+        return repaired as String
     }
 
     private static func startsWithGenericNumberedHeading(_ text: String) -> Bool {

@@ -7,6 +7,10 @@ final class PaperReaderViewModel: ObservableObject {
         didSet {
             guard settings != oldValue else { return }
             handleSettingsChange(from: oldValue)
+            if !isRestoringWorkspace {
+                workspaceStore.saveSettings(settings)
+                persistWorkspace()
+            }
         }
     }
     @Published var loadedPaper: PaperDocument?
@@ -20,10 +24,26 @@ final class PaperReaderViewModel: ObservableObject {
             if let paper = loadedPaper {
                 restoreCachedExplanationIfAvailable(for: paper)
             }
+            if let selection = activeTextSelection {
+                selectionExplanation = ""
+                restoreSelectionLookupCache(for: selection)
+            }
+            persistWorkspace()
         }
     }
     @Published var explanationText = ""
-    @Published var displayMode: ReaderDisplayMode = .bilingual
+    @Published var displayMode: ReaderDisplayMode = .bilingual {
+        didSet {
+            guard displayMode != oldValue else { return }
+            persistWorkspace()
+        }
+    }
+    @Published var workspaceMode: ReaderWorkspaceMode = .reader {
+        didSet {
+            guard workspaceMode != oldValue else { return }
+            persistWorkspace()
+        }
+    }
     @Published var paragraphSearchText = ""
     @Published var manualInputText = ""
     @Published var selectedParagraphID: Int? {
@@ -33,6 +53,7 @@ final class PaperReaderViewModel: ObservableObject {
             if let paper = loadedPaper {
                 restoreCachedExplanationIfAvailable(for: paper)
             }
+            persistWorkspace()
         }
     }
     @Published var editingParagraphID: Int?
@@ -49,11 +70,28 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var availableModels: [String] = []
     @Published var isRefreshingModels = false
     @Published var modelRefreshError: String?
+    @Published var isInspectorPresented = false {
+        didSet {
+            guard isInspectorPresented != oldValue else { return }
+            persistWorkspace()
+        }
+    }
+    @Published var activeTextSelection: ReaderTextSelection?
+    @Published var selectionTranslation = ""
+    @Published var selectionExplanation = ""
+    @Published var selectionLookupStatus = ""
+    @Published var selectionLookupError: String?
+    @Published var isSelectionLookupBusy = false
+    @Published var annotations: [PaperAnnotation] = []
+    @Published var bookmarkedParagraphIDs: Set<Int> = []
+    @Published var navigationRequest: ParagraphNavigationRequest?
 
-    private let ollamaClient = OllamaClient()
+    let ollamaClient = OllamaClient()
+    private let workspaceStore: WorkspaceStore
     private var activeTask: Task<Void, Never>?
     private var modelRefreshTask: Task<Void, Never>?
     private var paragraphUndoStack: [ParagraphEditSnapshot] = []
+    var selectionTask: Task<Void, Never>?
 
     private var extractedPaperCache: [String: PaperDocument] = [:]
     private var chunkTranslationCache: [String: String] = [:]
@@ -62,10 +100,55 @@ final class PaperReaderViewModel: ObservableObject {
     private var connectedTranslationCache: [String: ConnectedTranslationResult] = [:]
     private var summaryCache: [String: SummaryResult] = [:]
     private var explanationCache: [String: String] = [:]
+    var selectionLookupCache: [String: String] = [:]
+    private var isRestoringWorkspace = false
+
+    init(workspaceStore: WorkspaceStore = WorkspaceStore()) {
+        self.workspaceStore = workspaceStore
+
+        if let savedSettings = workspaceStore.loadSettings() {
+            settings = savedSettings
+        }
+
+        guard let workspace = workspaceStore.loadLastWorkspace() else { return }
+
+        loadedPaper = workspace.paper
+        annotations = workspace.annotations
+        bookmarkedParagraphIDs = workspace.bookmarkedParagraphIDs
+        selectedParagraphID = workspace.selectedParagraphID
+        displayMode = workspace.displayMode
+        workspaceMode = workspace.workspaceMode
+        explanationLanguage = workspace.explanationLanguage
+        isInspectorPresented = workspace.isInspectorPresented
+
+        let canRestoreGeneratedOutput =
+            workspace.settings == settings &&
+            workspace.paragraphResults.map(\.original) == workspace.paper.paragraphs
+
+        if canRestoreGeneratedOutput {
+            paragraphResults = workspace.paragraphResults
+            connectedTranslation = workspace.connectedTranslation
+            summaries = workspace.summaries
+            explanationText = workspace.explanationText
+            paperTranslationCache[
+                translationCacheKey(for: workspace.paper, settings: settings)
+            ] = workspace.paragraphResults
+        } else {
+            paragraphResults = workspace.paper.paragraphs.enumerated().map { index, paragraph in
+                ParagraphResult(id: index + 1, original: paragraph)
+            }
+            connectedTranslation = nil
+            summaries = nil
+            explanationText = ""
+        }
+
+        statusMessage = "Restored \(workspace.paper.name) from local PaperBridge storage."
+    }
 
     deinit {
         activeTask?.cancel()
         modelRefreshTask?.cancel()
+        selectionTask?.cancel()
     }
 
     var translatedCount: Int {
@@ -100,6 +183,20 @@ final class PaperReaderViewModel: ObservableObject {
         !paragraphResults.isEmpty && !isBusy
     }
 
+    var canPerformPrimaryWorkspaceAction: Bool {
+        guard loadedPaper != nil, !isBusy else { return false }
+
+        switch workspaceMode {
+        case .reader:
+            return paragraphResults.contains { $0.status != .ok }
+        case .summary:
+            return summaries == nil
+        case .fullTranslation:
+            return connectedTranslation == nil ||
+                connectedTranslation?.failedBatchCount ?? 0 > 0
+        }
+    }
+
     var selectedParagraph: ParagraphResult? {
         paragraphResults.first(where: { $0.id == selectedParagraphID })
     }
@@ -126,6 +223,22 @@ final class PaperReaderViewModel: ObservableObject {
         !availableModels.isEmpty
     }
 
+    var documentSections: [DocumentSection] {
+        let detected = paragraphResults.compactMap { paragraph -> DocumentSection? in
+            guard let title = TextProcessing.detectedSectionTitle(in: paragraph.original) else {
+                return nil
+            }
+            return DocumentSection(paragraphID: paragraph.id, title: title)
+        }
+
+        if !detected.isEmpty {
+            return detected
+        }
+
+        guard let firstParagraphID = paragraphResults.first?.id else { return [] }
+        return [DocumentSection(paragraphID: firstParagraphID, title: "Beginning")]
+    }
+
     private struct ParagraphEditSnapshot {
         let paragraphs: [String]
         let selectedIndex: Int?
@@ -137,6 +250,80 @@ final class PaperReaderViewModel: ObservableObject {
 
     func clearError() {
         errorMessage = nil
+    }
+
+    func toggleInspector() {
+        isInspectorPresented.toggle()
+    }
+
+    func performPrimaryWorkspaceAction() {
+        switch workspaceMode {
+        case .reader:
+            translatePaper()
+        case .summary:
+            generateSummaries()
+        case .fullTranslation:
+            generateConnectedTranslation()
+        }
+    }
+
+    func navigateToParagraph(_ paragraphID: Int) {
+        guard paragraphResults.contains(where: { $0.id == paragraphID }) else { return }
+        paragraphSearchText = ""
+        selectedParagraphID = paragraphID
+        navigationRequest = ParagraphNavigationRequest(paragraphID: paragraphID)
+    }
+
+    func toggleBookmark(for paragraphID: Int) {
+        if bookmarkedParagraphIDs.contains(paragraphID) {
+            bookmarkedParagraphIDs.remove(paragraphID)
+        } else {
+            bookmarkedParagraphIDs.insert(paragraphID)
+        }
+        persistWorkspace()
+    }
+
+    func clearSavedData() {
+        activeTask?.cancel()
+        selectionTask?.cancel()
+        activeTask = nil
+        selectionTask = nil
+        workspaceStore.clearAll()
+
+        isRestoringWorkspace = true
+        settings = AppSettings()
+        loadedPaper = nil
+        paragraphResults = []
+        connectedTranslation = nil
+        summaries = nil
+        explanationText = ""
+        selectedParagraphID = nil
+        activeTextSelection = nil
+        selectionTranslation = ""
+        selectionExplanation = ""
+        selectionLookupStatus = ""
+        selectionLookupError = nil
+        annotations = []
+        bookmarkedParagraphIDs = []
+        workspaceMode = .reader
+        displayMode = .bilingual
+        isInspectorPresented = false
+        isBusy = false
+        isSelectionLookupBusy = false
+        progressValue = 0
+        manualInputText = ""
+        paragraphUndoStack.removeAll()
+        canUndoParagraphEdit = false
+        extractedPaperCache.removeAll()
+        chunkTranslationCache.removeAll()
+        paragraphTranslationCache.removeAll()
+        paperTranslationCache.removeAll()
+        connectedTranslationCache.removeAll()
+        summaryCache.removeAll()
+        explanationCache.removeAll()
+        selectionLookupCache.removeAll()
+        isRestoringWorkspace = false
+        statusMessage = "Saved PaperBridge workspaces were removed from this Mac."
     }
 
     func swapTranslationLanguages() {
@@ -193,6 +380,7 @@ final class PaperReaderViewModel: ObservableObject {
         isBusy = false
         statusMessage = "The current task was cancelled."
         progressValue = 0
+        persistWorkspace()
     }
 
     func handleFileImport(_ result: Result<[URL], Error>) {
@@ -244,6 +432,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.paragraphResults = cached
                 self.progressValue = 1
                 self.statusMessage = "Using cached paragraph translations for this paper and settings."
+                self.persistWorkspace()
                 return
             }
 
@@ -284,6 +473,9 @@ final class PaperReaderViewModel: ObservableObject {
 
                 self.paragraphResults = workingResults
                 self.progressValue = Double(index + 1) / Double(max(workingResults.count, 1))
+                if index.isMultiple(of: 5) || index == workingResults.indices.last {
+                    self.persistWorkspace()
+                }
             }
 
             self.paperTranslationCache[cacheKey] = workingResults
@@ -297,6 +489,7 @@ final class PaperReaderViewModel: ObservableObject {
             } else {
                 self.statusMessage = "Paragraph translation finished."
             }
+            self.persistWorkspace()
         }
     }
 
@@ -314,6 +507,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.connectedTranslation = cached
                 self.progressValue = 1
                 self.statusMessage = "Using the cached connected full translation."
+                self.persistWorkspace()
                 return
             }
 
@@ -329,6 +523,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.connectedTranslationCache[cacheKey] = result
                 self.progressValue = 1
                 self.statusMessage = "Source and target languages match, so the original text was reused."
+                self.persistWorkspace()
                 return
             }
 
@@ -354,7 +549,9 @@ final class PaperReaderViewModel: ObservableObject {
             }
 
             self.connectedTranslation = result
-            self.connectedTranslationCache[cacheKey] = result
+            if result.failedBatchCount == 0 {
+                self.connectedTranslationCache[cacheKey] = result
+            }
             self.progressValue = 1
 
             if result.failedBatchCount > 0 {
@@ -362,6 +559,7 @@ final class PaperReaderViewModel: ObservableObject {
             } else {
                 self.statusMessage = "Connected full translation finished."
             }
+            self.persistWorkspace()
         }
     }
 
@@ -398,6 +596,7 @@ final class PaperReaderViewModel: ObservableObject {
             } else {
                 self.statusMessage = "Paragraph \(paragraphID) still failed. Other paragraphs were not affected."
             }
+            self.persistWorkspace()
         }
     }
 
@@ -417,6 +616,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.summaries = cached
                 self.progressValue = 1
                 self.statusMessage = "Using cached summaries for this paper and settings."
+                self.persistWorkspace()
                 return
             }
 
@@ -481,6 +681,7 @@ final class PaperReaderViewModel: ObservableObject {
             self.summaryCache[cacheKey] = result
             self.progressValue = 1
             self.statusMessage = "Summary finished."
+            self.persistWorkspace()
         }
     }
 
@@ -505,6 +706,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.explanationText = cached
                 self.progressValue = 1
                 self.statusMessage = "Using cached explanation for paragraph \(selectedParagraph.id)."
+                self.persistWorkspace()
                 return
             }
 
@@ -522,6 +724,7 @@ final class PaperReaderViewModel: ObservableObject {
             self.explanationCache[cacheKey] = explanation
             self.progressValue = 1
             self.statusMessage = "Explanation finished."
+            self.persistWorkspace()
         }
     }
 
@@ -670,15 +873,23 @@ final class PaperReaderViewModel: ObservableObject {
                 self.isBusy = false
                 self.progressValue = 0
                 self.statusMessage = "The current task was cancelled."
+                self.persistWorkspace()
             } catch {
                 self.isBusy = false
                 self.progressValue = 0
                 self.presentError(error.localizedDescription)
+                self.persistWorkspace()
             }
         }
     }
 
     private func applyLoadedPaper(_ paper: PaperDocument) {
+        isRestoringWorkspace = true
+        defer {
+            isRestoringWorkspace = false
+            persistWorkspace()
+        }
+
         paragraphUndoStack.removeAll()
         canUndoParagraphEdit = false
         editingParagraphID = nil
@@ -686,14 +897,49 @@ final class PaperReaderViewModel: ObservableObject {
         isParagraphEditorPresented = false
         paragraphSearchText = ""
         loadedPaper = paper
+        activeTextSelection = nil
+        selectionTranslation = ""
+        selectionExplanation = ""
+        selectionLookupStatus = ""
+        selectionLookupError = nil
+        progressValue = 0
+
+        if let saved = workspaceStore.loadWorkspace(checksum: paper.checksum) {
+            annotations = saved.annotations
+            bookmarkedParagraphIDs = saved.bookmarkedParagraphIDs
+            selectedParagraphID = saved.selectedParagraphID ?? paper.paragraphs.indices.first.map { $0 + 1 }
+            displayMode = saved.displayMode
+            workspaceMode = saved.workspaceMode
+            explanationLanguage = saved.explanationLanguage
+            isInspectorPresented = saved.isInspectorPresented
+
+            let canRestoreGeneratedOutput =
+                saved.settings == settings &&
+                saved.paragraphResults.map(\.original) == paper.paragraphs
+
+            if canRestoreGeneratedOutput {
+                paragraphResults = saved.paragraphResults
+                connectedTranslation = saved.connectedTranslation
+                summaries = saved.summaries
+                explanationText = saved.explanationText
+                paperTranslationCache[
+                    translationCacheKey(for: paper, settings: settings)
+                ] = saved.paragraphResults
+                statusMessage = "Restored saved translation and annotations for \(paper.name)."
+                return
+            }
+        } else {
+            annotations = []
+            bookmarkedParagraphIDs = []
+            selectedParagraphID = paper.paragraphs.indices.first.map { $0 + 1 }
+        }
+
         paragraphResults = paper.paragraphs.enumerated().map { index, paragraph in
             ParagraphResult(id: index + 1, original: paragraph)
         }
-        selectedParagraphID = paragraphResults.first?.id
         connectedTranslation = nil
         summaries = nil
         explanationText = ""
-        progressValue = 0
         restoreCachedOutputsIfAvailable(for: paper)
 
         if paper.excludedReferenceCount > 0 {
@@ -1025,6 +1271,7 @@ final class PaperReaderViewModel: ObservableObject {
         progressValue = 0
         restoreCachedOutputsIfAvailable(for: updatedPaper)
         statusMessage = message + " Re-run translation for changed paragraphs."
+        persistWorkspace()
     }
 
     private func handleSettingsChange(from oldSettings: AppSettings) {
@@ -1060,6 +1307,17 @@ final class PaperReaderViewModel: ObservableObject {
 
         if endpointChanged || settings.explainModel != oldSettings.explainModel {
             explanationText = ""
+        }
+
+        if endpointChanged ||
+            directionChanged ||
+            settings.quickLookupModel != oldSettings.quickLookupModel {
+            selectionTask?.cancel()
+            selectionTranslation = ""
+            selectionExplanation = ""
+            selectionLookupStatus = ""
+            selectionLookupError = nil
+            isSelectionLookupBusy = false
         }
 
         restoreCachedOutputsIfAvailable(for: paper)
@@ -1139,6 +1397,10 @@ final class PaperReaderViewModel: ObservableObject {
         for paragraph in paragraphResults {
             lines.append("## Paragraph \(paragraph.id)")
             lines.append("")
+            if bookmarkedParagraphIDs.contains(paragraph.id) {
+                lines.append("> Bookmarked in PaperBridge")
+                lines.append("")
+            }
             lines.append("### Original \(settings.sourceLanguage.displayName)")
             lines.append("")
             lines.append(paragraph.original)
@@ -1155,9 +1417,49 @@ final class PaperReaderViewModel: ObservableObject {
             }
 
             lines.append("")
+
+            let paragraphAnnotations = annotations
+                .filter { $0.paragraphID == paragraph.id }
+                .sorted { $0.createdAt < $1.createdAt }
+            if !paragraphAnnotations.isEmpty {
+                lines.append("### Highlights and Notes")
+                lines.append("")
+                for annotation in paragraphAnnotations {
+                    let quote = annotation.quote
+                        .replacingOccurrences(of: "\n", with: " ")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    lines.append("- **\(annotation.side.displayName):** “\(quote)”")
+                    let note = annotation.note.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !note.isEmpty {
+                        lines.append("  - Note: \(note)")
+                    }
+                }
+                lines.append("")
+            }
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    func persistWorkspace() {
+        guard !isRestoringWorkspace, let paper = loadedPaper else { return }
+
+        let workspace = PersistedWorkspace(
+            settings: settings,
+            paper: paper,
+            paragraphResults: paragraphResults,
+            connectedTranslation: connectedTranslation,
+            summaries: summaries,
+            selectedParagraphID: selectedParagraphID,
+            displayMode: displayMode,
+            workspaceMode: workspaceMode,
+            explanationLanguage: explanationLanguage,
+            explanationText: explanationText,
+            annotations: annotations,
+            bookmarkedParagraphIDs: bookmarkedParagraphIDs,
+            isInspectorPresented: isInspectorPresented
+        )
+        workspaceStore.saveWorkspace(workspace)
     }
 
     private func presentError(_ message: String?) {
@@ -1184,6 +1486,11 @@ final class PaperReaderViewModel: ObservableObject {
         updatedSettings.explainModel = selectModel(
             current: updatedSettings.explainModel,
             preferred: updatedSettings.translationModel,
+            available: models
+        )
+        updatedSettings.quickLookupModel = selectModel(
+            current: updatedSettings.quickLookupModel,
+            preferred: updatedSettings.explainModel,
             available: models
         )
         settings = updatedSettings
