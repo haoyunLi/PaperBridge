@@ -72,11 +72,25 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var availableModels: [String] = []
     @Published var isRefreshingModels = false
     @Published var modelRefreshError: String?
+    @Published var isOllamaReachable = false
+    @Published var ollamaInstallation = OllamaInstallationStatus(applicationURL: nil)
+    @Published var isInstallingOllama = false
+    @Published var ollamaInstallProgress: Double?
+    @Published var ollamaInstallStatus = "Check whether Ollama is installed on this Mac."
+    @Published var ollamaInstallError: String?
+    @Published var isPullingRecommendedModel = false
+    @Published var recommendedModelProgress: Double?
+    @Published var recommendedModelStatus = "Download the recommended 4B translation model."
+    @Published var recommendedModelError: String?
     @Published var minerUStatus = MinerUToolStatus(
         executablePath: nil,
         message: "MinerU status has not been checked yet."
     )
     @Published var isRefreshingMinerU = false
+    @Published var isInstallingMinerU = false
+    @Published var minerUInstallProgress: Double?
+    @Published var minerUInstallStatus = "Install MinerU in an isolated environment managed by PaperBridge."
+    @Published var minerUInstallError: String?
     @Published var isInspectorPresented = false {
         didSet {
             guard isInspectorPresented != oldValue else { return }
@@ -95,11 +109,15 @@ final class PaperReaderViewModel: ObservableObject {
 
     let ollamaClient = OllamaClient()
     let minerUService = MinerUService()
+    let localToolInstaller = LocalToolInstaller()
     private let workspaceStore: WorkspaceStore
     private let markdownBundleExporter = MarkdownBundleExporter()
     private var activeTask: Task<Void, Never>?
     private var modelRefreshTask: Task<Void, Never>?
     private var minerUStatusTask: Task<Void, Never>?
+    var ollamaInstallTask: Task<Void, Never>?
+    var recommendedModelPullTask: Task<Void, Never>?
+    var minerUInstallTask: Task<Void, Never>?
     private var paragraphUndoStack: [ParagraphEditSnapshot] = []
     var selectionTask: Task<Void, Never>?
 
@@ -157,8 +175,12 @@ final class PaperReaderViewModel: ObservableObject {
         activeTask?.cancel()
         modelRefreshTask?.cancel()
         minerUStatusTask?.cancel()
+        ollamaInstallTask?.cancel()
+        recommendedModelPullTask?.cancel()
+        minerUInstallTask?.cancel()
         selectionTask?.cancel()
         minerUService.cancelCurrentRun()
+        localToolInstaller.cancelAll()
     }
 
     var translatedCount: Int {
@@ -492,12 +514,26 @@ final class PaperReaderViewModel: ObservableObject {
                 let models = try await self.ollamaClient.listModels(baseURL: self.settings.ollamaBaseURL)
                 let sortedModels = Array(Set(models)).sorted()
                 self.availableModels = sortedModels
+                self.isOllamaReachable = true
+                self.ollamaInstallation = self.localToolInstaller.ollamaInstallationStatus()
+                self.ollamaInstallStatus = "Ollama is installed and its local API is ready."
+                if !self.isPullingRecommendedModel {
+                    self.recommendedModelError = nil
+                    self.recommendedModelStatus = sortedModels.contains(AppSettings.recommendedLocalModel)
+                        ? "TranslateGemma 4B is installed locally."
+                        : "TranslateGemma 4B is not downloaded yet."
+                }
                 self.syncModelSelections(with: sortedModels)
             } catch is CancellationError {
                 self.isRefreshingModels = false
                 return
             } catch {
                 self.availableModels = []
+                self.isOllamaReachable = false
+                self.ollamaInstallation = self.localToolInstaller.ollamaInstallationStatus()
+                if self.ollamaInstallation.isInstalled && !self.isInstallingOllama {
+                    self.ollamaInstallStatus = "Ollama is installed but its local service is not connected."
+                }
                 self.modelRefreshError = error.localizedDescription
             }
 
@@ -511,14 +547,15 @@ final class PaperReaderViewModel: ObservableObject {
         minerUStatusTask = Task { [weak self] in
             guard let self else { return }
             self.isRefreshingMinerU = true
-            let status = await Task.detached(priority: .utility) {
-                self.minerUService.status(configuredPath: configuredPath)
-            }.value
+            let status = self.minerUService.status(configuredPath: configuredPath)
             guard !Task.isCancelled else {
                 self.isRefreshingMinerU = false
                 return
             }
             self.minerUStatus = status
+            if status.isAvailable && !self.isInstallingMinerU {
+                self.minerUInstallStatus = status.message
+            }
             self.isRefreshingMinerU = false
         }
     }
@@ -2137,10 +2174,17 @@ final class PaperReaderViewModel: ObservableObject {
         statusMessage = message
     }
 
-    private func syncModelSelections(with models: [String]) {
+    func syncModelSelections(with models: [String]) {
         guard !models.isEmpty else { return }
 
-        let preferredTranslation = models.contains("translategemma:12b") ? "translategemma:12b" : models[0]
+        let preferredTranslation: String
+        if models.contains(AppSettings.recommendedLocalModel) {
+            preferredTranslation = AppSettings.recommendedLocalModel
+        } else if models.contains("translategemma:12b") {
+            preferredTranslation = "translategemma:12b"
+        } else {
+            preferredTranslation = models[0]
+        }
         var updatedSettings = settings
         updatedSettings.translationModel = selectModel(
             current: updatedSettings.translationModel,

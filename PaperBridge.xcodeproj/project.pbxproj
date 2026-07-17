@@ -31,6 +31,8 @@
 		A10000002000000000000016 /* tex-svg-full.js in Resources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000017 /* tex-svg-full.js */; };
 		A10000002000000000000017 /* PDFVisualArchiveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000018 /* PDFVisualArchiveService.swift */; };
 		A10000002000000000000018 /* PDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000019 /* PDFDocumentView.swift */; };
+		A10000002000000000000019 /* LocalToolInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001A /* LocalToolInstaller.swift */; };
+		A1000000200000000000001A /* PaperReaderViewModel+Setup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001B /* PaperReaderViewModel+Setup.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -59,6 +61,8 @@
 		A10000001000000000000017 /* tex-svg-full.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "tex-svg-full.js"; sourceTree = "<group>"; };
 		A10000001000000000000018 /* PDFVisualArchiveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFVisualArchiveService.swift; sourceTree = "<group>"; };
 		A10000001000000000000019 /* PDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentView.swift; sourceTree = "<group>"; };
+		A1000000100000000000001A /* LocalToolInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalToolInstaller.swift; sourceTree = "<group>"; };
+		A1000000100000000000001B /* PaperReaderViewModel+Setup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PaperReaderViewModel+Setup.swift"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -88,6 +92,7 @@
 				A10000001000000000000003 /* Models.swift */,
 				A10000001000000000000004 /* PaperReaderViewModel.swift */,
 				A1000000100000000000000C /* PaperReaderViewModel+Selection.swift */,
+				A1000000100000000000001B /* PaperReaderViewModel+Setup.swift */,
 				A10000004000000000000004 /* Services */,
 				A10000004000000000000005 /* Utilities */,
 				A10000004000000000000006 /* Views */,
@@ -116,6 +121,7 @@
 				A10000001000000000000013 /* MinerUService.swift */,
 				A10000001000000000000014 /* MarkdownBundleExporter.swift */,
 				A10000001000000000000018 /* PDFVisualArchiveService.swift */,
+				A1000000100000000000001A /* LocalToolInstaller.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -243,6 +249,8 @@
 				A10000002000000000000015 /* MarkdownPreviewView.swift in Sources */,
 				A10000002000000000000017 /* PDFVisualArchiveService.swift in Sources */,
 				A10000002000000000000018 /* PDFDocumentView.swift in Sources */,
+				A10000002000000000000019 /* LocalToolInstaller.swift in Sources */,
+				A1000000200000000000001A /* PaperReaderViewModel+Setup.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

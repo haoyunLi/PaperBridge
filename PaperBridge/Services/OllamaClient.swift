@@ -58,13 +58,38 @@ private struct OllamaGenerateResponse: Decodable {
     let error: String?
 }
 
+private struct OllamaPullRequest: Encodable {
+    let model: String
+    let stream: Bool
+}
+
+private struct OllamaPullResponse: Decodable {
+    let status: String?
+    let digest: String?
+    let total: Int64?
+    let completed: Int64?
+    let error: String?
+}
+
+struct OllamaPullProgress: Equatable, Sendable {
+    let status: String
+    let completed: Int64?
+    let total: Int64?
+    let isFinished: Bool
+
+    var fractionCompleted: Double? {
+        guard let completed, let total, total > 0 else { return nil }
+        return min(max(Double(completed) / Double(total), 0), 1)
+    }
+}
+
 final class OllamaClient {
     private let session: URLSession
 
     init() {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 600
-        configuration.timeoutIntervalForResource = 600
+        configuration.timeoutIntervalForResource = 21_600
         self.session = URLSession(configuration: configuration)
     }
 
@@ -134,6 +159,66 @@ final class OllamaClient {
         }
 
         return text
+    }
+
+    func pullModel(
+        baseURL: String,
+        model: String,
+        progress: @escaping @Sendable (OllamaPullProgress) -> Void
+    ) async throws {
+        let endpoint = try makeURL(baseURL: baseURL, path: "api/pull")
+        let payload = OllamaPullRequest(model: model, stream: true)
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let bytes: URLSession.AsyncBytes
+        let response: URLResponse
+        do {
+            (bytes, response) = try await session.bytes(for: request)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        } catch {
+            throw OllamaClientError.unreachable(baseURL)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw OllamaClientError.invalidResponse
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            throw OllamaClientError.httpError("HTTP \(httpResponse.statusCode)")
+        }
+
+        var receivedCompletion = false
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard let data = line.data(using: .utf8), !data.isEmpty else { continue }
+            let event = try decode(OllamaPullResponse.self, from: data)
+            if let error = event.error, !error.isEmpty {
+                throw OllamaClientError.httpError(error)
+            }
+
+            let status = event.status ?? "Downloading \(model)..."
+            let isFinished = status.lowercased() == "success"
+            progress(
+                OllamaPullProgress(
+                    status: status,
+                    completed: event.completed,
+                    total: event.total,
+                    isFinished: isFinished
+                )
+            )
+            if isFinished {
+                receivedCompletion = true
+            }
+        }
+
+        if !receivedCompletion {
+            try await ensureModelAvailable(baseURL: baseURL, model: model)
+        }
     }
 
     private func makeURL(baseURL: String, path: String) throws -> URL {

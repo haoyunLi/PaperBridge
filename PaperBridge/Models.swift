@@ -2,10 +2,10 @@ import Foundation
 
 struct AppSettings: Hashable, Codable {
     var ollamaBaseURL = "http://localhost:11434"
-    var translationModel = "translategemma:12b"
-    var summaryModel = "translategemma:12b"
-    var explainModel = "translategemma:12b"
-    var quickLookupModel = "translategemma:12b"
+    var translationModel = "translategemma:4b"
+    var summaryModel = "translategemma:4b"
+    var explainModel = "translategemma:4b"
+    var quickLookupModel = "translategemma:4b"
     var sourceLanguage: ReaderLanguage = .english
     var targetLanguage: ReaderLanguage = .simplifiedChinese
     var maxParagraphChars = 1800
@@ -15,6 +15,8 @@ struct AppSettings: Hashable, Codable {
 }
 
 extension AppSettings {
+    static let recommendedLocalModel = "translategemma:4b"
+
     private enum CodingKeys: String, CodingKey {
         case ollamaBaseURL
         case translationModel

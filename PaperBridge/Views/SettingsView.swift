@@ -6,6 +6,11 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
+            localSetupTab
+                .tabItem {
+                    Label("Local AI Setup", systemImage: "square.and.arrow.down")
+                }
+
             parsingTab
                 .tabItem {
                     Label("Document Parsing", systemImage: "doc.richtext")
@@ -26,14 +31,11 @@ struct SettingsView: View {
                     Label("Local Data", systemImage: "internaldrive")
                 }
         }
-        .frame(width: 660, height: 540)
+        .frame(width: 720, height: 620)
         .padding(18)
         .tint(PaperBridgeTheme.accent)
         .task {
-            if !viewModel.hasAvailableModels {
-                viewModel.refreshAvailableModels()
-            }
-            viewModel.refreshMinerUStatus()
+            viewModel.refreshLocalSetupStatus()
         }
         .alert(
             "Remove all saved PaperBridge data?",
@@ -46,6 +48,174 @@ struct SettingsView: View {
         } message: {
             Text("This removes saved papers, translations, summaries, highlights, notes, and settings from this Mac. Original PDF files are not changed.")
         }
+    }
+
+    private var localSetupTab: some View {
+        Form {
+            Section {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "externaldrive.connected.to.line.below")
+                        .font(.title2)
+                        .foregroundStyle(PaperBridgeTheme.accent)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Set up everything without Terminal")
+                            .font(.headline)
+                        Text("PaperBridge installs local tools only for your macOS user. Papers and model requests stay on this Mac.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button {
+                        viewModel.refreshLocalSetupStatus()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(viewModel.isLocalSetupBusy)
+                }
+            }
+
+            Section("1. Ollama Runtime") {
+                setupStatusRow(
+                    title: viewModel.isOllamaReachable
+                        ? "Ollama ready"
+                        : (viewModel.ollamaInstallation.isInstalled ? "Ollama installed" : "Ollama not installed"),
+                    detail: viewModel.ollamaInstallStatus,
+                    systemImage: viewModel.isOllamaReachable
+                        ? "checkmark.circle.fill"
+                        : (viewModel.ollamaInstallation.isInstalled ? "power.circle" : "arrow.down.app"),
+                    isReady: viewModel.isOllamaReachable
+                )
+
+                setupProgress(
+                    value: viewModel.ollamaInstallProgress,
+                    isActive: viewModel.isInstallingOllama
+                )
+
+                if let error = viewModel.ollamaInstallError {
+                    setupMessage(error, color: .orange)
+                }
+
+                HStack {
+                    if viewModel.isInstallingOllama {
+                        Button("Cancel", role: .cancel) {
+                            viewModel.cancelOllamaInstall()
+                        }
+                    } else {
+                        Button {
+                            viewModel.installOrStartOllama()
+                        } label: {
+                            Label(
+                                viewModel.ollamaInstallation.isInstalled ? "Start Ollama" : "Install Ollama",
+                                systemImage: viewModel.ollamaInstallation.isInstalled ? "play.fill" : "arrow.down.circle.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.isLocalSetupBusy || viewModel.isOllamaReachable)
+                    }
+
+                    Link("Official download", destination: URL(string: "https://ollama.com/download/mac")!)
+                        .font(.caption)
+                    Spacer()
+                    Text("Installs to ~/Applications; no administrator password")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("2. Recommended Translation Model") {
+                setupStatusRow(
+                    title: viewModel.hasRecommendedModel
+                        ? "TranslateGemma 4B ready"
+                        : "TranslateGemma 4B not downloaded",
+                    detail: viewModel.recommendedModelStatus,
+                    systemImage: viewModel.hasRecommendedModel ? "checkmark.circle.fill" : "shippingbox",
+                    isReady: viewModel.hasRecommendedModel
+                )
+
+                setupProgress(
+                    value: viewModel.recommendedModelProgress,
+                    isActive: viewModel.isPullingRecommendedModel
+                )
+
+                if let error = viewModel.recommendedModelError {
+                    setupMessage(error, color: .orange)
+                }
+
+                HStack {
+                    if viewModel.isPullingRecommendedModel {
+                        Button("Cancel", role: .cancel) {
+                            viewModel.cancelRecommendedModelPull()
+                        }
+                    } else {
+                        Button {
+                            viewModel.pullOrUseRecommendedModel()
+                        } label: {
+                            Label(
+                                viewModel.hasRecommendedModel ? "Use for All Tasks" : "Download 4B Model",
+                                systemImage: viewModel.hasRecommendedModel ? "checkmark" : "arrow.down.circle.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            viewModel.isLocalSetupBusy ||
+                                (!viewModel.isOllamaReachable && !viewModel.hasRecommendedModel)
+                        )
+                    }
+                    Spacer()
+                    Text("About 3.3 GB; lighter than the former 12B default")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("3. Structured PDF Parsing") {
+                setupStatusRow(
+                    title: viewModel.minerUStatus.isAvailable ? "MinerU ready" : "MinerU optional",
+                    detail: viewModel.minerUInstallStatus,
+                    systemImage: viewModel.minerUStatus.isAvailable ? "checkmark.circle.fill" : "doc.text.magnifyingglass",
+                    isReady: viewModel.minerUStatus.isAvailable
+                )
+
+                setupProgress(
+                    value: viewModel.minerUInstallProgress,
+                    isActive: viewModel.isInstallingMinerU
+                )
+
+                if let error = viewModel.minerUInstallError {
+                    setupMessage(error, color: .orange)
+                }
+
+                HStack {
+                    if viewModel.isInstallingMinerU {
+                        Button("Cancel", role: .cancel) {
+                            viewModel.cancelMinerUInstall()
+                        }
+                    } else {
+                        Button {
+                            viewModel.installManagedMinerU()
+                        } label: {
+                            Label(
+                                viewModel.minerUStatus.isAvailable ? "Install Managed Update" : "Install MinerU",
+                                systemImage: "arrow.down.circle.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(viewModel.isLocalSetupBusy)
+                    }
+                    Spacer()
+                    Text("Includes isolated Python and pipeline models; several GB")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("MinerU remains optional. PDFKit facsimile still opens and preserves PDFs without Python, OCR, or any additional download.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
     }
 
     private var parsingTab: some View {
@@ -167,7 +337,7 @@ struct SettingsView: View {
                 HStack {
                     OllamaStatusBadge(
                         isRefreshing: viewModel.isRefreshingModels,
-                        isAvailable: viewModel.hasAvailableModels
+                        isAvailable: viewModel.isOllamaReachable
                     )
                     Spacer()
                     Button {
@@ -293,6 +463,49 @@ struct SettingsView: View {
                 Text(model).tag(model)
             }
         }
+    }
+
+    @ViewBuilder
+    private func setupProgress(value: Double?, isActive: Bool) -> some View {
+        if isActive {
+            if let value {
+                ProgressView(value: value)
+                    .progressViewStyle(.linear)
+            } else {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func setupStatusRow(
+        title: String,
+        detail: String,
+        systemImage: String,
+        isReady: Bool
+    ) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .fontWeight(.medium)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(isReady ? PaperBridgeTheme.accent : Color.secondary)
+        }
+    }
+
+    private func setupMessage(_ message: String, color: Color) -> some View {
+        Label(message, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption)
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
     }
 
     private func settingBinding<Value>(

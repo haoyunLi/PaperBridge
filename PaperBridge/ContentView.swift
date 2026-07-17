@@ -331,7 +331,7 @@ struct ContentView: View {
             HStack {
                 OllamaStatusBadge(
                     isRefreshing: viewModel.isRefreshingModels,
-                    isAvailable: viewModel.hasAvailableModels
+                    isAvailable: viewModel.isOllamaReachable
                 )
                 Spacer()
                 Button {
@@ -465,7 +465,7 @@ struct ContentView: View {
 
                 OllamaStatusBadge(
                     isRefreshing: viewModel.isRefreshingModels,
-                    isAvailable: viewModel.hasAvailableModels
+                    isAvailable: viewModel.isOllamaReachable
                 )
 
                 Button {

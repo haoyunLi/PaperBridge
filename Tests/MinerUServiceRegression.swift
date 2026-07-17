@@ -23,8 +23,16 @@ struct MinerUServiceRegression {
             workspaceRoot: testRoot.appendingPathComponent("workspace", isDirectory: true)
         )
         let input = Data("fake-pdf".utf8)
+        let defaultSettings = AppSettings()
         require(
-            AppSettings().minerUBackend == .pipeline,
+            defaultSettings.translationModel == AppSettings.recommendedLocalModel &&
+                defaultSettings.summaryModel == AppSettings.recommendedLocalModel &&
+                defaultSettings.explainModel == AppSettings.recommendedLocalModel &&
+                defaultSettings.quickLookupModel == AppSettings.recommendedLocalModel,
+            "Fresh settings should use the recommended local model for every AI task"
+        )
+        require(
+            defaultSettings.minerUBackend == .pipeline,
             "Pipeline should be the safe default backend for a fresh installation"
         )
 

@@ -92,6 +92,7 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Exact native PDF preview plus high-resolution page images for portable Markdown export
 - Offline WebKit + bundled MathJax preview for formulas, images, and tables
 - Local Ollama inference with `URLSession`
+- In-app local AI setup for Ollama, TranslateGemma 4B, and optional MinerU
 - Selectable translation direction
 - PDF upload and pasted-text input
 - Automatic detection of installed Ollama models
@@ -116,10 +117,11 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 ## Requirements
 
 - macOS 14 or later
-- Full Xcode installed from the Mac App Store
-- Python 3.10 through 3.13 only if you choose to install optional MinerU
+- Full Xcode from the Mac App Store only when building PaperBridge from source
+- Internet access during the initial local tool and model downloads
 - MinerU recommends at least 16 GB RAM; the built-in PDFKit mode does not have this requirement
-- Ollama installed locally: [https://ollama.com/download/mac](https://ollama.com/download/mac)
+
+Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. Open `PaperBridge > Settings > Local AI Setup` to install them from the app. The default `translategemma:4b` model is about 3.3 GB; MinerU plus its parsing models requires several additional gigabytes.
 
 MinerU and its OCR/layout models are not required. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
 
@@ -139,6 +141,7 @@ PDFKit facsimile deliberately does not guess formulas or rebuild document struct
 
 - `PaperBridge.xcodeproj`: Xcode project
 - `PaperBridge/`: SwiftUI app source
+- `PaperBridge/Services/LocalToolInstaller.swift`: verified user-level Ollama and MinerU setup
 - `build_app.sh`: one-command terminal build script
 - `test_text_processing.sh`: paragraph-processing regression tests
 - `Tests/`: command-line regression test source
@@ -188,69 +191,7 @@ If they installed or renamed Xcode in a different location, they only need to po
 sudo xcode-select -s "/Applications/Xcode-beta.app/Contents/Developer"
 ```
 
-### 4. Optional: install MinerU in an isolated environment
-
-Skip this step if you want the built-in PDFKit facsimile with no OCR/parser models. MinerU is a separate local Python tool that adds semantic Markdown and LaTeX reconstruction; PaperBridge itself remains a native Swift app.
-
-To use MinerU, install it once into a dedicated environment:
-
-```bash
-python3 -m venv ~/.paperbridge-mineru
-source ~/.paperbridge-mineru/bin/activate
-python -m pip install --upgrade pip uv
-uv pip install -r requirements.txt
-mineru --version
-mineru-models-download --source auto --model_type pipeline
-deactivate
-```
-
-The model-download command is optional but recommended: it downloads the Pipeline models before the first paper is opened, rather than during the first parse. PaperBridge uses `Pipeline / Mac compatible` by default. MinerU 3.4's own automatic default is the higher-memory hybrid engine, which may download additional models; choose it only when your Mac has enough memory and you specifically want that backend.
-
-PaperBridge automatically checks these common locations:
-
-```text
-~/.paperbridge-mineru/bin/mineru
-~/.local/bin/mineru
-/opt/homebrew/bin/mineru
-/usr/local/bin/mineru
-```
-
-For another environment, open `PaperBridge > Settings > Document Parsing` and enter the full path to its `mineru` executable.
-The first MinerU parse may download local parsing models and therefore takes longer and temporarily requires internet access. Later parsing runs locally, and PaperBridge caches each generated Markdown workspace. None of this is needed for `PDFKit facsimile (no OCR)`.
-
-### 5. Install and start Ollama
-
-Install Ollama from:
-
-```text
-https://ollama.com/download/mac
-```
-
-Then start the local Ollama service:
-
-```bash
-ollama serve
-```
-
-If the Ollama macOS app is already open, the service may already be running.
-
-### 6. Pull at least one translation model
-
-The default translation direction in the app is:
-
-```text
-English -> Simplified Chinese
-```
-
-The default translation model is:
-
-```bash
-ollama pull translategemma:12b
-```
-
-You can also use smaller or larger models if they fit your Mac better.
-
-### 7. Build the macOS app from Terminal
+### 4. Build the macOS app from Terminal
 
 From the project root:
 
@@ -272,6 +213,43 @@ Open it with:
 open "build/Build/Products/Release/PaperBridge.app"
 ```
 
+### 5. Complete local AI setup inside PaperBridge
+
+Open `PaperBridge > Settings > Local AI Setup`, then use the three setup cards:
+
+1. Click `Install Ollama`, or `Start Ollama` when it is already installed.
+2. Click `Download 4B Model` to pull `translategemma:4b` through Ollama's local API and select it for translation, summary, explanation, and quick lookup.
+3. Optionally click `Install MinerU` for semantic Markdown, formulas, tables, images, and reading-order reconstruction.
+
+The setup page shows download progress and supports cancellation. Ollama is downloaded from `ollama.com`, checked with macOS code-signing and Gatekeeper, and installed in `~/Applications` without an administrator password. The MinerU installer downloads a checksum-verified official `uv` binary, creates `~/.paperbridge-mineru`, installs `mineru[all]`, and preloads the Mac-compatible pipeline models. A failed update keeps the previous working MinerU environment.
+
+MinerU is optional. Skip step 3 to use the built-in PDFKit facsimile without Python, OCR models, or parser downloads.
+
+### Manual setup alternative
+
+If an organization blocks in-app downloads, install the same components in Terminal:
+
+```bash
+open "https://ollama.com/download/mac"
+open -a Ollama
+ollama pull translategemma:4b
+```
+
+Install `Ollama.dmg` after the download page opens, then launch Ollama before running the pull command.
+
+Optional MinerU:
+
+```bash
+python3 -m venv ~/.paperbridge-mineru
+source ~/.paperbridge-mineru/bin/activate
+python -m pip install --upgrade pip uv
+uv pip install -r requirements.txt
+mineru-models-download --source auto --model_type pipeline
+deactivate
+```
+
+PaperBridge also auto-detects MinerU in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and Python user-bin folders. A custom executable can still be selected under `Settings > Document Parsing`.
+
 ## Terminal Build Flow
 
 For users who want the exact terminal-only workflow:
@@ -287,14 +265,14 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 sudo xcodebuild -license accept
 sudo xcodebuild -runFirstLaunch
 
-ollama pull translategemma:12b
+ollama pull translategemma:4b
 ollama serve
 
 ./build_app.sh
 open "build/Build/Products/Release/PaperBridge.app"
 ```
 
-This minimal flow builds and runs PaperBridge without MinerU or any OCR model. If you want structured Markdown parsing, complete optional step 4 before launching the app.
+This manual flow builds and runs PaperBridge without MinerU or any OCR model. The in-app setup page is the recommended path for normal users.
 
 ## How the App Uses Models
 
@@ -333,23 +311,21 @@ The exact best choice depends on your Mac's memory and speed.
 
 ### Translation
 
-Best results are usually from the `TranslateGemma` family.
-
-Examples:
-
-```bash
-ollama pull translategemma:12b
-```
-
-If you want a smaller translation model and it is available for your setup, you can also use a smaller `TranslateGemma` variant such as:
+The default is the 3.3 GB `translategemma:4b`, which is the practical choice for most Macs:
 
 ```bash
 ollama pull translategemma:4b
 ```
 
+Use the larger 12B model when the Mac has enough memory and translation quality matters more than speed:
+
+```bash
+ollama pull translategemma:12b
+```
+
 ### Summary and Explanation
 
-You can keep using `translategemma:12b`, or use a more general-purpose local model for summary and explanation.
+You can use the installed `translategemma:4b` for every task, or choose a general-purpose local model for richer summary and explanation.
 
 Examples from Ollama's Gemma 4 library:
 
@@ -368,7 +344,7 @@ Suggested rough guidance:
 
 You can mix them, for example:
 
-- translation: `translategemma:12b`
+- translation: `translategemma:4b`
 - summary: `gemma4:e4b`
 - explanation: `gemma4:e4b`
 
@@ -383,13 +359,13 @@ or:
 ### Balanced setup
 
 ```bash
-ollama pull translategemma:12b
+ollama pull translategemma:4b
 ollama pull gemma4:e4b
 ```
 
 Then choose:
 
-- `TRANSLATION_MODEL`: `translategemma:12b`
+- `TRANSLATION_MODEL`: `translategemma:4b`
 - `SUMMARY_MODEL`: `gemma4:e4b`
 - `EXPLAIN_MODEL`: `gemma4:e4b`
 - `FROM`: `English`
@@ -412,7 +388,7 @@ Then choose:
 ## How to Use the App
 
 1. Launch `PaperBridge.app`.
-2. Make sure Ollama is running locally.
+2. On first use, open `PaperBridge > Settings > Local AI Setup` and complete the Ollama and 4B model cards. MinerU is optional.
 3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; optional MinerU may take several minutes on its first document.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
@@ -514,7 +490,7 @@ sudo xcodebuild -runFirstLaunch
 
 ### The app opens but no models appear
 
-Make sure Ollama is running:
+Open `Settings > Local AI Setup`. Start or install Ollama, then use `Download 4B Model`. The equivalent manual commands are:
 
 ```bash
 ollama serve
@@ -523,7 +499,7 @@ ollama serve
 Then pull at least one model:
 
 ```bash
-ollama pull translategemma:12b
+ollama pull translategemma:4b
 ```
 
 Then relaunch the app or click `Refresh Models`.
@@ -534,7 +510,7 @@ You can ignore this message if you do not want OCR/parser models. Open `Settings
 
 Digital PDFs with selectable text support translation, summary, and explanation in this mode. Image-only scans support exact preview and export only.
 
-If you do want MinerU, verify the dedicated environment:
+If you do want MinerU, first use `Settings > Local AI Setup > Install MinerU`. To verify the managed environment manually:
 
 ```bash
 ~/.paperbridge-mineru/bin/mineru --version
@@ -591,6 +567,7 @@ open "build/Build/Products/Release/PaperBridge.app"
 - MinerU model download/source guide: [https://opendatalab.github.io/MinerU/usage/model_source/](https://opendatalab.github.io/MinerU/usage/model_source/)
 - MinerU CLI documentation: [https://opendatalab.github.io/MinerU/usage/cli_tools/](https://opendatalab.github.io/MinerU/usage/cli_tools/)
 - MinerU output formats: [https://opendatalab.github.io/MinerU/reference/output_files/](https://opendatalab.github.io/MinerU/reference/output_files/)
+- uv official installation and release artifacts: [https://docs.astral.sh/uv/getting-started/installation/](https://docs.astral.sh/uv/getting-started/installation/)
 - Apple PDFKit `PDFPage` documentation: [https://developer.apple.com/documentation/PDFKit/PDFPage](https://developer.apple.com/documentation/PDFKit/PDFPage)
 - Apple PDFKit `PDFSelection` documentation: [https://developer.apple.com/documentation/pdfkit/pdfselection](https://developer.apple.com/documentation/pdfkit/pdfselection)
 - Ollama TranslateGemma library: [https://ollama.com/library/translategemma](https://ollama.com/library/translategemma)
