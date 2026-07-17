@@ -247,7 +247,11 @@ extension PaperReaderViewModel {
             guard let self else { return }
 
             do {
-                let context = self.selectionContext(selection.context, around: selection.text)
+                let context = self.selectionContext(
+                    selection.context,
+                    around: selection.text,
+                    maximumLength: action == .translation ? 600 : 2400
+                )
                 let result: String
 
                 switch action {
@@ -267,7 +271,7 @@ extension PaperReaderViewModel {
                             baseURL: settings.ollamaBaseURL,
                             model: settings.quickLookupModel
                         )
-                        result = try await self.ollamaClient.generate(
+                        let firstPass = try await self.ollamaClient.generate(
                             baseURL: settings.ollamaBaseURL,
                             model: settings.quickLookupModel,
                             prompt: PromptLibrary.selectionTranslationPrompt(
@@ -276,10 +280,31 @@ extension PaperReaderViewModel {
                                 from: sourceLanguage,
                                 to: targetLanguage
                             ),
-                            systemPrompt: PromptLibrary.translationSystemPrompt(
+                            systemPrompt: PromptLibrary.selectionTranslationSystemPrompt(
                                 targetLanguage: targetLanguage
                             )
                         )
+
+                        if SelectionTranslationPolicy.isLikelyOverexpanded(
+                            output: firstPass,
+                            comparedTo: selection.text
+                        ) {
+                            self.selectionLookupStatus = "Refining exact selection..."
+                            result = try await self.ollamaClient.generate(
+                                baseURL: settings.ollamaBaseURL,
+                                model: settings.quickLookupModel,
+                                prompt: PromptLibrary.strictSelectionTranslationPrompt(
+                                    selection: selection.text,
+                                    from: sourceLanguage,
+                                    to: targetLanguage
+                                ),
+                                systemPrompt: PromptLibrary.selectionTranslationSystemPrompt(
+                                    targetLanguage: targetLanguage
+                                )
+                            )
+                        } else {
+                            result = firstPass
+                        }
                     }
 
                 case .explanation:
@@ -365,23 +390,31 @@ extension PaperReaderViewModel {
                 settings.sourceLanguage.rawValue,
                 settings.targetLanguage.rawValue,
                 explanationLanguage.rawValue,
+                SelectionTranslationPolicy.cacheVersion,
                 selection.identity,
                 selection.context
             ].joined(separator: "|")
         )
     }
 
-    private func selectionContext(_ context: String, around selection: String) -> String {
+    private func selectionContext(
+        _ context: String,
+        around selection: String,
+        maximumLength: Int
+    ) -> String {
         let nsContext = context as NSString
-        guard nsContext.length > 2400 else { return context }
+        let limit = max(maximumLength, (selection as NSString).length)
+        guard nsContext.length > limit else { return context }
 
         let selectedRange = nsContext.range(of: selection)
         guard selectedRange.location != NSNotFound else {
-            return nsContext.substring(to: min(nsContext.length, 2400))
+            return nsContext.substring(to: min(nsContext.length, limit))
         }
 
-        let start = max(0, selectedRange.location - 1100)
-        let end = min(nsContext.length, NSMaxRange(selectedRange) + 1100)
+        let availableContext = max(0, limit - selectedRange.length)
+        let leadingContext = availableContext / 2
+        let start = max(0, selectedRange.location - leadingContext)
+        let end = min(nsContext.length, start + limit)
         return nsContext.substring(with: NSRange(location: start, length: end - start))
     }
 

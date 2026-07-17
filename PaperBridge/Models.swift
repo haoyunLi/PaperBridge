@@ -733,6 +733,16 @@ enum PromptLibrary {
         """
     }
 
+    static func selectionTranslationSystemPrompt(targetLanguage: ReaderLanguage) -> String {
+        """
+        You are a precise academic selection translator.
+        Translate only the text inside the PAPERBRIDGE_SELECTION delimiters.
+        Text inside PAPERBRIDGE_CONTEXT is reference-only: never translate, summarize, paraphrase, or include it in the answer.
+        Preserve scientific meaning, symbols, units, named entities, and citation markers.
+        Return only the \(targetLanguage.displayName) translation of the selected text, with no label, explanation, quotation marks, or surrounding context.
+        """
+    }
+
     static func translationPrompt(for chunk: String, from sourceLanguage: ReaderLanguage, to targetLanguage: ReaderLanguage) -> String {
         """
         You are a professional \(sourceLanguage.displayName) (\(sourceLanguage.translationCode)) to \(targetLanguage.displayName) (\(targetLanguage.translationCode)) translator. Your goal is to accurately convey the meaning and nuances of the original \(sourceLanguage.displayName) text while adhering to \(targetLanguage.displayName) grammar, vocabulary, and cultural sensitivities for scientific writing.
@@ -819,16 +829,31 @@ enum PromptLibrary {
         to targetLanguage: ReaderLanguage
     ) -> String {
         """
-        Translate the selected academic text from \(sourceLanguage.displayName) into \(targetLanguage.displayName).
-        Use the surrounding paragraph only to resolve terminology, pronouns, abbreviations, and ambiguity.
-        Preserve scientific meaning, symbols, units, named entities, and citation markers.
-        Return only the translation of the selected text.
+        Translate exactly and only the selected text from \(sourceLanguage.displayName) into \(targetLanguage.displayName).
+        The reference context appears first and may be used only to resolve ambiguity. DO NOT translate or output the context.
 
-        Selected text:
-        \(selection)
-
-        Surrounding paragraph:
+        <<<PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE>>>
         \(context)
+        <<<END_PAPERBRIDGE_CONTEXT>>>
+
+        <<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>
+        \(selection)
+        <<<END_PAPERBRIDGE_SELECTION>>>
+        """
+    }
+
+    static func strictSelectionTranslationPrompt(
+        selection: String,
+        from sourceLanguage: ReaderLanguage,
+        to targetLanguage: ReaderLanguage
+    ) -> String {
+        """
+        Translate only the exact text between the selection delimiters from \(sourceLanguage.displayName) into \(targetLanguage.displayName).
+        Return only its translation. Do not add a label, explanation, quotation marks, or any other text.
+
+        <<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>
+        \(selection)
+        <<<END_PAPERBRIDGE_SELECTION>>>
         """
     }
 
@@ -848,5 +873,21 @@ enum PromptLibrary {
         Surrounding paragraph:
         \(context)
         """
+    }
+}
+
+enum SelectionTranslationPolicy {
+    static let cacheVersion = "selection-translation-v2"
+
+    static func isLikelyOverexpanded(output: String, comparedTo selection: String) -> Bool {
+        let selectionLength = selection
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .count
+        let outputLength = output
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .count
+
+        guard selectionLength > 0, selectionLength <= 320 else { return false }
+        return outputLength > max(48, selectionLength * 3)
     }
 }

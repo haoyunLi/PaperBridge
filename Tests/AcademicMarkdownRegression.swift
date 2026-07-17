@@ -199,6 +199,53 @@ struct AcademicMarkdownRegression {
             "Selections from different workspaces shared the same identity"
         )
 
+        let selectionPrompt = PromptLibrary.selectionTranslationPrompt(
+            selection: "protein domains",
+            context: "Domain data provide a measure of annotation quality.",
+            from: .english,
+            to: .simplifiedChinese
+        )
+        let contextMarker = selectionPrompt.range(
+            of: "<<<PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE>>>"
+        )
+        let selectionMarker = selectionPrompt.range(
+            of: "<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>"
+        )
+        require(
+            contextMarker != nil && selectionMarker != nil &&
+                contextMarker!.lowerBound < selectionMarker!.lowerBound,
+            "Selection translation prompt did not put reference context before the target text"
+        )
+        require(
+            selectionPrompt.hasSuffix("<<<END_PAPERBRIDGE_SELECTION>>>") &&
+                selectionPrompt.contains("DO NOT translate or output the context"),
+            "Selection translation prompt did not clearly isolate the selected text"
+        )
+        let strictSelectionPrompt = PromptLibrary.strictSelectionTranslationPrompt(
+            selection: "protein domains",
+            from: .english,
+            to: .simplifiedChinese
+        )
+        require(
+            !strictSelectionPrompt.contains("Domain data provide") &&
+                strictSelectionPrompt.hasSuffix("<<<END_PAPERBRIDGE_SELECTION>>>"),
+            "Strict selection retry included surrounding context"
+        )
+        require(
+            SelectionTranslationPolicy.isLikelyOverexpanded(
+                output: String(repeating: "整段翻译内容", count: 20),
+                comparedTo: "protein domains"
+            ),
+            "Overexpanded selection translations were not detected"
+        )
+        require(
+            !SelectionTranslationPolicy.isLikelyOverexpanded(
+                output: "蛋白质结构域",
+                comparedTo: "protein domains"
+            ),
+            "A concise selection translation was incorrectly rejected"
+        )
+
         let legacyAnnotationJSON = """
         {
           "id": "00000000-0000-0000-0000-000000000001",
