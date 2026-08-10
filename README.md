@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://paperbridges.net"><strong>Official Website</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/haoyunLi/PaperBridge/releases/latest"><strong>Download for macOS</strong></a>
+  <a href="https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
   <a href="#build-from-source"><strong>Build from Source</strong></a>
 </p>
