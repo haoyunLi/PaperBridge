@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="PaperBridge/Assets.xcassets/AppIcon.appiconset/appicon_512x512.png" width="132" alt="PaperBridge app icon">
+  <img src="docs/images/paperbridge-logo-v3.png" width="132" alt="PaperBridge cobalt open-book app icon">
 </p>
 
 <h1 align="center">PaperBridge</h1>
