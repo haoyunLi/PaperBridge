@@ -159,6 +159,8 @@ PDFKit facsimile deliberately does not guess formulas or rebuild document struct
 - `PaperBridge/`: SwiftUI app source
 - `PaperBridge/Services/LocalToolInstaller.swift`: verified user-level Ollama and MinerU setup
 - `build_app.sh`: one-command terminal build script
+- `package_release.sh`: signed and notarized release-package builder for maintainers
+- `publish_release.sh`: one-command GitHub Release publisher for maintainers
 - `test_text_processing.sh`: paragraph-processing regression tests
 - `Tests/`: command-line regression test source
 - `docs/images/`: README screenshots captured from the running app
@@ -265,6 +267,30 @@ deactivate
 ```
 
 PaperBridge also auto-detects MinerU in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and Python user-bin folders. A custom executable can still be selected under `Settings > Parsing`.
+
+## Publish A Release
+
+This maintainer-only flow builds a Universal app, signs it with Developer ID,
+submits it to Apple for notarization, creates the Git tag and GitHub Release,
+and uploads both versioned and stable download assets.
+
+Before publishing, update the app version in Xcode, commit it to `main`, and
+push it. The Mac must have the Developer ID certificate and private key, the
+`PaperBridge-notary` Keychain profile, and an authenticated GitHub CLI.
+
+Then run:
+
+```bash
+./publish_release.sh
+```
+
+Every release includes `PaperBridge.dmg`. The website therefore uses this
+permanent URL and automatically follows whichever GitHub Release is marked
+latest:
+
+```text
+https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg
+```
 
 ## Terminal Build Flow
 
