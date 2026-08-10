@@ -109,6 +109,7 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Offline WebKit + bundled MathJax preview for formulas, images, and tables
 - Local Ollama inference with `URLSession`
 - In-app local AI setup for Ollama, TranslateGemma 4B, and optional MinerU
+- In-app update checks and installation from signed, notarized GitHub Releases
 - Selectable translation direction
 - PDF upload and pasted-text input
 - Automatic detection of installed Ollama models
@@ -137,6 +138,11 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Internet access during the initial local tool and model downloads
 - MinerU recommends at least 16 GB RAM; the built-in PDFKit mode does not have this requirement
 
+People who install the signed `PaperBridge.dmg` release do not need Xcode or
+Homebrew. Sparkle is bundled inside the app and handles future updates. Xcode is
+required only for contributors who build from source and maintainers who publish
+signed releases.
+
 Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. Open `PaperBridge > Settings > Local AI` to install them from the app. The default `translategemma:4b` model is about 3.3 GB; MinerU plus its parsing models requires several additional gigabytes.
 
 MinerU and its OCR/layout models are not required. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
@@ -158,6 +164,7 @@ PDFKit facsimile deliberately does not guess formulas or rebuild document struct
 - `PaperBridge.xcodeproj`: Xcode project
 - `PaperBridge/`: SwiftUI app source
 - `PaperBridge/Services/LocalToolInstaller.swift`: verified user-level Ollama and MinerU setup
+- `PaperBridge/Services/AppUpdateController.swift`: secure Sparkle update integration
 - `build_app.sh`: one-command terminal build script
 - `package_release.sh`: signed and notarized release-package builder for maintainers
 - `publish_release.sh`: one-command GitHub Release publisher for maintainers
@@ -270,13 +277,17 @@ PaperBridge also auto-detects MinerU in `~/.local/bin`, `/opt/homebrew/bin`, `/u
 
 ## Publish A Release
 
-This maintainer-only flow builds a Universal app, signs it with Developer ID,
-submits it to Apple for notarization, creates the Git tag and GitHub Release,
-and uploads both versioned and stable download assets.
+This maintainer-only flow creates and exports a Universal Xcode archive, signs
+it with Developer ID and Hardened Runtime, submits it to Apple for notarization,
+creates the Git tag and GitHub Release, and uploads versioned and stable
+downloads plus a signed Sparkle update feed.
 
 Before publishing, update the app version in Xcode, commit it to `main`, and
 push it. The Mac must have the Developer ID certificate and private key, the
 `PaperBridge-notary` Keychain profile, and an authenticated GitHub CLI.
+The Sparkle EdDSA private key must also exist in the login Keychain. It is
+created once with Sparkle's `generate_keys` tool and must never be committed or
+uploaded. Its public key is stored in `PaperBridge/Info.plist`.
 
 Then run:
 
@@ -291,6 +302,17 @@ latest:
 ```text
 https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg
 ```
+
+The App uses the matching permanent update-feed URL. Each release regenerates
+and signs this file automatically:
+
+```text
+https://github.com/haoyunLi/PaperBridge/releases/latest/download/appcast.xml
+```
+
+Users can select `PaperBridge > Check for Updates...` or open
+`PaperBridge > Settings > Updates`. PaperBridge checks automatically once per
+day by default, but installation is always controlled by the user.
 
 ## Terminal Build Flow
 
@@ -489,7 +511,7 @@ This includes app settings, MinerU Markdown/assets, the most recent workspace, t
 
 ## Behavior Notes
 
-- MinerU and PDFKit process PDFs locally. Initial MinerU model installation/download is the only optional parser setup step that requires internet access.
+- MinerU and PDFKit process PDFs locally. Internet access is used only when downloading optional tools/models or retrieving the signed update feed from the official GitHub Releases; paper content is never sent with update checks.
 - MinerU Markdown follows the paper's detected semantic structure and reading order, not its exact page geometry. The unchanged `original.pdf` remains the source of truth for visual comparison.
 - PDFKit facsimile uses only Apple frameworks already included with macOS. It saves an unchanged original PDF plus page images, so equations and figures remain visually exact even when semantic extraction is imperfect.
 - To prevent very long papers from consuming excessive disk space, portable PNG previews are capped at the first 120 pages. The unchanged `original.pdf` and native PDF viewer still contain every page.

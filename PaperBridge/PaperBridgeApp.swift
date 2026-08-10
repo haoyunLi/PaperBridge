@@ -19,6 +19,7 @@ struct PaperBridgeApp: App {
     @NSApplicationDelegateAdaptor(PaperBridgeAppDelegate.self)
     private var appDelegate
     @StateObject private var viewModel = PaperReaderViewModel()
+    @StateObject private var updateController = AppUpdateController()
 
     var body: some Scene {
         WindowGroup("PaperBridge") {
@@ -33,6 +34,13 @@ struct PaperBridgeApp: App {
                     viewModel.showImporter()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+            }
+
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updateController.checkForUpdates()
+                }
+                .disabled(!updateController.canCheckForUpdates)
             }
 
             CommandMenu("Paper") {
@@ -90,7 +98,10 @@ struct PaperBridgeApp: App {
         }
 
         Settings {
-            SettingsView(viewModel: viewModel)
+            SettingsView(
+                viewModel: viewModel,
+                updateController: updateController
+            )
         }
     }
 }

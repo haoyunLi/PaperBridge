@@ -8,7 +8,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PACKAGE_SCRIPT="$PROJECT_DIR/package_release.sh"
 DIST_DIR="$PROJECT_DIR/dist"
-APP_PLIST="$PROJECT_DIR/build-release/Build/Products/Release/PaperBridge.app/Contents/Info.plist"
+APP_PLIST="$PROJECT_DIR/build-release/export/PaperBridge.app/Contents/Info.plist"
 
 fail() {
   printf 'Error: %s\n' "$1" >&2
@@ -21,11 +21,7 @@ command -v gh >/dev/null 2>&1 || fail "GitHub CLI is required. Install it from h
 
 cd "$PROJECT_DIR"
 
-CURRENT_BRANCH="$(git branch --show-current)"
-[[ "$CURRENT_BRANCH" == "main" ]] || fail "Run releases from the main branch. Current branch: $CURRENT_BRANCH"
-
-git diff --quiet || fail "Commit or discard tracked working-tree changes before publishing."
-git diff --cached --quiet || fail "Commit staged changes before publishing."
+[[ -z "$(git status --porcelain)" ]] || fail "Commit or remove working-tree changes before publishing."
 gh auth status >/dev/null 2>&1 || fail "GitHub CLI is not signed in. Run: gh auth login"
 
 printf 'Checking the GitHub main branch...\n'
@@ -45,7 +41,14 @@ VERSIONED_DMG="$DIST_DIR/PaperBridge-$VERSION.dmg"
 VERSIONED_CHECKSUM="$VERSIONED_DMG.sha256"
 LATEST_DMG="$DIST_DIR/PaperBridge.dmg"
 LATEST_CHECKSUM="$LATEST_DMG.sha256"
-ASSETS=("$VERSIONED_DMG" "$VERSIONED_CHECKSUM" "$LATEST_DMG" "$LATEST_CHECKSUM")
+APPCAST="$DIST_DIR/appcast.xml"
+ASSETS=(
+  "$VERSIONED_DMG"
+  "$VERSIONED_CHECKSUM"
+  "$LATEST_DMG"
+  "$LATEST_CHECKSUM"
+  "$APPCAST"
+)
 
 for asset in "${ASSETS[@]}"; do
   [[ -f "$asset" ]] || fail "Release asset is missing: $asset"
@@ -91,4 +94,7 @@ PaperBridge $VERSION is published:
 
 The website download URL now resolves automatically to this release:
   https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg
+
+PaperBridge checks this permanent signed update feed:
+  https://github.com/haoyunLi/PaperBridge/releases/latest/download/appcast.xml
 EOF

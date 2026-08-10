@@ -6,6 +6,7 @@ struct SettingsView: View {
         case parsing
         case models
         case reading
+        case updates
         case data
 
         var id: String { rawValue }
@@ -16,6 +17,7 @@ struct SettingsView: View {
             case .parsing: return "Parsing"
             case .models: return "Models"
             case .reading: return "Reading"
+            case .updates: return "Updates"
             case .data: return "Local Data"
             }
         }
@@ -26,12 +28,14 @@ struct SettingsView: View {
             case .parsing: return "doc.richtext"
             case .models: return "cpu"
             case .reading: return "text.book.closed"
+            case .updates: return "arrow.triangle.2.circlepath"
             case .data: return "internaldrive"
             }
         }
     }
 
     @ObservedObject var viewModel: PaperReaderViewModel
+    @ObservedObject var updateController: AppUpdateController
     @State private var isClearConfirmationPresented = false
     @State private var selectedSection: SettingsSection = .setup
 
@@ -51,6 +55,8 @@ struct SettingsView: View {
                     modelsTab
                 case .reading:
                     readingTab
+                case .updates:
+                    UpdateSettingsView(updateController: updateController)
                 case .data:
                     dataTab
                 }
@@ -121,7 +127,7 @@ struct SettingsView: View {
                 Text("PaperBridge")
                     .font(.system(size: 21, weight: .semibold, design: .serif))
                     .foregroundStyle(PaperBridgeTheme.ink)
-                Text("Local models, document parsing, reading, and privacy")
+                Text("Local models, document parsing, reading, updates, and privacy")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

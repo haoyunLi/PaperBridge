@@ -17,6 +17,9 @@ xcuserdata/
 # Build artifacts
 build/
 build-ui/
+build-update/
+build-update-release/
+build-archive-test/
 build-release/
 dist/
 DerivedData/

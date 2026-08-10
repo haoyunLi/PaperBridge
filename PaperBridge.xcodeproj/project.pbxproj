@@ -33,6 +33,9 @@
 		A10000002000000000000018 /* PDFDocumentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000019 /* PDFDocumentView.swift */; };
 		A10000002000000000000019 /* LocalToolInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001A /* LocalToolInstaller.swift */; };
 		A1000000200000000000001A /* PaperReaderViewModel+Setup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001B /* PaperReaderViewModel+Setup.swift */; };
+		A1000000200000000000001B /* AppUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001C /* AppUpdateController.swift */; };
+		A1000000200000000000001C /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001D /* UpdateSettingsView.swift */; };
+		B10000002000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000A000000000000001 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -63,6 +66,9 @@
 		A10000001000000000000019 /* PDFDocumentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PDFDocumentView.swift; sourceTree = "<group>"; };
 		A1000000100000000000001A /* LocalToolInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalToolInstaller.swift; sourceTree = "<group>"; };
 		A1000000100000000000001B /* PaperReaderViewModel+Setup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PaperReaderViewModel+Setup.swift"; sourceTree = "<group>"; };
+		A1000000100000000000001C /* AppUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateController.swift; sourceTree = "<group>"; };
+		A1000000100000000000001D /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
+		A1000000100000000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +76,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000002000000000000001 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,6 +94,7 @@
 		A10000004000000000000002 /* PaperBridge */ = {
 			isa = PBXGroup;
 			children = (
+				A1000000100000000000001E /* Info.plist */,
 				A10000001000000000000001 /* PaperBridgeApp.swift */,
 				A10000001000000000000002 /* ContentView.swift */,
 				A10000001000000000000003 /* Models.swift */,
@@ -122,6 +130,7 @@
 				A10000001000000000000014 /* MarkdownBundleExporter.swift */,
 				A10000001000000000000018 /* PDFVisualArchiveService.swift */,
 				A1000000100000000000001A /* LocalToolInstaller.swift */,
+				A1000000100000000000001C /* AppUpdateController.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -145,6 +154,7 @@
 				A10000001000000000000011 /* SettingsView.swift */,
 				A10000001000000000000016 /* MarkdownPreviewView.swift */,
 				A10000001000000000000019 /* PDFDocumentView.swift */,
+				A1000000100000000000001D /* UpdateSettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -173,6 +183,9 @@
 			dependencies = (
 			);
 			name = PaperBridge;
+			packageProductDependencies = (
+				B1000000A000000000000001 /* Sparkle */,
+			);
 			productName = PaperBridge;
 			productReference = A1000000100000000000000B /* PaperBridge.app */;
 			productType = "com.apple.product-type.application";
@@ -202,6 +215,9 @@
 			);
 			mainGroup = A10000004000000000000001;
 			productRefGroup = A10000004000000000000003 /* Products */;
+			packageReferences = (
+				B10000009000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -251,6 +267,8 @@
 				A10000002000000000000018 /* PDFDocumentView.swift in Sources */,
 				A10000002000000000000019 /* LocalToolInstaller.swift in Sources */,
 				A1000000200000000000001A /* PaperReaderViewModel+Setup.swift in Sources */,
+				A1000000200000000000001B /* AppUpdateController.swift in Sources */,
+				A1000000200000000000001C /* UpdateSettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -310,15 +328,15 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				CURRENT_PROJECT_VERSION = 6;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PaperBridge/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.haoyunli.PaperBridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -332,15 +350,16 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				CURRENT_PROJECT_VERSION = 6;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PaperBridge/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.haoyunli.PaperBridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -370,6 +389,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B10000009000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.5;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B1000000A000000000000001 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B10000009000000000000001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = A10000006000000000000001 /* Project object */;
 }
