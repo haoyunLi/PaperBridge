@@ -16,6 +16,7 @@ xcuserdata/
 
 # Build artifacts
 build/
+build-ui/
 DerivedData/
 .build/
 *.dSYM/

@@ -8,8 +8,10 @@ struct ContentView: View {
     private static let compactInspectorMaxHeight: CGFloat = 340
 
     @ObservedObject var viewModel: PaperReaderViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDropTargeted = false
     @State private var isPasteTextExpanded = false
+    @State private var hasAppeared = false
     @FocusState private var isManualInputFocused: Bool
 
     var body: some View {
@@ -63,6 +65,15 @@ struct ContentView: View {
         .onChange(of: viewModel.settings.minerUExecutablePath) { _, _ in
             viewModel.scheduleMinerUStatusRefresh()
         }
+        .onAppear {
+            if reduceMotion {
+                hasAppeared = true
+            } else {
+                withAnimation(.easeOut(duration: 0.45)) {
+                    hasAppeared = true
+                }
+            }
+        }
     }
 
     private func responsiveRootLayout(
@@ -71,7 +82,7 @@ struct ContentView: View {
     ) -> some View {
         HSplitView {
             documentSidebar
-                .frame(minWidth: 250, idealWidth: 280, maxWidth: 330)
+                .frame(minWidth: 264, idealWidth: 294, maxWidth: 348)
 
             if usesBottomInspector {
                 compactDetail(availableHeight: availableHeight)
@@ -139,13 +150,13 @@ struct ContentView: View {
 
     private var brandHeader: some View {
         HStack(alignment: .center, spacing: 12) {
-            AppIconBadge(size: 42)
+            AppIconBadge(size: 48)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text("PaperBridge")
-                    .font(.system(size: 23, weight: .semibold, design: .serif))
+                    .font(.system(size: 25, weight: .bold, design: .serif))
 
-                Text("Local academic reader")
+                Text("Papers across languages")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -153,9 +164,8 @@ struct ContentView: View {
                     Circle()
                         .fill(PaperBridgeTheme.sidebarAccent)
                         .frame(width: 6, height: 6)
-                    Text("LOCAL-ONLY / OLLAMA")
-                        .font(.caption2.weight(.bold))
-                        .tracking(0.7)
+                    Text("Private by design")
+                        .font(.caption2.weight(.semibold))
                 }
                 .foregroundStyle(PaperBridgeTheme.sidebarAccent)
             }
@@ -173,6 +183,7 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
+            .tint(PaperBridgeTheme.sidebarAccent)
             .controlSize(.large)
 
             DisclosureGroup(isExpanded: $isPasteTextExpanded) {
@@ -447,12 +458,17 @@ struct ContentView: View {
     private var workspaceHeader: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .center, spacing: 14) {
-                AppIconBadge(size: 40)
-
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(viewModel.loadedPaper?.name ?? "Untitled Paper")
-                        .font(.system(size: 24, weight: .semibold, design: .serif))
-                        .lineLimit(1)
+                    HStack(spacing: 9) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(PaperBridgeTheme.translation)
+                            .frame(width: 5, height: 26)
+
+                        Text(viewModel.loadedPaper?.name ?? "Untitled Paper")
+                            .font(.system(size: 25, weight: .semibold, design: .serif))
+                            .foregroundStyle(PaperBridgeTheme.ink)
+                            .lineLimit(1)
+                    }
 
                     Text(
                         "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
@@ -496,14 +512,47 @@ struct ContentView: View {
     }
 
     private var workspaceModePicker: some View {
-        Picker("Workspace", selection: $viewModel.workspaceMode) {
+        HStack(spacing: 3) {
             ForEach(ReaderWorkspaceMode.allCases) { mode in
-                Label(mode.displayName, systemImage: mode.systemImage)
-                    .tag(mode)
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        viewModel.workspaceMode = mode
+                    }
+                } label: {
+                    Text(mode.displayName)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.88)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 8)
+                        .foregroundStyle(
+                            viewModel.workspaceMode == mode
+                                ? Color.white
+                                : PaperBridgeTheme.ink
+                        )
+                        .background(
+                            viewModel.workspaceMode == mode
+                                ? PaperBridgeTheme.accent
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(
+                    viewModel.workspaceMode == mode ? .isSelected : []
+                )
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        .padding(3)
+        .background(
+            PaperBridgeTheme.accentSoft,
+            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(PaperBridgeTheme.border)
+        )
         .frame(maxWidth: 540)
     }
 
@@ -519,6 +568,7 @@ struct ContentView: View {
                 )
             }
             .buttonStyle(.borderedProminent)
+            .tint(primaryWorkspaceActionTint)
             .disabled(!viewModel.canPerformPrimaryWorkspaceAction)
 
             Menu {
@@ -605,6 +655,15 @@ struct ContentView: View {
             return "list.bullet.rectangle"
         case .fullTranslation:
             return "text.append"
+        }
+    }
+
+    private var primaryWorkspaceActionTint: Color {
+        switch viewModel.workspaceMode {
+        case .summary:
+            return PaperBridgeTheme.accent
+        case .preview, .reader, .fullTranslation:
+            return PaperBridgeTheme.translationButton
         }
     }
 
@@ -796,7 +855,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     Label(resourceDisplayName(resource.kind), systemImage: resourceIcon(resource.kind))
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(PaperBridgeTheme.accent)
+                        .foregroundStyle(PaperBridgeTheme.translationInk)
                     Spacer()
                     Text("PRESERVED FROM SOURCE")
                         .font(.caption2.weight(.bold))
@@ -1143,7 +1202,11 @@ struct ContentView: View {
 
                 if viewModel.displayMode == .bilingual {
                     Rectangle()
-                        .fill(Color.primary.opacity(0.08))
+                        .fill(
+                            paragraph.status == .ok
+                                ? PaperBridgeTheme.translation.opacity(0.24)
+                                : PaperBridgeTheme.border
+                        )
                         .frame(height: 1)
                 }
 
@@ -1152,7 +1215,9 @@ struct ContentView: View {
                         languageLabel(
                             title: "TRANSLATION",
                             language: viewModel.settings.targetLanguage,
-                            color: PaperBridgeTheme.accent
+                            color: paragraph.status == .ok
+                                ? PaperBridgeTheme.translationInk
+                                : PaperBridgeTheme.originalLabel
                         )
 
                         if paragraph.status == .ok {
@@ -1183,6 +1248,14 @@ struct ContentView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(
+                        paragraph.status == .ok
+                            ? PaperBridgeTheme.translationSoft
+                            : PaperBridgeTheme.inset,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
                 }
             }
         }
@@ -1324,7 +1397,11 @@ struct ContentView: View {
             Text(title.uppercased())
                 .font(.caption2.weight(.bold))
                 .tracking(0.8)
-                .foregroundStyle(PaperBridgeTheme.accent)
+                .foregroundStyle(
+                    side == .translation
+                        ? PaperBridgeTheme.translationInk
+                        : PaperBridgeTheme.accent
+                )
 
             SelectableAcademicText(
                 text: body,
@@ -1339,6 +1416,13 @@ struct ContentView: View {
             )
             .frame(maxWidth: .infinity, minHeight: 20)
         }
+        .padding(14)
+        .background(
+            side == .translation
+                ? PaperBridgeTheme.translationSoft
+                : PaperBridgeTheme.accentSoft,
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
@@ -1360,44 +1444,110 @@ struct ContentView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 24) {
-            AppIconBadge(size: 70)
+        ScrollView {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 56) {
+                    emptyStateCopy
+                    emptyStateWorkflow
+                        .frame(width: 370)
+                }
 
-            VStack(spacing: 9) {
-                Text("PRIVATE ACADEMIC WORKSPACE")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1.2)
-                    .foregroundStyle(PaperBridgeTheme.accent)
-
-                Text("Read deeply. Translate locally.")
-                    .font(.system(size: 38, weight: .semibold, design: .serif))
-
-                Text("Open a PDF or paste text. Built-in PDFKit can preserve the exact pages without OCR; optional MinerU adds semantic Markdown and LaTeX. Translation stays local in Ollama.")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 620)
+                VStack(alignment: .leading, spacing: 34) {
+                    emptyStateCopy
+                    emptyStateWorkflow
+                }
             }
-
-            Button {
-                viewModel.showImporter()
-            } label: {
-                Label("Open Academic PDF", systemImage: "doc.badge.plus")
-                    .padding(.horizontal, 8)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-
-            HStack(spacing: 20) {
-                Label("Drag and drop", systemImage: "hand.draw")
-                Label("Local recovery", systemImage: "internaldrive")
-                Label("Markdown + assets", systemImage: "doc.plaintext")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .frame(maxWidth: 980, alignment: .leading)
+            .padding(.horizontal, 52)
+            .padding(.vertical, 56)
         }
-        .padding(.horizontal, 64)
-        .padding(.vertical, 52)
+        .opacity(hasAppeared || reduceMotion ? 1 : 0.84)
+        .offset(y: hasAppeared || reduceMotion ? 0 : 12)
+    }
+
+    private var emptyStateCopy: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            AppIconBadge(size: 72)
+
+            Text("Read papers across languages.\nKeep research local.")
+                .font(.system(size: 42, weight: .bold, design: .serif))
+                .foregroundStyle(PaperBridgeTheme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Open a PDF or paste text to build a private bilingual workspace. PDFKit keeps the original pages intact, while optional MinerU preserves headings, figures, tables, and LaTeX for structured reading.")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .lineSpacing(4)
+                .frame(maxWidth: 520, alignment: .leading)
+
+            HStack(spacing: 12) {
+                Button {
+                    viewModel.showImporter()
+                } label: {
+                    Label("Open Academic PDF", systemImage: "doc.badge.plus")
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Text("or drop a PDF anywhere")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 18) {
+                Label("Ollama local AI", systemImage: "cpu")
+                Label("Recoverable", systemImage: "internaldrive")
+                Label("Markdown export", systemImage: "square.and.arrow.down")
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(PaperBridgeTheme.originalLabel)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var emptyStateWorkflow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Local reading flow")
+                    .font(.system(size: 22, weight: .semibold, design: .serif))
+                    .foregroundStyle(PaperBridgeTheme.ink)
+                Spacer()
+                Circle()
+                    .fill(PaperBridgeTheme.success)
+                    .frame(width: 8, height: 8)
+            }
+            .padding(20)
+
+            Divider()
+
+            workflowRow(
+                icon: "doc.viewfinder",
+                title: "Preserve the paper",
+                detail: "Original pages, formulas, figures, and layout",
+                color: PaperBridgeTheme.accent
+            )
+            workflowRow(
+                icon: "character.book.closed.fill",
+                title: "Bridge the language",
+                detail: "Natural bilingual paragraphs with local models",
+                color: PaperBridgeTheme.translationButton
+            )
+            workflowRow(
+                icon: "highlighter",
+                title: "Study in context",
+                detail: "Select, explain, highlight, note, and export",
+                color: PaperBridgeTheme.warning
+            )
+
+            Text("Nothing leaves this Mac")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PaperBridgeTheme.accentDark)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(PaperBridgeTheme.accentSoft)
+        }
         .background(
             PaperBridgeTheme.surface,
             in: RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -1406,7 +1556,34 @@ struct ContentView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(PaperBridgeTheme.border)
         )
-        .padding(38)
+    }
+
+    private func workflowRow(
+        icon: String,
+        title: String,
+        detail: String,
+        color: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: 13) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(PaperBridgeTheme.ink)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 15)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func languagePicker(

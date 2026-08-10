@@ -11,47 +11,95 @@ struct SelectionInspectorView: View {
     @State private var noteDraft = ""
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                inspectorHeader
-
-                if let selection = viewModel.activeTextSelection {
-                    selectionPanel(selection)
-                } else {
-                    selectionEmptyState
-                }
-
-                if viewModel.activeTextSelection?.scope == .reader ||
-                    viewModel.activeTextSelection == nil {
-                    Divider()
-                    paragraphExplanationPanel
-                }
-
-                if !viewModel.annotations.isEmpty {
-                    Divider()
-                    savedAnnotationsPanel
-                }
+        Group {
+            if placement == .bottomDrawer {
+                bottomDrawerBody
+            } else {
+                sidebarBody
             }
-            .padding(18)
         }
-        .scrollIndicators(.visible)
-        .background(PaperBridgeTheme.surface)
+        .background(PaperBridgeTheme.canvas)
         .onAppear(perform: syncNoteDraft)
         .onChange(of: viewModel.activeTextSelection) { _, _ in
             syncNoteDraft()
         }
     }
 
+    private var sidebarBody: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                inspectorHeader
+                selectionContent
+                supportingContent
+            }
+            .padding(18)
+        }
+        .scrollIndicators(.visible)
+    }
+
+    private var bottomDrawerBody: some View {
+        VStack(spacing: 0) {
+            inspectorHeader
+                .padding(.horizontal, 18)
+                .padding(.vertical, 11)
+
+            Divider()
+
+            HStack(spacing: 0) {
+                ScrollView {
+                    selectionContent
+                        .padding(14)
+                }
+                .frame(maxWidth: .infinity)
+                .scrollIndicators(.visible)
+
+                Divider()
+
+                ScrollView {
+                    supportingContent
+                        .padding(14)
+                }
+                .frame(maxWidth: .infinity)
+                .scrollIndicators(.visible)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var selectionContent: some View {
+        if let selection = viewModel.activeTextSelection {
+            selectionPanel(selection)
+        } else {
+            selectionEmptyState
+        }
+    }
+
+    @ViewBuilder
+    private var supportingContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if viewModel.activeTextSelection?.scope == .reader ||
+                viewModel.activeTextSelection == nil {
+                paragraphExplanationPanel
+            }
+
+            if !viewModel.annotations.isEmpty {
+                savedAnnotationsPanel
+            }
+        }
+    }
+
     private var inspectorHeader: some View {
         HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("RESEARCH INSPECTOR")
-                    .font(.caption2.weight(.bold))
-                    .tracking(1)
-                    .foregroundStyle(PaperBridgeTheme.accent)
+            AppIconBadge(size: 34)
 
-                Text("Selection & Notes")
-                    .font(.title3.weight(.semibold))
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Research Inspector")
+                    .font(.system(size: 19, weight: .semibold, design: .serif))
+                    .foregroundStyle(PaperBridgeTheme.ink)
+
+                Text("Selection, explanation, highlights, and notes")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
@@ -96,7 +144,9 @@ struct SelectionInspectorView: View {
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    PaperBridgeTheme.inset,
+                    selection.side == .translation
+                        ? PaperBridgeTheme.translationSoft
+                        : PaperBridgeTheme.accentSoft,
                     in: RoundedRectangle(cornerRadius: 9, style: .continuous)
                 )
 
@@ -108,6 +158,7 @@ struct SelectionInspectorView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(PaperBridgeTheme.translationButton)
                 .disabled(!viewModel.canLookupSelection)
 
                 Button {
@@ -148,7 +199,9 @@ struct SelectionInspectorView: View {
                 resultPanel(
                     title: "Translation",
                     icon: "character.book.closed.fill",
-                    text: viewModel.selectionTranslation
+                    text: viewModel.selectionTranslation,
+                    accent: PaperBridgeTheme.translationInk,
+                    background: PaperBridgeTheme.translationSoft
                 )
             }
 
@@ -156,7 +209,9 @@ struct SelectionInspectorView: View {
                 resultPanel(
                     title: "Simple Explanation",
                     icon: "lightbulb.fill",
-                    text: viewModel.selectionExplanation
+                    text: viewModel.selectionExplanation,
+                    accent: PaperBridgeTheme.warning,
+                    background: PaperBridgeTheme.surface
                 )
             }
 
@@ -233,6 +288,15 @@ struct SelectionInspectorView: View {
                 }
             }
         }
+        .padding(14)
+        .background(
+            PaperBridgeTheme.surface,
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(PaperBridgeTheme.border)
+        )
     }
 
     private var selectionEmptyState: some View {
@@ -251,8 +315,8 @@ struct SelectionInspectorView: View {
         }
         .padding(14)
         .background(
-            PaperBridgeTheme.inset,
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            PaperBridgeTheme.accentSoft,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
         )
     }
 
@@ -304,6 +368,15 @@ struct SelectionInspectorView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .padding(14)
+        .background(
+            PaperBridgeTheme.surface,
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(PaperBridgeTheme.border)
+        )
     }
 
     private var savedAnnotationsPanel: some View {
@@ -354,8 +427,12 @@ struct SelectionInspectorView: View {
                     .padding(9)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        PaperBridgeTheme.inset,
+                        PaperBridgeTheme.surface,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(PaperBridgeTheme.border)
                     )
                 }
                 .buttonStyle(.plain)
@@ -368,11 +445,17 @@ struct SelectionInspectorView: View {
         }
     }
 
-    private func resultPanel(title: String, icon: String, text: String) -> some View {
+    private func resultPanel(
+        title: String,
+        icon: String,
+        text: String,
+        accent: Color = PaperBridgeTheme.accent,
+        background: Color = PaperBridgeTheme.accentSoft
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: icon)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(PaperBridgeTheme.accent)
+                .foregroundStyle(accent)
 
             Text(text)
                 .font(.callout)
@@ -383,7 +466,7 @@ struct SelectionInspectorView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            PaperBridgeTheme.inset,
+            background,
             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
         )
     }

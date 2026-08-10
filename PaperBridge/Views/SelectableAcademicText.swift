@@ -191,16 +191,26 @@ extension PaperHighlightColor {
     var nsColor: NSColor {
         switch self {
         case .amber:
-            return NSColor.systemYellow.withAlphaComponent(0.30)
+            return NSColor(
+                srgbRed: 0.941,
+                green: 0.627,
+                blue: 0.149,
+                alpha: 0.30
+            )
         case .teal:
             return NSColor(
-                srgbRed: 0.22,
-                green: 0.66,
-                blue: 0.57,
-                alpha: 0.26
+                srgbRed: 0.039,
+                green: 0.349,
+                blue: 0.839,
+                alpha: 0.24
             )
         case .coral:
-            return NSColor.systemOrange.withAlphaComponent(0.24)
+            return NSColor(
+                srgbRed: 0.910,
+                green: 0.286,
+                blue: 0.243,
+                alpha: 0.24
+            )
         }
     }
 

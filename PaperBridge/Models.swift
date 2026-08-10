@@ -402,7 +402,7 @@ enum PaperHighlightColor: String, CaseIterable, Identifiable, Codable {
         case .amber:
             return "Amber"
         case .teal:
-            return "Teal"
+            return "Cobalt"
         case .coral:
             return "Coral"
         }

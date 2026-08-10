@@ -1,38 +1,67 @@
 import SwiftUI
 
 struct SettingsView: View {
+    private enum SettingsSection: String, CaseIterable, Identifiable {
+        case setup
+        case parsing
+        case models
+        case reading
+        case data
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .setup: return "Local AI"
+            case .parsing: return "Parsing"
+            case .models: return "Models"
+            case .reading: return "Reading"
+            case .data: return "Local Data"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .setup: return "square.and.arrow.down"
+            case .parsing: return "doc.richtext"
+            case .models: return "cpu"
+            case .reading: return "text.book.closed"
+            case .data: return "internaldrive"
+            }
+        }
+    }
+
     @ObservedObject var viewModel: PaperReaderViewModel
     @State private var isClearConfirmationPresented = false
+    @State private var selectedSection: SettingsSection = .setup
 
     var body: some View {
-        TabView {
-            localSetupTab
-                .tabItem {
-                    Label("Local AI Setup", systemImage: "square.and.arrow.down")
-                }
+        VStack(spacing: 0) {
+            settingsHeader
+            settingsNavigation
+            Divider()
 
-            parsingTab
-                .tabItem {
-                    Label("Document Parsing", systemImage: "doc.richtext")
+            Group {
+                switch selectedSection {
+                case .setup:
+                    localSetupTab
+                case .parsing:
+                    parsingTab
+                case .models:
+                    modelsTab
+                case .reading:
+                    readingTab
+                case .data:
+                    dataTab
                 }
-
-            modelsTab
-                .tabItem {
-                    Label("Models", systemImage: "cpu")
-                }
-
-            readingTab
-                .tabItem {
-                    Label("Reading", systemImage: "text.book.closed")
-                }
-
-            dataTab
-                .tabItem {
-                    Label("Local Data", systemImage: "internaldrive")
-                }
+            }
+            .id(selectedSection)
+            .transition(.opacity)
+            .animation(.easeOut(duration: 0.16), value: selectedSection)
+            .padding(18)
         }
-        .frame(width: 720, height: 620)
-        .padding(18)
+        .frame(width: 820, height: 720)
+        .background(PaperBridgeTheme.canvas)
         .tint(PaperBridgeTheme.accent)
         .task {
             viewModel.refreshLocalSetupStatus()
@@ -48,6 +77,70 @@ struct SettingsView: View {
         } message: {
             Text("This removes saved papers, translations, summaries, highlights, notes, and settings from this Mac. Original PDF files are not changed.")
         }
+    }
+
+    private var settingsNavigation: some View {
+        HStack(spacing: 20) {
+            ForEach(SettingsSection.allCases) { section in
+                Button {
+                    selectedSection = section
+                } label: {
+                    VStack(spacing: 7) {
+                        Label(section.title, systemImage: section.icon)
+                        Rectangle()
+                            .fill(
+                                selectedSection == section
+                                    ? PaperBridgeTheme.accent
+                                    : Color.clear
+                            )
+                            .frame(height: 2)
+                    }
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 4)
+                        .foregroundStyle(
+                            selectedSection == section
+                                ? PaperBridgeTheme.accent
+                                : PaperBridgeTheme.originalLabel
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 22)
+        .padding(.bottom, 10)
+        .background(PaperBridgeTheme.surface)
+    }
+
+    private var settingsHeader: some View {
+        HStack(spacing: 12) {
+            AppIconBadge(size: 42)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("PaperBridge")
+                    .font(.system(size: 21, weight: .semibold, design: .serif))
+                    .foregroundStyle(PaperBridgeTheme.ink)
+                Text("Local models, document parsing, reading, and privacy")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Label("Local only", systemImage: "lock.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(PaperBridgeTheme.accentDark)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    PaperBridgeTheme.accentSoft,
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 12)
+        .background(PaperBridgeTheme.surface)
     }
 
     private var localSetupTab: some View {

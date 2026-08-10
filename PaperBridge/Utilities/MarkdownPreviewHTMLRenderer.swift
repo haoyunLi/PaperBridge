@@ -24,42 +24,42 @@ enum MarkdownPreviewHTMLRenderer {
               margin: 0 auto;
               max-width: 920px;
               padding: 46px 54px 80px;
-              color: #17201c;
-              background: #f5f3ec;
+              color: #122033;
+              background: #f3eee4;
               font-family: "New York", "Iowan Old Style", Georgia, serif;
               font-size: 17px;
               line-height: 1.68;
               -webkit-font-smoothing: antialiased;
             }
-            article { background: #fffdf7; border: 1px solid #d9d5ca; padding: 50px 58px 72px; }
-            h1, h2, h3, h4, h5, h6 { color: #10251c; line-height: 1.2; margin: 1.7em 0 0.65em; }
+            article { background: #fffdf8; border: 1px solid #cfc6b8; padding: 50px 58px 72px; }
+            h1, h2, h3, h4, h5, h6 { color: #122033; line-height: 1.2; margin: 1.7em 0 0.65em; }
             h1 { font-size: 2.05em; margin-top: 0; }
-            h2 { font-size: 1.5em; padding-bottom: 0.25em; border-bottom: 1px solid #d8d5cb; }
+            h2 { font-size: 1.5em; padding-bottom: 0.25em; border-bottom: 1px solid #cfc6b8; }
             h3 { font-size: 1.22em; }
             p { margin: 0.85em 0; text-align: left; }
-            a { color: #0e6550; text-underline-offset: 2px; }
-            blockquote { margin: 1.2em 0; padding: 0.15em 1.15em; border-left: 3px solid #c66b3d; color: #405047; background: #f1eee5; }
+            a { color: #0a59d6; text-underline-offset: 2px; }
+            blockquote { margin: 1.2em 0; padding: 0.15em 1.15em; border-left: 1px solid #e8493e; color: #56606c; background: #fae6df; }
             .list-item { margin: 0.42em 0 0.42em 1.4em; }
-            .list-marker { display: inline-block; min-width: 1.55em; margin-left: -1.55em; color: #0e6550; font-weight: 700; }
+            .list-marker { display: inline-block; min-width: 1.55em; margin-left: -1.55em; color: #0a59d6; font-weight: 700; }
             figure { margin: 1.7em auto; text-align: center; }
             img { display: block; max-width: 100%; max-height: 760px; height: auto; margin: 0 auto; object-fit: contain; }
             .pdf-page { margin: 2.2em auto; }
-            .pdf-page img { width: 100%; max-height: none; border: 1px solid #d4d0c5; box-shadow: 0 12px 30px rgba(26, 34, 29, 0.12); }
-            figcaption { margin-top: 0.55em; color: #66716a; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.83em; }
+            .pdf-page img { width: 100%; max-height: none; border: 1px solid #cfc6b8; }
+            figcaption { margin-top: 0.55em; color: #56606c; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.83em; }
             table { width: 100%; border-collapse: collapse; margin: 1.5em 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.88em; }
-            th, td { border: 1px solid #cfcbbf; padding: 0.55em 0.65em; vertical-align: top; }
-            th { background: #e9e6dc; color: #173126; text-align: left; }
-            pre { overflow-x: auto; padding: 1em 1.15em; background: #202622; color: #edf1ed; border-radius: 4px; }
+            th, td { border: 1px solid #cfc6b8; padding: 0.55em 0.65em; vertical-align: top; }
+            th { background: #dce9ff; color: #122033; text-align: left; }
+            pre { overflow-x: auto; padding: 1em 1.15em; background: #122033; color: #fffdf8; border-radius: 4px; }
             code { font-family: "SFMono-Regular", Menlo, monospace; font-size: 0.86em; }
-            :not(pre) > code { padding: 0.12em 0.3em; color: #823d20; background: #eee9dd; }
+            :not(pre) > code { padding: 0.12em 0.3em; color: #aa2923; background: #f3eee4; }
             .math-block { overflow-x: auto; margin: 1.35em 0; padding: 0.35em 0; text-align: center; }
             details { margin: 0.8em 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; font-size: 0.9em; }
-            summary { cursor: pointer; color: #56635c; }
-            .remote-image { padding: 1em; color: #8a4a2a; background: #f4e8dd; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+            summary { cursor: pointer; color: #56606c; }
+            .remote-image { padding: 1em; color: #aa2923; background: #fae6df; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
             ::highlight(paperbridge-amber) { background: rgba(255, 204, 64, 0.38); }
-            ::highlight(paperbridge-teal) { background: rgba(56, 168, 145, 0.34); }
+            ::highlight(paperbridge-teal) { background: rgba(10, 89, 214, 0.25); }
             ::highlight(paperbridge-coral) { background: rgba(255, 132, 84, 0.32); }
-            ::highlight(paperbridge-note) { text-decoration: underline 2px #0e8068; text-underline-offset: 3px; }
+            ::highlight(paperbridge-note) { text-decoration: underline 2px #0a59d6; text-underline-offset: 3px; }
             body.embedded { max-width: none; padding: 0; background: transparent; font-size: 15px; line-height: 1.55; }
             body.embedded article { min-height: 100%; padding: 16px 18px; border: 0; }
             body.embedded h1, body.embedded h2, body.embedded h3,
@@ -69,15 +69,15 @@ enum MarkdownPreviewHTMLRenderer {
             body.embedded img { max-height: 400px; }
             body.embedded pre { margin: 0; }
             @media (prefers-color-scheme: dark) {
-              body { color: #e2e7e3; background: #151a17; }
-              article { background: #1d231f; border-color: #3c4640; }
-              h1, h2, h3, h4, h5, h6 { color: #f2f6f3; }
-              h2 { border-color: #414a45; }
-              blockquote { color: #c9d2cc; background: #252d28; }
-              th { color: #eaf2ed; background: #2c3630; }
-              th, td { border-color: #465149; }
-              .pdf-page img { border-color: #48524c; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28); }
-              :not(pre) > code { color: #ffb18a; background: #303832; }
+              body { color: #ecf1f6; background: #0c121a; }
+              article { background: #121c29; border-color: #30415a; }
+              h1, h2, h3, h4, h5, h6 { color: #f5f7fa; }
+              h2 { border-color: #30415a; }
+              blockquote { color: #d0d9e3; background: #2b1718; }
+              th { color: #f5f7fa; background: #142d50; }
+              th, td { border-color: #30415a; }
+              .pdf-page img { border-color: #30415a; }
+              :not(pre) > code { color: #ff8c82; background: #1b2735; }
             }
             @media (max-width: 720px) {
               body { padding: 0; }

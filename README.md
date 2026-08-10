@@ -13,6 +13,11 @@
   <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-only</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU optional</code> &nbsp; <code>Ollama</code>
 </p>
 
+<p align="center">
+  <a href="https://paperbridges.net">Website</a> &nbsp;·&nbsp;
+  <a href="https://github.com/haoyunLi/PaperBridge">GitHub repository</a>
+</p>
+
 `PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. Analysis prompts are sent only to your local Ollama server.
 The bilingual reader remains available in aligned source/target order:
 
@@ -37,25 +42,33 @@ It can also:
 ### Bilingual paragraph reader
 
 <p align="center">
-  <img src="docs/images/paperbridge-reader.jpg" width="920" alt="PaperBridge bilingual paragraph reader showing an English paragraph and its Simplified Chinese translation">
+  <img src="docs/images/paperbridge-reader.png" width="920" alt="PaperBridge bilingual paragraph reader showing an English paragraph and its Simplified Chinese translation">
 </p>
 
-<p align="center"><sub>An actual local Ollama translation in the paragraph reader. Each block keeps the source and translation together and supports selection tools, notes, bookmarks, explanation, and retry.</sub></p>
+<p align="center"><sub>An actual local Ollama translation in the redesigned reader. Cobalt identifies navigation and source context; coral identifies completed translated content. Each block supports selection tools, notes, bookmarks, explanation, and retry.</sub></p>
 
 ### Figures stay in the MinerU reading order
 
 <p align="center">
-  <img src="docs/images/paperbridge-reader-figure.jpg" width="920" alt="PaperBridge Reader preserving a MinerU figure immediately after its related paragraph">
+  <img src="docs/images/paperbridge-reader-figure.png" width="920" alt="PaperBridge Reader preserving a MinerU figure immediately after its translated caption">
 </p>
 
-<p align="center"><sub>Figures, tables, standalone formulas, code, and supported document elements are not sent for translation. They appear once, at their original MinerU position between the surrounding bilingual paragraph cards.</sub></p>
+<p align="center"><sub>The surrounding caption is translated while the figure itself remains unchanged. Figures, tables, standalone formulas, code, and supported document elements appear once at their original MinerU position.</sub></p>
+
+### Selection translation, explanation, highlights, and notes
+
+<p align="center">
+  <img src="docs/images/paperbridge-inspector.png" width="920" alt="PaperBridge Research Inspector translating a selected academic phrase with highlight, note, and paragraph explanation tools">
+</p>
+
+<p align="center"><sub>Select an exact phrase in Paper, Reader, Summary, or Full Translation. The responsive Research Inspector keeps quick translation, explanation, three-color highlights, notes, and full-paragraph explanation together.</sub></p>
 
 ### Structured bilingual reading and exact-source verification
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/paperbridge-bilingual.jpg" alt="PaperBridge structured bilingual paper view showing an English paragraph and its Simplified Chinese translation"></td>
-    <td width="50%"><img src="docs/images/paperbridge-original.jpg" alt="PaperBridge exact original PDF view"></td>
+    <td width="50%"><img src="docs/images/paperbridge-bilingual.png" alt="PaperBridge structured bilingual paper view showing English content and its Simplified Chinese translation"></td>
+    <td width="50%"><img src="docs/images/paperbridge-original.png" alt="PaperBridge exact original PDF view"></td>
   </tr>
   <tr>
     <td><strong>Structured bilingual view</strong><br>MinerU reconstructs the reading order while local Ollama translations appear directly beside their source paragraphs, with figures, tables, and LaTeX retained in place.</td>
@@ -121,7 +134,7 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Internet access during the initial local tool and model downloads
 - MinerU recommends at least 16 GB RAM; the built-in PDFKit mode does not have this requirement
 
-Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. Open `PaperBridge > Settings > Local AI Setup` to install them from the app. The default `translategemma:4b` model is about 3.3 GB; MinerU plus its parsing models requires several additional gigabytes.
+Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. Open `PaperBridge > Settings > Local AI` to install them from the app. The default `translategemma:4b` model is about 3.3 GB; MinerU plus its parsing models requires several additional gigabytes.
 
 MinerU and its OCR/layout models are not required. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
 
@@ -215,7 +228,7 @@ open "build/Build/Products/Release/PaperBridge.app"
 
 ### 5. Complete local AI setup inside PaperBridge
 
-Open `PaperBridge > Settings > Local AI Setup`, then use the three setup cards:
+Open `PaperBridge > Settings > Local AI`, then use the three setup cards:
 
 1. Click `Install Ollama`, or `Start Ollama` when it is already installed.
 2. Click `Download 4B Model` to pull `translategemma:4b` through Ollama's local API and select it for translation, summary, explanation, and quick lookup.
@@ -248,7 +261,7 @@ mineru-models-download --source auto --model_type pipeline
 deactivate
 ```
 
-PaperBridge also auto-detects MinerU in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and Python user-bin folders. A custom executable can still be selected under `Settings > Document Parsing`.
+PaperBridge also auto-detects MinerU in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and Python user-bin folders. A custom executable can still be selected under `Settings > Parsing`.
 
 ## Terminal Build Flow
 
@@ -388,7 +401,7 @@ Then choose:
 ## How to Use the App
 
 1. Launch `PaperBridge.app`.
-2. On first use, open `PaperBridge > Settings > Local AI Setup` and complete the Ollama and 4B model cards. MinerU is optional.
+2. On first use, open `PaperBridge > Settings > Local AI` and complete the Ollama and 4B model cards. MinerU is optional.
 3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; optional MinerU may take several minutes on its first document.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
@@ -490,7 +503,7 @@ sudo xcodebuild -runFirstLaunch
 
 ### The app opens but no models appear
 
-Open `Settings > Local AI Setup`. Start or install Ollama, then use `Download 4B Model`. The equivalent manual commands are:
+Open `Settings > Local AI`. Start or install Ollama, then use `Download 4B Model`. The equivalent manual commands are:
 
 ```bash
 ollama serve
@@ -506,17 +519,17 @@ Then relaunch the app or click `Refresh Models`.
 
 ### PaperBridge says MinerU is unavailable
 
-You can ignore this message if you do not want OCR/parser models. Open `Settings > Document Parsing`, choose `PDFKit facsimile (no OCR)`, and continue without installing Python dependencies.
+You can ignore this message if you do not want OCR/parser models. Open `Settings > Parsing`, choose `PDFKit facsimile (no OCR)`, and continue without installing Python dependencies.
 
 Digital PDFs with selectable text support translation, summary, and explanation in this mode. Image-only scans support exact preview and export only.
 
-If you do want MinerU, first use `Settings > Local AI Setup > Install MinerU`. To verify the managed environment manually:
+If you do want MinerU, first use `Settings > Local AI > Install MinerU`. To verify the managed environment manually:
 
 ```bash
 ~/.paperbridge-mineru/bin/mineru --version
 ```
 
-If that works, open `PaperBridge > Settings > Document Parsing` and set:
+If that works, open `PaperBridge > Settings > Parsing` and set:
 
 ```text
 ~/.paperbridge-mineru/bin/mineru
@@ -526,7 +539,7 @@ The GUI app does not inherit every shell-specific `PATH`, which is why PaperBrid
 
 ### MinerU parsing is slow or uses too much memory
 
-Open `Settings > Document Parsing` and choose `Pipeline / Mac compatible (recommended)`, or choose `PDFKit facsimile (no OCR)`. The first MinerU run is normally the slowest because models may still be downloading or warming up.
+Open `Settings > Parsing` and choose `Pipeline / Mac compatible (recommended)`, or choose `PDFKit facsimile (no OCR)`. The first MinerU run is normally the slowest because models may still be downloading or warming up.
 
 ### Translation is too slow
 

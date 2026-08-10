@@ -27,7 +27,6 @@ struct PaperBridgeApp: App {
         }
         .defaultSize(width: 1320, height: 820)
         .windowResizability(.contentMinSize)
-        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("Open PDF...") {
