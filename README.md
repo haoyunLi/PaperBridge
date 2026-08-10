@@ -21,11 +21,6 @@
   <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-only</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU optional</code> &nbsp; <code>Ollama</code>
 </p>
 
-<p align="center">
-  <a href="https://paperbridges.net">Website</a> &nbsp;·&nbsp;
-  <a href="https://github.com/haoyunLi/PaperBridge">GitHub repository</a>
-</p>
-
 `PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. Analysis prompts are sent only to your local Ollama server.
 The bilingual reader remains available in aligned source/target order:
 
