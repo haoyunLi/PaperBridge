@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-only</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU optional</code> &nbsp; <code>Ollama</code>
+  <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-only</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU recommended</code> &nbsp; <code>Ollama</code>
 </p>
 
 `PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. Analysis prompts are sent only to your local Ollama server.
@@ -108,7 +108,7 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Exact native PDF preview plus high-resolution page images for portable Markdown export
 - Offline WebKit + bundled MathJax preview for formulas, images, and tables
 - Local Ollama inference with `URLSession`
-- First-launch setup guide for Ollama, TranslateGemma 4B/12B/27B, optional explanation models, and optional MinerU
+- First-launch setup guide with separate pages for Ollama, TranslateGemma 4B/12B/27B, recommended MinerU, and optional explanation models
 - In-app update checks and installation from signed, notarized GitHub Releases
 - Selectable translation direction
 - PDF upload and pasted-text input
@@ -143,9 +143,9 @@ Homebrew. Sparkle is bundled inside the app and handles future updates. Xcode is
 required only for contributors who build from source and maintainers who publish
 signed releases.
 
-Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. The first-launch guide installs or opens Ollama, recommends a TranslateGemma size for the Mac, and offers optional explanation models and MinerU. It can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
+Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. The first-launch guide installs or opens Ollama, recommends a TranslateGemma size for the Mac, then presents MinerU and explanation models on separate setup pages. It can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
-MinerU and its OCR/layout models are not required. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
+MinerU and its OCR/layout models are technically optional, but installing MinerU is strongly recommended for the best reading order, paragraph structure, figures, tables, formulas, and Markdown exports. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
 
 ## PDF Preservation Modes
 
@@ -244,12 +244,12 @@ The Getting Started guide opens automatically on the first launch:
 
 1. Click `Install Ollama`, or `Start Ollama` when it is already installed.
 2. Choose TranslateGemma 4B, 12B, or 27B. This is the only required model download for translation.
-3. Optionally choose a compact explanation model for summaries, paragraph explanations, and selected-text lookup.
-4. Optionally click `Install MinerU` for semantic Markdown, formulas, tables, images, and reading-order reconstruction.
+3. Install MinerU for semantic Markdown, formulas, tables, images, and reading-order reconstruction. MinerU is optional, but strongly recommended for the best PaperBridge experience.
+4. Optionally choose a compact explanation model for summaries, paragraph explanations, and selected-text lookup.
 
 Every download shows progress and supports cancellation. Ollama is downloaded from `ollama.com`, checked with macOS code-signing and Gatekeeper, and installed in `~/Applications` without an administrator password. The MinerU installer downloads a checksum-verified official `uv` binary, creates `~/.paperbridge-mineru`, installs `mineru[all]`, and preloads the Mac-compatible pipeline models. A failed update keeps the previous working MinerU environment.
 
-The explanation model and MinerU are optional. TranslateGemma can handle every AI task by itself, and PDFKit facsimile works without Python, OCR models, or parser downloads.
+The explanation model is fully optional. MinerU is also optional at a technical level because PDFKit facsimile works without Python, OCR models, or parser downloads, but MinerU is the recommended parser for structured bilingual reading.
 
 ### Manual setup alternative
 
@@ -402,8 +402,8 @@ A practical setup for most Macs is `translategemma:4b` plus optional `qwen3:4b-i
 ## How to Use the App
 
 1. Launch `PaperBridge.app`.
-2. Follow the automatic Getting Started guide to start Ollama and choose a TranslateGemma size. Explanation models and MinerU are clearly marked optional.
-3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; optional MinerU may take several minutes on its first document.
+2. Follow the automatic Getting Started guide to start Ollama, choose a TranslateGemma size, install the recommended MinerU parser, and optionally choose an explanation model.
+3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; MinerU may take several minutes on its first document.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
 6. Start in the `Paper` workspace. For any PDF, `Original` uses Apple's native PDF viewer with the unchanged source file. For MinerU papers, `Bilingual` renders the reflowed structured Markdown, formulas, figures, tables, and section hierarchy.

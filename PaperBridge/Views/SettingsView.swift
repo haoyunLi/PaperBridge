@@ -242,20 +242,14 @@ struct SettingsView: View {
                 }
             }
 
-            Section("3. Explanation Models · Optional") {
-                Text("These general models are optional. When selected, they power whole-paper summaries, paragraph explanations, and selected-text lookup. Translation continues to use TranslateGemma.")
+            Section("3. MinerU Parser · Optional, Recommended") {
+                Text("MinerU is optional, but strongly recommended for the best bilingual reading order, paragraph structure, figures, captions, tables, formulas, and Markdown exports.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                ForEach(RecommendedOllamaModel.assistantModels) { model in
-                    localModelCard(model)
-                }
-            }
-
-            Section("4. Structured PDF Parsing · Optional") {
                 setupStatusRow(
-                    title: viewModel.minerUStatus.isAvailable ? "MinerU ready" : "MinerU optional",
+                    title: viewModel.minerUStatus.isAvailable ? "MinerU ready" : "MinerU recommended for the best experience",
                     detail: viewModel.minerUInstallStatus,
                     systemImage: viewModel.minerUStatus.isAvailable ? "checkmark.circle.fill" : "doc.text.magnifyingglass",
                     isReady: viewModel.minerUStatus.isAvailable
@@ -293,10 +287,21 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Text("MinerU remains optional. PDFKit facsimile still opens and preserves PDFs without Python, OCR, or any additional download.")
+                Text("PDFKit facsimile remains available without Python, OCR, or additional downloads, but it cannot reconstruct academic layout as reliably as MinerU.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("4. Explanation Models · Optional") {
+                Text("These general models are fully optional. When selected, they power whole-paper summaries, paragraph explanations, and selected-text lookup. Translation continues to use TranslateGemma.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(RecommendedOllamaModel.assistantModels) { model in
+                    localModelCard(model)
+                }
             }
         }
         .formStyle(.grouped)

@@ -6,7 +6,8 @@ struct OnboardingView: View {
         case welcome
         case ollama
         case translation
-        case optionalTools
+        case minerU
+        case explanation
         case ready
 
         var id: Int { rawValue }
@@ -16,7 +17,8 @@ struct OnboardingView: View {
             case .welcome: return "Welcome"
             case .ollama: return "Ollama"
             case .translation: return "Translation model"
-            case .optionalTools: return "Optional tools"
+            case .minerU: return "MinerU parser"
+            case .explanation: return "Explanation model"
             case .ready: return "Ready"
             }
         }
@@ -26,7 +28,8 @@ struct OnboardingView: View {
             case .welcome: return "book.pages"
             case .ollama: return "externaldrive.connected.to.line.below"
             case .translation: return "character.book.closed"
-            case .optionalTools: return "sparkles"
+            case .minerU: return "doc.text.magnifyingglass"
+            case .explanation: return "sparkles"
             case .ready: return "checkmark.seal"
             }
         }
@@ -123,8 +126,10 @@ struct OnboardingView: View {
             ollamaPage
         case .translation:
             translationPage
-        case .optionalTools:
-            optionalToolsPage
+        case .minerU:
+            minerUPage
+        case .explanation:
+            explanationPage
         case .ready:
             readyPage
         }
@@ -138,25 +143,36 @@ struct OnboardingView: View {
                 detail: "PaperBridge can set up the local runtime, AI model, and structured PDF parser without Terminal. You stay in control of every download."
             )
 
-            HStack(alignment: .top, spacing: 14) {
-                welcomeCard(
-                    number: "01",
-                    title: "Ollama runtime",
-                    detail: "Runs every model locally and exposes the localhost API PaperBridge uses.",
-                    icon: "externaldrive.connected.to.line.below"
-                )
-                welcomeCard(
-                    number: "02",
-                    title: "TranslateGemma",
-                    detail: "Choose 4B, 12B, or 27B based on your Mac's memory and desired quality.",
-                    icon: "character.book.closed.fill"
-                )
-                welcomeCard(
-                    number: "03",
-                    title: "MinerU + explainer",
-                    detail: "Optional enhancements for structured PDFs, summaries, and simpler explanations.",
-                    icon: "sparkles"
-                )
+            VStack(spacing: 14) {
+                HStack(alignment: .top, spacing: 14) {
+                    welcomeCard(
+                        number: "01",
+                        title: "Ollama runtime",
+                        detail: "Runs every model locally and exposes the localhost API PaperBridge uses.",
+                        icon: "externaldrive.connected.to.line.below"
+                    )
+                    welcomeCard(
+                        number: "02",
+                        title: "TranslateGemma",
+                        detail: "Choose 4B, 12B, or 27B based on your Mac's memory and desired quality.",
+                        icon: "character.book.closed.fill"
+                    )
+                }
+
+                HStack(alignment: .top, spacing: 14) {
+                    welcomeCard(
+                        number: "03",
+                        title: "MinerU parser",
+                        detail: "Optional, but strongly recommended for the best paper structure, figures, tables, and formulas.",
+                        icon: "doc.text.magnifyingglass"
+                    )
+                    welcomeCard(
+                        number: "04",
+                        title: "Explanation model",
+                        detail: "A fully optional specialist for summaries, simpler explanations, and quick lookup.",
+                        icon: "sparkles"
+                    )
+                }
             }
 
             SurfaceCard(accent: PaperBridgeTheme.accent) {
@@ -290,38 +306,36 @@ struct OnboardingView: View {
         }
     }
 
-    private var optionalToolsPage: some View {
+    private var minerUPage: some View {
         VStack(alignment: .leading, spacing: 22) {
             pageHeading(
-                eyebrow: "OPTIONAL ENHANCEMENTS",
-                title: "Add explanation and document structure.",
-                detail: "You can skip everything on this page. TranslateGemma can perform all tasks by itself; these downloads improve task specialization and PDF structure."
+                eyebrow: "OPTIONAL · RECOMMENDED FOR THE BEST EXPERIENCE",
+                title: "Turn PDFs into structured papers.",
+                detail: "PaperBridge works without MinerU, but installing it gives the bilingual reader a much better understanding of academic layout and reading order."
             )
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Explanation models")
-                            .font(.title3.weight(.semibold))
-                        Text("Optional · used for Summary, Explain, and selected-text lookup")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+            SurfaceCard(isHighlighted: true, accent: PaperBridgeTheme.accent) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "star.fill")
+                            .foregroundStyle(PaperBridgeTheme.accent)
+                        Text("Recommended PaperBridge setup")
+                            .font(.headline)
+                        Spacer()
+                        Text("BEST EXPERIENCE")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(PaperBridgeTheme.accentDark)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(PaperBridgeTheme.accentSoft, in: Capsule())
                     }
-                    Spacer()
-                    Text("OPTIONAL")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(PaperBridgeTheme.translationInk)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(PaperBridgeTheme.translationSoft, in: Capsule())
-                }
 
-                ForEach(RecommendedOllamaModel.assistantModels) { model in
-                    modelCard(model)
+                    Label("Restores section hierarchy and multi-column reading order", systemImage: "list.bullet.indent")
+                    Label("Keeps figures, captions, tables, and formulas in the correct position", systemImage: "photo.on.rectangle")
+                    Label("Produces structured Markdown and stronger bilingual exports", systemImage: "doc.richtext")
                 }
+                .font(.callout)
             }
-
-            Divider()
 
             SurfaceCard(
                 isHighlighted: viewModel.minerUStatus.isAvailable,
@@ -344,7 +358,7 @@ struct OnboardingView: View {
                                     .padding(.vertical, 3)
                                     .background(PaperBridgeTheme.accentSoft, in: Capsule())
                             }
-                            Text("Adds reading order, semantic Markdown, figures, tables, and reconstructed LaTeX. The built-in PDFKit fallback works without it.")
+                            Text(viewModel.minerUStatus.isAvailable ? "MinerU is ready for structured paper parsing." : "Several-gigabyte local installation. The first setup can take a while.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -365,7 +379,7 @@ struct OnboardingView: View {
                                     systemImage: "arrow.down.circle.fill"
                                 )
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.borderedProminent)
                             .disabled(viewModel.isLocalSetupBusy)
                         }
                     }
@@ -391,6 +405,49 @@ struct OnboardingView: View {
                     }
                 }
             }
+
+            callout(
+                title: "PDFKit remains available",
+                detail: "The built-in fallback preserves and displays the exact original PDF, but MinerU is strongly recommended for more accurate bilingual reading order, paragraph structure, figures, tables, and formulas.",
+                icon: "doc.viewfinder"
+            )
+        }
+    }
+
+    private var explanationPage: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            pageHeading(
+                eyebrow: "OPTIONAL AI ENHANCEMENT",
+                title: "Choose a specialist explainer.",
+                detail: "This download is completely optional. TranslateGemma can already summarize and explain; a compact general model can make those tasks faster or more capable."
+            )
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Explanation models")
+                        .font(.title3.weight(.semibold))
+                    Text("Used for Summary, Explain, and selected-text lookup")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text("OPTIONAL")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(PaperBridgeTheme.translationInk)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(PaperBridgeTheme.translationSoft, in: Capsule())
+            }
+
+            ForEach(RecommendedOllamaModel.assistantModels) { model in
+                modelCard(model)
+            }
+
+            callout(
+                title: "Safe to skip",
+                detail: "If no separate explanation model is installed, PaperBridge automatically continues using your selected TranslateGemma model for summaries and explanations.",
+                icon: "forward.fill"
+            )
         }
     }
 
@@ -417,15 +474,15 @@ struct OnboardingView: View {
                         isOptional: false
                     )
                     readinessRow(
-                        title: "Explanation model",
-                        detail: selectedAssistantDescription,
-                        isReady: hasInstalledAssistantModel,
+                        title: "MinerU parser",
+                        detail: viewModel.minerUStatus.isAvailable ? "Structured PDF parsing enabled" : "Not installed; PDFKit fallback is available, but MinerU is recommended",
+                        isReady: viewModel.minerUStatus.isAvailable,
                         isOptional: true
                     )
                     readinessRow(
-                        title: "MinerU parser",
-                        detail: viewModel.minerUStatus.isAvailable ? "Structured PDF parsing enabled" : "PDFKit fallback remains available",
-                        isReady: viewModel.minerUStatus.isAvailable,
+                        title: "Explanation model",
+                        detail: selectedAssistantDescription,
+                        isReady: hasInstalledAssistantModel,
                         isOptional: true
                     )
                 }
@@ -441,7 +498,7 @@ struct OnboardingView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            if page != .ready {
+            if page != .ready && page != .minerU && page != .explanation {
                 Button("Skip setup") {
                     onFinish(false)
                 }
@@ -530,7 +587,7 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
         .background(PaperBridgeTheme.surface, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(PaperBridgeTheme.border))
     }
