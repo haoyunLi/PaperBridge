@@ -145,6 +145,8 @@ signed releases.
 
 Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. The first-launch guide installs or opens Ollama, recommends a TranslateGemma size for the Mac, then presents MinerU and explanation models on separate setup pages. It can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
+PaperBridge remembers the completed setup-guide revision. When an update introduces an important new setup step, the revised guide opens once after updating; ordinary app updates do not repeatedly show it.
+
 MinerU and its OCR/layout models are technically optional, but installing MinerU is strongly recommended for the best reading order, paragraph structure, figures, tables, formulas, and Markdown exports. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
 
 ## PDF Preservation Modes

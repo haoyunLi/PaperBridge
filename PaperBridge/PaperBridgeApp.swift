@@ -16,10 +16,13 @@ final class PaperBridgeAppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct PaperBridgeApp: App {
+    // Increment only when an onboarding change should be shown once to existing users.
+    private static let gettingStartedRevision = 2
+
     @NSApplicationDelegateAdaptor(PaperBridgeAppDelegate.self)
     private var appDelegate
-    @AppStorage("hasCompletedGettingStartedV1")
-    private var hasCompletedGettingStarted = false
+    @AppStorage("completedGettingStartedRevision")
+    private var completedGettingStartedRevision = 0
     @StateObject private var viewModel = PaperReaderViewModel()
     @StateObject private var updateController = AppUpdateController()
     @State private var isGettingStartedPresented = false
@@ -35,7 +38,7 @@ struct PaperBridgeApp: App {
                     )
                 }
                 .task {
-                    if !hasCompletedGettingStarted {
+                    if completedGettingStartedRevision < Self.gettingStartedRevision {
                         isGettingStartedPresented = true
                     }
                 }
@@ -127,7 +130,7 @@ struct PaperBridgeApp: App {
     }
 
     private func finishGettingStarted(openPDF: Bool) {
-        hasCompletedGettingStarted = true
+        completedGettingStartedRevision = Self.gettingStartedRevision
         isGettingStartedPresented = false
 
         guard openPDF else { return }
