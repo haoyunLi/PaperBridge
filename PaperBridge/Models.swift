@@ -63,6 +63,122 @@ extension AppSettings {
     }
 }
 
+enum RecommendedModelRole: Hashable {
+    case translation
+    case assistant
+}
+
+struct RecommendedOllamaModel: Identifiable, Hashable {
+    let id: String
+    let title: String
+    let badge: String
+    let downloadSize: String
+    let macGuidance: String
+    let detail: String
+    let role: RecommendedModelRole
+    let isRecommended: Bool
+
+    static let translationModels: [RecommendedOllamaModel] = [
+        .init(
+            id: "translategemma:4b",
+            title: "TranslateGemma 4B",
+            badge: "Fast",
+            downloadSize: "3.3 GB",
+            macGuidance: "Good starting point for 8-16 GB Macs",
+            detail: "The quickest option and the default for most users.",
+            role: .translation,
+            isRecommended: true
+        ),
+        .init(
+            id: "translategemma:12b",
+            title: "TranslateGemma 12B",
+            badge: "Balanced",
+            downloadSize: "8.1 GB",
+            macGuidance: "16 GB minimum; 24 GB preferred",
+            detail: "Better translation fidelity with moderate local resource use.",
+            role: .translation,
+            isRecommended: false
+        ),
+        .init(
+            id: "translategemma:27b",
+            title: "TranslateGemma 27B",
+            badge: "Highest quality",
+            downloadSize: "17 GB",
+            macGuidance: "32 GB minimum; 48 GB preferred",
+            detail: "The strongest local option, intended for higher-memory Macs.",
+            role: .translation,
+            isRecommended: false
+        )
+    ]
+
+    static let assistantModels: [RecommendedOllamaModel] = [
+        .init(
+            id: "qwen3:4b-instruct",
+            title: "Qwen3 4B Instruct",
+            badge: "Recommended",
+            downloadSize: "2.5 GB",
+            macGuidance: "Comfortable on most 8 GB+ Macs",
+            detail: "Strong multilingual instruction following for concise explanations.",
+            role: .assistant,
+            isRecommended: true
+        ),
+        .init(
+            id: "qwen3:8b",
+            title: "Qwen3 8B",
+            badge: "More capable",
+            downloadSize: "5.2 GB",
+            macGuidance: "16 GB+ recommended",
+            detail: "A larger multilingual option for more detailed explanations.",
+            role: .assistant,
+            isRecommended: false
+        ),
+        .init(
+            id: "gemma3:4b",
+            title: "Gemma 3 4B",
+            badge: "Multilingual",
+            downloadSize: "3.3 GB",
+            macGuidance: "Comfortable on most 8 GB+ Macs",
+            detail: "A compact general model for explanation, reasoning, and summaries.",
+            role: .assistant,
+            isRecommended: false
+        ),
+        .init(
+            id: "llama3.2:3b",
+            title: "Llama 3.2 3B",
+            badge: "Lightweight",
+            downloadSize: "2.0 GB",
+            macGuidance: "Lowest memory use in this list",
+            detail: "A fast option for simple English explanations and summaries.",
+            role: .assistant,
+            isRecommended: false
+        ),
+        .init(
+            id: "phi4-mini:3.8b",
+            title: "Phi-4 Mini 3.8B",
+            badge: "Math + logic",
+            downloadSize: "2.5 GB",
+            macGuidance: "Comfortable on most 8 GB+ Macs",
+            detail: "A compact multilingual model for scientific, mathematical, and logical explanations.",
+            role: .assistant,
+            isRecommended: false
+        ),
+        .init(
+            id: "deepseek-r1:8b",
+            title: "DeepSeek R1 8B",
+            badge: "Deep reasoning",
+            downloadSize: "5.2 GB",
+            macGuidance: "16 GB+ recommended; slower responses",
+            detail: "Use for difficult concepts that benefit from deeper step-by-step reasoning.",
+            role: .assistant,
+            isRecommended: false
+        )
+    ]
+
+    static var all: [RecommendedOllamaModel] {
+        translationModels + assistantModels
+    }
+}
+
 enum ReaderLanguage: String, CaseIterable, Identifiable, Hashable, Codable {
     case english
     case simplifiedChinese

@@ -78,10 +78,11 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var ollamaInstallProgress: Double?
     @Published var ollamaInstallStatus = "Check whether Ollama is installed on this Mac."
     @Published var ollamaInstallError: String?
-    @Published var isPullingRecommendedModel = false
-    @Published var recommendedModelProgress: Double?
-    @Published var recommendedModelStatus = "Download the recommended 4B translation model."
-    @Published var recommendedModelError: String?
+    @Published var activeModelDownloadID: String?
+    @Published var lastModelDownloadID: String?
+    @Published var modelDownloadProgress: Double?
+    @Published var modelDownloadStatus = "Choose a local model to download."
+    @Published var modelDownloadError: String?
     @Published var minerUStatus = MinerUToolStatus(
         executablePath: nil,
         message: "MinerU status has not been checked yet."
@@ -116,7 +117,7 @@ final class PaperReaderViewModel: ObservableObject {
     private var modelRefreshTask: Task<Void, Never>?
     private var minerUStatusTask: Task<Void, Never>?
     var ollamaInstallTask: Task<Void, Never>?
-    var recommendedModelPullTask: Task<Void, Never>?
+    var modelPullTask: Task<Void, Never>?
     var minerUInstallTask: Task<Void, Never>?
     private var paragraphUndoStack: [ParagraphEditSnapshot] = []
     var selectionTask: Task<Void, Never>?
@@ -176,7 +177,7 @@ final class PaperReaderViewModel: ObservableObject {
         modelRefreshTask?.cancel()
         minerUStatusTask?.cancel()
         ollamaInstallTask?.cancel()
-        recommendedModelPullTask?.cancel()
+        modelPullTask?.cancel()
         minerUInstallTask?.cancel()
         selectionTask?.cancel()
         minerUService.cancelCurrentRun()
@@ -378,6 +379,10 @@ final class PaperReaderViewModel: ObservableObject {
         !availableModels.isEmpty
     }
 
+    var isPullingModel: Bool {
+        activeModelDownloadID != nil
+    }
+
     var documentSections: [DocumentSection] {
         if let markdownSections = loadedPaper?.markdownSegments?.compactMap({ segment -> DocumentSection? in
             guard segment.kind == .heading,
@@ -517,11 +522,11 @@ final class PaperReaderViewModel: ObservableObject {
                 self.isOllamaReachable = true
                 self.ollamaInstallation = self.localToolInstaller.ollamaInstallationStatus()
                 self.ollamaInstallStatus = "Ollama is installed and its local API is ready."
-                if !self.isPullingRecommendedModel {
-                    self.recommendedModelError = nil
-                    self.recommendedModelStatus = sortedModels.contains(AppSettings.recommendedLocalModel)
-                        ? "TranslateGemma 4B is installed locally."
-                        : "TranslateGemma 4B is not downloaded yet."
+                if !self.isPullingModel {
+                    self.modelDownloadError = nil
+                    self.modelDownloadStatus = sortedModels.isEmpty
+                        ? "No local models are installed yet."
+                        : "\(sortedModels.count) local model\(sortedModels.count == 1 ? "" : "s") ready."
                 }
                 self.syncModelSelections(with: sortedModels)
             } catch is CancellationError {

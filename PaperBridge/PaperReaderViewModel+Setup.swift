@@ -12,12 +12,24 @@ private enum LocalSetupError: LocalizedError {
 }
 
 extension PaperReaderViewModel {
-    var hasRecommendedModel: Bool {
-        availableModels.contains(AppSettings.recommendedLocalModel)
+    func isModelInstalled(_ modelID: String) -> Bool {
+        availableModels.contains(modelID)
+    }
+
+    func isModelSelected(_ model: RecommendedOllamaModel) -> Bool {
+        guard isModelInstalled(model.id) else { return false }
+        switch model.role {
+        case .translation:
+            return settings.translationModel == model.id
+        case .assistant:
+            return settings.summaryModel == model.id &&
+                settings.explainModel == model.id &&
+                settings.quickLookupModel == model.id
+        }
     }
 
     var isLocalSetupBusy: Bool {
-        isInstallingOllama || isPullingRecommendedModel || isInstallingMinerU
+        isInstallingOllama || isPullingModel || isInstallingMinerU
     }
 
     func refreshLocalSetupStatus() {
@@ -73,55 +85,61 @@ extension PaperReaderViewModel {
         localToolInstaller.cancelAll()
     }
 
-    func pullOrUseRecommendedModel() {
+    func pullOrUseModel(_ model: RecommendedOllamaModel) {
         guard !isLocalSetupBusy else { return }
-        if hasRecommendedModel {
-            useRecommendedModelForAllTasks()
-            recommendedModelProgress = 1
-            recommendedModelStatus = "TranslateGemma 4B is selected for all local AI tasks."
-            recommendedModelError = nil
+        if isModelInstalled(model.id) {
+            useModel(model)
+            modelDownloadProgress = 1
+            modelDownloadStatus = selectedModelStatus(for: model)
+            modelDownloadError = nil
             return
         }
 
-        recommendedModelPullTask?.cancel()
-        isPullingRecommendedModel = true
-        recommendedModelProgress = nil
-        recommendedModelStatus = "Starting the TranslateGemma 4B download..."
-        recommendedModelError = nil
+        guard isOllamaReachable else {
+            modelDownloadError = "Start Ollama before downloading a local model."
+            return
+        }
 
-        recommendedModelPullTask = Task { [weak self] in
+        modelPullTask?.cancel()
+        activeModelDownloadID = model.id
+        lastModelDownloadID = model.id
+        modelDownloadProgress = nil
+        modelDownloadStatus = "Starting the \(model.title) download..."
+        modelDownloadError = nil
+
+        modelPullTask = Task { [weak self] in
             guard let self else { return }
             do {
                 try await self.ollamaClient.pullModel(
                     baseURL: self.settings.ollamaBaseURL,
-                    model: AppSettings.recommendedLocalModel
+                    model: model.id
                 ) { progress in
                     Task { @MainActor [weak self] in
-                        self?.recommendedModelProgress = progress.fractionCompleted
-                        self?.recommendedModelStatus = Self.modelDownloadDescription(progress)
+                        self?.modelDownloadProgress = progress.fractionCompleted
+                        self?.modelDownloadStatus = Self.modelDownloadDescription(progress)
                     }
                 }
 
                 let models = try await self.ollamaClient.listModels(baseURL: self.settings.ollamaBaseURL)
                 self.availableModels = Array(Set(models)).sorted()
                 self.isOllamaReachable = true
-                self.useRecommendedModelForAllTasks()
-                self.recommendedModelProgress = 1
-                self.recommendedModelStatus = "TranslateGemma 4B is downloaded and selected."
+                self.useModel(model)
+                self.modelDownloadProgress = 1
+                self.modelDownloadStatus = "\(model.title) is downloaded. \(self.selectedModelStatus(for: model))"
             } catch is CancellationError {
-                self.recommendedModelStatus = "Model download was cancelled. Ollama can resume it later."
-                self.recommendedModelProgress = nil
+                self.modelDownloadStatus = "Model download was cancelled. Ollama can resume it later."
+                self.modelDownloadProgress = nil
             } catch {
-                self.recommendedModelError = error.localizedDescription
-                self.recommendedModelStatus = "The model download needs attention."
-                self.recommendedModelProgress = nil
+                self.modelDownloadError = error.localizedDescription
+                self.modelDownloadStatus = "The model download needs attention."
+                self.modelDownloadProgress = nil
             }
-            self.isPullingRecommendedModel = false
+            self.activeModelDownloadID = nil
         }
     }
 
-    func cancelRecommendedModelPull() {
-        recommendedModelPullTask?.cancel()
+    func cancelModelPull() {
+        modelPullTask?.cancel()
     }
 
     func installManagedMinerU() {
@@ -189,13 +207,40 @@ extension PaperReaderViewModel {
         throw LocalSetupError.ollamaStartupTimedOut
     }
 
-    private func useRecommendedModelForAllTasks() {
+    private func useModel(_ model: RecommendedOllamaModel) {
         var updatedSettings = settings
-        updatedSettings.translationModel = AppSettings.recommendedLocalModel
-        updatedSettings.summaryModel = AppSettings.recommendedLocalModel
-        updatedSettings.explainModel = AppSettings.recommendedLocalModel
-        updatedSettings.quickLookupModel = AppSettings.recommendedLocalModel
+        switch model.role {
+        case .translation:
+            let previousTranslation = updatedSettings.translationModel
+            updatedSettings.translationModel = model.id
+            let installedModels = Set(availableModels)
+            if !installedModels.contains(updatedSettings.summaryModel) ||
+                updatedSettings.summaryModel == previousTranslation {
+                updatedSettings.summaryModel = model.id
+            }
+            if !installedModels.contains(updatedSettings.explainModel) ||
+                updatedSettings.explainModel == previousTranslation {
+                updatedSettings.explainModel = model.id
+            }
+            if !installedModels.contains(updatedSettings.quickLookupModel) ||
+                updatedSettings.quickLookupModel == previousTranslation {
+                updatedSettings.quickLookupModel = model.id
+            }
+        case .assistant:
+            updatedSettings.summaryModel = model.id
+            updatedSettings.explainModel = model.id
+            updatedSettings.quickLookupModel = model.id
+        }
         settings = updatedSettings
+    }
+
+    private func selectedModelStatus(for model: RecommendedOllamaModel) -> String {
+        switch model.role {
+        case .translation:
+            return "\(model.title) is selected for translation."
+        case .assistant:
+            return "\(model.title) is selected for summary, explanation, and quick lookup."
+        }
     }
 
     private static func modelDownloadDescription(_ progress: OllamaPullProgress) -> String {

@@ -35,6 +35,8 @@
 		A1000000200000000000001A /* PaperReaderViewModel+Setup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001B /* PaperReaderViewModel+Setup.swift */; };
 		A1000000200000000000001B /* AppUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001C /* AppUpdateController.swift */; };
 		A1000000200000000000001C /* UpdateSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001D /* UpdateSettingsView.swift */; };
+		A1000000200000000000001D /* LocalAIModelCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000000100000000000001F /* LocalAIModelCard.swift */; };
+		A1000000200000000000001E /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000001000000000000020 /* OnboardingView.swift */; };
 		B10000002000000000000001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B1000000A000000000000001 /* Sparkle */; };
 /* End PBXBuildFile section */
 
@@ -69,6 +71,8 @@
 		A1000000100000000000001C /* AppUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUpdateController.swift; sourceTree = "<group>"; };
 		A1000000100000000000001D /* UpdateSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateSettingsView.swift; sourceTree = "<group>"; };
 		A1000000100000000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1000000100000000000001F /* LocalAIModelCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAIModelCard.swift; sourceTree = "<group>"; };
+		A10000001000000000000020 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +159,8 @@
 				A10000001000000000000016 /* MarkdownPreviewView.swift */,
 				A10000001000000000000019 /* PDFDocumentView.swift */,
 				A1000000100000000000001D /* UpdateSettingsView.swift */,
+				A1000000100000000000001F /* LocalAIModelCard.swift */,
+				A10000001000000000000020 /* OnboardingView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -269,6 +275,8 @@
 				A1000000200000000000001A /* PaperReaderViewModel+Setup.swift in Sources */,
 				A1000000200000000000001B /* AppUpdateController.swift in Sources */,
 				A1000000200000000000001C /* UpdateSettingsView.swift in Sources */,
+				A1000000200000000000001D /* LocalAIModelCard.swift in Sources */,
+				A1000000200000000000001E /* OnboardingView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -328,7 +336,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PaperBridge/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -336,7 +344,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.haoyunli.PaperBridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -350,7 +358,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PaperBridge/Info.plist;
@@ -359,7 +367,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.haoyunli.PaperBridge;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

@@ -35,6 +35,29 @@ struct MinerUServiceRegression {
             defaultSettings.minerUBackend == .pipeline,
             "Pipeline should be the safe default backend for a fresh installation"
         )
+        require(
+            RecommendedOllamaModel.translationModels.map(\.id) == [
+                "translategemma:4b",
+                "translategemma:12b",
+                "translategemma:27b"
+            ],
+            "The first-launch guide should retain every supported TranslateGemma size"
+        )
+        require(
+            RecommendedOllamaModel.assistantModels.map(\.id) == [
+                "qwen3:4b-instruct",
+                "qwen3:8b",
+                "gemma3:4b",
+                "llama3.2:3b",
+                "phi4-mini:3.8b",
+                "deepseek-r1:8b"
+            ],
+            "The optional explanation model catalog changed unexpectedly"
+        )
+        require(
+            Set(RecommendedOllamaModel.all.map(\.id)).count == RecommendedOllamaModel.all.count,
+            "Recommended model identifiers must remain unique"
+        )
 
         let first = try await service.extract(
             pdfData: input,

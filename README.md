@@ -108,7 +108,7 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Exact native PDF preview plus high-resolution page images for portable Markdown export
 - Offline WebKit + bundled MathJax preview for formulas, images, and tables
 - Local Ollama inference with `URLSession`
-- In-app local AI setup for Ollama, TranslateGemma 4B, and optional MinerU
+- First-launch setup guide for Ollama, TranslateGemma 4B/12B/27B, optional explanation models, and optional MinerU
 - In-app update checks and installation from signed, notarized GitHub Releases
 - Selectable translation direction
 - PDF upload and pasted-text input
@@ -143,7 +143,7 @@ Homebrew. Sparkle is bundled inside the app and handles future updates. Xcode is
 required only for contributors who build from source and maintainers who publish
 signed releases.
 
-Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. Open `PaperBridge > Settings > Local AI` to install them from the app. The default `translategemma:4b` model is about 3.3 GB; MinerU plus its parsing models requires several additional gigabytes.
+Python, MinerU, Ollama, and an Ollama model do not need to be installed before PaperBridge starts. The first-launch guide installs or opens Ollama, recommends a TranslateGemma size for the Mac, and offers optional explanation models and MinerU. It can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
 MinerU and its OCR/layout models are not required. If MinerU is unavailable, the default setting automatically uses PDFKit facsimile mode. Choose `PDFKit facsimile (no OCR)` to avoid external parsing models entirely, or `MinerU only` if you prefer a hard failure instead of fallback.
 
@@ -240,15 +240,16 @@ open "build/Build/Products/Release/PaperBridge.app"
 
 ### 5. Complete local AI setup inside PaperBridge
 
-Open `PaperBridge > Settings > Local AI`, then use the three setup cards:
+The Getting Started guide opens automatically on the first launch:
 
 1. Click `Install Ollama`, or `Start Ollama` when it is already installed.
-2. Click `Download 4B Model` to pull `translategemma:4b` through Ollama's local API and select it for translation, summary, explanation, and quick lookup.
-3. Optionally click `Install MinerU` for semantic Markdown, formulas, tables, images, and reading-order reconstruction.
+2. Choose TranslateGemma 4B, 12B, or 27B. This is the only required model download for translation.
+3. Optionally choose a compact explanation model for summaries, paragraph explanations, and selected-text lookup.
+4. Optionally click `Install MinerU` for semantic Markdown, formulas, tables, images, and reading-order reconstruction.
 
-The setup page shows download progress and supports cancellation. Ollama is downloaded from `ollama.com`, checked with macOS code-signing and Gatekeeper, and installed in `~/Applications` without an administrator password. The MinerU installer downloads a checksum-verified official `uv` binary, creates `~/.paperbridge-mineru`, installs `mineru[all]`, and preloads the Mac-compatible pipeline models. A failed update keeps the previous working MinerU environment.
+Every download shows progress and supports cancellation. Ollama is downloaded from `ollama.com`, checked with macOS code-signing and Gatekeeper, and installed in `~/Applications` without an administrator password. The MinerU installer downloads a checksum-verified official `uv` binary, creates `~/.paperbridge-mineru`, installs `mineru[all]`, and preloads the Mac-compatible pipeline models. A failed update keeps the previous working MinerU environment.
 
-MinerU is optional. Skip step 3 to use the built-in PDFKit facsimile without Python, OCR models, or parser downloads.
+The explanation model and MinerU are optional. TranslateGemma can handle every AI task by itself, and PDFKit facsimile works without Python, OCR models, or parser downloads.
 
 ### Manual setup alternative
 
@@ -258,6 +259,8 @@ If an organization blocks in-app downloads, install the same components in Termi
 open "https://ollama.com/download/mac"
 open -a Ollama
 ollama pull translategemma:4b
+# Or choose: translategemma:12b / translategemma:27b
+# Optional explainer: qwen3:4b-instruct
 ```
 
 Install `Ollama.dmg` after the download page opens, then launch Ollama before running the pull command.
@@ -373,86 +376,33 @@ The app does not require one fixed model family. It will show whatever Ollama re
 
 The exact best choice depends on your Mac's memory and speed.
 
-### Translation
+### Translation models (required)
 
-The default is the 3.3 GB `translategemma:4b`, which is the practical choice for most Macs:
+| Model | Download | Suggested Mac | Use case |
+| --- | ---: | --- | --- |
+| `translategemma:4b` | 3.3 GB | 8-16 GB memory | Fastest and the default starting point |
+| `translategemma:12b` | 8.1 GB | 16 GB minimum; 24 GB preferred | Better fidelity with moderate resource use |
+| `translategemma:27b` | 17 GB | 32 GB minimum; 48 GB preferred | Highest local translation quality |
 
-```bash
-ollama pull translategemma:4b
-```
+### Explanation models (optional)
 
-Use the larger 12B model when the Mac has enough memory and translation quality matters more than speed:
+These models can be assigned to Summary, Paragraph Explanation, and Quick Lookup. Translation still uses TranslateGemma.
 
-```bash
-ollama pull translategemma:12b
-```
+| Model | Download | Best for |
+| --- | ---: | --- |
+| `qwen3:4b-instruct` | 2.5 GB | Recommended compact multilingual explanations |
+| `qwen3:8b` | 5.2 GB | More detailed multilingual explanations |
+| `gemma3:4b` | 3.3 GB | General multilingual summaries and reasoning |
+| `llama3.2:3b` | 2.0 GB | Fast, simple English explanations |
+| `phi4-mini:3.8b` | 2.5 GB | Scientific, mathematical, and logical explanations |
+| `deepseek-r1:8b` | 5.2 GB | Difficult concepts and deeper reasoning; slower responses |
 
-### Summary and Explanation
-
-You can use the installed `translategemma:4b` for every task, or choose a general-purpose local model for richer summary and explanation.
-
-Examples from Ollama's Gemma 4 library:
-
-```bash
-ollama pull gemma4:e2b
-ollama pull gemma4:e4b
-ollama pull gemma4:26b
-ollama pull gemma4:31b
-```
-
-Suggested rough guidance:
-
-- smaller Macs: `gemma4:e2b` or `gemma4:e4b`
-- stronger Macs: `translategemma:12b` or `gemma4:26b`
-- high-memory Macs: `gemma4:31b`
-
-You can mix them, for example:
-
-- translation: `translategemma:4b`
-- summary: `gemma4:e4b`
-- explanation: `gemma4:e4b`
-
-or:
-
-- translation: `translategemma:4b`
-- summary: `gemma4:e2b`
-- explanation: `gemma4:e2b`
-
-## Example Ollama Setup
-
-### Balanced setup
-
-```bash
-ollama pull translategemma:4b
-ollama pull gemma4:e4b
-```
-
-Then choose:
-
-- `TRANSLATION_MODEL`: `translategemma:4b`
-- `SUMMARY_MODEL`: `gemma4:e4b`
-- `EXPLAIN_MODEL`: `gemma4:e4b`
-- `FROM`: `English`
-- `TO`: `Simplified Chinese`
-
-### Lighter setup
-
-```bash
-ollama pull translategemma:4b
-ollama pull gemma4:e2b
-```
-
-Then choose:
-
-- `TRANSLATION_MODEL`: `translategemma:4b`
-- `SUMMARY_MODEL`: `gemma4:e2b`
-- `EXPLAIN_MODEL`: `gemma4:e2b`
-- choose the `FROM` and `TO` languages that match your paper
+A practical setup for most Macs is `translategemma:4b` plus optional `qwen3:4b-instruct`. Users with more memory can select TranslateGemma 12B or 27B directly in the guide. Any installed Ollama model remains available in `Settings > Models`.
 
 ## How to Use the App
 
 1. Launch `PaperBridge.app`.
-2. On first use, open `PaperBridge > Settings > Local AI` and complete the Ollama and 4B model cards. MinerU is optional.
+2. Follow the automatic Getting Started guide to start Ollama and choose a TranslateGemma size. Explanation models and MinerU are clearly marked optional.
 3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; optional MinerU may take several minutes on its first document.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
@@ -554,7 +504,7 @@ sudo xcodebuild -runFirstLaunch
 
 ### The app opens but no models appear
 
-Open `Settings > Local AI`. Start or install Ollama, then use `Download 4B Model`. The equivalent manual commands are:
+Open `Settings > Local AI`. Start or install Ollama, then download or select one of the TranslateGemma cards. The equivalent manual commands are:
 
 ```bash
 ollama serve
@@ -597,8 +547,7 @@ Open `Settings > Parsing` and choose `Pipeline / Mac compatible (recommended)`, 
 Try a smaller local model, such as:
 
 - `translategemma:4b`
-- `gemma4:e2b`
-- `gemma4:e4b`
+- `qwen3:4b-instruct` for optional summary and explanation tasks
 
 ### The app builds but does not launch from Finder
 
@@ -635,5 +584,9 @@ open "build/Build/Products/Release/PaperBridge.app"
 - Apple PDFKit `PDFPage` documentation: [https://developer.apple.com/documentation/PDFKit/PDFPage](https://developer.apple.com/documentation/PDFKit/PDFPage)
 - Apple PDFKit `PDFSelection` documentation: [https://developer.apple.com/documentation/pdfkit/pdfselection](https://developer.apple.com/documentation/pdfkit/pdfselection)
 - Ollama TranslateGemma library: [https://ollama.com/library/translategemma](https://ollama.com/library/translategemma)
-- Ollama Gemma 4 library: [https://ollama.com/library/gemma4](https://ollama.com/library/gemma4)
+- Ollama Qwen 3 library: [https://ollama.com/library/qwen3](https://ollama.com/library/qwen3)
+- Ollama Gemma 3 library: [https://ollama.com/library/gemma3](https://ollama.com/library/gemma3)
+- Ollama Llama 3.2 library: [https://ollama.com/library/llama3.2](https://ollama.com/library/llama3.2)
+- Ollama Phi-4 Mini library: [https://ollama.com/library/phi4-mini](https://ollama.com/library/phi4-mini)
+- Ollama DeepSeek R1 library: [https://ollama.com/library/deepseek-r1](https://ollama.com/library/deepseek-r1)
 - Ollama download page: [https://ollama.com/download/mac](https://ollama.com/download/mac)

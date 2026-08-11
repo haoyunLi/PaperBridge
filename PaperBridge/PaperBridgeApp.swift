@@ -18,13 +18,27 @@ final class PaperBridgeAppDelegate: NSObject, NSApplicationDelegate {
 struct PaperBridgeApp: App {
     @NSApplicationDelegateAdaptor(PaperBridgeAppDelegate.self)
     private var appDelegate
+    @AppStorage("hasCompletedGettingStartedV1")
+    private var hasCompletedGettingStarted = false
     @StateObject private var viewModel = PaperReaderViewModel()
     @StateObject private var updateController = AppUpdateController()
+    @State private var isGettingStartedPresented = false
 
     var body: some Scene {
         WindowGroup("PaperBridge") {
             ContentView(viewModel: viewModel)
                 .frame(minWidth: 980, minHeight: 620)
+                .sheet(isPresented: $isGettingStartedPresented) {
+                    OnboardingView(
+                        viewModel: viewModel,
+                        onFinish: finishGettingStarted
+                    )
+                }
+                .task {
+                    if !hasCompletedGettingStarted {
+                        isGettingStartedPresented = true
+                    }
+                }
         }
         .defaultSize(width: 1320, height: 820)
         .windowResizability(.contentMinSize)
@@ -37,6 +51,10 @@ struct PaperBridgeApp: App {
             }
 
             CommandGroup(after: .appInfo) {
+                Button("PaperBridge Getting Started…") {
+                    isGettingStartedPresented = true
+                }
+
                 Button("Check for Updates…") {
                     updateController.checkForUpdates()
                 }
@@ -100,8 +118,22 @@ struct PaperBridgeApp: App {
         Settings {
             SettingsView(
                 viewModel: viewModel,
-                updateController: updateController
+                updateController: updateController,
+                onShowGettingStarted: {
+                    isGettingStartedPresented = true
+                }
             )
+        }
+    }
+
+    private func finishGettingStarted(openPDF: Bool) {
+        hasCompletedGettingStarted = true
+        isGettingStartedPresented = false
+
+        guard openPDF else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            viewModel.showImporter()
         }
     }
 }

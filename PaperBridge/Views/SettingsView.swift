@@ -36,6 +36,7 @@ struct SettingsView: View {
 
     @ObservedObject var viewModel: PaperReaderViewModel
     @ObservedObject var updateController: AppUpdateController
+    let onShowGettingStarted: () -> Void
     @State private var isClearConfirmationPresented = false
     @State private var selectedSection: SettingsSection = .setup
 
@@ -165,12 +166,20 @@ struct SettingsView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer()
-                    Button {
-                        viewModel.refreshLocalSetupStatus()
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                    HStack {
+                        Button {
+                            onShowGettingStarted()
+                        } label: {
+                            Label("Getting Started", systemImage: "questionmark.circle")
+                        }
+
+                        Button {
+                            viewModel.refreshLocalSetupStatus()
+                        } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(viewModel.isLocalSetupBusy)
                     }
-                    .disabled(viewModel.isLocalSetupBusy)
                 }
             }
 
@@ -222,53 +231,29 @@ struct SettingsView: View {
                 }
             }
 
-            Section("2. Recommended Translation Model") {
-                setupStatusRow(
-                    title: viewModel.hasRecommendedModel
-                        ? "TranslateGemma 4B ready"
-                        : "TranslateGemma 4B not downloaded",
-                    detail: viewModel.recommendedModelStatus,
-                    systemImage: viewModel.hasRecommendedModel ? "checkmark.circle.fill" : "shippingbox",
-                    isReady: viewModel.hasRecommendedModel
-                )
+            Section("2. Translation Models · Required for Translation") {
+                Text("Choose one TranslateGemma size. 4B is fastest, while 12B and 27B trade more disk and memory for stronger translation quality.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                setupProgress(
-                    value: viewModel.recommendedModelProgress,
-                    isActive: viewModel.isPullingRecommendedModel
-                )
-
-                if let error = viewModel.recommendedModelError {
-                    setupMessage(error, color: .orange)
-                }
-
-                HStack {
-                    if viewModel.isPullingRecommendedModel {
-                        Button("Cancel", role: .cancel) {
-                            viewModel.cancelRecommendedModelPull()
-                        }
-                    } else {
-                        Button {
-                            viewModel.pullOrUseRecommendedModel()
-                        } label: {
-                            Label(
-                                viewModel.hasRecommendedModel ? "Use for All Tasks" : "Download 4B Model",
-                                systemImage: viewModel.hasRecommendedModel ? "checkmark" : "arrow.down.circle.fill"
-                            )
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(
-                            viewModel.isLocalSetupBusy ||
-                                (!viewModel.isOllamaReachable && !viewModel.hasRecommendedModel)
-                        )
-                    }
-                    Spacer()
-                    Text("About 3.3 GB; lighter than the former 12B default")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                ForEach(RecommendedOllamaModel.translationModels) { model in
+                    localModelCard(model)
                 }
             }
 
-            Section("3. Structured PDF Parsing") {
+            Section("3. Explanation Models · Optional") {
+                Text("These general models are optional. When selected, they power whole-paper summaries, paragraph explanations, and selected-text lookup. Translation continues to use TranslateGemma.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ForEach(RecommendedOllamaModel.assistantModels) { model in
+                    localModelCard(model)
+                }
+            }
+
+            Section("4. Structured PDF Parsing · Optional") {
                 setupStatusRow(
                     title: viewModel.minerUStatus.isAvailable ? "MinerU ready" : "MinerU optional",
                     detail: viewModel.minerUInstallStatus,
@@ -562,6 +547,22 @@ struct SettingsView: View {
                 Text(model).tag(model)
             }
         }
+    }
+
+    private func localModelCard(_ model: RecommendedOllamaModel) -> some View {
+        let isDownloading = viewModel.activeModelDownloadID == model.id
+        return LocalAIModelCard(
+            model: model,
+            isInstalled: viewModel.isModelInstalled(model.id),
+            isSelected: viewModel.isModelSelected(model),
+            isDownloading: isDownloading,
+            isDisabled: !viewModel.isOllamaReachable || (viewModel.isLocalSetupBusy && !isDownloading),
+            progress: isDownloading ? viewModel.modelDownloadProgress : nil,
+            status: viewModel.modelDownloadStatus,
+            error: viewModel.lastModelDownloadID == model.id ? viewModel.modelDownloadError : nil,
+            onAction: { viewModel.pullOrUseModel(model) },
+            onCancel: viewModel.cancelModelPull
+        )
     }
 
     @ViewBuilder
