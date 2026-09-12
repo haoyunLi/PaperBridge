@@ -1,7 +1,19 @@
 import AppKit
 import SwiftUI
 
+private struct ReadingAppearanceKey: EnvironmentKey {
+    static let defaultValue: ReadingAppearance? = nil
+}
+
+extension EnvironmentValues {
+    var readingAppearance: ReadingAppearance? {
+        get { self[ReadingAppearanceKey.self] }
+        set { self[ReadingAppearanceKey.self] = newValue }
+    }
+}
+
 enum PaperBridgeTheme {
+    static let accentForeground = adaptive(light: (1, 1, 1), dark: (0.035, 0.08, 0.15))
     static let accent = adaptive(
         light: (0.039, 0.349, 0.839),
         dark: (0.36, 0.61, 0.98)

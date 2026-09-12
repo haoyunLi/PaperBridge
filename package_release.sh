@@ -157,6 +157,15 @@ APPCAST_PATH="$DIST_DIR/appcast.xml"
 printf 'Validating PaperBridge.app signed with %s...\n' "$SIGNING_IDENTITY"
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 
+# Staple the app as well as the disk image so a copied app retains its ticket
+# independently of the DMG, including an offline first launch after installation.
+APP_NOTARY_ZIP="$BUILD_DIR/PaperBridge-notarization.zip"
+ditto -c -k --keepParent "$APP_PATH" "$APP_NOTARY_ZIP"
+xcrun notarytool submit "$APP_NOTARY_ZIP" --keychain-profile "$NOTARY_PROFILE" --wait --timeout 45m
+xcrun stapler staple "$APP_PATH"
+xcrun stapler validate "$APP_PATH"
+spctl -a -vv --type execute "$APP_PATH"
+
 printf 'Creating signed disk image...\n'
 rm -rf "$DMG_ROOT"
 mkdir -p "$DMG_ROOT"

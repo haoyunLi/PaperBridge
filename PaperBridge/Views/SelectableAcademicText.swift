@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct SelectableAcademicText: NSViewRepresentable {
+    @Environment(\.readingAppearance) private var readingAppearance
     let text: String
     let paragraphID: Int
     let side: ReaderTextSide
@@ -11,6 +12,8 @@ struct SelectableAcademicText: NSViewRepresentable {
     var lineSpacing: CGFloat = 5
     var scope: TextSelectionScope = .reader
     var locator: String?
+    var navigationRequest: AnnotationNavigationRequest?
+    var onNavigationFailure: (() -> Void)?
     let onSelection: (ReaderTextSelection) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -55,6 +58,10 @@ struct SelectableAcademicText: NSViewRepresentable {
 
     func updateNSView(_ textView: IntrinsicTextView, context: Context) {
         context.coordinator.parent = self
+        defer { context.coordinator.navigateIfNeeded(in: textView) }
+        let appearance = readingAppearance?.clamped
+        let font = appearance.map { NSFont(name: self.font.fontName, size: $0.fontSize) ?? NSFont.systemFont(ofSize: $0.fontSize) } ?? self.font
+        let lineSpacing = appearance.map { CGFloat($0.lineSpacing) } ?? self.lineSpacing
 
         var hasher = Hasher()
         hasher.combine(text)
@@ -121,9 +128,30 @@ struct SelectableAcademicText: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: SelectableAcademicText
         var isApplyingContent = false
+        var lastNavigationID: UUID?
 
         init(parent: SelectableAcademicText) {
             self.parent = parent
+        }
+
+        func navigateIfNeeded(in textView: NSTextView) {
+            guard let request = parent.navigationRequest, request.id != lastNavigationID,
+                  request.annotation.resolvedScope == parent.scope,
+                  request.annotation.side == parent.side,
+                  request.annotation.paragraphID == parent.paragraphID,
+                  request.annotation.locator == parent.locator else { return }
+            lastNavigationID = request.id
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView, self.lastNavigationID == request.id else { return }
+                guard let range = request.annotation.resolvedRange(in: self.parent.text) else {
+                    self.parent.onNavigationFailure?()
+                    return
+                }
+                self.isApplyingContent = true
+                textView.setSelectedRange(range)
+                textView.scrollRangeToVisible(range)
+                self.isApplyingContent = false
+            }
         }
 
         func textViewDidChangeSelection(_ notification: Notification) {

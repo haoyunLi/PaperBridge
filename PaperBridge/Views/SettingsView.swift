@@ -63,6 +63,7 @@ struct SettingsView: View {
                 }
             }
             .id(selectedSection)
+            .disabled(viewModel.isBusy)
             .transition(.opacity)
             .animation(.easeOut(duration: 0.16), value: selectedSection)
             .padding(18)

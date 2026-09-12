@@ -23,6 +23,9 @@ struct SelectionInspectorView: View {
         .onChange(of: viewModel.activeTextSelection) { _, _ in
             syncNoteDraft()
         }
+        .onChange(of: viewModel.activeSelectionAnnotation?.note) { _, _ in
+            syncNoteDraft()
+        }
     }
 
     private var sidebarBody: some View {
@@ -103,6 +106,14 @@ struct SelectionInspectorView: View {
             }
 
             Spacer()
+
+            Button {
+                viewModel.undoAnnotationChange()
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .disabled(!viewModel.canUndoAnnotationChange)
+            .help("Undo last highlight or note change")
 
             Button {
                 viewModel.isInspectorPresented = false
@@ -248,10 +259,9 @@ struct SelectionInspectorView: View {
 
                     Spacer()
 
-                    if viewModel.activeSelectionAnnotation != nil {
-                        Button("Remove") {
-                            viewModel.removeSelectionAnnotation()
-                            noteDraft = ""
+                    if viewModel.activeSelectionAnnotation?.highlightColor != nil {
+                        Button("Remove Highlight") {
+                            viewModel.removeSelectionHighlight()
                         }
                         .buttonStyle(.borderless)
                         .foregroundStyle(.red)
@@ -308,7 +318,7 @@ struct SelectionInspectorView: View {
             Text("Select text in any reading workspace.")
                 .font(.headline)
 
-            Text("PaperBridge captures selections from Paper, Reader, Summary, and Full Translation so you can translate, explain, highlight, or attach a note in one inspector.")
+            Text("PaperBridge captures selections from Paper, Reader, AI summaries in Overview, and Full Translation so you can translate, explain, highlight, or attach a note in one inspector.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -411,6 +421,11 @@ struct SelectionInspectorView: View {
                             }
                         }
 
+                        if annotation.needsReview == true {
+                            Label("Source changed · note preserved", systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Text(annotation.quote)
                             .font(.caption)
                             .lineLimit(2)

@@ -4,11 +4,31 @@ enum MarkdownPreviewHTMLRenderer {
     static func render(
         markdown: String,
         title: String,
-        presentation: MarkdownPreviewPresentation = .document
+        presentation: MarkdownPreviewPresentation = .document,
+        appearance: ReadingAppearance? = nil
     ) -> String {
         let segments = AcademicMarkdownProcessor.parse(markdown)
-        let body = segments.map(renderSegment).joined(separator: "\n")
+        var headingIDs = Set<String>()
+        let body = segments.map { segment in
+            guard segment.kind == .heading else { return renderSegment(segment) }
+            let plain = AcademicMarkdownProcessor.plainText(from: segment.source).lowercased()
+            let stripped = replacingMatches(in: plain, pattern: #"[^\p{L}\p{N}_\s-]"#, template: "")
+            let base = replacingMatches(in: stripped.trimmingCharacters(in: .whitespacesAndNewlines), pattern: #"\s+"#, template: "-")
+            let slug = base.isEmpty ? "section" : base
+            var identifier = slug
+            var suffix = 1
+            while headingIDs.contains(identifier) {
+                identifier = "\(slug)-\(suffix)"
+                suffix += 1
+            }
+            headingIDs.insert(identifier)
+            return renderSegment(segment, headingID: identifier)
+        }.joined(separator: "\n")
         let bodyClass = presentation == .embedded ? " class=\"embedded\"" : ""
+        let readingStyle = appearance.map { value -> String in
+            let value = value.clamped
+            return "body, body.embedded { font-size: \(value.fontSize)px; line-height: \(1.35 + value.lineSpacing / value.fontSize); } body:not(.embedded) { max-width: \(value.contentWidth)px; }"
+        } ?? ""
         return """
         <!doctype html>
         <html lang="en">
@@ -83,6 +103,7 @@ enum MarkdownPreviewHTMLRenderer {
               body { padding: 0; }
               article { border: 0; padding: 30px 24px 56px; }
             }
+            \(readingStyle)
           </style>
         </head>
         <body\(bodyClass)><article>\(body)</article></body>
@@ -90,13 +111,14 @@ enum MarkdownPreviewHTMLRenderer {
         """
     }
 
-    private static func renderSegment(_ segment: PaperMarkdownSegment) -> String {
+    private static func renderSegment(_ segment: PaperMarkdownSegment, headingID: String? = nil) -> String {
         switch segment.kind {
         case .heading:
             let trimmed = segment.source.trimmingCharacters(in: .whitespacesAndNewlines)
             let level = min(max(trimmed.prefix { $0 == "#" }.count, 1), 6)
             let content = trimmed.drop(while: { $0 == "#" || $0.isWhitespace })
-            return "<h\(level)>\(renderInline(String(content)))</h\(level)>"
+            let identifier = headingID.map { " id=\"\(escapeAttribute($0))\"" } ?? ""
+            return "<h\(level)\(identifier)>\(renderInline(String(content)))</h\(level)>"
         case .paragraph:
             let normalized = segment.source.replacingOccurrences(of: "\n", with: " ")
             return "<p>\(renderInline(normalized))</p>"

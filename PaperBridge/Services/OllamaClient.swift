@@ -8,6 +8,7 @@ enum OllamaClientError: LocalizedError {
     case httpError(String)
     case emptyResponse
     case noLocalModels
+    case incompleteResponse
     case modelUnavailable(String)
 
     var errorDescription: String? {
@@ -26,6 +27,8 @@ enum OllamaClientError: LocalizedError {
             return "Ollama returned an empty response."
         case .noLocalModels:
             return "Ollama is reachable, but no local models were found."
+        case .incompleteResponse:
+            return "The model stopped before finishing its response. Try a smaller translation chunk or a model with a larger context window."
         case .modelUnavailable(let model):
             return "Model '\(model)' is not available in Ollama. Pull it first with `ollama pull \(model)`."
         }
@@ -56,6 +59,8 @@ private struct OllamaGenerateRequest: Encodable {
 private struct OllamaGenerateResponse: Decodable {
     let response: String?
     let error: String?
+    let done: Bool?
+    let done_reason: String?
 }
 
 private struct OllamaPullRequest: Encodable {
@@ -86,11 +91,11 @@ struct OllamaPullProgress: Equatable, Sendable {
 final class OllamaClient {
     private let session: URLSession
 
-    init() {
+    init(session: URLSession? = nil) {
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 600
         configuration.timeoutIntervalForResource = 21_600
-        self.session = URLSession(configuration: configuration)
+        self.session = session ?? URLSession(configuration: configuration)
     }
 
     func listModels(baseURL: String) async throws -> [String] {
@@ -150,8 +155,12 @@ final class OllamaClient {
         }
 
         let decoded = try decode(OllamaGenerateResponse.self, from: data)
+        try Task.checkCancellation()
         if let error = decoded.error, !error.isEmpty {
             throw OllamaClientError.httpError(error)
+        }
+        if decoded.done == false || decoded.done_reason == "length" {
+            throw OllamaClientError.incompleteResponse
         }
 
         guard let text = decoded.response?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {

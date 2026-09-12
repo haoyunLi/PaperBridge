@@ -23,13 +23,23 @@ struct PaperBridgeApp: App {
     private var appDelegate
     @AppStorage("completedGettingStartedRevision")
     private var completedGettingStartedRevision = 0
-    @StateObject private var viewModel = PaperReaderViewModel()
+    @StateObject private var viewModel = PaperBridgeApp.makeViewModel()
     @StateObject private var updateController = AppUpdateController()
     @State private var isGettingStartedPresented = false
 
+    private static func makeViewModel() -> PaperReaderViewModel {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--paperbridge-workspace"), index + 1 < arguments.count {
+            return PaperReaderViewModel(workspaceStore: WorkspaceStore(rootURL: URL(fileURLWithPath: arguments[index + 1])))
+        }
+        #endif
+        return PaperReaderViewModel()
+    }
+
     var body: some Scene {
         WindowGroup("PaperBridge") {
-            ContentView(viewModel: viewModel)
+            ContentView(viewModel: viewModel, onShowGettingStarted: { isGettingStartedPresented = true })
                 .frame(minWidth: 980, minHeight: 620)
                 .sheet(isPresented: $isGettingStartedPresented) {
                     OnboardingView(
@@ -38,6 +48,9 @@ struct PaperBridgeApp: App {
                     )
                 }
                 .task {
+                    #if DEBUG
+                    if ProcessInfo.processInfo.arguments.contains("--paperbridge-workspace") { return }
+                    #endif
                     if completedGettingStartedRevision < Self.gettingStartedRevision {
                         isGettingStartedPresented = true
                     }
@@ -51,6 +64,7 @@ struct PaperBridgeApp: App {
                     viewModel.showImporter()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                .disabled(viewModel.isBusy)
             }
 
             CommandGroup(after: .appInfo) {
@@ -65,8 +79,25 @@ struct PaperBridgeApp: App {
             }
 
             CommandMenu("Paper") {
+                Button("Paper Library", action: viewModel.showLibrary)
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
+                Button("Saved Terminology") { viewModel.isGlossaryPresented = true }
+                Divider()
+                Button("Show Overview") {
+                    viewModel.workspaceMode = .summary
+                }
+                .keyboardShortcut("1", modifiers: .command)
+                .disabled(viewModel.loadedPaper == nil)
+
+                Button("Find in Paper") {
+                    viewModel.focusReaderSearch()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                .disabled(viewModel.loadedPaper == nil)
+
                 Button("Run Current Workspace Task") {
-                    viewModel.performPrimaryWorkspaceAction()
+                    if viewModel.primarySetupMessage != nil { isGettingStartedPresented = true }
+                    else { viewModel.performPrimaryWorkspaceAction() }
                 }
                 .keyboardShortcut(.return, modifiers: .command)
                 .disabled(!viewModel.canPerformPrimaryWorkspaceAction)
@@ -98,6 +129,11 @@ struct PaperBridgeApp: App {
             }
 
             CommandMenu("Selection") {
+                Button("Undo Highlight or Note Change") {
+                    viewModel.undoAnnotationChange()
+                }
+                .disabled(!viewModel.canUndoAnnotationChange)
+
                 Button("Translate Selection") {
                     viewModel.translateTextSelection()
                 }

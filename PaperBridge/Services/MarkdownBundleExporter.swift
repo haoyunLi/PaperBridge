@@ -92,7 +92,7 @@ struct MarkdownBundleExporter {
         guard !relativePaths.isEmpty else { return (0, []) }
         guard let sourceDirectory else { return (0, Array(relativePaths)) }
 
-        let sourceRoot = sourceDirectory.standardizedFileURL
+        let sourceRoot = sourceDirectory.resolvingSymlinksInPath().standardizedFileURL
         let destinationRoot = destinationDirectory.standardizedFileURL
         var copied = 0
         var missing: [String] = []
@@ -101,11 +101,11 @@ struct MarkdownBundleExporter {
             let cleanPath = relativePath
                 .components(separatedBy: "#").first?
                 .components(separatedBy: "?").first ?? relativePath
-            let source = sourceRoot.appendingPathComponent(cleanPath).standardizedFileURL
+            let source = sourceRoot.appendingPathComponent(cleanPath).resolvingSymlinksInPath().standardizedFileURL
             let destination = destinationRoot.appendingPathComponent(cleanPath).standardizedFileURL
             guard isDescendant(source, of: sourceRoot),
                   isDescendant(destination, of: destinationRoot),
-                  fileManager.fileExists(atPath: source.path) else {
+                  (try? source.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
                 missing.append(relativePath)
                 continue
             }

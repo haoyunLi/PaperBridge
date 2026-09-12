@@ -87,7 +87,7 @@ struct OnboardingView: View {
                             .frame(width: 30, height: 30)
 
                         if item.rawValue < page.rawValue {
-                            Image(systemName: "checkmark")
+                            Image(systemName: "circle.fill")
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(.white)
                         } else {
@@ -455,7 +455,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 24) {
             pageHeading(
                 eyebrow: "SETUP SUMMARY",
-                title: "Your local reader is ready.",
+                title: requiredSetupReady ? "Your local reader is ready." : "PDF reading is ready. AI setup is incomplete.",
                 detail: "You can change models, update MinerU, or run this guide again at any time from PaperBridge > PaperBridge Getting Started."
             )
 
@@ -498,6 +498,10 @@ struct OnboardingView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
+            if viewModel.isLocalSetupBusy {
+                Button("Continue in Background") { onFinish(false) }
+                    .help("Keep the download running and start reading. Return to Local AI settings for progress.")
+            }
             if page != .ready && page != .minerU && page != .explanation {
                 Button("Skip setup") {
                     onFinish(false)
@@ -665,7 +669,7 @@ struct OnboardingView: View {
     }
 
     private var hasInstalledTranslationModel: Bool {
-        RecommendedOllamaModel.translationModels.contains { viewModel.isModelInstalled($0.id) }
+        viewModel.isModelInstalled(viewModel.settings.translationModel)
     }
 
     private var hasInstalledAssistantModel: Bool {

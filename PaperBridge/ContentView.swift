@@ -3,16 +3,26 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    private static let compactInspectorBreakpoint: CGFloat = 1_180
-    private static let compactInspectorMinHeight: CGFloat = 230
+    private static let compactInspectorBreakpoint: CGFloat = 1_400
+    private static let compactInspectorMinHeight: CGFloat = 190
     private static let compactInspectorMaxHeight: CGFloat = 340
 
     @ObservedObject var viewModel: PaperReaderViewModel
+    var onShowGettingStarted: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isDropTargeted = false
     @State private var isPasteTextExpanded = false
     @State private var hasAppeared = false
     @FocusState private var isManualInputFocused: Bool
+    @FocusState private var isReaderSearchFocused: Bool
+    @State private var handledSearchFocusRequest: UUID?
+    @State private var visibleReaderItemID: String?
+    @State private var positionBeforeSearch: String?
+    @State private var handledParagraphNavigationID: UUID?
+    @State private var isDocumentDetailsExpanded = false
+    @State private var isDocumentSidebarPresented = true
+    @State private var isReadingToolsPresented = false
+    @State private var focusRestoreState: (sidebar: Bool, inspector: Bool)?
 
     var body: some View {
         GeometryReader { geometry in
@@ -22,6 +32,9 @@ struct ContentView: View {
             )
         }
         .tint(PaperBridgeTheme.accent)
+        .environment(\.readingAppearance, viewModel.settings.readingAppearance.clamped)
+        .sheet(isPresented: $viewModel.isLibraryPresented) { PaperLibraryView(viewModel: viewModel) }
+        .sheet(isPresented: $viewModel.isGlossaryPresented) { GlossaryView(viewModel: viewModel) }
         .fileImporter(
             isPresented: $viewModel.isImporterPresented,
             allowedContentTypes: [.pdf],
@@ -81,8 +94,10 @@ struct ContentView: View {
         availableHeight: CGFloat
     ) -> some View {
         HSplitView {
-            documentSidebar
-                .frame(minWidth: 264, idealWidth: 294, maxWidth: 348)
+            if isDocumentSidebarPresented || viewModel.loadedPaper == nil {
+                documentSidebar
+                    .frame(minWidth: 240, idealWidth: 264, maxWidth: 300)
+            }
 
             if usesBottomInspector {
                 compactDetail(availableHeight: availableHeight)
@@ -110,7 +125,7 @@ struct ContentView: View {
                     .frame(
                         height: min(
                             Self.compactInspectorMaxHeight,
-                            max(Self.compactInspectorMinHeight, availableHeight * 0.36)
+                            max(Self.compactInspectorMinHeight, min(availableHeight * 0.30, availableHeight - 440))
                         )
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -123,20 +138,29 @@ struct ContentView: View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 12) {
                 brandHeader
-                sourceCard
+                Button(action: viewModel.showLibrary) {
+                    Label("Paper Library", systemImage: "books.vertical")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 5).contentShape(Rectangle())
+                }
+                .buttonStyle(.bordered)
 
                 if let paper = viewModel.loadedPaper {
-                    documentCard(paper)
-                    outlineCard
+                    DisclosureGroup("Document & Import", isExpanded: $isDocumentDetailsExpanded) {
+                        sourceCard
+                        documentCard(paper)
+                        languageCard
+                        localStatusCard
+                    }
 
                     if !viewModel.bookmarkedParagraphIDs.isEmpty {
                         bookmarksCard
                     }
-
-                    languageCard
+                    outlineCard
+                } else {
+                    sourceCard
+                    localStatusCard
                 }
-
-                localStatusCard
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .padding(14)
@@ -304,7 +328,13 @@ struct ContentView: View {
                     viewModel.navigateToParagraph(paragraphID)
                 } label: {
                     HStack {
-                        Text("Paragraph \(paragraphID)")
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(viewModel.paragraphResults.first(where: { $0.id == paragraphID })?.previewText ?? "Paragraph \(paragraphID)")
+                                .lineLimit(2)
+                            Text("Paragraph \(paragraphID)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption2)
@@ -453,11 +483,27 @@ struct ContentView: View {
             Divider()
             workspaceContent
         }
+        .overlay(alignment: .bottomTrailing) {
+            if viewModel.isQuickLookupPresented && !viewModel.isInspectorPresented && viewModel.activeTextSelection != nil {
+                QuickSelectionView(viewModel: viewModel).padding(16)
+            }
+        }
     }
 
     private var workspaceHeader: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .center, spacing: 14) {
+                Button {
+                    focusRestoreState = nil
+                    isDocumentSidebarPresented.toggle()
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .accessibilityLabel(isDocumentSidebarPresented ? "Hide Document Sidebar" : "Show Document Sidebar")
+                .help("Show or hide Document Sidebar (Control-Command-S)")
+
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 9) {
                         RoundedRectangle(cornerRadius: 2)
@@ -479,12 +525,31 @@ struct ContentView: View {
 
                 Spacer()
 
-                OllamaStatusBadge(
-                    isRefreshing: viewModel.isRefreshingModels,
-                    isAvailable: viewModel.isOllamaReachable
-                )
+                Button {
+                    if let previous = focusRestoreState {
+                        isDocumentSidebarPresented = previous.sidebar
+                        viewModel.isInspectorPresented = previous.inspector
+                        focusRestoreState = nil
+                    } else {
+                        focusRestoreState = (isDocumentSidebarPresented, viewModel.isInspectorPresented)
+                        isDocumentSidebarPresented = false
+                        viewModel.isInspectorPresented = false
+                        viewModel.isQuickLookupPresented = false
+                    }
+                } label: { Image(systemName: focusRestoreState == nil ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left") }
+                .buttonStyle(.bordered)
+                .keyboardShortcut("f", modifiers: [.command, .control])
+                .help(focusRestoreState == nil ? "Focus Reading (Control-Command-F)" : "Exit Focus Reading")
+                .accessibilityLabel(focusRestoreState == nil ? "Focus Reading" : "Exit Focus Reading")
+
+                Button { isReadingToolsPresented.toggle() } label: { Image(systemName: "textformat.size") }
+                    .buttonStyle(.bordered).help("Reading appearance").accessibilityLabel("Reading Appearance")
+                    .popover(isPresented: $isReadingToolsPresented) {
+                        ReadingToolsView(appearance: settingBinding(\.readingAppearance))
+                    }
 
                 Button {
+                    focusRestoreState = nil
                     viewModel.toggleInspector()
                 } label: {
                     Image(systemName: "sidebar.right")
@@ -504,6 +569,12 @@ struct ContentView: View {
                     workspaceModePicker
                     primaryActions
                 }
+            }
+            if let message = viewModel.primarySetupMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, 20)
@@ -528,7 +599,7 @@ struct ContentView: View {
                         .padding(.vertical, 8)
                         .foregroundStyle(
                             viewModel.workspaceMode == mode
-                                ? Color.white
+                                ? PaperBridgeTheme.accentForeground
                                 : PaperBridgeTheme.ink
                         )
                         .background(
@@ -537,6 +608,8 @@ struct ContentView: View {
                                 : Color.clear,
                             in: RoundedRectangle(cornerRadius: 8, style: .continuous)
                         )
+                        // Plain buttons must include the padded segment in their hit target.
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(
@@ -560,10 +633,11 @@ struct ContentView: View {
     private var primaryActions: some View {
         HStack(spacing: 8) {
             Button {
-                viewModel.performPrimaryWorkspaceAction()
+                if viewModel.primarySetupMessage != nil { onShowGettingStarted() }
+                else { viewModel.performPrimaryWorkspaceAction() }
             } label: {
                 Label(
-                    primaryWorkspaceActionTitle,
+                    viewModel.primarySetupMessage == nil ? primaryWorkspaceActionTitle : "Set Up Local AI",
                     systemImage: primaryWorkspaceActionIcon
                 )
             }
@@ -572,6 +646,31 @@ struct ContentView: View {
             .disabled(!viewModel.canPerformPrimaryWorkspaceAction)
 
             Menu {
+                Section("Translation Range") {
+                    Button("Resume All Untranslated Blocks") { viewModel.translatePaper() }
+                        .disabled(!viewModel.canTranslate)
+                    Button("Abstract & Conclusion First") {
+                        viewModel.translatePaper(paragraphIDs: PaperReadingAnalysis.overviewParagraphIDs(in: viewModel.paperSections))
+                    }
+                    .disabled(!viewModel.canTranslate || PaperReadingAnalysis.overviewParagraphIDs(in: viewModel.paperSections).isEmpty)
+                    if let section = viewModel.currentReadingSection {
+                        Button("Translate Current Section: \(section.title)") { viewModel.translatePaper(paragraphIDs: section.paragraphIDs) }
+                            .disabled(!viewModel.canTranslate)
+                        Button("Prioritize Current Section in Queue") { viewModel.prioritizeSection(section) }
+                            .disabled(!viewModel.isTranslatingParagraphs)
+                    }
+                    Menu("Choose Section") {
+                        ForEach(viewModel.paperSections) { section in
+                            Button(section.title) { viewModel.translatePaper(paragraphIDs: section.paragraphIDs) }
+                        }
+                    }.disabled(!viewModel.canTranslate)
+                }
+                Divider()
+                Button("Paper Library", action: viewModel.showLibrary)
+                Button("Re-extract PDF as New Copy...", action: viewModel.reextractPDFAsNewCopy)
+                    .disabled(viewModel.isBusy)
+                Button("Saved Terminology") { viewModel.isGlossaryPresented = true }
+                Divider()
                 Button {
                     viewModel.workspaceMode = .summary
                     viewModel.generateSummaries()
@@ -614,7 +713,7 @@ struct ContentView: View {
                     Image(systemName: "stop.fill")
                 }
                 .buttonStyle(.bordered)
-                .help("Stop after the current request; progress is saved locally")
+                .help("Cancel the current request; completed progress is saved locally")
             }
         }
     }
@@ -712,8 +811,13 @@ struct ContentView: View {
                 PDFDocumentView(
                     pdfURL: originalPDFURL,
                     annotations: viewModel.annotations(for: .paper, side: .original),
+                    navigationRequest: viewModel.annotationNavigationRequest,
+                    readingPosition: viewModel.readingPositions["paper.pdf"],
+                    onPositionChange: positionHandler(for: "paper.pdf"),
+                    onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                     onSelection: viewModel.captureTextSelection
                 )
+                    .id("pdf-\(viewModel.loadedPaper?.checksum ?? "")")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 MarkdownPreviewView(
@@ -725,14 +829,22 @@ struct ContentView: View {
                         ? .translation
                         : .original,
                     annotations: viewModel.annotations(for: .paper),
+                    navigationRequest: viewModel.annotationNavigationRequest,
+                    readingPosition: viewModel.readingPositions[paperMarkdownPositionKey],
+                    onPositionChange: positionHandler(for: paperMarkdownPositionKey),
+                    onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                     onSelection: viewModel.captureTextSelection
                 )
+                .id("\(viewModel.loadedPaper?.checksum ?? "")-\(paperMarkdownPositionKey)")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
 
     private var previewWorkspaceDescription: String {
+        if viewModel.loadedPaper?.extractionEngine == nil {
+            return "Your source text in a reflowable reading view. This document was not reconstructed from a PDF by MinerU."
+        }
         if viewModel.loadedPaper?.hasFacsimileMarkdown == true {
             return viewModel.displayMode == .sourceOnly
                 ? "Exact native PDF rendering with original formulas, figures, and page layout; no OCR is used."
@@ -747,11 +859,19 @@ struct ContentView: View {
     }
 
     private var readerWorkspace: some View {
-        ScrollViewReader { proxy in
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                displayModePicker
+                searchField
+                undoButton
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
+            Divider()
+            ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     statusStrip
-                    readerControls
 
                     if viewModel.visibleReaderItems.isEmpty {
                         ContentUnavailableView(
@@ -771,82 +891,82 @@ struct ContentView: View {
                         .padding(.vertical, 48)
                     } else {
                         ForEach(viewModel.visibleReaderItems) { item in
-                            switch item {
-                            case .paragraph(let paragraph):
-                                if let sectionTitle = TextProcessing.detectedSectionTitle(
-                                    in: paragraph.original
-                                ) {
-                                    sectionMarker(sectionTitle)
+                            VStack(alignment: .leading, spacing: 16) {
+                                switch item {
+                                case .paragraph(let paragraph):
+                                    if let sectionTitle = TextProcessing.detectedSectionTitle(
+                                        in: paragraph.original
+                                    ) {
+                                        sectionMarker(sectionTitle)
+                                    }
+                                    paragraphCard(paragraph)
+                                case .resource(let resource):
+                                    readerResourceBlock(resource)
                                 }
-
-                                paragraphCard(paragraph)
-                                    .id(paragraph.id)
-                            case .resource(let resource):
-                                readerResourceBlock(resource)
                             }
+                            .id(item.id)
                         }
                     }
                 }
+                .scrollTargetLayout()
                 .padding(22)
-                .frame(maxWidth: 1020, alignment: .topLeading)
+                .frame(maxWidth: viewModel.settings.readingAppearance.clamped.contentWidth, alignment: .topLeading)
             }
+            .scrollPosition(id: $visibleReaderItemID, anchor: .top)
             .scrollIndicators(.visible)
+            .onAppear {
+                let initialID: String?
+                if let request = viewModel.navigationRequest, request.id != handledParagraphNavigationID {
+                    handledParagraphNavigationID = request.id
+                    initialID = "paragraph-\(request.paragraphID)"
+                } else {
+                    let position = viewModel.readingPositions["reader"]
+                    initialID = position?.readerItemID ?? position?.paragraphID.map { "paragraph-\($0)" }
+                }
+                restoreReaderPosition(initialID, using: scrollProxy)
+            }
+            .onChange(of: visibleReaderItemID) { _, id in
+                guard let id, viewModel.paragraphSearchText.isEmpty else { return }
+                let paragraphID = id.hasPrefix("paragraph-") ? Int(id.dropFirst("paragraph-".count)) : nil
+                positionHandler(for: "reader")(ReadingPosition(paragraphID: paragraphID, readerItemID: id))
+            }
+            .onChange(of: viewModel.paragraphSearchText) { old, new in
+                if old.isEmpty && !new.isEmpty { positionBeforeSearch = visibleReaderItemID }
+                if new.isEmpty, let positionBeforeSearch { visibleReaderItemID = positionBeforeSearch }
+            }
             .onChange(of: viewModel.navigationRequest) { _, request in
                 guard let request else { return }
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    proxy.scrollTo(request.paragraphID, anchor: .top)
-                }
+                handledParagraphNavigationID = request.id
+                restoreReaderPosition("paragraph-\(request.paragraphID)", using: scrollProxy)
+            }
+            .onChange(of: isDocumentSidebarPresented) { _, _ in
+                restoreReaderPosition(visibleReaderItemID, using: scrollProxy)
+            }
+            .onChange(of: viewModel.isInspectorPresented) { _, opened in
+                let selectedID = opened && viewModel.activeTextSelection?.scope == .reader
+                    ? viewModel.activeTextSelection.map { "paragraph-\($0.paragraphID)" } : nil
+                restoreReaderPosition(selectedID ?? visibleReaderItemID, using: scrollProxy)
+            }
             }
         }
     }
 
-    private var readerControls: some View {
-        SurfaceCard(contentPadding: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Paper Reader")
-                            .font(.title3.weight(.semibold))
-                        Text(readerWorkspaceSubtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    HStack(spacing: 8) {
-                        MetricPill(
-                            title: "Translated",
-                            value: "\(viewModel.translatedCount)/\(viewModel.paragraphResults.count)"
-                        )
-                        if viewModel.failedCount > 0 {
-                            MetricPill(title: "Failed", value: "\(viewModel.failedCount)")
-                        }
-                    }
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) {
-                        displayModePicker
-                        searchField
-                        undoButton
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        displayModePicker
-                        searchField
-                        undoButton
-                    }
-                }
-            }
+    private func restoreReaderPosition(_ itemID: String?, using proxy: ScrollViewProxy) {
+        guard let itemID else { return }
+        let checksum = viewModel.loadedPaper?.checksum
+        // A remounted ScrollView needs an explicit scroll, even when the binding ID is unchanged.
+        DispatchQueue.main.async {
+            guard viewModel.workspaceMode == .reader, viewModel.loadedPaper?.checksum == checksum else { return }
+            visibleReaderItemID = itemID
+            proxy.scrollTo(itemID, anchor: .top)
         }
     }
 
-    private var readerWorkspaceSubtitle: String {
-        if viewModel.loadedPaper?.hasStructuredMarkdown == true {
-            return "MinerU paragraph order with figures, tables, and formulas preserved in place. Select text for research tools."
-        }
-        return "Select text to open translation, explanation, highlight, and note tools."
+    private var paperMarkdownPositionKey: String { "paper.markdown.\(viewModel.displayMode.rawValue)" }
+
+    private func positionHandler(for key: String) -> (ReadingPosition) -> Void {
+        let checksum = viewModel.loadedPaper?.checksum
+        return { position in viewModel.updateReadingPosition(position, key: key, paperChecksum: checksum) }
     }
 
     private func readerResourceBlock(_ resource: ReaderResourceBlock) -> some View {
@@ -947,6 +1067,20 @@ struct ContentView: View {
                 text: $viewModel.paragraphSearchText
             )
             .textFieldStyle(.roundedBorder)
+            .focused($isReaderSearchFocused)
+            .task(id: viewModel.searchFocusRequest) {
+                guard let request = viewModel.searchFocusRequest,
+                      request != handledSearchFocusRequest else { return }
+                // Focus only after the Reader tab has mounted its search field.
+                await Task.yield()
+                guard !Task.isCancelled else { return }
+                isReaderSearchFocused = true
+                handledSearchFocusRequest = request
+            }
+            .onExitCommand {
+                viewModel.paragraphSearchText = ""
+                isReaderSearchFocused = false
+            }
 
             if !viewModel.paragraphSearchText.isEmpty {
                 Button {
@@ -977,15 +1111,34 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 statusStrip
 
+                if !viewModel.qualityIssues.isEmpty { ParagraphQualityView(viewModel: viewModel) }
+
+                ReadingGuideView(
+                    entries: viewModel.readingGuide,
+                    hasText: !viewModel.paragraphResults.isEmpty,
+                    translatedCount: viewModel.translatedCount,
+                    paragraphCount: viewModel.paragraphResults.count,
+                    onRead: { viewModel.workspaceMode = .reader },
+                    onOpenSource: {
+                        viewModel.workspaceMode = .preview
+                        viewModel.displayMode = .sourceOnly
+                    },
+                    onOpenPassage: viewModel.openReadingPassage
+                )
+
                 if let summaries = viewModel.summaries {
                     summaryPanel(summaries)
                 } else {
                     generationEmptyState(
-                        title: "Whole-paper Summary",
-                        description: "Create faithful summaries in both the source and target languages.",
+                        title: "AI Summary (Optional)",
+                        description: "Use a local summary model for a shorter source/target-language overview. Model output can be wrong; use the source map above to verify it.",
                         icon: "list.bullet.rectangle",
-                        buttonTitle: "Generate Summary",
-                        action: viewModel.generateSummaries
+                        buttonTitle: viewModel.primarySetupMessage == nil ? "Generate Summary" : "Set Up Summary",
+                        isEnabled: viewModel.canSummarize,
+                        action: {
+                            if viewModel.primarySetupMessage != nil { onShowGettingStarted() }
+                            else { viewModel.generateSummaries() }
+                        }
                     )
                 }
             }
@@ -1007,8 +1160,12 @@ struct ContentView: View {
                         title: "Connected Full Translation",
                         description: fullTranslationWorkspaceDescription,
                         icon: "text.append",
-                        buttonTitle: "Generate Full Translation",
-                        action: viewModel.generateConnectedTranslation
+                        buttonTitle: viewModel.translationSetupMessage == nil ? "Generate Full Translation" : "Set Up Translation",
+                        isEnabled: viewModel.canGenerateConnectedTranslation,
+                        action: {
+                            if viewModel.translationSetupMessage != nil { onShowGettingStarted() }
+                            else { viewModel.generateConnectedTranslation() }
+                        }
                     )
                 }
             }
@@ -1029,6 +1186,12 @@ struct ContentView: View {
 
     @ViewBuilder
     private var statusStrip: some View {
+        if let saveError = viewModel.workspaceSaveError {
+            Label("Local save failed: \(saveError). Export your work before quitting.", systemImage: "exclamationmark.triangle")
+                .font(.callout)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+        }
         if viewModel.isBusy || !viewModel.statusMessage.isEmpty {
             SurfaceCard(contentPadding: 14) {
                 VStack(alignment: .leading, spacing: viewModel.isBusy ? 9 : 0) {
@@ -1178,6 +1341,25 @@ struct ContentView: View {
                     .help("Paragraph actions")
                 }
 
+                if let issue = viewModel.qualityIssues.first(where: { $0.paragraphID == paragraph.id }) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(issue.reason, systemImage: "exclamationmark.bubble")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            Button("Edit or Split") { viewModel.beginEditingParagraph(paragraph.id) }
+                                .disabled(!viewModel.canEditParagraphStructure)
+                            Button("Compare Original") {
+                                viewModel.workspaceMode = .preview
+                                viewModel.displayMode = .sourceOnly
+                            }
+                        }.controlSize(.small)
+                        if !viewModel.canEditParagraphStructure && viewModel.loadedPaper?.hasStructuredMarkdown == true {
+                            Text("MinerU owns these blocks. Review the PDF or correct an exported Markdown copy; merging here would detach assets.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 if viewModel.displayMode != .translationOnly {
                     VStack(alignment: .leading, spacing: 8) {
                         languageLabel(
@@ -1194,6 +1376,8 @@ struct ContentView: View {
                                 for: paragraph.id,
                                 side: .original
                             ),
+                            navigationRequest: viewModel.annotationNavigationRequest,
+                            onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                             onSelection: viewModel.captureTextSelection
                         )
                         .frame(maxWidth: .infinity, minHeight: 20)
@@ -1229,6 +1413,8 @@ struct ContentView: View {
                                     for: paragraph.id,
                                     side: .translation
                                 ),
+                                navigationRequest: viewModel.annotationNavigationRequest,
+                                onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                                 onSelection: viewModel.captureTextSelection
                             )
                             .frame(maxWidth: .infinity, minHeight: 20)
@@ -1244,8 +1430,18 @@ struct ContentView: View {
                                     .textSelection(.enabled)
                             }
                         } else {
-                            Text("Translation has not started yet.")
-                                .foregroundStyle(.secondary)
+                            HStack {
+                                Text("Read first. Translate just this paragraph when you need it.")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(viewModel.translationSetupMessage == nil ? "Translate Paragraph" : "Set Up Translation") {
+                                    if viewModel.translationSetupMessage != nil { onShowGettingStarted() }
+                                    else { viewModel.retryTranslation(for: paragraph.id) }
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(viewModel.isBusy)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1266,6 +1462,9 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Label("Whole-paper Summary", systemImage: "text.book.closed.fill")
                     .font(.title2.weight(.semibold))
+
+                Text("AI-written, not verified research findings. Source links validate the location of a quotation, not whether it proves the model's interpretation.")
+                    .font(.callout).foregroundStyle(.secondary)
 
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 18) {
@@ -1297,6 +1496,32 @@ struct ContentView: View {
                             side: .translation
                         )
                     }
+                }
+                if let claims = summaries.claims {
+                    Divider()
+                    Text("Check the Sources").font(.headline)
+                    ForEach(Array(claims.enumerated()), id: \.element.id) { index, claim in
+                        DisclosureGroup("Claim \(index + 1): \(claim.sources.isEmpty ? "No source link validated" : "\(claim.sources.count) source passage(s)")") {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(claim.text).font(.callout).textSelection(.enabled)
+                                if claim.sources.isEmpty {
+                                    Text("Do not treat this claim as evidence. Check the original paper independently.").font(.caption).foregroundStyle(.secondary)
+                                }
+                                ForEach(claim.sources, id: \.self) { source in
+                                    Text(source.quote).font(.callout).textSelection(.enabled)
+                                    Button("Read Original Paragraph \(source.paragraphID)") {
+                                        guard viewModel.loadedPaper?.paragraphs.indices.contains(source.paragraphID - 1) == true,
+                                              viewModel.loadedPaper?.paragraphs[source.paragraphID - 1].contains(source.quote) == true else { return }
+                                        viewModel.workspaceMode = .reader
+                                        viewModel.displayMode = .bilingual
+                                        viewModel.navigateToParagraph(source.paragraphID)
+                                    }
+                                }
+                            }.padding(.vertical, 8)
+                        }
+                    }
+                } else {
+                    Text("This saved summary predates source links. Its claims have not been linked to evidence.").font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -1330,8 +1555,13 @@ struct ContentView: View {
                             for: .fullTranslation,
                             side: .translation
                         ),
+                        navigationRequest: viewModel.annotationNavigationRequest,
+                        readingPosition: viewModel.readingPositions["fullTranslation.markdown"],
+                        onPositionChange: positionHandler(for: "fullTranslation.markdown"),
+                        onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                         onSelection: viewModel.captureTextSelection
                     )
+                    .id(viewModel.loadedPaper?.checksum)
                     .frame(minHeight: 640)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .overlay(
@@ -1352,6 +1582,8 @@ struct ContentView: View {
                         lineSpacing: 5,
                         scope: .fullTranslation,
                         locator: "full-translation",
+                        navigationRequest: viewModel.annotationNavigationRequest,
+                        onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                         onSelection: viewModel.captureTextSelection
                     )
                     .frame(maxWidth: .infinity, minHeight: 20)
@@ -1365,6 +1597,7 @@ struct ContentView: View {
         description: String,
         icon: String,
         buttonTitle: String,
+        isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
         SurfaceCard {
@@ -1380,7 +1613,7 @@ struct ContentView: View {
                     .frame(maxWidth: 540)
                 Button(buttonTitle, action: action)
                     .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.isBusy)
+                    .disabled(viewModel.isBusy || !isEnabled)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 34)
@@ -1412,6 +1645,8 @@ struct ContentView: View {
                 lineSpacing: 4,
                 scope: scope,
                 locator: scope.rawValue,
+                navigationRequest: viewModel.annotationNavigationRequest,
+                onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
                 onSelection: viewModel.captureTextSelection
             )
             .frame(maxWidth: .infinity, minHeight: 20)
@@ -1502,6 +1737,17 @@ struct ContentView: View {
             }
             .font(.caption.weight(.medium))
             .foregroundStyle(PaperBridgeTheme.originalLabel)
+
+            HStack(spacing: 12) {
+                Button("Try a Practice Paper") { viewModel.loadSamplePaper() }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.isBusy)
+                Button("Local AI Setup", action: onShowGettingStarted)
+                    .buttonStyle(.borderless)
+            }
+            Text("You can read and annotate before installing models. The practice paper is fictional and makes no AI requests until you ask.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1540,7 +1786,7 @@ struct ContentView: View {
                 color: PaperBridgeTheme.warning
             )
 
-            Text("Nothing leaves this Mac")
+            Text("Paper analysis stays on this Mac")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PaperBridgeTheme.accentDark)
                 .padding(.horizontal, 20)

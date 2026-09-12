@@ -40,6 +40,79 @@ It can also:
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
 
+## Reading Reliability in 1.9
+
+**New in PaperBridge 1.9.** This release focuses on staying with the paper rather than redoing work. [Try the interactive website examples](https://paperbridges.net/#reading-update) or read the [implementation and verification notes](docs/reliability-update.md).
+
+| When reading gets interrupted | What changes in 1.9 |
+| --- | --- |
+| You do not know where to start | Overview shows exact passages from detected question, method, evidence, discussion, and conclusion sections. Click through to the source; no model is used. |
+| You have not installed any models | Try a fictional practice paper from the welcome screen. Reading, highlights, and notes work without AI; missing AI dependencies lead to setup instead of an unexplained failure. |
+| A translation stops partway through | Resume saved pending/failed blocks without retranslating successful ones. Cancelled requests cannot overwrite a replacement task. |
+| You remove a highlight | The attached note stays. Highlight/note changes can be undone within the current document session. |
+| You switch views or reopen the paper | Recover the saved Reader block, original PDF page, or Markdown viewport. Annotation links validate their saved location. |
+| The window gets crowded | Hide the document sidebar, keep search above the Reader, and use a bottom inspector in narrower windows. Bookmarks show text previews. |
+| Setup or saving needs attention | Downloads can continue in the background, and local save errors are shown instead of silently ignored. |
+| A paragraph ends with a broken word | Overview flags possible extraction issues and links to the affected Reader block. Check the original before using edit/split/merge; no speculative auto-correction. |
+| You only need the methods or conclusion | More > Translation Range offers Abstract & Conclusion, the current section, any detected section, or all unfinished blocks. The current section can move ahead in an active paragraph queue. |
+| You are reading several papers | Paper Library searches local titles/tags and restores each paper's translations, notes, bookmarks, task settings, and reading position. |
+| A term keeps returning | Use compact selected-text help, then save an approved translation in Saved Terminology. Matching language-direction terms guide future requests without rewriting existing translations. |
+| An AI summary sounds too certain | Check the Sources lists exact-match source quotations for numbered claims. Invalid references remain unlinked; quotation matching is not verification of the model's reasoning. |
+| The page is tiring to read | Reading Appearance adjusts text size, line spacing, and width. Focus Reading hides both side panels and restores their previous state when you exit. |
+
+```mermaid
+flowchart LR
+    A["Saved translations"] -->|"Resume"| B["Only unfinished blocks"]
+    C["Highlight + note"] -->|"Remove highlight"| D["Note retained; undo available"]
+    E["Reading a passage"] -->|"Leave and return"| F["Recover the saved reading location"]
+```
+
+These improvements do not mean that every PDF now splits perfectly. The reading map quotes existing text; it does not generate scientific answers or invent missing sections. New AI summaries separately provide source quotations where they can be validated, but do not certify scientific claims. Website examples use illustrative data, not live model output. Download links serve the latest signed release; existing users can choose PaperBridge > Check for Updates.
+
+### Reading efficiency: step by step
+
+1. **Review extraction:** open Overview's extraction check. Select Review, then compare Original. Unstructured text can be edited, split, merged, or reflowed using Reader's existing paragraph actions. MinerU controls structured blocks; correct an exported Markdown copy instead of breaking image/formula associations. Warnings are heuristics, not proof of an error, and no text is automatically rewritten.
+2. **Choose the translation range:** open More > Translation Range. Abstract & Conclusion translates just those detected sections; use Resume All Untranslated Blocks later. During paragraph translation, scroll to a section and choose Prioritize Current Section in Queue. The in-flight paragraph finishes first, completed output is retained, and only queued blocks are reordered. Full Translation remains a separate document-wide task.
+3. **Reopen a paper:** choose Paper Library from the sidebar, More, or the Paper menu (`Shift-Command-L`). Search by title/tag and edit library labels with the pencil. Each saved paper restores its task settings, translations, notes, bookmarks, and position. Global reading appearance stays unchanged. The last readable save is retained locally for corruption recovery, but it is not an independent backup or synchronization; do not delete associated resource folders.
+4. **Keep useful terminology:** select a short phrase. The compact help panel does not resize the reader; Notes & More opens the full inspector. Choose Save Term and review the translation. More > Saved Terminology lists/removes saved terms. Up to 500 entries are allowed (160 source / 300 target characters each). Up to 24 matching terms guide a request; models can still ignore or misuse them. Existing completed translations are never silently replaced.
+5. **Verify a summary:** generate a new summary in Overview and expand Check the Sources. Both language summaries use the same numbered claims. Read Original Paragraph opens an exact-match quotation's paragraph. Invalid IDs, fabricated quotes, or unstructured model output receive no validated links. Old summaries remain readable; generating again upgrades them to the new format. Source excerpts also accompany the analysis Markdown export.
+6. **Set reading comfort:** use the text-size button in the header for size, spacing, and width. Use Focus Reading (`Control-Command-F`) to hide side panels temporarily. These preferences affect Reader and text previews, not original PDF geometry or exported Markdown. Every Paper / Reader / Overview / Full Translation segment has a full-area click target.
+
+Paper Library and terminology are stored alongside the existing application-support workspace files. Older saves are discovered without deleting them. Paragraph edits keep the same library entry and preserve the original PDF resource location; earlier saved variants are not advertised as a cloud version history.
+
+Reopening or dropping the same original PDF restores its saved revision, rather than overwriting repaired paragraphs. To try a different parser, choose **More > Re-extract PDF as New Copy...** and select the source PDF; your previous library copy remains unchanged. Splits/merges move bookmarks and resolvable annotations with their source text. Notes whose text changed or became ambiguous remain in the inspector as **Source changed · note preserved**, without a misleading highlight. Undo restores old anchors and keeps notes added since the edit.
+
+Each changed local JSON save retains one readable `.backup` beside it and automatically falls back to that copy if the primary file is unreadable. This protects against a damaged save, not disk loss, deleted assets, or every older version. Export Markdown bundles and use your own backup for important papers.
+
+## Your First Paper
+
+### Install the ready-made Mac app
+
+1. [Download PaperBridge.dmg](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), open it, and drag PaperBridge into Applications.
+2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required; Windows is not yet available.
+3. Choose your route below. The setup guide can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
+
+| What you want to do | What to install |
+| --- | --- |
+| Read the original PDF, highlight selectable text, and take notes | PaperBridge alone. PDFKit is built in; an image-only scan requires OCR for selectable text. |
+| Translate paragraphs or a whole paper | Ollama plus a translation model. Setup offers TranslateGemma 4B, 12B, and 27B; choose a size appropriate for your Mac. |
+| Improve reading order and preserve structured figures, tables, and formulas | MinerU is a separate recommended setup step. Without it, PDFKit retains exact pages but cannot reconstruct their semantic structure. |
+| Explain a phrase or summarize the paper | An optional explanation/summary model in Ollama, such as one of the Gemma or Qwen choices in setup. Translation settings can also be needed for bilingual outputs. |
+
+Initial downloads require internet, disk space, and time. Model size on disk does not guarantee that it will fit in runtime memory; MinerU recommends at least 16 GB RAM. The smaller translation model is a useful starting point when resources are limited.
+
+### A short reading workflow
+
+1. Open a PDF or paste a passage. `Try a Practice Paper` provides fictional tutorial text without a model download and without replacing an already open paper.
+2. Inspect the original. PaperBridge opens text-bearing papers in **Overview**, where a source reading map links to detected sections. It falls back to an opening passage when headings are unclear. The optional AI summary is below it, clearly separated.
+3. Read one passage and translate it when needed. Select an unfamiliar phrase to translate only that selection, or use an optional model to explain it. Check scientific claims against the source.
+4. Highlight, add a note, or bookmark a useful paragraph. Search to find a term; `Control-Command-S` hides the document sidebar and `Command-1` opens Overview.
+5. Use Full Translation for continuous reading. Export Markdown **with its assets** and keep those files together. Local workspace recovery is not a backup; export important work.
+
+Figures are not repainted or translated internally. Captions can be translated; formulas and supported resource blocks remain protected. MinerU Markdown preserves semantic reading order, not PDF page coordinates. Always use Original for a precise visual check.
+
+[Explore the website feature guide](https://paperbridges.net/#capabilities) for task-by-task explanations and [choose a setup route](https://paperbridges.net/#getting-started). Website updates do not themselves publish app updates; use `Check for Updates` after a signed release becomes available.
+
 ## App Preview
 
 ### Bilingual paragraph reader
@@ -171,6 +244,9 @@ PDFKit facsimile deliberately does not guess formulas or rebuild document struct
 - `package_release.sh`: signed and notarized release-package builder for maintainers
 - `publish_release.sh`: one-command GitHub Release publisher for maintainers
 - `test_text_processing.sh`: paragraph-processing regression tests
+- `test_reading_reliability.sh`: offline source-map, practice-paper, workspace, translation-resume, cancellation, and annotation tests
+- `test_markdown_interaction.sh`: local WebKit selection, navigation, and reading-position tests
+- `script/build_and_run.sh`: rebuild and open a development app, optionally with an isolated workspace
 - `Tests/`: command-line regression test source
 - `docs/images/`: README screenshots captured from the running app
 - `README.md`: setup and usage guide
@@ -482,7 +558,7 @@ This includes app settings, MinerU Markdown/assets, the most recent workspace, t
 - If the app confidently detects a `References` or `Bibliography` section, it excludes those blocks from translation, summary, and explanation while retaining the original references in preview and exported Markdown.
 - If MinerU fails and fallback is enabled, PaperBridge explains the reason and switches to the model-free PDFKit facsimile plus its selectable-text reconstruction pipeline.
 
-## Paragraph Regression Tests
+## Development And Regression Tests
 
 After changing text extraction or paragraph rules, run:
 
@@ -491,6 +567,38 @@ After changing text extraction or paragraph rules, run:
 ```
 
 The tests cover cross-page words, spaced PDF word fragments, incomplete phrases, citations, headings, equations, chart-label runs, references, MinerU Markdown segmentation, protected formula/image tokens, structure-preserving reconstruction, asset discovery, MinerU process execution, exact PDF facsimile archiving, page rendering, cache reuse, and failed-output recovery.
+
+Run the reading reliability checks as well:
+
+```bash
+./test_reading_reliability.sh
+./test_markdown_interaction.sh
+```
+
+These use temporary fixtures and a simulated Ollama response, not your papers or downloaded models. The WebKit test needs a logged-in macOS graphical session. The scripts use Xcode's Swift tools; there are no additional testing dependencies.
+
+To build and open a separate Debug app without changing the installed release or your saved papers:
+
+```bash
+./script/build_and_run.sh --isolated --verify
+```
+
+Its workspace is stored in `build-audit-fixes/QAWorkspace`. To add a clearly labeled sample document for UI checks, first close this development app, then run:
+
+```bash
+./test_reading_reliability.sh --write-fixture ./build-audit-fixes/QAWorkspace
+./script/build_and_run.sh --isolated --verify
+```
+
+The fixture command replaces only the named test workspace; do not point it at a real workspace. Its translations are demonstration text, not actual model output. These development steps are not needed by people installing the DMG.
+
+### Reliability in 1.9
+
+This reliability update fixes resuming partially translated papers, restoring cached outputs after unrelated settings changes, and cancelling a request without letting it overwrite a newer task. Removing a highlight now preserves its note; highlight/note changes can be undone within the current document session. PDF annotations record the actual selection, including repeated words and multiple pages. Markdown annotations update without reloading the whole preview, and annotation navigation validates its saved anchor instead of guessing a repeated match.
+
+Reader search stays above the scrolling paper and opens with `Command-F`. Bookmarks include a text preview, document/import controls collapse during reading, and narrower windows use a bottom inspector instead of squeezing in a third column. Reader block positions, original PDF pages, and Markdown reading positions are saved locally. Setup downloads can continue in the background, and save errors are surfaced instead of silently discarded.
+
+Version 1.9 is distributed as a signed, notarized Universal DMG and through the existing signed automatic-update feed. Existing screenshots show the earlier interface; interactive website examples explain the newer reading tools. See [the reliability update notes](docs/reliability-update.md) for validation coverage and remaining work.
 
 ## Troubleshooting
 

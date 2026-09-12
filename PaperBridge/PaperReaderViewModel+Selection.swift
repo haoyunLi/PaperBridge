@@ -8,10 +8,11 @@ extension PaperReaderViewModel {
     var activeSelectionAnnotation: PaperAnnotation? {
         guard let selection = activeTextSelection else { return nil }
         return annotations.first {
-            $0.resolvedScope == selection.scope &&
+            $0.needsReview != true && $0.resolvedScope == selection.scope &&
                 $0.paragraphID == selection.paragraphID &&
                 $0.side == selection.side &&
                 $0.locator == selection.locator &&
+                $0.pdfAnchors == selection.pdfAnchors &&
                 $0.rangeLocation == selection.rangeLocation &&
                 $0.rangeLength == selection.rangeLength &&
                 $0.quote == selection.text
@@ -20,7 +21,7 @@ extension PaperReaderViewModel {
 
     func annotations(for paragraphID: Int, side: ReaderTextSide) -> [PaperAnnotation] {
         annotations.filter {
-            $0.resolvedScope == .reader &&
+            $0.needsReview != true && $0.resolvedScope == .reader &&
                 $0.paragraphID == paragraphID &&
                 $0.side == side
         }
@@ -31,7 +32,7 @@ extension PaperReaderViewModel {
         side: ReaderTextSide? = nil
     ) -> [PaperAnnotation] {
         annotations.filter { annotation in
-            annotation.resolvedScope == scope &&
+            annotation.needsReview != true && annotation.resolvedScope == scope &&
                 (side == nil || annotation.side == side)
         }
     }
@@ -53,11 +54,12 @@ extension PaperReaderViewModel {
         if selection.scope == .reader {
             selectedParagraphID = selection.paragraphID
         }
-        isInspectorPresented = true
+        if !isInspectorPresented { isQuickLookupPresented = true }
         restoreSelectionLookupCache(for: selection)
     }
 
     func clearTextSelection() {
+        isQuickLookupPresented = false
         selectionTask?.cancel()
         selectionTask = nil
         activeTextSelection = nil
@@ -75,10 +77,12 @@ extension PaperReaderViewModel {
     }
 
     func translateTextSelection() {
+        if !isInspectorPresented { isQuickLookupPresented = true }
         runSelectionLookup(.translation)
     }
 
     func explainTextSelection() {
+        if !isInspectorPresented { isQuickLookupPresented = true }
         runSelectionLookup(.explanation)
     }
 
@@ -91,6 +95,7 @@ extension PaperReaderViewModel {
 
     func applyHighlight(_ color: PaperHighlightColor) {
         guard let selection = activeTextSelection else { return }
+        recordAnnotationUndo()
 
         if let index = annotationIndex(for: selection) {
             annotations[index].highlightColor = color
@@ -105,6 +110,7 @@ extension PaperReaderViewModel {
                     scope: selection.scope,
                     context: selection.context,
                     locator: selection.locator,
+                    pdfAnchors: selection.pdfAnchors,
                     highlightColor: color
                 )
             )
@@ -115,6 +121,7 @@ extension PaperReaderViewModel {
     func saveSelectionNote(_ note: String) {
         guard let selection = activeTextSelection else { return }
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        recordAnnotationUndo()
 
         if let index = annotationIndex(for: selection) {
             annotations[index].note = trimmed
@@ -132,6 +139,7 @@ extension PaperReaderViewModel {
                     scope: selection.scope,
                     context: selection.context,
                     locator: selection.locator,
+                    pdfAnchors: selection.pdfAnchors,
                     note: trimmed
                 )
             )
@@ -139,19 +147,44 @@ extension PaperReaderViewModel {
         persistWorkspace()
     }
 
-    func removeSelectionAnnotation() {
+    func removeSelectionHighlight() {
         guard let selection = activeTextSelection,
               let index = annotationIndex(for: selection) else {
             return
         }
-        annotations.remove(at: index)
+        recordAnnotationUndo()
+        annotations[index].highlightColor = nil
+        if annotations[index].note.isEmpty { annotations.remove(at: index) }
+        persistWorkspace()
+    }
+
+    var canUndoAnnotationChange: Bool { !annotationUndoStack.isEmpty }
+
+    private func recordAnnotationUndo() {
+        annotationUndoStack.append(annotations)
+        if annotationUndoStack.count > 20 { annotationUndoStack.removeFirst() }
+    }
+
+    func undoAnnotationChange() {
+        guard let previous = annotationUndoStack.popLast() else { return }
+        annotations = previous
         persistWorkspace()
     }
 
     func activateAnnotation(_ annotation: PaperAnnotation) {
+        guard annotation.needsReview != true else {
+            statusMessage = "This note is preserved, but its source changed. Compare the saved quote with the original before highlighting it again."
+            return
+        }
         let scope = annotation.resolvedScope
         if scope == .reader {
+            workspaceMode = .reader
+            if (annotation.side == .original && displayMode == .translationOnly) ||
+                (annotation.side == .translation && displayMode == .sourceOnly) {
+                displayMode = .bilingual
+            }
             guard let paragraph = paragraphResults.first(where: { $0.id == annotation.paragraphID }) else {
+                reportAnnotationNavigationFailure()
                 return
             }
 
@@ -160,6 +193,7 @@ extension PaperReaderViewModel {
                 : paragraph.translation
             guard let range = annotation.resolvedRange(in: context) else {
                 navigateToParagraph(annotation.paragraphID)
+                reportAnnotationNavigationFailure()
                 return
             }
 
@@ -174,12 +208,15 @@ extension PaperReaderViewModel {
                     rangeLength: range.length
                 )
             )
+            annotationNavigationRequest = AnnotationNavigationRequest(annotation: annotation)
             return
         }
 
         workspaceMode = scope.workspaceMode
         if scope == .paper {
-            displayMode = annotation.side == .original ? .sourceOnly : .translationOnly
+            // A web anchor must reopen the structured view, not the source PDF renderer.
+            displayMode = annotation.locator?.hasPrefix("pdf-page-") == true
+                ? .sourceOnly : .bilingual
         }
 
         let context = annotation.context?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
@@ -197,14 +234,22 @@ extension PaperReaderViewModel {
                 context: context,
                 rangeLocation: range.location,
                 rangeLength: range.length,
-                locator: annotation.locator
+                locator: annotation.locator,
+                pdfAnchors: annotation.pdfAnchors
             )
         )
+        annotationNavigationRequest = AnnotationNavigationRequest(annotation: annotation)
     }
 
     func removeAnnotation(id: UUID) {
+        guard annotations.contains(where: { $0.id == id }) else { return }
+        recordAnnotationUndo()
         annotations.removeAll { $0.id == id }
         persistWorkspace()
+    }
+
+    func reportAnnotationNavigationFailure() {
+        selectionLookupError = "This passage could not be located uniquely. The document may have changed; your saved note is still available."
     }
 
     private enum SelectionLookupAction: String {
@@ -262,6 +307,7 @@ extension PaperReaderViewModel {
                     let targetLanguage = selection.side == .original
                         ? settings.targetLanguage
                         : settings.sourceLanguage
+                    let terms = self.terminologyPrompt(for: selection.text, from: sourceLanguage, to: targetLanguage)
 
                     if sourceLanguage == targetLanguage {
                         result = selection.text
@@ -282,7 +328,7 @@ extension PaperReaderViewModel {
                             ),
                             systemPrompt: PromptLibrary.selectionTranslationSystemPrompt(
                                 targetLanguage: targetLanguage
-                            )
+                            ) + terms
                         )
 
                         if SelectionTranslationPolicy.isLikelyOverexpanded(
@@ -300,7 +346,7 @@ extension PaperReaderViewModel {
                                 ),
                                 systemPrompt: PromptLibrary.selectionTranslationSystemPrompt(
                                     targetLanguage: targetLanguage
-                                )
+                                ) + terms
                             )
                         } else {
                             result = firstPass
@@ -392,7 +438,10 @@ extension PaperReaderViewModel {
                 explanationLanguage.rawValue,
                 SelectionTranslationPolicy.cacheVersion,
                 selection.identity,
-                selection.context
+                selection.context,
+                terminologyPrompt(for: selection.text,
+                    from: selection.side == .original ? settings.sourceLanguage : settings.targetLanguage,
+                    to: selection.side == .original ? settings.targetLanguage : settings.sourceLanguage)
             ].joined(separator: "|")
         )
     }
@@ -424,6 +473,7 @@ extension PaperReaderViewModel {
                 $0.paragraphID == selection.paragraphID &&
                 $0.side == selection.side &&
                 $0.locator == selection.locator &&
+                $0.pdfAnchors == selection.pdfAnchors &&
                 $0.rangeLocation == selection.rangeLocation &&
                 $0.rangeLength == selection.rangeLength &&
                 $0.quote == selection.text

@@ -12,6 +12,7 @@ struct AppSettings: Hashable, Codable {
     var pdfExtractionMode: PDFExtractionMode = .minerUPreferred
     var minerUExecutablePath = ""
     var minerUBackend: MinerUBackend = .pipeline
+    var readingAppearance = ReadingAppearance()
 }
 
 extension AppSettings {
@@ -29,6 +30,7 @@ extension AppSettings {
         case pdfExtractionMode
         case minerUExecutablePath
         case minerUBackend
+        case readingAppearance
     }
 
     init(from decoder: Decoder) throws {
@@ -45,6 +47,7 @@ extension AppSettings {
         pdfExtractionMode = try container.decodeIfPresent(PDFExtractionMode.self, forKey: .pdfExtractionMode) ?? defaults.pdfExtractionMode
         minerUExecutablePath = try container.decodeIfPresent(String.self, forKey: .minerUExecutablePath) ?? defaults.minerUExecutablePath
         minerUBackend = try container.decodeIfPresent(MinerUBackend.self, forKey: .minerUBackend) ?? defaults.minerUBackend
+        readingAppearance = (try container.decodeIfPresent(ReadingAppearance.self, forKey: .readingAppearance) ?? defaults.readingAppearance).clamped
     }
 
     func encode(to encoder: Encoder) throws {
@@ -60,6 +63,7 @@ extension AppSettings {
         try container.encode(pdfExtractionMode, forKey: .pdfExtractionMode)
         try container.encode(minerUExecutablePath, forKey: .minerUExecutablePath)
         try container.encode(minerUBackend, forKey: .minerUBackend)
+        try container.encode(readingAppearance.clamped, forKey: .readingAppearance)
     }
 }
 
@@ -401,7 +405,7 @@ enum ReaderWorkspaceMode: String, CaseIterable, Identifiable, Codable {
         case .reader:
             return "Reader"
         case .summary:
-            return "Summary"
+            return "Overview"
         case .fullTranslation:
             return "Full Translation"
         }
@@ -471,6 +475,29 @@ enum TextSelectionScope: String, Hashable, Codable {
     }
 }
 
+struct PDFTextAnchor: Hashable, Codable {
+    let pageIndex: Int
+    let location: Int
+    let length: Int
+    let quote: String
+}
+
+struct AnnotationNavigationRequest: Equatable {
+    let id = UUID()
+    let annotation: PaperAnnotation
+}
+
+struct ReadingPosition: Hashable, Codable {
+    var x: Double = 0
+    var y: Double = 0
+    var blockIndex: Int?
+    var blockText: String?
+    var offset: Double?
+    var pageIndex: Int?
+    var paragraphID: Int?
+    var readerItemID: String?
+}
+
 struct ReaderTextSelection: Hashable {
     let scope: TextSelectionScope
     let paragraphID: Int
@@ -480,6 +507,7 @@ struct ReaderTextSelection: Hashable {
     let rangeLocation: Int
     let rangeLength: Int
     let locator: String?
+    let pdfAnchors: [PDFTextAnchor]?
 
     init(
         scope: TextSelectionScope = .reader,
@@ -489,7 +517,8 @@ struct ReaderTextSelection: Hashable {
         context: String,
         rangeLocation: Int,
         rangeLength: Int,
-        locator: String? = nil
+        locator: String? = nil,
+        pdfAnchors: [PDFTextAnchor]? = nil
     ) {
         self.scope = scope
         self.paragraphID = paragraphID
@@ -499,10 +528,11 @@ struct ReaderTextSelection: Hashable {
         self.rangeLocation = rangeLocation
         self.rangeLength = rangeLength
         self.locator = locator
+        self.pdfAnchors = pdfAnchors
     }
 
     var identity: String {
-        "\(scope.rawValue)|\(paragraphID)|\(side.rawValue)|\(locator ?? "")|\(rangeLocation)|\(rangeLength)|\(text)"
+        "\(scope.rawValue)|\(paragraphID)|\(side.rawValue)|\(locator ?? "")|\(rangeLocation)|\(rangeLength)|\(text)|\(pdfAnchors ?? [])"
     }
 }
 
@@ -535,9 +565,11 @@ struct PaperAnnotation: Identifiable, Hashable, Codable {
     let scope: TextSelectionScope?
     let context: String?
     let locator: String?
+    let pdfAnchors: [PDFTextAnchor]?
     var highlightColor: PaperHighlightColor?
     var note: String
     let createdAt: Date
+    var needsReview: Bool? = nil
 
     init(
         id: UUID = UUID(),
@@ -549,6 +581,7 @@ struct PaperAnnotation: Identifiable, Hashable, Codable {
         scope: TextSelectionScope = .reader,
         context: String? = nil,
         locator: String? = nil,
+        pdfAnchors: [PDFTextAnchor]? = nil,
         highlightColor: PaperHighlightColor? = nil,
         note: String = "",
         createdAt: Date = Date()
@@ -562,6 +595,7 @@ struct PaperAnnotation: Identifiable, Hashable, Codable {
         self.scope = scope
         self.context = context
         self.locator = locator
+        self.pdfAnchors = pdfAnchors
         self.highlightColor = highlightColor
         self.note = note
         self.createdAt = createdAt
@@ -572,18 +606,24 @@ struct PaperAnnotation: Identifiable, Hashable, Codable {
     }
 
     func resolvedRange(in text: String) -> NSRange? {
+        guard needsReview != true else { return nil }
         let nsText = text as NSString
         let savedRange = NSRange(location: rangeLocation, length: rangeLength)
         if savedRange.location != NSNotFound,
            savedRange.location >= 0,
            savedRange.length > 0,
-           NSMaxRange(savedRange) <= nsText.length,
+           savedRange.location <= nsText.length,
+           savedRange.length <= nsText.length - savedRange.location,
            nsText.substring(with: savedRange) == quote {
             return savedRange
         }
 
+        guard !quote.isEmpty else { return nil }
         let recoveredRange = nsText.range(of: quote)
-        return recoveredRange.location == NSNotFound ? nil : recoveredRange
+        guard recoveredRange.location != NSNotFound else { return nil }
+        let nextStart = recoveredRange.location + 1
+        let duplicate = nsText.range(of: quote, range: NSRange(location: nextStart, length: nsText.length - nextStart))
+        return duplicate.location == NSNotFound ? recoveredRange : nil
     }
 }
 
@@ -712,6 +752,7 @@ struct PaperDocument: Hashable, Codable {
     let markdownSegments: [PaperMarkdownSegment]?
     let extractionEngine: DocumentExtractionEngine?
     let extractionWarning: String?
+    let libraryID: String?
 
     init(
         name: String,
@@ -724,7 +765,8 @@ struct PaperDocument: Hashable, Codable {
         markdownResourceDirectory: String? = nil,
         markdownSegments: [PaperMarkdownSegment]? = nil,
         extractionEngine: DocumentExtractionEngine? = nil,
-        extractionWarning: String? = nil
+        extractionWarning: String? = nil,
+        libraryID: String? = nil
     ) {
         self.name = name
         self.checksum = checksum
@@ -737,11 +779,14 @@ struct PaperDocument: Hashable, Codable {
         self.markdownSegments = markdownSegments
         self.extractionEngine = extractionEngine
         self.extractionWarning = extractionWarning
+        self.libraryID = libraryID
     }
 
     var excludedReferenceCount: Int {
         excludedReferenceParagraphs.count
     }
+
+    var libraryStorageID: String { libraryID ?? checksum }
 
     var hasStructuredMarkdown: Bool {
         sourceMarkdown?.isEmpty == false && markdownSegments?.isEmpty == false
@@ -774,6 +819,47 @@ struct SummaryResult: Hashable, Codable {
     let targetLanguage: ReaderLanguage
     let sourceSummary: String
     let targetSummary: String
+    var claims: [SummaryClaim]? = nil
+}
+
+struct ReadingAppearance: Hashable, Codable {
+    var fontSize: Double = 16
+    var lineSpacing: Double = 5
+    var contentWidth: Double = 920
+
+    var clamped: ReadingAppearance {
+        ReadingAppearance(fontSize: fontSize.isFinite ? min(24, max(13, fontSize)) : 16,
+                          lineSpacing: lineSpacing.isFinite ? min(12, max(2, lineSpacing)) : 5,
+                          contentWidth: contentWidth.isFinite ? min(1200, max(640, contentWidth)) : 920)
+    }
+}
+
+struct SavedTerm: Identifiable, Hashable, Codable {
+    var id = UUID()
+    let source: String
+    let translation: String
+    let sourceLanguage: ReaderLanguage
+    let targetLanguage: ReaderLanguage
+}
+
+struct SummarySource: Hashable, Codable {
+    let paragraphID: Int
+    let quote: String
+}
+
+struct SummaryClaim: Identifiable, Hashable, Codable {
+    var id = UUID()
+    let text: String
+    let sources: [SummarySource]
+}
+
+struct LibraryEntry: Identifiable, Hashable, Codable {
+    let id: String
+    var title: String
+    var tags: [String]
+    var lastOpened: Date
+    var paragraphCount: Int
+    var translatedCount: Int
 }
 
 struct ConnectedTranslationResult: Hashable, Codable {

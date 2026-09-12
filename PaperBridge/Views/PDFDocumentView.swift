@@ -4,6 +4,10 @@ import SwiftUI
 struct PDFDocumentView: NSViewRepresentable {
     let pdfURL: URL
     var annotations: [PaperAnnotation] = []
+    var navigationRequest: AnnotationNavigationRequest?
+    var readingPosition: ReadingPosition?
+    var onPositionChange: ((ReadingPosition) -> Void)?
+    var onNavigationFailure: (() -> Void)?
     var onSelection: ((ReaderTextSelection) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -30,6 +34,9 @@ struct PDFDocumentView: NSViewRepresentable {
             pdfView.document = PDFDocument(url: pdfURL)
             pdfView.autoScales = true
             context.coordinator.annotationSignature = nil
+            if let index = readingPosition?.pageIndex, let page = pdfView.document?.page(at: index) {
+                pdfView.go(to: page)
+            }
         }
 
         var hasher = Hasher()
@@ -39,10 +46,47 @@ struct PDFDocumentView: NSViewRepresentable {
             context.coordinator.annotationSignature = signature
             context.coordinator.applyAnnotations(to: pdfView)
         }
+        context.coordinator.navigateIfNeeded(in: pdfView)
     }
 
     static func dismantleNSView(_ pdfView: PDFView, coordinator: Coordinator) {
         coordinator.detach()
+    }
+
+    static func anchors(for selection: PDFSelection, in document: PDFDocument) -> [PDFTextAnchor] {
+        selection.pages.flatMap { page in
+            (0..<selection.numberOfTextRanges(on: page)).compactMap { index in
+                let range = selection.range(at: index, on: page)
+                guard let text = page.string as NSString?, range.location != NSNotFound,
+                      range.location <= text.length, range.length > 0,
+                      range.length <= text.length - range.location else { return nil }
+                return PDFTextAnchor(pageIndex: document.index(for: page), location: range.location,
+                                     length: range.length, quote: text.substring(with: range))
+            }
+        }
+    }
+
+    static func selection(for annotation: PaperAnnotation, in document: PDFDocument) -> PDFSelection? {
+        if let anchors = annotation.pdfAnchors, !anchors.isEmpty {
+            let result = PDFSelection(document: document)
+            for anchor in anchors {
+                guard let page = document.page(at: anchor.pageIndex), let text = page.string as NSString?,
+                      anchor.location >= 0, anchor.length > 0, anchor.location <= text.length,
+                      anchor.length <= text.length - anchor.location,
+                      text.substring(with: NSRange(location: anchor.location, length: anchor.length)) == anchor.quote,
+                      let part = page.selection(for: NSRange(location: anchor.location, length: anchor.length)) else {
+                    return nil
+                }
+                result.add(part)
+            }
+            return result
+        }
+        // Legacy annotations can be recovered only when their text location is unambiguous.
+        guard let locator = annotation.locator, locator.hasPrefix("pdf-page-"),
+              let index = Int(locator.dropFirst("pdf-page-".count)),
+              let page = document.page(at: index), let text = page.string,
+              let range = annotation.resolvedRange(in: text) else { return nil }
+        return page.selection(for: range)
     }
 
     final class Coordinator {
@@ -50,6 +94,9 @@ struct PDFDocumentView: NSViewRepresentable {
         var loadedPath: String?
         var annotationSignature: Int?
         private var selectionObserver: NSObjectProtocol?
+        private var pageObserver: NSObjectProtocol?
+        private var lastNavigationID: UUID?
+        private var isNavigating = false
         private var renderedAnnotations: [(page: PDFPage, annotation: PDFAnnotation)] = []
 
         init(parent: PDFDocumentView) {
@@ -66,6 +113,14 @@ struct PDFDocumentView: NSViewRepresentable {
                 guard let self, let pdfView else { return }
                 self.captureSelection(from: pdfView)
             }
+            pageObserver = NotificationCenter.default.addObserver(
+                forName: Notification.Name.PDFViewPageChanged, object: pdfView, queue: .main
+            ) { [weak self, weak pdfView] _ in
+                guard let self, let pdfView, let page = pdfView.currentPage,
+                      let document = pdfView.document else { return }
+                let position = ReadingPosition(pageIndex: document.index(for: page))
+                DispatchQueue.main.async { self.parent.onPositionChange?(position) }
+            }
         }
 
         func detach() {
@@ -73,11 +128,13 @@ struct PDFDocumentView: NSViewRepresentable {
                 NotificationCenter.default.removeObserver(selectionObserver)
             }
             selectionObserver = nil
+            if let pageObserver { NotificationCenter.default.removeObserver(pageObserver) }
+            pageObserver = nil
             removeRenderedAnnotations()
         }
 
         private func captureSelection(from pdfView: PDFView) {
-            guard let selection = pdfView.currentSelection,
+            guard !isNavigating, let selection = pdfView.currentSelection,
                   let selectedText = selection.string,
                   !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   let document = pdfView.document,
@@ -87,11 +144,8 @@ struct PDFDocumentView: NSViewRepresentable {
 
             let pageIndex = document.index(for: page)
             let pageText = page.string ?? selectedText
-            let foundRange = (pageText as NSString).range(of: selectedText)
-            let range = foundRange.location == NSNotFound
-                ? NSRange(location: 0, length: (selectedText as NSString).length)
-                : foundRange
-            let context = foundRange.location == NSNotFound ? selectedText : pageText
+            let anchors = PDFDocumentView.anchors(for: selection, in: document)
+            guard let first = anchors.first else { return }
 
             parent.onSelection?(
                 ReaderTextSelection(
@@ -99,12 +153,32 @@ struct PDFDocumentView: NSViewRepresentable {
                     paragraphID: 0,
                     side: .original,
                     text: selectedText,
-                    context: context,
-                    rangeLocation: range.location,
-                    rangeLength: range.length,
-                    locator: "pdf-page-\(pageIndex)"
+                    context: anchors.count == 1 ? pageText : selectedText,
+                    rangeLocation: first.location,
+                    rangeLength: first.length,
+                    locator: "pdf-page-\(pageIndex)",
+                    pdfAnchors: anchors
                 )
             )
+        }
+
+        func navigateIfNeeded(in pdfView: PDFView) {
+            guard let request = parent.navigationRequest,
+                  request.annotation.locator?.hasPrefix("pdf-page-") == true,
+                  request.id != lastNavigationID else { return }
+            lastNavigationID = request.id
+            DispatchQueue.main.async { [weak self, weak pdfView] in
+                guard let self, let pdfView, self.lastNavigationID == request.id,
+                      let document = pdfView.document else { return }
+                guard let selection = PDFDocumentView.selection(for: request.annotation, in: document) else {
+                    self.parent.onNavigationFailure?()
+                    return
+                }
+                self.isNavigating = true
+                pdfView.go(to: selection)
+                pdfView.setCurrentSelection(selection, animate: false)
+                self.isNavigating = false
+            }
         }
 
         func applyAnnotations(to pdfView: PDFView) {
@@ -113,16 +187,10 @@ struct PDFDocumentView: NSViewRepresentable {
 
             for annotation in parent.annotations where
                 annotation.resolvedScope == .paper && annotation.side == .original {
-                guard let locator = annotation.locator,
-                      locator.hasPrefix("pdf-page-"),
-                      let pageIndex = Int(locator.dropFirst("pdf-page-".count)),
-                      let page = document.page(at: pageIndex),
-                      let pageText = page.string,
-                      let selection = page.selection(for: annotation.resolvedRange(in: pageText) ?? NSRange()) else {
-                    continue
-                }
+                guard let selection = PDFDocumentView.selection(for: annotation, in: document) else { continue }
 
                 for line in selection.selectionsByLine() {
+                    guard let page = line.pages.first else { continue }
                     let bounds = line.bounds(for: page)
                     guard !bounds.isEmpty else { continue }
 

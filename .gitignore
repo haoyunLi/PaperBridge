@@ -16,6 +16,7 @@ xcuserdata/
 
 # Build artifacts
 build/
+build-*/
 build-ui/
 build-update/
 build-update-release/
@@ -31,6 +32,7 @@ DerivedData/
 Package.resolved
 
 # Editor and local temp files
+.impeccable/
 .idea/
 .vscode/
 *.swp

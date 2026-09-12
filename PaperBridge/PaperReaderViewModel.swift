@@ -7,6 +7,7 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var settings = AppSettings() {
         didSet {
             guard settings != oldValue else { return }
+            guard !isRestoringWorkspace else { return }
             handleSettingsChange(from: oldValue)
             if !isRestoringWorkspace {
                 workspaceStore.saveSettings(settings)
@@ -14,7 +15,24 @@ final class PaperReaderViewModel: ObservableObject {
             }
         }
     }
-    @Published var loadedPaper: PaperDocument?
+    @Published var loadedPaper: PaperDocument? {
+        didSet {
+            readingGuide = loadedPaper.map(ReadingGuideBuilder.build) ?? []
+            paperSections = loadedPaper.map(PaperReadingAnalysis.sections) ?? []
+            qualityIssues = loadedPaper.map(PaperReadingAnalysis.qualityIssues) ?? []
+        }
+    }
+    @Published private(set) var readingGuide: [ReadingGuideEntry] = []
+    @Published private(set) var paperSections: [PaperSection] = []
+    @Published private(set) var qualityIssues: [ParagraphQualityIssue] = []
+    @Published var libraryEntries: [LibraryEntry] = []
+    @Published var glossary: [SavedTerm] = []
+    @Published var isLibraryPresented = false
+    @Published var isGlossaryPresented = false
+    @Published var isQuickLookupPresented = false
+    @Published private(set) var translationQueue: [Int] = []
+    @Published private(set) var isTranslatingParagraphs = false
+    private var translationRunID: UUID?
     @Published var paragraphResults: [ParagraphResult] = []
     @Published var connectedTranslation: ConnectedTranslationResult?
     @Published var summaries: SummaryResult?
@@ -107,13 +125,20 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var annotations: [PaperAnnotation] = []
     @Published var bookmarkedParagraphIDs: Set<Int> = []
     @Published var navigationRequest: ParagraphNavigationRequest?
+    @Published var annotationNavigationRequest: AnnotationNavigationRequest?
+    @Published var annotationUndoStack: [[PaperAnnotation]] = []
+    @Published var searchFocusRequest: UUID?
+    @Published var workspaceSaveError: String?
+    var readingPositions: [String: ReadingPosition] = [:]
+    private var positionSaveTask: Task<Void, Never>?
 
-    let ollamaClient = OllamaClient()
+    let ollamaClient: OllamaClient
     let minerUService = MinerUService()
     let localToolInstaller = LocalToolInstaller()
-    private let workspaceStore: WorkspaceStore
+    let workspaceStore: WorkspaceStore
     private let markdownBundleExporter = MarkdownBundleExporter()
     private var activeTask: Task<Void, Never>?
+    private var activeTaskID: UUID?
     private var modelRefreshTask: Task<Void, Never>?
     private var minerUStatusTask: Task<Void, Never>?
     var ollamaInstallTask: Task<Void, Never>?
@@ -132,16 +157,28 @@ final class PaperReaderViewModel: ObservableObject {
     var selectionLookupCache: [String: String] = [:]
     private var isRestoringWorkspace = false
 
-    init(workspaceStore: WorkspaceStore = WorkspaceStore()) {
+    init(workspaceStore: WorkspaceStore = WorkspaceStore(), ollamaClient: OllamaClient = OllamaClient()) {
         self.workspaceStore = workspaceStore
+        self.ollamaClient = ollamaClient
+        workspaceStore.onSaveStatus = { [weak self] error in
+            Task { @MainActor [weak self] in self?.workspaceSaveError = error }
+        }
+        isRestoringWorkspace = true
+        defer { isRestoringWorkspace = false }
 
         if let savedSettings = workspaceStore.loadSettings() {
             settings = savedSettings
         }
+        libraryEntries = workspaceStore.loadLibrary()
+        glossary = workspaceStore.loadGlossary()
 
         guard let workspace = workspaceStore.loadLastWorkspace() else { return }
 
         loadedPaper = workspace.paper
+        readingGuide = ReadingGuideBuilder.build(for: workspace.paper)
+        paperSections = PaperReadingAnalysis.sections(in: workspace.paper)
+        qualityIssues = PaperReadingAnalysis.qualityIssues(in: workspace.paper)
+        readingPositions = workspace.readingPositions ?? [:]
         annotations = workspace.annotations
         bookmarkedParagraphIDs = workspace.bookmarkedParagraphIDs
         selectedParagraphID = workspace.selectedParagraphID
@@ -150,29 +187,15 @@ final class PaperReaderViewModel: ObservableObject {
         explanationLanguage = workspace.explanationLanguage
         isInspectorPresented = workspace.isInspectorPresented
 
-        let canRestoreGeneratedOutput =
-            workspace.settings == settings &&
-            workspace.paragraphResults.map(\.original) == workspace.paper.paragraphs
-
-        if canRestoreGeneratedOutput {
-            paragraphResults = workspace.paragraphResults
-            connectedTranslation = workspace.connectedTranslation
-            summaries = workspace.summaries
-            explanationText = workspace.explanationText
-            paperTranslationCache[
-                translationCacheKey(for: workspace.paper, settings: settings)
-            ] = workspace.paragraphResults
-        } else {
-            paragraphResults = Self.makeParagraphResults(for: workspace.paper)
-            connectedTranslation = nil
-            summaries = nil
-            explanationText = ""
-        }
+        paragraphResults = Self.makeParagraphResults(for: workspace.paper)
+        seedOutputCaches(from: workspace, for: workspace.paper)
+        restoreCachedOutputsIfAvailable(for: workspace.paper)
 
         statusMessage = "Restored \(workspace.paper.name) from local PaperBridge storage."
     }
 
     deinit {
+        positionSaveTask?.cancel()
         activeTask?.cancel()
         modelRefreshTask?.cancel()
         minerUStatusTask?.cancel()
@@ -194,6 +217,30 @@ final class PaperReaderViewModel: ObservableObject {
 
     var canTranslate: Bool {
         !paragraphResults.isEmpty && !isBusy
+    }
+
+    var translationSetupMessage: String? {
+        if settings.sourceLanguage == settings.targetLanguage { return nil }
+        if !isOllamaReachable { return "Open Ollama to translate. Source reading, highlights, and notes work without AI." }
+        if !isModelInstalled(settings.translationModel) { return "Install or select \(settings.translationModel) in Local AI settings to translate." }
+        return nil
+    }
+
+    var primarySetupMessage: String? {
+        guard canPerformPrimaryWorkspaceAction else { return nil }
+        if workspaceMode == .summary {
+            if !isOllamaReachable { return "AI summaries are optional. Open Ollama and choose a summary model, or use the source reading map now." }
+            if !isModelInstalled(settings.summaryModel) { return "Install or select a summary model. The reading map below needs no model." }
+        }
+        return translationSetupMessage
+    }
+
+    func openReadingPassage(_ entry: ReadingGuideEntry) {
+        guard let paragraph = paragraphResults.first(where: { $0.id == entry.paragraphID }),
+              paragraph.original == entry.excerpt else { return }
+        workspaceMode = .reader
+        if displayMode == .translationOnly { displayMode = .bilingual }
+        navigateToParagraph(entry.paragraphID)
     }
 
     var canLoadInputText: Bool {
@@ -410,11 +457,19 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     private struct ParagraphEditSnapshot {
-        let paragraphs: [String]
+        let paper: PaperDocument
+        let results: [ParagraphResult]
         let selectedIndex: Int?
+        let mapping: ParagraphMutationMapping
+        let annotations: [PaperAnnotation]
+        let bookmarks: Set<Int>
+        let positions: [String: ReadingPosition]
+        let summaries: SummaryResult?
+        let connectedTranslation: ConnectedTranslationResult?
     }
 
     func showImporter() {
+        guard !isBusy else { return }
         isImporterPresented = true
     }
 
@@ -457,6 +512,10 @@ final class PaperReaderViewModel: ObservableObject {
 
     func clearSavedData() {
         activeTask?.cancel()
+        activeTaskID = nil
+        translationRunID = nil
+        translationQueue = []
+        isTranslatingParagraphs = false
         selectionTask?.cancel()
         activeTask = nil
         selectionTask = nil
@@ -476,6 +535,16 @@ final class PaperReaderViewModel: ObservableObject {
         selectionLookupStatus = ""
         selectionLookupError = nil
         annotations = []
+        libraryEntries = []
+        glossary = []
+        isLibraryPresented = false
+        isGlossaryPresented = false
+        isQuickLookupPresented = false
+        readingPositions = [:]
+        positionSaveTask?.cancel()
+        annotationUndoStack = []
+        annotationNavigationRequest = nil
+        navigationRequest = nil
         bookmarkedParagraphIDs = []
         workspaceMode = .reader
         displayMode = .bilingual
@@ -596,6 +665,10 @@ final class PaperReaderViewModel: ObservableObject {
 
     func cancelCurrentTask() {
         activeTask?.cancel()
+        activeTaskID = nil
+        translationRunID = nil
+        translationQueue = []
+        isTranslatingParagraphs = false
         minerUService.cancelCurrentRun()
         activeTask = nil
         isBusy = false
@@ -626,9 +699,23 @@ final class PaperReaderViewModel: ObservableObject {
         return true
     }
 
-    func loadPDF(from url: URL) {
+    func reextractPDFAsNewCopy() {
+        guard !isBusy else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.pdf]
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the original PDF to parse with the current parser settings. A separate library copy will be created; saved edits, translations, and notes will not be replaced."
+        panel.prompt = "Extract New Copy"
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.loadPDF(from: url, asNewCopy: true)
+        }
+    }
+
+    func loadPDF(from url: URL, asNewCopy: Bool = false) {
         startTask(initialStatus: "Loading PDF...") {
-            let paper = try await self.readPaper(from: url)
+            let paper = try await self.readPaper(from: url, asNewCopy: asNewCopy)
+            try Task.checkCancellation()
             self.applyLoadedPaper(paper)
         }
     }
@@ -636,21 +723,44 @@ final class PaperReaderViewModel: ObservableObject {
     func loadTextInput() {
         startTask(initialStatus: "Preparing pasted text...") {
             let paper = try await self.readTextInput(self.manualInputText)
+            try Task.checkCancellation()
             self.applyLoadedPaper(paper)
         }
     }
 
-    func translatePaper() {
+    func loadSamplePaper() {
+        guard loadedPaper == nil, !isBusy else { return }
+        let paragraphs = ReadingGuideBuilder.sampleParagraphs
+        let text = paragraphs.joined(separator: "\n\n")
+        applyLoadedPaper(PaperDocument(name: "Welcome to PaperBridge (practice sample)",
+            checksum: Hashing.sha256(text), cleanedText: text, paragraphs: paragraphs,
+            excludedReferenceParagraphs: [], referenceSectionTitle: nil))
+        statusMessage = "Practice sample loaded. This is fictional tutorial text, not a published study. No model has been called."
+    }
+
+    func translatePaper(paragraphIDs: [Int]? = nil) {
         guard let paper = loadedPaper else {
             presentError(ReaderError.noPaperLoaded.localizedDescription)
             return
         }
 
+        let requestedIDs = Set(paragraphIDs ?? paragraphResults.map(\.id))
+        guard !requestedIDs.isEmpty, !isBusy else { return }
         startTask(initialStatus: "Checking Ollama model...") {
+            let runID = UUID()
+            self.translationRunID = runID
+            self.isTranslatingParagraphs = true
+            defer {
+                if self.translationRunID == runID {
+                    self.isTranslatingParagraphs = false
+                    self.translationQueue = []
+                    self.translationRunID = nil
+                }
+            }
             let settings = self.settings
             let cacheKey = self.translationCacheKey(for: paper, settings: settings)
 
-            if let cached = self.paperTranslationCache[cacheKey] {
+            if let cached = self.paperTranslationCache[cacheKey], cached.allSatisfy({ $0.status == .ok }) {
                 self.paragraphResults = cached
                 self.progressValue = 1
                 self.statusMessage = "Using cached paragraph translations for this paper and settings."
@@ -664,6 +774,14 @@ final class PaperReaderViewModel: ObservableObject {
                 ? self.paragraphResults
                 : Self.makeParagraphResults(for: paper)
             self.paragraphResults = workingResults
+            self.translationQueue = workingResults.filter { requestedIDs.contains($0.id) && $0.status != .ok }.map(\.id)
+            let total = self.translationQueue.count
+            var completed = 0
+            guard total > 0 else {
+                self.statusMessage = "This translation range is already complete."
+                self.progressValue = 1
+                return
+            }
 
             if settings.sourceLanguage != settings.targetLanguage {
                 try await self.ollamaClient.ensureModelAvailable(
@@ -672,19 +790,16 @@ final class PaperReaderViewModel: ObservableObject {
                 )
             }
 
-            for index in workingResults.indices {
+            while !self.translationQueue.isEmpty {
                 try Task.checkCancellation()
-
-                if workingResults[index].status == .ok {
-                    self.progressValue = Double(index + 1) / Double(max(workingResults.count, 1))
-                    continue
-                }
-
-                self.statusMessage = "Translating paragraph \(index + 1) of \(workingResults.count)"
+                let id = self.translationQueue.removeFirst()
+                guard let index = workingResults.firstIndex(where: { $0.id == id }) else { continue }
+                self.statusMessage = "Translating paragraph \(id) · \(completed + 1) of \(total) in this range"
                 let snapshot = try await self.translateParagraph(
                     workingResults[index],
                     settings: settings
                 )
+                try Task.checkCancellation()
 
                 workingResults[index].translation = snapshot.translation
                 workingResults[index].translationMarkdown = snapshot.translationMarkdown
@@ -693,8 +808,10 @@ final class PaperReaderViewModel: ObservableObject {
                 workingResults[index].chunkCount = snapshot.chunkCount
 
                 self.paragraphResults = workingResults
-                self.progressValue = Double(index + 1) / Double(max(workingResults.count, 1))
-                if index.isMultiple(of: 5) || index == workingResults.indices.last {
+                self.paperTranslationCache[cacheKey] = workingResults
+                completed += 1
+                self.progressValue = Double(completed) / Double(total)
+                if completed.isMultiple(of: 5) || self.translationQueue.isEmpty {
                     self.persistWorkspace()
                 }
             }
@@ -702,16 +819,23 @@ final class PaperReaderViewModel: ObservableObject {
             self.paperTranslationCache[cacheKey] = workingResults
             self.progressValue = 1
 
-            let failures = workingResults.filter { $0.status == .failed }.count
+            let failures = workingResults.filter { requestedIDs.contains($0.id) && $0.status == .failed }.count
             if failures > 0 {
                 self.statusMessage = "Paragraph translation finished. \(failures) paragraph\(failures == 1 ? "" : "s") failed and can be retried individually."
             } else if settings.sourceLanguage == settings.targetLanguage {
                 self.statusMessage = "Source and target languages match, so the original text was reused."
             } else {
-                self.statusMessage = "Paragraph translation finished."
+                self.statusMessage = "Translation range finished. \(self.translatedCount) of \(workingResults.count) paper blocks are translated."
             }
             self.persistWorkspace()
         }
+    }
+
+    func prioritizeSection(_ section: PaperSection) {
+        guard isTranslatingParagraphs else { return }
+        let ids = Set(section.paragraphIDs)
+        translationQueue = translationQueue.filter { ids.contains($0) } + translationQueue.filter { !ids.contains($0) }
+        statusMessage = "\(section.title) will be translated next after the current paragraph. Only queued blocks are reordered."
     }
 
     func generateConnectedTranslation() {
@@ -724,7 +848,7 @@ final class PaperReaderViewModel: ObservableObject {
             let settings = self.settings
             let cacheKey = self.connectedTranslationCacheKey(for: paper, settings: settings)
 
-            if let cached = self.connectedTranslationCache[cacheKey] {
+            if let cached = self.connectedTranslationCache[cacheKey], cached.failedBatchCount == 0 {
                 self.connectedTranslation = cached
                 self.progressValue = 1
                 self.statusMessage = "Using the cached connected full translation."
@@ -753,12 +877,15 @@ final class PaperReaderViewModel: ObservableObject {
                             workingResults[index],
                             settings: settings
                         )
+                        try Task.checkCancellation()
                         workingResults[index].translation = snapshot.translation
                         workingResults[index].translationMarkdown = snapshot.translationMarkdown
                         workingResults[index].status = snapshot.status
                         workingResults[index].errorMessage = snapshot.errorMessage
                         workingResults[index].chunkCount = snapshot.chunkCount
                         self.paragraphResults = workingResults
+                        self.paperTranslationCache[self.translationCacheKey(for: paper, settings: settings)] = workingResults
+                        if index.isMultiple(of: 5) { self.persistWorkspace() }
                     }
                     self.progressValue = Double(index + 1) / Double(max(workingResults.count, 1))
                 }
@@ -830,11 +957,14 @@ final class PaperReaderViewModel: ObservableObject {
                 settings: settings,
                 batches: batches
             ) { status in
+                guard !Task.isCancelled else { return }
                 self.statusMessage = status
             } onBatchFinished: {
+                guard !Task.isCancelled else { return }
                 completedBatches += 1
                 self.progressValue = Double(completedBatches) / Double(max(batches.count, 1))
             }
+            try Task.checkCancellation()
 
             let result: ConnectedTranslationResult
             if paper.hasFacsimileMarkdown, let facsimile = paper.sourceMarkdown {
@@ -887,6 +1017,7 @@ final class PaperReaderViewModel: ObservableObject {
                 self.paragraphResults[index],
                 settings: settings
             )
+            try Task.checkCancellation()
             self.paragraphResults[index].translation = snapshot.translation
             self.paragraphResults[index].translationMarkdown = snapshot.translationMarkdown
             self.paragraphResults[index].status = snapshot.status
@@ -918,7 +1049,7 @@ final class PaperReaderViewModel: ObservableObject {
                 "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.summaryModel)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)"
             )
 
-            if let cached = self.summaryCache[cacheKey] {
+            if let cached = self.summaryCache[cacheKey], cached.claims != nil {
                 self.summaries = cached
                 self.progressValue = 1
                 self.statusMessage = "Using cached summaries for this paper and settings."
@@ -937,8 +1068,8 @@ final class PaperReaderViewModel: ObservableObject {
                 )
             }
 
-            let batches = TextProcessing.buildTextBatches(paper.paragraphs)
-            var partials: [String] = []
+            let batches = SummaryEvidence.sourceBatches(paper.paragraphs)
+            var claims: [SummaryClaim] = []
             let totalSteps = max(batches.count + 1, 1)
 
             for (index, batch) in batches.enumerated() {
@@ -948,41 +1079,51 @@ final class PaperReaderViewModel: ObservableObject {
                 let partial = try await self.ollamaClient.generate(
                     baseURL: settings.ollamaBaseURL,
                     model: settings.summaryModel,
-                    prompt: PromptLibrary.summaryPrompt(for: batch, language: settings.sourceLanguage),
+                    prompt: SummaryEvidence.prompt(batch, language: settings.sourceLanguage),
                     systemPrompt: PromptLibrary.summarySystemPrompt
                 )
 
-                partials.append(partial)
+                try Task.checkCancellation()
+                claims += SummaryEvidence.parse(partial, paper: paper, providedText: batch)
+                // Bound the rolling summary instead of sending a whole long paper back to the model.
+                if claims.count > 6 {
+                    let candidates = claims
+                    let merged = try await self.ollamaClient.generate(
+                        baseURL: settings.ollamaBaseURL, model: settings.summaryModel,
+                        prompt: SummaryEvidence.prompt(SummaryEvidence.serialized(candidates),
+                                                       language: settings.sourceLanguage, merging: true),
+                        systemPrompt: PromptLibrary.summarySystemPrompt)
+                    try Task.checkCancellation()
+                    claims = SummaryEvidence.parse(merged, paper: paper, allowedSources: candidates.flatMap(\.sources))
+                }
                 self.progressValue = Double(index + 1) / Double(totalSteps)
             }
 
-            let sourceSummary: String
-            if partials.count == 1, let single = partials.first {
-                sourceSummary = single
-            } else {
-                self.statusMessage = "Merging partial summaries"
-                sourceSummary = try await self.ollamaClient.generate(
-                    baseURL: settings.ollamaBaseURL,
-                    model: settings.summaryModel,
-                    prompt: PromptLibrary.mergedSummaryPrompt(partials: partials, language: settings.sourceLanguage),
-                    systemPrompt: PromptLibrary.summarySystemPrompt
-                )
-            }
+            guard !claims.isEmpty else { throw SummaryEvidenceError.noClaims }
+            let sourceSummary = SummaryEvidence.markdown(claims)
 
             let targetSummary: String
             if settings.sourceLanguage == settings.targetLanguage {
                 targetSummary = sourceSummary
             } else {
                 self.statusMessage = "Translating the summary into \(settings.targetLanguage.displayName)"
-                targetSummary = try await self.translateChunk(sourceSummary, settings: settings)
+                var translatedClaims: [String] = []
+                for (index, claim) in claims.enumerated() {
+                    try Task.checkCancellation()
+                    let translated = try await self.translateChunk(claim.text, settings: settings)
+                    translatedClaims.append("\(index + 1). \(translated)")
+                }
+                targetSummary = translatedClaims.joined(separator: "\n\n")
             }
 
             let result = SummaryResult(
                 sourceLanguage: settings.sourceLanguage,
                 targetLanguage: settings.targetLanguage,
                 sourceSummary: sourceSummary,
-                targetSummary: targetSummary
+                targetSummary: targetSummary,
+                claims: claims
             )
+            try Task.checkCancellation()
             self.summaries = result
             self.summaryCache[cacheKey] = result
             self.progressValue = 1
@@ -1004,8 +1145,9 @@ final class PaperReaderViewModel: ObservableObject {
 
         startTask(initialStatus: "Checking explanation model...") {
             let settings = self.settings
+            let language = self.explanationLanguage
             let cacheKey = Hashing.sha256(
-                "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.explainModel)|\(selectedParagraph.id)|\(self.explanationLanguage.rawValue)"
+                "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.explainModel)|\(selectedParagraph.id)|\(language.rawValue)"
             )
 
             if let cached = self.explanationCache[cacheKey] {
@@ -1022,11 +1164,14 @@ final class PaperReaderViewModel: ObservableObject {
             let explanation = try await self.ollamaClient.generate(
                 baseURL: settings.ollamaBaseURL,
                 model: settings.explainModel,
-                prompt: PromptLibrary.explanationPrompt(for: selectedParagraph.original, language: self.explanationLanguage),
+                prompt: PromptLibrary.explanationPrompt(for: selectedParagraph.original, language: language),
                 systemPrompt: PromptLibrary.explainSystemPrompt
             )
 
-            self.explanationText = explanation
+            try Task.checkCancellation()
+            if self.selectedParagraphID == selectedParagraph.id && self.explanationLanguage == language {
+                self.explanationText = explanation
+            }
             self.explanationCache[cacheKey] = explanation
             self.progressValue = 1
             self.statusMessage = "Explanation finished."
@@ -1069,6 +1214,7 @@ final class PaperReaderViewModel: ObservableObject {
         paragraphs.replaceSubrange(index...index, with: editedParagraphs)
         applyParagraphMutation(
             paragraphs,
+            mapping: ParagraphMutationMapping(oldRange: index..<(index + 1), replacementCount: editedParagraphs.count),
             selectedIndex: index,
             message: editedParagraphs.count == 1
                 ? "Paragraph \(paragraphID) updated."
@@ -1089,6 +1235,7 @@ final class PaperReaderViewModel: ObservableObject {
         paragraphs.remove(at: index)
         applyParagraphMutation(
             paragraphs,
+            mapping: ParagraphMutationMapping(oldRange: (index - 1)..<(index + 1), replacementCount: 1),
             selectedIndex: index - 1,
             message: "Merged paragraph \(paragraphID) with the previous paragraph."
         )
@@ -1106,6 +1253,7 @@ final class PaperReaderViewModel: ObservableObject {
         paragraphs.remove(at: index + 1)
         applyParagraphMutation(
             paragraphs,
+            mapping: ParagraphMutationMapping(oldRange: index..<(index + 2), replacementCount: 1),
             selectedIndex: index,
             message: "Merged paragraph \(paragraphID) with the next paragraph."
         )
@@ -1127,6 +1275,7 @@ final class PaperReaderViewModel: ObservableObject {
         paragraphs.replaceSubrange(index...index, with: pieces)
         applyParagraphMutation(
             paragraphs,
+            mapping: ParagraphMutationMapping(oldRange: index..<(index + 1), replacementCount: pieces.count),
             selectedIndex: index,
             message: "Reflowed paragraph \(paragraphID) into \(pieces.count) complete-sentence paragraphs."
         )
@@ -1134,13 +1283,32 @@ final class PaperReaderViewModel: ObservableObject {
 
     func undoParagraphEdit() {
         guard !isBusy, let snapshot = paragraphUndoStack.popLast() else { return }
-
+        let savedAnnotations = Dictionary(uniqueKeysWithValues: snapshot.annotations.map { ($0.id, $0) })
         applyParagraphMutation(
-            snapshot.paragraphs,
+            snapshot.paper.paragraphs,
+            mapping: ParagraphMutationMapping(oldRange: snapshot.mapping.newRange, replacementCount: snapshot.mapping.oldRange.count),
             selectedIndex: snapshot.selectedIndex,
             recordUndo: false,
             message: "Undid the last paragraph edit."
         )
+        isRestoringWorkspace = true
+        loadedPaper = snapshot.paper
+        for index in paragraphResults.indices where paragraphResults[index].status != .ok {
+            paragraphResults[index] = snapshot.results[index]
+        }
+        // Keep notes added/edited after the structural edit, while restoring exact old anchors.
+        annotations = annotations.map { current in
+            guard var original = savedAnnotations[current.id] else { return current }
+            original.note = current.note
+            original.highlightColor = current.highlightColor
+            return original
+        }
+        bookmarkedParagraphIDs.formUnion(snapshot.bookmarks)
+        readingPositions = snapshot.positions
+        summaries = snapshot.summaries
+        connectedTranslation = snapshot.connectedTranslation
+        isRestoringWorkspace = false
+        persistWorkspace()
         canUndoParagraphEdit = !paragraphUndoStack.isEmpty
     }
 
@@ -1262,7 +1430,9 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     private func startTask(initialStatus: String, operation: @escaping @MainActor () async throws -> Void) {
-        activeTask?.cancel()
+        guard !isBusy else { return }
+        let taskID = UUID()
+        activeTaskID = taskID
         errorMessage = nil
         isBusy = true
         statusMessage = initialStatus
@@ -1271,17 +1441,27 @@ final class PaperReaderViewModel: ObservableObject {
 
         activeTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if self.activeTaskID == taskID {
+                    self.activeTask = nil
+                    self.activeTaskID = nil
+                }
+            }
             do {
+                try Task.checkCancellation()
                 try await operation()
+                guard self.activeTaskID == taskID else { return }
                 self.isBusy = false
                 self.isProgressIndeterminate = false
             } catch is CancellationError {
+                guard self.activeTaskID == taskID else { return }
                 self.isBusy = false
                 self.progressValue = 0
                 self.isProgressIndeterminate = false
                 self.statusMessage = "The current task was cancelled."
                 self.persistWorkspace()
             } catch {
+                guard self.activeTaskID == taskID else { return }
                 self.isBusy = false
                 self.progressValue = 0
                 self.isProgressIndeterminate = false
@@ -1291,28 +1471,46 @@ final class PaperReaderViewModel: ObservableObject {
         }
     }
 
-    private func applyLoadedPaper(_ paper: PaperDocument) {
+    func applyLoadedPaper(_ incomingPaper: PaperDocument) {
+        persistWorkspace()
+        // The source checksum is a stable library identity, not permission to
+        // overwrite a manually corrected revision when the same PDF is dropped again.
+        let saved = workspaceStore.loadWorkspace(checksum: incomingPaper.libraryStorageID)
+        let paper = saved?.paper ?? incomingPaper
         isRestoringWorkspace = true
         defer {
             isRestoringWorkspace = false
+            workspaceStore.saveSettings(settings)
             persistWorkspace()
         }
 
         paragraphUndoStack.removeAll()
+        annotationUndoStack = []
+        annotationNavigationRequest = nil
+        navigationRequest = nil
         canUndoParagraphEdit = false
         editingParagraphID = nil
         paragraphEditorText = ""
         isParagraphEditorPresented = false
         paragraphSearchText = ""
         loadedPaper = paper
+        positionSaveTask?.cancel()
+        readingPositions = [:]
         activeTextSelection = nil
+        selectionTask?.cancel()
+        isSelectionLookupBusy = false
+        isQuickLookupPresented = false
         selectionTranslation = ""
         selectionExplanation = ""
         selectionLookupStatus = ""
         selectionLookupError = nil
         progressValue = 0
 
-        if let saved = workspaceStore.loadWorkspace(checksum: paper.checksum) {
+        if let saved {
+            let appearance = settings.readingAppearance
+            settings = saved.settings
+            settings.readingAppearance = appearance
+            readingPositions = saved.readingPositions ?? [:]
             annotations = saved.annotations
             bookmarkedParagraphIDs = saved.bookmarkedParagraphIDs
             selectedParagraphID = saved.selectedParagraphID ?? paper.paragraphs.indices.first.map { $0 + 1 }
@@ -1321,26 +1519,12 @@ final class PaperReaderViewModel: ObservableObject {
             explanationLanguage = saved.explanationLanguage
             isInspectorPresented = saved.isInspectorPresented
 
-            let canRestoreGeneratedOutput =
-                saved.settings == settings &&
-                saved.paragraphResults.map(\.original) == paper.paragraphs
-
-            if canRestoreGeneratedOutput {
-                paragraphResults = saved.paragraphResults
-                connectedTranslation = saved.connectedTranslation
-                summaries = saved.summaries
-                explanationText = saved.explanationText
-                paperTranslationCache[
-                    translationCacheKey(for: paper, settings: settings)
-                ] = saved.paragraphResults
-                statusMessage = "Restored saved translation and annotations for \(paper.name)."
-                return
-            }
+            seedOutputCaches(from: saved, for: paper)
         } else {
             annotations = []
             bookmarkedParagraphIDs = []
             selectedParagraphID = paper.paragraphs.indices.first.map { $0 + 1 }
-            workspaceMode = paper.sourceMarkdown?.isEmpty == false ? .preview : .reader
+            workspaceMode = paper.paragraphs.isEmpty ? .preview : .summary
         }
 
         paragraphResults = Self.makeParagraphResults(for: paper)
@@ -1360,7 +1544,7 @@ final class PaperReaderViewModel: ObservableObject {
         statusMessage = status
     }
 
-    private func readPaper(from url: URL) async throws -> PaperDocument {
+    private func readPaper(from url: URL, asNewCopy: Bool = false) async throws -> PaperDocument {
         let hasAccess = url.startAccessingSecurityScopedResource()
         defer {
             if hasAccess {
@@ -1377,7 +1561,10 @@ final class PaperReaderViewModel: ObservableObject {
             throw ReaderError.failedToReadFile(error.localizedDescription)
         }
 
-        let checksum = Hashing.sha256(data)
+        let checksum = asNewCopy ? Hashing.sha256(Hashing.sha256(data) + UUID().uuidString) : Hashing.sha256(data)
+        if let saved = workspaceStore.loadWorkspace(checksum: checksum) {
+            return saved.paper
+        }
         let extractionCacheKey = Hashing.sha256(
             "\(checksum)|\(settings.pdfExtractionMode.rawValue)|\(settings.minerUBackend.rawValue)|\(settings.minerUExecutablePath)"
         )
@@ -1385,7 +1572,7 @@ final class PaperReaderViewModel: ObservableObject {
             return cached
         }
 
-        let fileName = url.lastPathComponent
+        let fileName = url.lastPathComponent + (asNewCopy ? " (new extraction)" : "")
         if settings.pdfExtractionMode != .pdfKitOnly {
             statusMessage = "MinerU is reconstructing document layout, formulas, tables, and images..."
             isProgressIndeterminate = true
@@ -1511,8 +1698,10 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     private func translateParagraph(_ paragraph: ParagraphResult, settings: AppSettings) async throws -> ParagraphTranslationSnapshot {
+        try Task.checkCancellation()
+        let terms = terminologyPrompt(for: paragraph.original, from: settings.sourceLanguage, to: settings.targetLanguage)
         let cacheKey = Hashing.sha256(
-            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)|\(paragraph.sourceMarkdown ?? paragraph.original)"
+            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)|\(paragraph.sourceMarkdown ?? paragraph.original)|\(terms)"
         )
         if let cached = paragraphTranslationCache[cacheKey] {
             return cached
@@ -1552,13 +1741,14 @@ final class PaperReaderViewModel: ObservableObject {
                             ),
                             systemPrompt: PromptLibrary.translationSystemPrompt(
                                 targetLanguage: settings.targetLanguage
-                            )
+                            ) + terms
                         )
                     )
                 }
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                try Task.checkCancellation()
                 return ParagraphTranslationSnapshot(
                     translation: "",
                     translationMarkdown: nil,
@@ -1607,6 +1797,7 @@ final class PaperReaderViewModel: ObservableObject {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
+            try Task.checkCancellation()
             return ParagraphTranslationSnapshot(
                 translation: "",
                 translationMarkdown: nil,
@@ -1633,8 +1824,9 @@ final class PaperReaderViewModel: ObservableObject {
             return chunk
         }
 
+        let terms = terminologyPrompt(for: chunk, from: settings.sourceLanguage, to: settings.targetLanguage)
         let cacheKey = Hashing.sha256(
-            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(chunk)"
+            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(chunk)|\(terms)"
         )
         if let cached = chunkTranslationCache[cacheKey] {
             return cached
@@ -1648,7 +1840,7 @@ final class PaperReaderViewModel: ObservableObject {
                 from: settings.sourceLanguage,
                 to: settings.targetLanguage
             ),
-            systemPrompt: PromptLibrary.translationSystemPrompt(targetLanguage: settings.targetLanguage)
+            systemPrompt: PromptLibrary.translationSystemPrompt(targetLanguage: settings.targetLanguage) + terms
         )
 
         chunkTranslationCache[cacheKey] = translation
@@ -1693,6 +1885,7 @@ final class PaperReaderViewModel: ObservableObject {
                         to: settings.targetLanguage
                     ),
                     systemPrompt: PromptLibrary.translationSystemPrompt(targetLanguage: settings.targetLanguage)
+                        + self.terminologyPrompt(for: batch, from: settings.sourceLanguage, to: settings.targetLanguage)
                 )
                 translatedBatches.append(translation)
             } catch is CancellationError {
@@ -1917,6 +2110,7 @@ final class PaperReaderViewModel: ObservableObject {
 
     private func applyParagraphMutation(
         _ paragraphs: [String],
+        mapping: ParagraphMutationMapping,
         selectedIndex: Int?,
         recordUndo: Bool = true,
         message: String
@@ -1926,6 +2120,11 @@ final class PaperReaderViewModel: ObservableObject {
             statusMessage = "MinerU Markdown controls this document's layout. Edit the exported Markdown instead of reflowing analysis blocks."
             return
         }
+        isRestoringWorkspace = true
+        defer {
+            isRestoringWorkspace = false
+            persistWorkspace()
+        }
 
         if recordUndo {
             let oldSelectedIndex = selectedParagraphID.flatMap { selectedID in
@@ -1933,8 +2132,9 @@ final class PaperReaderViewModel: ObservableObject {
             }
             paragraphUndoStack.append(
                 ParagraphEditSnapshot(
-                    paragraphs: paragraphResults.map(\.original),
-                    selectedIndex: oldSelectedIndex
+                    paper: paper, results: paragraphResults, selectedIndex: oldSelectedIndex,
+                    mapping: mapping, annotations: annotations, bookmarks: bookmarkedParagraphIDs,
+                    positions: readingPositions, summaries: summaries, connectedTranslation: connectedTranslation
                 )
             )
             if paragraphUndoStack.count > 20 {
@@ -1945,9 +2145,12 @@ final class PaperReaderViewModel: ObservableObject {
 
         let previousResults = paragraphResults
         let updatedResults = paragraphs.enumerated().map { index, paragraph -> ParagraphResult in
-            guard let reusable = previousResults.first(where: { $0.original == paragraph }) else {
+            guard let sourceIndex = mapping.sourceIndex(for: index),
+                  previousResults.indices.contains(sourceIndex),
+                  previousResults[sourceIndex].original == paragraph else {
                 return ParagraphResult(id: index + 1, original: paragraph)
             }
+            let reusable = previousResults[sourceIndex]
 
             return ParagraphResult(
                 id: index + 1,
@@ -1964,14 +2167,34 @@ final class PaperReaderViewModel: ObservableObject {
         let bodyText = paragraphs.joined(separator: "\n\n")
         let updatedPaper = PaperDocument(
             name: paper.name,
-            checksum: Hashing.sha256("\(paper.name)|\(bodyText)"),
+            checksum: Hashing.sha256("\(paper.libraryStorageID)|\(paper.name)|\(bodyText)"),
             cleanedText: bodyText,
             paragraphs: paragraphs,
             excludedReferenceParagraphs: paper.excludedReferenceParagraphs,
-            referenceSectionTitle: paper.referenceSectionTitle
+            referenceSectionTitle: paper.referenceSectionTitle,
+            sourceMarkdown: paper.hasFacsimileMarkdown ? paper.sourceMarkdown : nil,
+            markdownResourceDirectory: paper.markdownResourceDirectory,
+            extractionEngine: paper.extractionEngine,
+            extractionWarning: paper.extractionWarning,
+            libraryID: paper.libraryStorageID
         )
 
+        annotations = annotations.map { mapping.remap($0, old: previousResults, new: updatedResults) }
+        bookmarkedParagraphIDs = Set(bookmarkedParagraphIDs.flatMap { mapping.destinations(for: $0 - 1).map { $0 + 1 } })
         loadedPaper = updatedPaper
+        // Structural edits invalidate positional navigation and its transient undo history.
+        annotationUndoStack = []
+        annotationNavigationRequest = nil
+        navigationRequest = nil
+        clearTextSelection()
+        readingPositions = readingPositions.filter { $0.key.hasPrefix("paper.") || $0.key == "reader" }
+        if var position = readingPositions["reader"], let id = position.paragraphID,
+           let newIndex = mapping.destinations(for: id - 1).first {
+            position.paragraphID = newIndex + 1
+            position.readerItemID = "paragraph-\(newIndex + 1)"
+            readingPositions["reader"] = position
+        }
+        positionSaveTask?.cancel()
         paragraphResults = updatedResults
         if let selectedIndex, paragraphs.indices.contains(selectedIndex) {
             selectedParagraphID = selectedIndex + 1
@@ -1984,7 +2207,6 @@ final class PaperReaderViewModel: ObservableObject {
         progressValue = 0
         restoreCachedOutputsIfAvailable(for: updatedPaper)
         statusMessage = message + " Re-run translation for changed paragraphs."
-        persistWorkspace()
     }
 
     private func handleSettingsChange(from oldSettings: AppSettings) {
@@ -2063,6 +2285,30 @@ final class PaperReaderViewModel: ObservableObject {
         restoreCachedExplanationIfAvailable(for: paper)
     }
 
+    // Seed every output under its original task settings before selecting the current variant.
+    // Parser paths and lookup models do not invalidate a valid translation or summary.
+    private func seedOutputCaches(from workspace: PersistedWorkspace, for paper: PaperDocument) {
+        guard workspace.paragraphResults.map(\.original) == paper.paragraphs,
+              workspace.paper.sourceMarkdown == paper.sourceMarkdown else { return }
+        let saved = workspace.settings
+        paperTranslationCache[translationCacheKey(for: paper, settings: saved)] = workspace.paragraphResults
+        if let result = workspace.connectedTranslation {
+            connectedTranslationCache[connectedTranslationCacheKey(for: paper, settings: saved)] = result
+        }
+        if let result = workspace.summaries {
+            let key = Hashing.sha256(
+                "\(paper.checksum)|\(saved.ollamaBaseURL)|\(saved.summaryModel)|\(saved.translationModel)|\(saved.sourceLanguage.rawValue)|\(saved.targetLanguage.rawValue)"
+            )
+            summaryCache[key] = result
+        }
+        if let paragraphID = workspace.selectedParagraphID, !workspace.explanationText.isEmpty {
+            let key = Hashing.sha256(
+                "\(paper.checksum)|\(saved.ollamaBaseURL)|\(saved.explainModel)|\(paragraphID)|\(workspace.explanationLanguage.rawValue)"
+            )
+            explanationCache[key] = workspace.explanationText
+        }
+    }
+
     private func restoreCachedExplanationIfAvailable(for paper: PaperDocument) {
         guard let selectedParagraphID else { return }
         let cacheKey = Hashing.sha256(
@@ -2090,6 +2336,19 @@ final class PaperReaderViewModel: ObservableObject {
             lines.append("")
             lines.append(summaries.targetSummary)
             lines.append("")
+            if let claims = summaries.claims {
+                lines.append("### Summary source passages")
+                lines.append("> AI interpretation is unverified. Matching a quotation confirms its location, not whether it supports the claim.")
+                for (index, claim) in claims.enumerated() {
+                    lines.append("\n**Claim \(index + 1)**: \(claim.text)")
+                    if claim.sources.isEmpty { lines.append("\nNo source link validated.") }
+                    for source in claim.sources {
+                        lines.append("\nOriginal paragraph \(source.paragraphID):")
+                        lines.append(source.quote.components(separatedBy: "\n").map { "> " + $0 }.joined(separator: "\n"))
+                    }
+                }
+                lines.append("")
+            }
         }
 
         if let connectedTranslation, !connectedTranslation.text.isEmpty {
@@ -2130,7 +2389,7 @@ final class PaperReaderViewModel: ObservableObject {
             lines.append("")
 
             let paragraphAnnotations = annotations
-                .filter { $0.paragraphID == paragraph.id }
+                .filter { $0.resolvedScope == .reader && $0.needsReview != true && $0.paragraphID == paragraph.id }
                 .sorted { $0.createdAt < $1.createdAt }
             if !paragraphAnnotations.isEmpty {
                 lines.append("### Highlights and Notes")
@@ -2149,6 +2408,21 @@ final class PaperReaderViewModel: ObservableObject {
             }
         }
 
+        let paragraphIDs = Set(paragraphResults.map(\.id))
+        let otherAnnotations = annotations.filter {
+            $0.resolvedScope != .reader || $0.needsReview == true || !paragraphIDs.contains($0.paragraphID)
+        }
+        if !otherAnnotations.isEmpty {
+            lines.append("## Other Saved Highlights and Notes")
+            for annotation in otherAnnotations.sorted(by: { $0.createdAt < $1.createdAt }) {
+                lines.append("\n### \(annotation.resolvedScope.displayName) - \(annotation.side.displayName)")
+                if annotation.needsReview == true {
+                    lines.append("\n> Source changed: this note was preserved, but its location could not be verified.")
+                }
+                lines.append("\n" + annotation.quote.components(separatedBy: "\n").map { "> " + $0 }.joined(separator: "\n"))
+                if !annotation.note.isEmpty { lines.append("\nNote: " + annotation.note) }
+            }
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -2168,9 +2442,29 @@ final class PaperReaderViewModel: ObservableObject {
             explanationText: explanationText,
             annotations: annotations,
             bookmarkedParagraphIDs: bookmarkedParagraphIDs,
-            isInspectorPresented: isInspectorPresented
+            isInspectorPresented: isInspectorPresented,
+            readingPositions: readingPositions
         )
         workspaceStore.saveWorkspace(workspace)
+    }
+
+    func updateReadingPosition(_ position: ReadingPosition, key: String, paperChecksum: String?) {
+        guard loadedPaper?.checksum == paperChecksum, paperChecksum != nil,
+              position.x.isFinite, position.y.isFinite, position.offset?.isFinite != false,
+              readingPositions[key] != position else { return }
+        readingPositions[key] = position
+        positionSaveTask?.cancel()
+        positionSaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+                self?.persistWorkspace()
+            } catch {}
+        }
+    }
+
+    func focusReaderSearch() {
+        workspaceMode = .reader
+        searchFocusRequest = UUID()
     }
 
     private func presentError(_ message: String?) {
@@ -2180,7 +2474,7 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func syncModelSelections(with models: [String]) {
-        guard !models.isEmpty else { return }
+        guard !models.isEmpty, !isBusy else { return }
 
         let preferredTranslation: String
         if models.contains(AppSettings.recommendedLocalModel) {

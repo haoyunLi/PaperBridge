@@ -3,6 +3,7 @@ import SwiftUI
 import WebKit
 
 struct MarkdownPreviewView: NSViewRepresentable {
+    @Environment(\.readingAppearance) private var readingAppearance
     let markdown: String
     let title: String
     let resourceDirectory: URL?
@@ -10,6 +11,10 @@ struct MarkdownPreviewView: NSViewRepresentable {
     var selectionScope: TextSelectionScope?
     var defaultSelectionSide: ReaderTextSide = .original
     var annotations: [PaperAnnotation] = []
+    var navigationRequest: AnnotationNavigationRequest?
+    var readingPosition: ReadingPosition?
+    var onPositionChange: ((ReadingPosition) -> Void)?
+    var onNavigationFailure: (() -> Void)?
     var onSelection: ((ReaderTextSelection) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -45,7 +50,7 @@ struct MarkdownPreviewView: NSViewRepresentable {
         )
         configuration.userContentController.addUserScript(
             WKUserScript(
-                source: Coordinator.selectionBridgeScript,
+                source: Coordinator.selectionBridgeScript + "\nwindow.paperBridge?.setDefaultSide('\(defaultSelectionSide.rawValue)');",
                 injectionTime: .atDocumentEnd,
                 forMainFrameOnly: true
             )
@@ -78,34 +83,59 @@ struct MarkdownPreviewView: NSViewRepresentable {
         context.coordinator.defaultSelectionSide = defaultSelectionSide
         context.coordinator.onSelection = onSelection
         context.coordinator.annotations = annotations
+        context.coordinator.navigationRequest = navigationRequest
+        context.coordinator.onNavigationFailure = onNavigationFailure
+        context.coordinator.onPositionChange = onPositionChange
+        if context.coordinator.lastFingerprint == nil {
+            context.coordinator.savedPosition = readingPosition
+        }
 
         let annotationSignature = annotations.map {
             "\($0.id.uuidString)|\($0.highlightColor?.rawValue ?? "")|\($0.note)|\($0.quote)|\($0.rangeLocation)|\($0.rangeLength)"
         }.joined(separator: "|")
         let fingerprint = Hashing.sha256(
             markdown + "|" + title + "|" + (resourceDirectory?.path ?? "") + "|" +
-                presentation.rawValue + "|" + annotationSignature
+                presentation.rawValue + "|\(readingAppearance?.clamped.fontSize ?? 17)|\(readingAppearance?.clamped.lineSpacing ?? 5)|\(readingAppearance?.clamped.contentWidth ?? 920)"
         )
-        guard context.coordinator.lastFingerprint != fingerprint else { return }
+        let annotationsChanged = context.coordinator.annotationSignature != annotationSignature
+        context.coordinator.annotationSignature = annotationSignature
+        guard context.coordinator.lastFingerprint != fingerprint else {
+            if annotationsChanged, !context.coordinator.isLoading { context.coordinator.applyAnnotations(in: webView) }
+            context.coordinator.navigateIfNeeded(in: webView)
+            return
+        }
         context.coordinator.lastFingerprint = fingerprint
 
         let html = MarkdownPreviewHTMLRenderer.render(
             markdown: markdown,
             title: title,
-            presentation: presentation
+            presentation: presentation,
+            appearance: readingAppearance
         )
         let root = usableResourceDirectory() ?? previewCacheDirectory()
         context.coordinator.allowedRoot = root.standardizedFileURL
 
-        do {
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            let previewURL = root.appendingPathComponent(
-                ".paperbridge-preview-\(fingerprint.prefix(16)).html"
-            )
-            try Data(html.utf8).write(to: previewURL, options: .atomic)
-            webView.loadFileURL(previewURL, allowingReadAccessTo: root)
-        } catch {
-            webView.loadHTMLString(html, baseURL: root)
+        let coordinator = context.coordinator
+        let load = {
+            guard coordinator.lastFingerprint == fingerprint else { return }
+            coordinator.isLoading = true
+            do {
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+                let previewURL = root.appendingPathComponent(".paperbridge-preview-\(fingerprint.prefix(16)).html")
+                try Data(html.utf8).write(to: previewURL, options: .atomic)
+                webView.loadFileURL(previewURL, allowingReadAccessTo: root)
+            } catch {
+                webView.loadHTMLString(html, baseURL: root)
+            }
+        }
+        if webView.url != nil, !coordinator.isLoading {
+            webView.evaluateJavaScript("window.paperBridge?.snapshot()") { value, _ in
+                guard coordinator.lastFingerprint == fingerprint else { return }
+                if let position = Coordinator.decodePosition(value) { coordinator.savedPosition = position }
+                load()
+            }
+        } else {
+            load()
         }
     }
 
@@ -163,15 +193,12 @@ struct MarkdownPreviewView: NSViewRepresentable {
             const prefix = document.createRange();
             prefix.selectNodeContents(block);
             prefix.setEnd(range.startContainer, range.startOffset);
-            const blocks = Array.from(document.querySelectorAll(blockSelector));
-            const blockIndex = blocks.indexOf(block);
-
             window.webkit?.messageHandlers?.paperBridgeSelection?.postMessage({
               text,
               context: block.textContent || text,
               rangeLocation: prefix.toString().length,
               rangeLength: text.length,
-              locator: block === article ? 'web:article' : `web:${blockIndex}`,
+              locator: block === article ? 'web:article' : window.paperBridge.locator(block),
               translationRegion: !!startElement?.closest('.paperbridge-translation')
             });
           }
@@ -182,6 +209,118 @@ struct MarkdownPreviewView: NSViewRepresentable {
               setTimeout(captureSelection, 0);
             }
           }, true);
+
+          const blocks = () => Array.from(document.querySelectorAll(blockSelector));
+          let defaultSide = 'original';
+          const isTranslation = block => defaultSide === 'translation' || !!block.closest('.paperbridge-translation');
+          function key(block) {
+            let hash = 2166136261;
+            for (const char of block.textContent || '') hash = Math.imul(hash ^ char.codePointAt(0), 16777619);
+            return `${isTranslation(block) ? 't' : 'o'}:${hash >>> 0}`;
+          }
+          function locator(block) {
+            return locators().get(block);
+          }
+          function locators() {
+            const counts = new Map(), result = new Map();
+            blocks().forEach(block => {
+              const hash = key(block), ordinal = counts.get(hash) || 0;
+              counts.set(hash, ordinal + 1);
+              result.set(block, `web:block:${hash}:${ordinal}`);
+            });
+            return result;
+          }
+          function textRange(root, start, length) {
+            if (start < 0 || length <= 0) return null;
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            let offset = 0, first = null, last = null, firstOffset = 0, lastOffset = 0, node;
+            while ((node = walker.nextNode())) {
+              const next = offset + node.nodeValue.length;
+              if (!first && start >= offset && start < next) { first = node; firstOffset = start - offset; }
+              if (first && start + length <= next) { last = node; lastOffset = start + length - offset; break; }
+              offset = next;
+            }
+            if (!first || !last) return null;
+            const range = document.createRange();
+            range.setStart(first, firstOffset); range.setEnd(last, lastOffset);
+            return range;
+          }
+          function resolve(entry) {
+            const article = document.querySelector('article');
+            const candidates = blocks();
+            let root = null;
+            if (entry.locator === 'web:article') root = article;
+            else if (entry.locator?.startsWith('web:block:')) {
+              const ids = locators();
+              root = candidates.find(b => ids.get(b) === entry.locator);
+            }
+            else if (/^web:\d+$/.test(entry.locator || '')) root = candidates[Number(entry.locator.slice(4))];
+            if (root && entry.context && root.textContent !== entry.context) root = null;
+            if (!root && entry.context) {
+              const matches = candidates.filter(b => b.textContent === entry.context && isTranslation(b) === (entry.side === 'translation'));
+              if (matches.length === 1) root = matches[0];
+            }
+            if (!root) return null;
+            const source = root.textContent || '';
+            let start = entry.rangeLocation;
+            if (source.slice(start, start + entry.rangeLength) !== entry.quote) {
+              start = source.indexOf(entry.quote);
+              if (start < 0 || source.indexOf(entry.quote, start + 1) >= 0) return null;
+            }
+            return textRange(root, start, entry.quote.length);
+          }
+          function snapshot() {
+            const candidates = blocks();
+            const index = candidates.findIndex(b => b.getBoundingClientRect().bottom > 0);
+            const block = candidates[index];
+            return { x: window.scrollX, y: window.scrollY, blockIndex: index,
+                     blockText: block?.textContent || null, offset: block?.getBoundingClientRect().top || 0 };
+          }
+          function restore(position) {
+            if (!position) return;
+            const candidates = blocks();
+            let block = candidates[position.blockIndex];
+            if (!block || block.textContent !== position.blockText) {
+              const matches = candidates.filter(b => b.textContent === position.blockText);
+              block = matches.length === 1 ? matches[0] : null;
+            }
+            const y = block ? window.scrollY + block.getBoundingClientRect().top - (position.offset || 0) : position.y;
+            window.scrollTo(position.x || 0, y || 0);
+          }
+          window.paperBridge = {
+            locator, snapshot, restore,
+            setDefaultSide(side) { defaultSide = side; },
+            applyAnnotations(entries) {
+              if (!window.CSS?.highlights || typeof Highlight === 'undefined') return;
+              const buckets = { amber: [], teal: [], coral: [], note: [] };
+              Object.keys(buckets).forEach(name => CSS.highlights.delete(`paperbridge-${name}`));
+              entries.forEach(entry => {
+                const range = resolve(entry);
+                if (!range) return;
+                if (buckets[entry.highlight]) buckets[entry.highlight].push(range);
+                if (entry.hasNote) buckets.note.push(range);
+              });
+              Object.entries(buckets).forEach(([name, ranges]) => {
+                if (ranges.length) CSS.highlights.set(`paperbridge-${name}`, new Highlight(...ranges));
+              });
+            },
+            navigate(entry) {
+              const range = resolve(entry);
+              if (!range) return false;
+              const rect = range.getBoundingClientRect();
+              window.scrollTo(window.scrollX, window.scrollY + rect.top - window.innerHeight * 0.25);
+              const selection = window.getSelection();
+              selection.removeAllRanges(); selection.addRange(range);
+              return true;
+            }
+          };
+          let scrollTimer;
+          window.addEventListener('scroll', () => {
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(() => {
+              window.webkit?.messageHandlers?.paperBridgeSelection?.postMessage({ position: snapshot() });
+            }, 180);
+          }, { passive: true });
         })();
         """#
 
@@ -191,11 +330,30 @@ struct MarkdownPreviewView: NSViewRepresentable {
         var defaultSelectionSide: ReaderTextSide = .original
         var onSelection: ((ReaderTextSelection) -> Void)?
         var annotations: [PaperAnnotation] = []
+        var annotationSignature: String?
+        var navigationRequest: AnnotationNavigationRequest?
+        var lastNavigationID: UUID?
+        var savedPosition: ReadingPosition?
+        var onPositionChange: ((ReadingPosition) -> Void)?
+        var onNavigationFailure: (() -> Void)?
+        var isLoading = false
+
+        static func decodePosition(_ value: Any?) -> ReadingPosition? {
+            guard let object = value as? [String: Any], JSONSerialization.isValidJSONObject(object),
+                  let data = try? JSONSerialization.data(withJSONObject: object) else { return nil }
+            return try? JSONDecoder().decode(ReadingPosition.self, from: data)
+        }
 
         func userContentController(
             _ userContentController: WKUserContentController,
             didReceive message: WKScriptMessage
         ) {
+            if let body = message.body as? [String: Any],
+               let position = Self.decodePosition(body["position"]), !isLoading {
+                savedPosition = position
+                onPositionChange?(position)
+                return
+            }
             guard message.name == Self.selectionMessageName,
                   let scope = selectionScope,
                   let payload = message.body as? [String: Any],
@@ -224,113 +382,55 @@ struct MarkdownPreviewView: NSViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation?) {
+            isLoading = false
             applyAnnotations(in: webView)
+            let fingerprint = lastFingerprint
+            if let position = savedPosition, let data = try? JSONEncoder().encode(position),
+               let object = try? JSONSerialization.jsonObject(with: data) {
+                webView.callAsyncJavaScript(
+                    "await window.MathJax?.startup?.promise; window.paperBridge?.restore(position);",
+                    arguments: ["position": object], in: nil, in: .page
+                ) { [weak self, weak webView] _ in
+                    guard let self, let webView, self.lastFingerprint == fingerprint else { return }
+                    self.navigateIfNeeded(in: webView)
+                }
+            } else {
+                navigateIfNeeded(in: webView)
+            }
         }
 
-        private func applyAnnotations(in webView: WKWebView) {
+        func navigateIfNeeded(in webView: WKWebView) {
+            guard !isLoading, let request = navigationRequest, request.id != lastNavigationID,
+                  request.annotation.resolvedScope == selectionScope,
+                  request.annotation.locator?.hasPrefix("web:") == true else { return }
+            lastNavigationID = request.id
+            let object = annotationObject(request.annotation)
+            webView.callAsyncJavaScript(
+                "await window.MathJax?.startup?.promise; return window.paperBridge?.navigate(entry) ?? false;",
+                arguments: ["entry": object], in: nil, in: .page
+            ) { [weak self] result in
+                guard let self, self.lastNavigationID == request.id else { return }
+                if case .success(let value) = result, value as? Bool == true { return }
+                self.onNavigationFailure?()
+            }
+        }
+
+        private func annotationObject(_ annotation: PaperAnnotation) -> [String: Any] {
+            ["quote": annotation.quote, "context": annotation.context as Any? ?? NSNull(),
+             "locator": annotation.locator as Any? ?? NSNull(), "side": annotation.side.rawValue,
+             "rangeLocation": annotation.rangeLocation, "rangeLength": annotation.rangeLength,
+             "highlight": annotation.highlightColor?.rawValue as Any? ?? NSNull(), "hasNote": !annotation.note.isEmpty]
+        }
+
+        func applyAnnotations(in webView: WKWebView) {
             let visibleAnnotations = annotations.filter {
                 $0.highlightColor != nil ||
                     !$0.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
-            let objects: [[String: Any]] = visibleAnnotations.map { annotation in
-                [
-                    "quote": annotation.quote,
-                    "context": annotation.context as Any? ?? NSNull(),
-                    "locator": annotation.locator as Any? ?? NSNull(),
-                    "rangeLocation": annotation.rangeLocation,
-                    "rangeLength": annotation.rangeLength,
-                    "highlight": annotation.highlightColor?.rawValue as Any? ?? NSNull(),
-                    "hasNote": !annotation.note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ]
-            }
-            guard JSONSerialization.isValidJSONObject(objects),
-                  let data = try? JSONSerialization.data(withJSONObject: objects),
-                  let payload = String(data: data, encoding: .utf8) else {
-                return
-            }
-
-            let script = #"""
-            (() => {
-              if (!window.CSS || !CSS.highlights || typeof Highlight === 'undefined') return;
-              const names = ['paperbridge-amber', 'paperbridge-teal', 'paperbridge-coral', 'paperbridge-note'];
-              names.forEach(name => CSS.highlights.delete(name));
-              const entries = \#(payload);
-              if (!entries.length) return;
-
-              const selector = 'p,h1,h2,h3,h4,h5,h6,blockquote,td,th,figcaption,.list-item,pre';
-              const article = document.querySelector('article');
-              const blocks = Array.from(document.querySelectorAll(selector));
-              const buckets = { amber: [], teal: [], coral: [], note: [] };
-
-              function textRange(root, start, length) {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                const end = start + length;
-                let offset = 0;
-                let startNode = null;
-                let startOffset = 0;
-                let endNode = null;
-                let endOffset = 0;
-                let node;
-                while ((node = walker.nextNode())) {
-                  const next = offset + node.nodeValue.length;
-                  if (!startNode && start >= offset && start <= next) {
-                    startNode = node;
-                    startOffset = Math.min(start - offset, node.nodeValue.length);
-                  }
-                  if (startNode && end >= offset && end <= next) {
-                    endNode = node;
-                    endOffset = Math.min(end - offset, node.nodeValue.length);
-                    break;
-                  }
-                  offset = next;
-                }
-                if (!startNode || !endNode) return null;
-                const range = document.createRange();
-                range.setStart(startNode, startOffset);
-                range.setEnd(endNode, endOffset);
-                return range;
-              }
-
-              function rootFor(entry) {
-                let root = null;
-                if (entry.locator === 'web:article') root = article;
-                else if (entry.locator?.startsWith('web:')) {
-                  const index = Number(entry.locator.slice(4));
-                  if (Number.isInteger(index) && index >= 0 && index < blocks.length) root = blocks[index];
-                }
-                if (root && entry.context && root.textContent !== entry.context) root = null;
-                if (!root && entry.context) {
-                  root = blocks.find(block => block.textContent === entry.context) || null;
-                }
-                return root || article;
-              }
-
-              entries.forEach(entry => {
-                let root = rootFor(entry);
-                if (!root) return;
-                let source = root.textContent || '';
-                let location = entry.rangeLocation;
-                if (source.slice(location, location + entry.rangeLength) !== entry.quote) {
-                  location = source.indexOf(entry.quote);
-                }
-                if (location < 0 && root !== article && article) {
-                  root = article;
-                  source = article.textContent || '';
-                  location = source.indexOf(entry.quote);
-                }
-                if (location < 0) return;
-                const range = textRange(root, location, entry.quote.length);
-                if (!range) return;
-                if (entry.highlight && buckets[entry.highlight]) buckets[entry.highlight].push(range);
-                if (entry.hasNote) buckets.note.push(range);
-              });
-
-              Object.entries(buckets).forEach(([name, ranges]) => {
-                if (ranges.length) CSS.highlights.set(`paperbridge-${name}`, new Highlight(...ranges));
-              });
-            })();
-            """#
-            webView.evaluateJavaScript(script)
+            webView.callAsyncJavaScript(
+                "await window.MathJax?.startup?.promise; window.paperBridge?.applyAnnotations(entries);",
+                arguments: ["entries": visibleAnnotations.map(annotationObject)], in: nil, in: .page
+            ) { _ in }
         }
 
         func webView(

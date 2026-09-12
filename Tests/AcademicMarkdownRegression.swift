@@ -3,6 +3,9 @@ import Foundation
 @main
 struct AcademicMarkdownRegression {
     static func main() throws {
+        let linked = MarkdownPreviewHTMLRenderer.render(markdown: "[Go](#methods)\n\n## Methods\n\n## Methods\n\n## Methods-1", title: "Links")
+        require(linked.contains("id=\"methods\"") && linked.contains("id=\"methods-1\""), "Missing duplicate-safe heading anchors")
+        require(linked.components(separatedBy: "id=\"methods-1\"").count == 2 && linked.contains("id=\"methods-1-1\""), "Heading suffixes collided with existing slugs")
         let markdown = """
         # A Structured Paper
 
