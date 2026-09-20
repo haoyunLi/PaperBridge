@@ -89,6 +89,7 @@ async function run() {
       assert.equal(after.blocks[image.id - 1].translation, '');
       assert.equal(after.blocks[table.id - 1].sourceMarkdown, table.sourceMarkdown);
       assert.equal(after.blocks[table.id - 1].translation, '');
+      assert.equal(await page.locator('.selection-toolbar').count(), 0, 'The floating selection toolbar should close after scrolling.');
       const running = await fetch('http://127.0.0.1:11434/api/ps').then(response => response.json());
       const model = running.models?.find(item => item.name === 'translategemma:4b');
       modelVramGiB = model ? Number(((model.size_vram || 0) / 1024 ** 3).toFixed(2)) : null;

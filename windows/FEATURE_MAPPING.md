@@ -117,7 +117,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E17 | 精确选区注释跨分段编辑迁移 | 拆分、合并、编辑迁移原文精确锚点 | 部分 | 重排及 Markdown 结构化编辑仍缺。 |
 | E18 | 保存术语及语言方向 | Reader 选区 Save term | 对齐 | 160/300 字与 500 条上限。 |
 | E19 | 术语搜索、审阅和删除 | 术语列表按原词或译词搜索、删除 | 对齐 | 索引按当前术语数组执行。 |
-| E20 | 紧凑选区工具条和展开检查器 | 选区旁浮动查词、解释、笔记入口 | 部分 | 小工具条与完整检查器已联动；窄屏位置需回归。 |
+| E20 | 紧凑选区工具条和展开检查器 | 选区旁浮动查词、解释、笔记入口；滚动后收起工具条并保留检查器选区 | 部分 | 真实论文翻译图表说明并滚动时已验证工具条不遮挡；窄屏位置需回归。 |
 | E21 | 检查器隐藏/显示 | 顶部按钮 | 对齐 | 窄窗口与焦点模式状态一致。 |
 
 Mac 证据：[选区行为](../PaperBridge/PaperReaderViewModel+Selection.swift)、[检查器与标注列表](../PaperBridge/Views/SelectionInspectorView.swift)、[选区数据模型](../PaperBridge/Models.swift#L420)。Windows 证据：[选区与注释](src/main.jsx#L305)、[检查器](src/main.jsx#L386)。

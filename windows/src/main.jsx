@@ -320,6 +320,7 @@ function App() {
   };
   const saveMainScroll = () => {
     if (restoringScroll.current || !paperRef.current) return;
+    setSelection(current => current?.rect ? { ...current, rect: null } : current);
     clearTimeout(scrollSaveTimer.current);
     const id = paperRef.current.id;
     const key = tab === 'Original' ? `Original:${pageNumber}` : tab;
