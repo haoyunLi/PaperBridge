@@ -22,10 +22,11 @@ This is a development ledger, not a claim of completed 1:1 parity. Each item is 
 | Search within Reader | Implemented | Add result navigation and PDF search. |
 | Saved terminology | Implemented | Add term review, matching diagnostics, and translation warnings. |
 | Markdown exports | Partial | Bundle MinerU image assets as files instead of data URIs. |
-| Ollama model download and setup | Partial | Add complete first-run setup and installed-tool diagnosis. |
+| Ollama model download and setup | Implemented | Test the signed installer and large downloads on more physical Windows PCs. |
+| One-click local AI and MinerU setup | Partial | Test full MinerU installation, model preloading, rollback, and CUDA wheels on NVIDIA, AMD, and CPU-only machines. |
 | Automatic updates | Not implemented | Choose a signed Windows update channel after release signing. |
 | Native macOS menus and shortcuts | Partial | Add Windows menus, accessibility audit, and remaining shortcuts. |
 
 ## GPU behavior
 
-The Windows port detects video adapters, NVIDIA driver presence, and Ollama's running-model VRAM use. Ollama chooses its own backend. MinerU's automatic backend selection belongs to MinerU; its Windows CUDA readiness depends on the installed Python packages and driver. We do not force CUDA based only on a GPU name.
+The Windows port detects video adapters, NVIDIA driver presence and reported CUDA version, and Ollama's running-model VRAM use. Ollama chooses its own backend. One-click setup selects a PyTorch CUDA wheel only when a suitable NVIDIA driver is detected, then checks `torch.cuda.is_available()` inside the managed MinerU environment. MinerU falls back to its CPU pipeline when CUDA cannot be verified. The Windows GPU driver itself is not installed by PaperBridge.

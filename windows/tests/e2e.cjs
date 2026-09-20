@@ -49,6 +49,17 @@ async function run() {
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.waitForSelector('.welcome', { timeout: 20000 });
     await page.screenshot({ path: path.join(artifacts, 'welcome.png') });
+    await page.getByRole('button', { name: 'Set up local AI' }).click();
+    await page.locator('.setup-row').first().waitFor({ timeout: 25000 });
+    assert.equal(await page.locator('.setup-row').count(), 3);
+    await page.screenshot({ path: path.join(artifacts, 'setup.png') });
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('setup:install');
+      ipcMain.handle('setup:install', async () => ({ mineruExecutable: '', mineruBackend: 'pipeline', warning: '' }));
+    });
+    await page.getByRole('button', { name: 'Install missing components' }).click();
+    await page.getByText('Installation complete.', { exact: false }).waitFor({ timeout: 25000 });
+    await page.locator('.modal-head .icon-button').click();
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.waitForSelector('.block');
@@ -89,7 +100,7 @@ async function run() {
       span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · BLOCK 1').waitFor();
-    console.log('Electron workflow verified: welcome, practice paper, local translation, Reader, settings, GPU detection, PDF import and original page.');
+    console.log('Electron workflow verified: automatic setup diagnosis and one-click UI, practice paper, local translation, Reader, settings, GPU detection, PDF import and original page.');
   } finally { await app.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

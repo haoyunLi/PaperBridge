@@ -13,10 +13,13 @@ async function run() {
   try {
     const page = await app.firstWindow();
     await page.waitForSelector('.welcome', { timeout: 20000 });
+    await page.getByRole('button', { name: 'Set up local AI' }).click();
+    await page.locator('.setup-row').first().waitFor({ timeout: 25000 });
+    await page.locator('.modal-head .icon-button').click();
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.waitForSelector('.block');
-    console.log('Packaged Windows executable opened the Reader successfully.');
+    console.log('Packaged Windows executable opened automatic setup and the Reader successfully.');
   } finally { await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

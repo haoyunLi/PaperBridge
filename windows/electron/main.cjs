@@ -5,10 +5,12 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { createStore, safeId } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
+const { SetupManager } = require('./setup.cjs');
 
 let window;
 let store;
 let activeMineru = null;
+let setupManager = null;
 const requests = new Map();
 
 function localOllamaURL(value, endpoint) {
@@ -22,7 +24,7 @@ function localOllamaURL(value, endpoint) {
 async function ollamaRequest(baseURL, endpoint, options = {}) {
   let response;
   try { response = await fetch(localOllamaURL(baseURL, endpoint), options); }
-  catch { throw new Error('Cannot reach local Ollama. Start Ollama, then refresh models.'); }
+  catch { if (options.signal?.aborted && options.signal.reason?.name !== 'TimeoutError') { const error = new Error('Setup cancelled.'); error.name = 'AbortError'; throw error; } throw new Error('Cannot reach local Ollama. Start Ollama, then refresh models.'); }
   if (!response.ok) {
     const message = await response.text();
     throw new Error(`Ollama ${response.status}: ${message.slice(0, 300)}`);
@@ -31,6 +33,31 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
 }
 
 function progress(data) { if (window && !window.isDestroyed()) window.webContents.send('paperbridge:progress', data); }
+
+async function pullOllamaModel(baseURL, model, signal, update) {
+  if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
+  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal });
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n'); buffer = lines.pop();
+    for (const line of lines) if (line.trim()) {
+      const event = JSON.parse(line);
+      if (event.error) throw new Error(event.error);
+      update(event);
+    }
+  }
+  if (buffer.trim()) {
+    const event = JSON.parse(buffer);
+    if (event.error) throw new Error(event.error);
+    update(event);
+  }
+  return true;
+}
 
 async function findMarkdown(folder) {
   if (!fs.existsSync(folder)) return null;
@@ -63,6 +90,9 @@ function registerHandlers() {
   ipcMain.handle('bootstrap', () => ({ settings: store.settings(), glossary: store.glossary(), library: store.list() }));
   ipcMain.handle('hardware:status', () => graphicsStatus());
   ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable));
+  ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
+  ipcMain.handle('setup:install', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.install(config); });
+  ipcMain.handle('setup:cancel', () => setupManager.cancel());
   ipcMain.handle('ollama:running', async (_event, baseURL) => {
     const response = await ollamaRequest(baseURL, 'api/ps');
     const data = await response.json();
@@ -116,23 +146,7 @@ function registerHandlers() {
   ipcMain.handle('ollama:cancel', (_event, requestId) => { requests.get(requestId)?.abort(); });
   ipcMain.handle('mineru:cancel', () => { activeMineru?.kill(); });
   ipcMain.handle('ollama:pull', async (_event, { baseURL, model }) => {
-    if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
-    const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }) });
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n'); buffer = lines.pop();
-      for (const line of lines) if (line.trim()) {
-        const event = JSON.parse(line);
-        if (event.error) throw new Error(event.error);
-        progress({ kind: 'model', model, status: event.status, completed: event.completed, total: event.total });
-      }
-    }
-    return true;
+    return pullOllamaModel(baseURL, model, null, event => progress({ kind: 'model', model, status: event.status, completed: event.completed, total: event.total }));
   });
   ipcMain.handle('mineru:extract', async (_event, { id, executable, backend }) => {
     const pdf = store.pdfPath(safeId(id));
@@ -173,6 +187,12 @@ function createWindow() {
 app.whenReady().then(() => {
   app.setName('PaperBridge');
   store = createStore(process.env.PAPERBRIDGE_WORKSPACE || path.join(app.getPath('userData'), 'workspace'));
+  setupManager = new SetupManager({
+    toolsRoot: process.env.PAPERBRIDGE_TOOLS_ROOT || path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'PaperBridge', 'tools'),
+    ollamaRequest,
+    pullModel: pullOllamaModel,
+    emit: progress
+  });
   registerHandlers();
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
