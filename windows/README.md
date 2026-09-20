@@ -24,6 +24,10 @@ npm run dist
 
 The NSIS installer and portable executable appear in `release/`. GitHub Actions also uploads the Windows build as a workflow artifact. Builds are currently unsigned, so Windows SmartScreen may warn until release signing is configured.
 
+## Updates
+
+PaperBridge checks the official GitHub Release API for published `windows-vX.Y.Z` releases at startup and, while open, at most once per day. Settings lets you turn off automatic checks or select **Check now**. When a newer Windows installer is published, the app shows a banner that opens that release page for review and download. The current unsigned preview does not download or run installers automatically. Mac releases use a separate tag and are ignored. The update request contains the app version and standard network metadata; no paper, note, or translation content is sent. A Windows release tag must match the version in `windows/package.json`; the GitHub workflow checks this before publishing its installer.
+
 ## Local AI and GPU acceleration
 
 Open **Set up local AI** on the welcome screen, in the sidebar, or through Settings. PaperBridge checks the local Ollama service, selected models, MinerU installation, and graphics hardware. **Install missing components** starts an existing Ollama installation or downloads its official signed Windows installer, downloads the selected Ollama models, and installs MinerU into a private Python 3.12 environment. Progress and cancellation are available in the setup panel. Existing working installations are retained. MinerU can need several gigabytes; the first setup may take a while. GPU drivers are not installed by PaperBridge.

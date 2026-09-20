@@ -7,12 +7,14 @@ const { createStore, safeId } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { writeBundle } = require('./bundle.cjs');
+const { checkWindowsRelease, releaseUrl } = require('./updates.cjs');
 
 let window;
 let store;
 let activeMineru = null;
 let setupManager = null;
 let activeBundle = null;
+let activeUpdateCheck = null;
 const requests = new Map();
 
 function localOllamaURL(value, endpoint) {
@@ -99,7 +101,17 @@ async function readMineruMarkdown(file) {
 }
 
 function registerHandlers() {
-  ipcMain.handle('bootstrap', () => ({ settings: store.settings(), glossary: store.glossary(), library: store.list() }));
+  ipcMain.handle('bootstrap', () => ({ settings: store.settings(), glossary: store.glossary(), library: store.list(), version: app.getVersion() }));
+  ipcMain.handle('updates:check', async (_event, automatic = false) => {
+    const currentVersion = app.getVersion();
+    if (automatic && (!store.settings().autoCheckUpdates || Date.now() - store.lastUpdateCheckAt() < 24 * 60 * 60 * 1000)) return { status: 'skipped', currentVersion };
+    if (!activeUpdateCheck) {
+      store.saveUpdateCheckAt(Date.now());
+      activeUpdateCheck = checkWindowsRelease(currentVersion).finally(() => { activeUpdateCheck = null; });
+    }
+    return activeUpdateCheck;
+  });
+  ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
   ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable));
   ipcMain.handle('mineru:status', (_event, executable) => mineruStatus(executable, setupManager.toolsRoot));

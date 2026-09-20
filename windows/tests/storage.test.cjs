@@ -37,6 +37,8 @@ test('clearing saved work keeps original PDF copies', () => {
     const id = 'b'.repeat(64);
     store.savePaper({ id, name: 'Saved work', blocks: [] });
     store.saveSettings({ translationModel: 'example' });
+    store.saveUpdateCheckAt(1_700_000_000_000);
+    assert.equal(store.lastUpdateCheckAt(), 1_700_000_000_000);
     store.saveGlossary([{ source: 'term', target: 'term' }]);
     fs.mkdirSync(path.join(root, 'pdfs'), { recursive: true });
     fs.writeFileSync(store.pdfPath(id), '%PDF-1.4\n');
@@ -44,6 +46,8 @@ test('clearing saved work keeps original PDF copies', () => {
     assert.equal(store.paper(id), null);
     assert.deepEqual(store.glossary(), []);
     assert.equal(store.settings().translationModel, 'translategemma:4b');
+    assert.equal(store.settings().autoCheckUpdates, true);
+    assert.equal(store.lastUpdateCheckAt(), 0);
     assert.equal(fs.existsSync(store.pdfPath(id)), true);
   } finally {
     if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected temporary path');

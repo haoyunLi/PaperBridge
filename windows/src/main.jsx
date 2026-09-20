@@ -174,6 +174,10 @@ function ParagraphExplanation({ paper, activeBlock, language, setLanguage, resul
 function App() {
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [appVersion, setAppVersion] = useState('');
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [glossary, setGlossary] = useState([]);
   const [library, setLibrary] = useState([]);
   const [paper, setPaper] = useState(null);
@@ -237,6 +241,21 @@ function App() {
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
   const updateSettings = change => setSettings(previous => ({ ...previous, ...change }));
+  async function checkForUpdates(automatic = false) {
+    if (!automatic) { setCheckingUpdates(true); setUpdateStatus('Checking Windows releases…'); }
+    try {
+      const result = await api.checkUpdates(automatic);
+      if (result.status === 'available') setUpdateInfo(result);
+      else if (!automatic) setUpdateInfo(null);
+      if (!automatic) setUpdateStatus(result.status === 'available' ? `Windows ${result.latestVersion} is available.` : result.status === 'unpublished' ? 'No Windows release has been published yet.' : 'You have the latest published Windows version.');
+    } catch (cause) { if (!automatic) setUpdateStatus(cause.message); }
+    finally { if (!automatic) setCheckingUpdates(false); }
+  }
+  async function openUpdateRelease() {
+    if (!updateInfo?.tag) return;
+    try { await api.openUpdateRelease(updateInfo.tag); }
+    catch (cause) { setError(cause.message); }
+  }
   const changeDisplayMode = mode => {
     setDisplayMode(mode);
     commitPaper(current => ({ ...current, position: { ...current.position, displayMode: mode } }));
@@ -290,11 +309,17 @@ function App() {
     catch (err) { setModels([]); setOllamaError(err.message); return []; }
   };
   useEffect(() => {
-    api.bootstrap().then(data => { setSettings(data.settings); setGlossary(data.glossary); setLibrary(data.library); setReady(true); refreshModels(data.settings); api.graphicsStatus().then(setHardware).catch(() => {}); api.mineruRuntime(data.settings.mineruExecutable).then(setMineruRuntime).catch(() => {}); if (data.library.length) loadPaper(data.library[0].id).catch(err => setError(err.message)); }).catch(err => setError(err.message));
+    api.bootstrap().then(data => { setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library); setReady(true); refreshModels(data.settings); api.graphicsStatus().then(setHardware).catch(() => {}); api.mineruRuntime(data.settings.mineruExecutable).then(setMineruRuntime).catch(() => {}); if (data.library.length) loadPaper(data.library[0].id).catch(err => setError(err.message)); }).catch(err => setError(err.message));
     const off = api.onProgress(data => { if (data.kind === 'setup') setSetupProgress(data); else if (data.kind === 'model') setPullProgress(data); else setStatus(data.status || 'MinerU is processing the PDF…'); });
     return off;
   }, []);
   useEffect(() => { if (ready && settings) api.saveSettings(settings).catch(err => setError(err.message)); }, [settings, ready]);
+  useEffect(() => {
+    if (!ready || settings?.autoCheckUpdates === false) return;
+    checkForUpdates(true);
+    const timer = setInterval(() => checkForUpdates(true), 60 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [ready, settings?.autoCheckUpdates]);
   useEffect(() => { if (ready) api.saveGlossary(glossary).catch(err => setError(err.message)); }, [glossary, ready]);
   useEffect(() => { if (paperRef.current && paperRef.current.position?.tab !== tab) commitPaper(current => ({ ...current, position: { ...current.position, tab } })); }, [tab]);
   useEffect(() => { setSelection(null); setSelectionResult(null); }, [tab, paper?.id]);
@@ -744,6 +769,7 @@ function App() {
       </header>
       <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll}>
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
+        {updateInfo?.status === 'available' && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setUpdateInfo(null)}>Later</button></div>}
         {busy && <Notice>{busy.label}{progress?.total ? ` · ${progress.done}/${progress.total}` : ''}</Notice>}
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
@@ -777,6 +803,7 @@ function App() {
         {runningModels.length > 0 && <p>Ollama loaded: {runningModels.map(model => `${model.name} · ${(model.sizeVram / 1024 ** 3).toFixed(1)} GB VRAM`).join('; ')}</p>}
         <label>MinerU backend<select value={settings.mineruBackend || 'auto'} onChange={event => updateSettings({ mineruBackend: event.target.value })}><option value="auto">Auto (MinerU selects available acceleration)</option><option value="pipeline">Pipeline compatibility mode</option></select></label>
       </div>}
+      {modal === 'settings' && <div className="hardware-panel update-settings"><div className="row"><strong>Windows updates · {appVersion || 'unknown version'}</strong><button className="button outline" disabled={checkingUpdates} onClick={() => checkForUpdates(false)}><RefreshCw size={14} /> Check now</button></div><label><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => updateSettings({ autoCheckUpdates: event.target.checked })} /> Check official Windows releases at most once per day</label>{updateStatus && <p role="status">{updateStatus}</p>}<p>New versions open on the official GitHub release page. This unsigned preview does not install updates automatically.</p></div>}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => `${term.source} ${term.target}`.toLowerCase().includes(glossarySearch.toLowerCase())).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} onClick={() => setGlossary(current => current.filter((_, at) => at !== index))}><Trash2 size={16} /></button></div>)}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} setError={setError} setLibraryEdit={setLibraryEdit} />}
       {modal === 'libraryLabel' && libraryEdit && <><p>Only the library label changes; the original PDF stays unchanged.</p><label>Title<input value={libraryEdit.name} onChange={event => setLibraryEdit({ ...libraryEdit, name: event.target.value })} /></label><label>Tags, separated by commas<input value={libraryEdit.tags} onChange={event => setLibraryEdit({ ...libraryEdit, tags: event.target.value })} /></label><div className="row"><button className="button blue" disabled={!libraryEdit.name.trim()} onClick={saveLibraryLabel}>Save label</button><button className="button outline" onClick={() => setModal('library')}>Cancel</button></div></>}

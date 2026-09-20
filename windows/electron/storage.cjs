@@ -15,7 +15,8 @@ const defaults = {
   mineruExecutable: '',
   mineruBackend: 'auto',
   pdfExtractionMode: 'mineruPreferred',
-  quickLookupModel: 'translategemma:4b'
+  quickLookupModel: 'translategemma:4b',
+  autoCheckUpdates: true
 };
 
 function safeId(id) {
@@ -50,6 +51,8 @@ function createStore(root) {
     pdfPath,
     settings() { return { ...defaults, ...readJson(path.join(root, 'settings.json'), {}) }; },
     saveSettings(settings) { writeJson(path.join(root, 'settings.json'), { ...defaults, ...settings }); },
+    lastUpdateCheckAt() { return Number(readJson(path.join(root, 'updates.json'), {}).lastCheckAt || 0); },
+    saveUpdateCheckAt(value) { writeJson(path.join(root, 'updates.json'), { lastCheckAt: value }); },
     glossary() { return readJson(path.join(root, 'glossary.json'), []); },
     saveGlossary(glossary) { writeJson(path.join(root, 'glossary.json'), glossary.slice(0, 500)); },
     paper(id) { return readJson(paperPath(id), null); },
@@ -63,7 +66,7 @@ function createStore(root) {
           if (/^[a-f0-9]{64}\.json(?:\.backup)?$/.test(name)) fs.unlinkSync(path.join(papersDir, name));
         }
       }
-      for (const name of ['settings.json', 'settings.json.backup', 'glossary.json', 'glossary.json.backup']) {
+      for (const name of ['settings.json', 'settings.json.backup', 'glossary.json', 'glossary.json.backup', 'updates.json', 'updates.json.backup']) {
         const file = path.join(root, name);
         if (fs.existsSync(file)) fs.unlinkSync(file);
       }

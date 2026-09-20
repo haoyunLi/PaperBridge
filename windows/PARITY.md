@@ -1,6 +1,6 @@
 # macOS 1.9 ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **41 aligned, 69 partial, 1 missing**. These are implementation states, not a claim that every complex paper or GPU has passed device testing.
+The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **41 aligned, 70 partial, 0 missing**. These are implementation states, not a claim that every complex paper or GPU has passed device testing.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of tru
 | Library and local recovery | Label/tag editing, new extraction copy, saved positions and data clearing | Per-paper task settings and recovery checks. |
 | Export | Markdown bundle with external assets, original PDF and up to 120 page PNGs | Long bundle and asset portability checks. |
 | One-click local AI setup | Implemented path, device verification pending | Real NVIDIA, AMD, CPU, installation, cancellation and rollback tests. |
-| Windows delivery | Unsigned NSIS and portable builds | Signing and a trusted in-app update channel (G14). |
+| Windows delivery | Unsigned NSIS and portable builds; opt-in daily release checks and update prompts | Signing and verified in-app installation (G14). |
 
 ## GPU behavior
 

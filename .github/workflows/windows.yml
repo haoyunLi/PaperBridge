@@ -30,6 +30,14 @@ jobs:
           cache-dependency-path: windows/package-lock.json
       - run: npm ci
       - run: npm test
+      - name: Verify Windows release version
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "windows-v$packageVersion") {
+            throw "Tag $env:GITHUB_REF_NAME must match Windows package version $packageVersion"
+          }
       - run: npm run dist
       - uses: actions/upload-artifact@v4
         with:

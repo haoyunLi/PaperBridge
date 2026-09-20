@@ -40,7 +40,7 @@ async function run() {
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   fs.mkdirSync(workspace, { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}` }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, autoCheckUpdates: false }));
   const pdfPath = path.join(artifacts, 'practice.pdf');
   fs.writeFileSync(pdfPath, samplePdf());
   const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
@@ -138,8 +138,18 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
     await page.waitForSelector('.hardware-panel');
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('updates:check');
+      ipcMain.handle('updates:check', () => ({ status: 'available', currentVersion: '0.2.0', latestVersion: '0.3.0', tag: 'windows-v0.3.0' }));
+      ipcMain.removeHandler('updates:open-release');
+      ipcMain.handle('updates:open-release', (_event, tag) => { global.__openedReleaseTag = tag; });
+    });
+    await page.getByRole('button', { name: 'Check now' }).click();
+    await page.getByText('Windows 0.3.0 is available.').waitFor();
     await page.screenshot({ path: path.join(artifacts, 'settings.png') });
     await page.locator('.modal-head .icon-button').click();
+    await page.getByRole('button', { name: 'View release' }).click();
+    assert.equal(await app.evaluate(() => global.__openedReleaseTag), 'windows-v0.3.0');
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, pdfPath);
     await page.getByRole('button', { name: 'Open PDF' }).first().click();
     await page.getByText('Extracted', { exact: false }).first().waitFor({ timeout: 20000 });
