@@ -5,12 +5,14 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { createStore, safeId } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
-const { SetupManager } = require('./setup.cjs');
+const { SetupManager, mineruStatus } = require('./setup.cjs');
+const { writeBundle } = require('./bundle.cjs');
 
 let window;
 let store;
 let activeMineru = null;
 let setupManager = null;
+let activeBundle = null;
 const requests = new Map();
 
 function localOllamaURL(value, endpoint) {
@@ -33,6 +35,16 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
 }
 
 function progress(data) { if (window && !window.isDestroyed()) window.webContents.send('paperbridge:progress', data); }
+
+function importPdfBytes(bytes, name) {
+  const source = Buffer.from(bytes);
+  if (!source.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('This file is not a valid PDF.');
+  const id = crypto.createHash('sha256').update(source).digest('hex');
+  const destination = store.pdfPath(id);
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  if (!fs.existsSync(destination)) fs.writeFileSync(destination, source);
+  return { id, name: path.basename(String(name || 'Paper.pdf')), existing: store.paper(id), bytes: new Uint8Array(source) };
+}
 
 async function pullOllamaModel(baseURL, model, signal, update) {
   if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
@@ -90,6 +102,7 @@ function registerHandlers() {
   ipcMain.handle('bootstrap', () => ({ settings: store.settings(), glossary: store.glossary(), library: store.list() }));
   ipcMain.handle('hardware:status', () => graphicsStatus());
   ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable));
+  ipcMain.handle('mineru:status', (_event, executable) => mineruStatus(executable, setupManager.toolsRoot));
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
   ipcMain.handle('setup:install', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.install(config); });
   ipcMain.handle('setup:cancel', () => setupManager.cancel());
@@ -102,17 +115,21 @@ function registerHandlers() {
   ipcMain.handle('glossary:save', (_event, glossary) => store.saveGlossary(glossary));
   ipcMain.handle('paper:load', (_event, id) => store.paper(safeId(id)));
   ipcMain.handle('paper:save', (_event, paper) => { store.savePaper(paper); return store.list(); });
+  ipcMain.handle('paper:clear-data', () => store.clearData());
   ipcMain.handle('pdf:import', async () => {
     const result = await dialog.showOpenDialog(window, { title: 'Open paper', properties: ['openFile'], filters: [{ name: 'PDF documents', extensions: ['pdf'] }] });
     if (result.canceled) return null;
     const source = result.filePaths[0];
-    const bytes = fs.readFileSync(source);
-    if (!bytes.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('This file is not a valid PDF.');
-    const id = crypto.createHash('sha256').update(bytes).digest('hex');
-    const destination = store.pdfPath(id);
+    return importPdfBytes(fs.readFileSync(source), path.basename(source));
+  });
+  ipcMain.handle('pdf:import-bytes', (_event, { bytes, name }) => importPdfBytes(bytes, name));
+  ipcMain.handle('pdf:copy-as-new', (_event, { id, name }) => {
+    const bytes = fs.readFileSync(store.pdfPath(safeId(id)));
+    const newId = crypto.createHash('sha256').update(bytes).update(crypto.randomUUID()).digest('hex');
+    const destination = store.pdfPath(newId);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
-    if (!fs.existsSync(destination)) fs.copyFileSync(source, destination);
-    return { id, name: path.basename(source), existing: store.paper(id), bytes: new Uint8Array(bytes) };
+    fs.writeFileSync(destination, bytes);
+    return { id: newId, name: `${path.basename(String(name || 'Paper.pdf'))} (new extraction)`, bytes: new Uint8Array(bytes), existing: null };
   });
   ipcMain.handle('pdf:read', (_event, id) => new Uint8Array(fs.readFileSync(store.pdfPath(safeId(id)))));
   ipcMain.handle('markdown:export', async (_event, { name, content }) => {
@@ -120,6 +137,28 @@ function registerHandlers() {
     if (result.canceled) return null;
     fs.writeFileSync(result.filePath, String(content), 'utf8');
     return result.filePath;
+  });
+  ipcMain.handle('markdown:bundle', async (_event, { paper, documents }) => {
+    safeId(paper.id);
+    if (!Array.isArray(documents) || documents.length > 8 || documents.some(item => typeof item.name !== 'string' || typeof item.content !== 'string')) throw new Error('Invalid Markdown bundle.');
+    const result = await dialog.showOpenDialog(window, { title: 'Choose export folder', properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled) return null;
+    const bundle = writeBundle(result.filePaths[0], { id: paper.id, name: paper.name, type: paper.type }, documents, store.pdfPath(paper.id));
+    activeBundle = { id: paper.id, folder: bundle.folder };
+    return bundle;
+  });
+  ipcMain.handle('markdown:bundle-page', (_event, { id, folder, pageNumber, bytes }) => {
+    if (!activeBundle || id !== activeBundle.id || folder !== activeBundle.folder || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 120) throw new Error('No matching page-image export is active.');
+    const png = Buffer.from(bytes);
+    if (png.length > 20_000_000 || !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error('Invalid page image.');
+    const pages = path.join(folder, 'pages');
+    fs.mkdirSync(pages, { recursive: true });
+    const name = `page-${String(pageNumber).padStart(3, '0')}.png`;
+    fs.writeFileSync(path.join(pages, name), png);
+    const index = path.join(folder, 'Original Pages.md');
+    if (!fs.existsSync(index)) fs.writeFileSync(index, '# Original PDF pages\n\nThese images are a portable reading copy. The unchanged source file is original.pdf.\n\n');
+    fs.appendFileSync(index, `## Page ${pageNumber}\n\n![Original PDF page ${pageNumber}](pages/${name})\n\n`);
+    return name;
   });
   ipcMain.handle('ollama:models', async (_event, baseURL) => {
     const response = await ollamaRequest(baseURL, 'api/tags');

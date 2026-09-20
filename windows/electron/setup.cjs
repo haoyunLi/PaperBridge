@@ -304,7 +304,7 @@ class SetupManager {
 
   async install(config) {
     if (this.controller) throw new Error('A setup is already running.');
-    if (!Array.isArray(config.models) || config.models.length > 3 || config.models.some(model => typeof model !== 'string' || !/^[\w./:-]{2,100}$/.test(model))) throw new Error('Choose valid local model names before setup.');
+    if (!Array.isArray(config.models) || config.models.length > 4 || config.models.some(model => typeof model !== 'string' || !/^[\w./:-]{2,100}$/.test(model))) throw new Error('Choose valid local model names before setup.');
     this.controller = new AbortController();
     try {
       this.send('detect', 'Checking existing local tools and graphics hardware…');
@@ -333,4 +333,4 @@ class SetupManager {
   }
 }
 
-module.exports = { SetupManager, cudaPlan, setupPlan, versionAtLeast };
+module.exports = { SetupManager, cudaPlan, setupPlan, versionAtLeast, mineruStatus };

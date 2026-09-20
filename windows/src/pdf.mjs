@@ -1,6 +1,7 @@
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines } from './text.mjs';
+import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -42,12 +43,17 @@ function pageLines(content, pageWidth) {
 }
 
 export async function extractPdf(pdf, onPage) {
-  const blocks = [];
+  const pages = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
-    const width = page.getViewport({ scale: 1 }).width;
-    const lines = pageLines(content, width);
+    const viewport = page.getViewport({ scale: 1 });
+    pages.push({ pageNumber, width: viewport.width, height: viewport.height, lines: pageLines(content, viewport.width) });
+    onPage?.(pageNumber, pdf.numPages);
+  }
+  const cleaned = filterRepeatedPageDecorations(pages);
+  const blocks = [];
+  for (const { pageNumber, width, lines } of cleaned) {
     const mid = width / 2;
     const left = lines.filter(line => line.x + line.width < mid + 12);
     const right = lines.filter(line => line.x > mid - 12);
@@ -55,7 +61,6 @@ export async function extractPdf(pdf, onPage) {
     const ordered = twoColumns ? [...left, ...right, ...lines.filter(line => !left.includes(line) && !right.includes(line))] : lines;
     // Preserve the page index even when an image-only page has no selectable text.
     blocks.push(...blocksFromLines(ordered, pageNumber, blocks.length + 1, twoColumns));
-    onPage?.(pageNumber, pdf.numPages);
   }
-  return blocks;
+  return stitchPageBlocks(blocks);
 }

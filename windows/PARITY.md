@@ -1,20 +1,20 @@
 # macOS 1.9 ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) is the source of truth. It links each Mac behavior to the Windows entry point, marks the current gap, and gives a concrete acceptance check. These statuses come from code inspection; physical GPU and installer verification is still required.
+The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **41 aligned, 69 partial, 1 missing**. These are implementation states, not a claim that every complex paper or GPU has passed device testing.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
-| PDF and text import | Working core, partial parity | Drag and drop; automatic MinerU-first strategy; complete PDF text cleanup. |
-| Original PDF and structured reading | Working core, partial parity | Interleaved Reader resources and portable facsimile/image assets. |
-| Reader and navigation | Working core, partial parity | Bilingual/original/translation modes and precise per-view position restore. |
-| Paragraph translation | Working core, partial parity | Reference exclusion, choose any section, prioritize a running queue. |
-| Full translation | Working plain-text path, partial parity | One structure-preserving document shared by preview and export. |
-| Summary and evidence | Working dual-language summary, partial parity | Exact-quote claim validation before a source link is trusted. |
-| Highlights, notes, terminology | Working Reader path, partial parity | Exact selection anchors, cross-workspace selection, annotation migration. |
-| Library and local recovery | Working core, partial parity | Title editing, new extraction copy, per-paper settings and exact position. |
-| Export | Working Markdown files, partial parity | Self-contained bundle with referenced assets and original PDF. |
+| PDF and text import | Drag/drop, duplicate recovery, independent new copy, automatic MinerU preferred/only/PDF text modes | Real MinerU and OCR failures, complex two-column papers, cross-page repair. |
+| Original PDF and structured reading | Original PDF, Markdown resources, quality warnings, repeated running-head/footer filter | Complex figure and footnote order, asset recovery. |
+| Reader and navigation | Three saved modes, per-view scroll, per-page PDF position, search and focus restoration | Long-document and high-DPI checks. |
+| Paragraph translation | Paragraph queue, chapter selection/priority, reference exclusion | Real-model terminology and cancellation checks. |
+| Full translation | Independent structure-preserving draft and export | Complex Markdown and failure-resume checks. |
+| Summary and evidence | Dual-language claims with exact-quote source validation | Model-output reliability across long papers. |
+| Highlights, notes, terminology | Exact Reader offsets, Paper/summary/full selection, compact toolbar, edit migration | Inline summary/full annotations and cross-view PDF/Markdown anchors. |
+| Library and local recovery | Label/tag editing, new extraction copy, saved positions and data clearing | Per-paper task settings and recovery checks. |
+| Export | Markdown bundle with external assets, original PDF and up to 120 page PNGs | Long bundle and asset portability checks. |
 | One-click local AI setup | Implemented path, device verification pending | Real NVIDIA, AMD, CPU, installation, cancellation and rollback tests. |
-| Windows delivery | Unsigned NSIS and portable builds | Signing and a trusted update channel. |
+| Windows delivery | Unsigned NSIS and portable builds | Signing and a trusted in-app update channel (G14). |
 
 ## GPU behavior
 

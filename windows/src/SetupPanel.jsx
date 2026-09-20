@@ -18,7 +18,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
   const config = () => ({
     baseURL: settings.ollamaBaseURL,
     mineruExecutable: settings.mineruExecutable,
-    models: [...new Set([settings.translationModel, settings.summaryModel, settings.explainModel])]
+    models: [...new Set([settings.translationModel, settings.summaryModel, settings.explainModel, settings.quickLookupModel || settings.translationModel])]
   });
 
   async function refresh() {

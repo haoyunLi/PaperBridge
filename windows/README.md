@@ -2,6 +2,8 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS↔Windows feature mapping](FEATURE_MAPPING.md) and [parity summary](PARITY.md) for current differences before treating it as a 1:1 replacement.
 
+The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Page images can take time and disk space on long papers. Notes and highlights inside Summary and Full Translation are still being brought to parity; see the mapping for the remaining details.
+
 ## Build and run
 
 Requirements: Windows 10 or later, Node.js 20.19+ or 22.12+, and npm. From this folder:
@@ -34,7 +36,7 @@ MinerU is optional. The managed installer pins MinerU 3.4.5 because the current 
 
 ## Data location and privacy
 
-Papers, source PDF copies, translations, notes, and settings are stored in PaperBridge's local Electron user-data directory under `%APPDATA%`. JSON saves keep one readable `.backup` copy. The original source file is copied into the workspace, so moving or deleting the imported file does not remove the saved PDF. No cloud account is required.
+Papers, source PDF copies, translations, notes, and settings are stored in PaperBridge's local Electron user-data directory under `%APPDATA%`. JSON saves keep one readable `.backup` copy. The original source file is copied into the workspace, so moving or deleting the imported file does not remove the saved PDF. **Settings > Remove all saved PaperBridge data** clears saved workspaces, settings, and terminology while retaining the copied original PDFs. No cloud account is required.
 
 ## Development layout
 

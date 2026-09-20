@@ -12,8 +12,10 @@ const defaults = {
   fontSize: 17,
   lineHeight: 1.7,
   readingWidth: 860,
-  mineruExecutable: ''
-  ,mineruBackend: 'auto'
+  mineruExecutable: '',
+  mineruBackend: 'auto',
+  pdfExtractionMode: 'mineruPreferred',
+  quickLookupModel: 'translategemma:4b'
 };
 
 function safeId(id) {
@@ -54,6 +56,17 @@ function createStore(root) {
     savePaper(paper) {
       safeId(paper.id);
       writeJson(paperPath(paper.id), { ...paper, updatedAt: new Date().toISOString() });
+    },
+    clearData() {
+      if (fs.existsSync(papersDir)) {
+        for (const name of fs.readdirSync(papersDir)) {
+          if (/^[a-f0-9]{64}\.json(?:\.backup)?$/.test(name)) fs.unlinkSync(path.join(papersDir, name));
+        }
+      }
+      for (const name of ['settings.json', 'settings.json.backup', 'glossary.json', 'glossary.json.backup']) {
+        const file = path.join(root, name);
+        if (fs.existsSync(file)) fs.unlinkSync(file);
+      }
     },
     list() {
       if (!fs.existsSync(papersDir)) return [];

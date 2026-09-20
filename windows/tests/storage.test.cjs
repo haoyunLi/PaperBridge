@@ -29,3 +29,24 @@ test('GPU vendor classification distinguishes AMD from CUDA-capable vendors', ()
   assert.equal(vendorOf('AMD Radeon RX 7800 XT'), 'AMD');
   assert.equal(vendorOf('Intel Arc'), 'Intel');
 });
+
+test('clearing saved work keeps original PDF copies', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-clear-'));
+  try {
+    const store = createStore(root);
+    const id = 'b'.repeat(64);
+    store.savePaper({ id, name: 'Saved work', blocks: [] });
+    store.saveSettings({ translationModel: 'example' });
+    store.saveGlossary([{ source: 'term', target: 'term' }]);
+    fs.mkdirSync(path.join(root, 'pdfs'), { recursive: true });
+    fs.writeFileSync(store.pdfPath(id), '%PDF-1.4\n');
+    store.clearData();
+    assert.equal(store.paper(id), null);
+    assert.deepEqual(store.glossary(), []);
+    assert.equal(store.settings().translationModel, 'translategemma:4b');
+    assert.equal(fs.existsSync(store.pdfPath(id)), true);
+  } finally {
+    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected temporary path');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

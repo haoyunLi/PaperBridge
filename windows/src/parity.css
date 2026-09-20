@@ -1,0 +1,22 @@
+.reader-mode-select{min-width:125px;font-size:12px}
+.app[data-display-mode="source"] .block:not(.heading-block) .translation-text{display:none}
+.app[data-display-mode="translation"] .block:not(.heading-block) .source-text{display:none}
+.evidence-claim{border-top:1px solid #e9e0d6;padding:13px 0}
+.evidence-claim strong{font-size:12px;color:#122033}
+.evidence-claim p,.evidence-claim small{font-size:12px;color:#56606c;line-height:1.5;margin:7px 0}
+.evidence-claim blockquote{margin:8px 0;padding:8px 12px;border-left:3px solid #0a59d6;background:#edf4ff;font:13px/1.5 Georgia,serif}
+.quality-list{background:#fff9ec;border:1px solid #e7d2a8;border-radius:10px;padding:13px;margin:12px 0}
+.quality-list h3{font-size:14px;margin:0 0 8px}
+.quality-list button{display:block;border:0;background:none;color:#073c91;text-align:left;font-size:12px;padding:5px 0}
+.library-entry{display:flex;align-items:center;border-bottom:1px solid #e7dfd2}
+.library-entry .modal-list-row{flex:1;border-bottom:0}
+.saved-annotations{margin:10px 14px;max-height:38vh;overflow:auto;flex:none}
+.annotation-row{display:flex;align-items:center;border-top:1px solid #e9e0d6;gap:4px}
+.annotation-row>button:first-child{flex:1;border:0;background:none;text-align:left;padding:7px 2px;min-width:0;color:#122033}
+.annotation-row b,.annotation-row span,.annotation-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;margin:2px 0}
+.annotation-row small{color:#667489}
+.paragraph-explanation{margin:10px 14px;max-height:190px;overflow:auto;flex:none}
+.paragraph-explanation select{width:100%;border:1px solid #bfc6cd;border-radius:6px;padding:6px;background:#fff}
+.paragraph-explanation p{white-space:pre-wrap;line-height:1.5}
+@media(max-width:1190px){.saved-annotations{max-height:120px;min-width:220px;margin:8px}}
+.selection-toolbar{position:fixed;z-index:8;display:flex;align-items:center;gap:3px;padding:4px;background:#122033;color:white;border:1px solid #324968;border-radius:8px;box-shadow:0 7px 24px #12203355}.selection-toolbar button{display:inline-flex;align-items:center;gap:4px;padding:5px 7px;color:inherit;background:transparent;border:0;border-radius:5px;font-size:11px}.selection-toolbar button:hover:not(:disabled){background:#304966}
