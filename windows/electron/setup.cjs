@@ -109,6 +109,7 @@ class SetupManager {
     const result = { hardware, mineru, ollama: { installed: Boolean(appPath), path: appPath, ...response } };
     result.plan = setupPlan(result, models);
     result.progress = this.lastProgress;
+    result.busy = Boolean(this.controller);
     return result;
   }
 
@@ -196,8 +197,11 @@ class SetupManager {
     try { await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); ready = true; } catch { /* Start existing installation. */ }
     if (!ready) {
       this.send('ollama', 'Starting Ollama and waiting for its local API…');
-      const child = spawn(appPath, [], { detached: true, windowsHide: true, stdio: 'ignore' });
-      child.unref();
+      await new Promise((resolve, reject) => {
+        const child = spawn(appPath, [], { detached: true, windowsHide: true, stdio: 'ignore' });
+        child.once('error', reject);
+        child.once('spawn', () => { child.unref(); resolve(); });
+      });
       for (let index = 0; index < 45; index++) {
         cancelled(this.controller.signal);
         try { await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); ready = true; break; } catch { /* Keep waiting. */ }
@@ -214,7 +218,7 @@ class SetupManager {
     const uv = path.join(uvDir, 'uv.exe');
     if (fs.existsSync(uv)) {
       try { await this.run(uv, ['--version'], 'mineru', 'Checking the managed Python environment tool…'); return uv; }
-      catch { fs.rmSync(uv, { force: true }); }
+      catch (error) { if (this.controller.signal.aborted) throw error; fs.rmSync(uv, { force: true }); }
     }
     fs.mkdirSync(uvDir, { recursive: true });
     const archive = ownedPath(this.toolsRoot, path.join(this.toolsRoot, `uv-${crypto.randomUUID()}.zip`));
@@ -242,6 +246,17 @@ class SetupManager {
     const staging = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.installing'));
     const backup = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.backup'));
     const environment = { ...process.env, UV_PYTHON_INSTALL_DIR: path.join(this.toolsRoot, 'python'), UV_CACHE_DIR: path.join(this.toolsRoot, 'cache'), UV_NO_PROGRESS: '1', UV_HTTP_TIMEOUT: '600' };
+    if (fs.existsSync(backup)) {
+      let finalWorks = false;
+      if (fs.existsSync(final)) {
+        try { await exec(path.join(final, 'Scripts', 'mineru.exe'), ['--version'], { timeout: 15000, windowsHide: true }); finalWorks = true; }
+        catch { /* Recover the last working installation after an interrupted activation. */ }
+      }
+      if (!finalWorks) {
+        if (fs.existsSync(final)) fs.rmSync(final, { recursive: true, force: true });
+        fs.renameSync(backup, final);
+      }
+    }
     if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
     try {
       await this.run(uv, ['python', 'install', '3.12'], 'mineru', 'Installing an isolated Python 3.12 runtime…', { env: environment });

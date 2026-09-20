@@ -197,6 +197,7 @@ app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
+app.on('before-quit', () => { setupManager?.cancel(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 module.exports = { localOllamaURL };

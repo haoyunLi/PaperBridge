@@ -69,3 +69,30 @@ test('one-click setup installs only missing parts and selects backend after CUDA
   assert.equal(result.mineruBackend, 'pipeline');
   assert.equal(result.mineruExecutable, 'managed-mineru.exe');
 });
+
+test('failed MinerU activation restores the previous managed environment', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-test-'));
+  const previous = path.join(root, 'mineru', 'Scripts', 'mineru.exe');
+  fs.mkdirSync(path.dirname(previous), { recursive: true });
+  fs.writeFileSync(previous, 'previous');
+  const manager = new SetupManager({ toolsRoot: root, ollamaRequest: () => {}, pullModel: () => {}, emit: () => {} });
+  manager.controller = new AbortController();
+  manager.installUV = async () => 'uv.exe';
+  manager.run = async (command, args) => {
+    if (args[0] === 'venv') {
+      const staged = path.join(root, 'mineru.installing', 'Scripts', 'mineru.exe');
+      fs.mkdirSync(path.dirname(staged), { recursive: true });
+      fs.writeFileSync(staged, 'new');
+    }
+    if (command === previous) throw new Error('verification failed');
+    return '';
+  };
+  try {
+    await assert.rejects(manager.installMineru({ index: null }), /verification failed/);
+    assert.equal(fs.readFileSync(previous, 'utf8'), 'previous');
+    assert.equal(fs.existsSync(path.join(root, 'mineru.backup')), false);
+  } finally {
+    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test directory');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -12,6 +12,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
   const [diagnosis, setDiagnosis] = useState(null);
   const [checking, setChecking] = useState(false);
   const [working, setWorking] = useState(false);
+  const [resumed, setResumed] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
   const config = () => ({
@@ -22,15 +23,26 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
 
   async function refresh() {
     setChecking(true);
-    try { setDiagnosis(await api.setupStatus(config())); setError(''); }
+    try {
+      const result = await api.setupStatus(config());
+      setDiagnosis(result);
+      setWorking(result.busy);
+      setResumed(result.busy);
+      setError('');
+    }
     catch (cause) { setError(cause.message); }
     finally { setChecking(false); }
   }
 
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (!resumed || !['done', 'error', 'cancelled'].includes(progress?.phase)) return;
+    const timer = setTimeout(() => { setResumed(false); refresh(); }, 200);
+    return () => clearTimeout(timer);
+  }, [resumed, progress?.phase]);
 
   async function install() {
-    setWorking(true); setError(''); setWarning('');
+    setWorking(true); setResumed(false); setError(''); setWarning('');
     try {
       const result = await api.setupInstall(config());
       onSettings({ mineruExecutable: result.mineruExecutable, mineruBackend: result.mineruBackend });
