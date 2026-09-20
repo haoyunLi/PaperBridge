@@ -2,7 +2,7 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS↔Windows feature mapping](FEATURE_MAPPING.md) and [parity summary](PARITY.md) for current differences before treating it as a 1:1 replacement.
 
-The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Page images can take time and disk space on long papers. Notes and highlights inside Summary and Full Translation are still being brought to parity; see the mapping for the remaining details.
+The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Summary and Full Translation selections can save notes and highlights in the inspector; inline coloring in those Markdown views remains in progress. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Page images can take time and disk space on long papers. See the mapping for the remaining details.
 
 ## Build and run
 

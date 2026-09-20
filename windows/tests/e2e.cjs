@@ -118,6 +118,10 @@ async function run() {
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · summarySource', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.blue').click();
+    await page.locator('.inspector textarea').fill('Summary selection note.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.match(await page.locator('.saved-annotations').innerText(), /summarySource/);
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await page.getByRole('button', { name: 'Translate full paper' }).click();
     await page.locator('.content-column .document-preview').waitFor({ timeout: 15000 });
@@ -128,6 +132,9 @@ async function run() {
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · fullTranslation', { exact: true }).waitFor();
+    await page.locator('.inspector textarea').fill('Connected translation note.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.match(await page.locator('.saved-annotations').innerText(), /fullTranslation/);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
     await page.waitForSelector('.hardware-panel');
@@ -174,7 +181,10 @@ async function run() {
     assert.equal(await page.locator('.library-row').count(), libraryCount + 1);
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
-    console.log('Electron workflow verified: local translation, Reader, settings, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
+    await page.locator('.library-row').filter({ hasText: 'Edited practice label' }).click();
+    assert.match(await page.locator('.saved-annotations').innerText(), /Summary selection note\./);
+    assert.match(await page.locator('.saved-annotations').innerText(), /Connected translation note\./);
+    console.log('Electron workflow verified: translation, summary and full-text annotations, multi-step undo, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
   } finally { await app.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -24,6 +24,10 @@ const rehypePlugins = [rehypeKatex];
 function safeMarkdownUrl(url, key) { return key === 'src' && /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(url) ? url : defaultUrlTransform(url); }
 function Markdown({ children }) { return <ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown>; }
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
+function viewText(paper, scope) {
+  return scope === 'summarySource' ? paper.summary?.source || '' : scope === 'summaryTarget' ? paper.summary?.target || '' : scope === 'fullTranslation' ? paper.connectedTranslation || '' : '';
+}
+function validViewAnchor(paper, item) { return Number.isInteger(item.offset) && viewText(paper, item.scope).slice(item.offset, item.offset + item.text.length) === item.text; }
 function parsedMarkdownBlocks(markdown) {
   return markdown.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map((part, index) => {
     const resource = /^(?:!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*\$\$|\\\[[\s\S]*\\\]|```[\s\S]*```|<table[\s\S]*<\/table>)$/i.test(part) || /^\|.+\|\n\|[-: |]+\|/.test(part);
@@ -35,7 +39,7 @@ function markdownDocuments(paper) {
   const translated = paper.blocks.map(block => block.translationMarkdown || block.translation || (block.resource || block.heading ? block.sourceMarkdown || block.text : `[Untranslated block ${block.id}]`)).join('\n\n');
   const bilingual = paper.blocks.map(block => block.resource || block.heading ? block.sourceMarkdown || block.text : `### ${block.id}\n\n${block.sourceMarkdown || block.text}\n\n${block.translationMarkdown || block.translation || '*Not translated*'}`).join('\n\n');
   const evidence = (revalidateSummaryClaims(paper.summary?.claims, paper.blocks) || []).map((claim, index) => `### Claim ${index + 1}: ${claim.text}\n\n${claim.sources?.length ? claim.sources.map(source => `- Block ${source.paragraphID}: “${source.quote}”`).join('\n') : '- No exact source quotation validated.'}`).join('\n\n');
-  const notes = paper.blocks.flatMap(block => (block.notes || []).map(note => `- Block ${block.id}: ${note.text} — ${note.body}`)).join('\n');
+  const notes = [...paper.blocks.flatMap(block => (block.notes || []).map(note => `- Block ${block.id}: ${note.text} — ${note.body}`)), ...(paper.viewNotes || []).map(note => `- ${note.scope}${validViewAnchor(paper, note) ? '' : ' (source changed, review needed)'}: ${note.text} — ${note.body}`)].join('\n');
   const documents = [
     { kind: 'original', name: 'Original', content: original },
     { kind: 'translated', name: 'Translated', content: translated },
@@ -144,16 +148,20 @@ function LibraryView({ items, query, setQuery, loadPaper, setModal, setError, se
   </>;
 }
 
-function SavedAnnotations({ paper, navigate, removeNote, removeHighlight }) {
+function SavedAnnotations({ paper, navigate, navigateView, removeNote, removeHighlight, removeViewNote, removeViewHighlight }) {
   const notes = paper.blocks.flatMap(block => (block.notes || []).map(note => ({ block, note })));
   const highlights = paper.blocks.flatMap(block => [
     ...(block.highlights || []).map(highlight => ({ block, highlight, kind: 'source' })),
     ...(block.translationHighlights || []).map(highlight => ({ block, highlight, kind: 'translation' }))
   ]);
-  if (!notes.length && !highlights.length) return null;
-  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {notes.length + highlights.length}</small>
+  const viewNotes = paper.viewNotes || [];
+  const viewHighlights = paper.viewHighlights || [];
+  if (!notes.length && !highlights.length && !viewNotes.length && !viewHighlights.length) return null;
+  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {notes.length + highlights.length + viewNotes.length + viewHighlights.length}</small>
     {notes.map(({ block, note }) => <div className="annotation-row" key={note.id}><button onClick={() => navigate(block.id)}><b>Block {block.id}{note.needsReview ? ' · source changed, note kept' : ''}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete note ${note.id}`} onClick={() => removeNote(block.id, note.id)}><Trash2 size={14} /></button></div>)}
     {highlights.map(({ block, highlight, kind }, index) => <div className="annotation-row" key={`${block.id}-${highlight.offset}-${index}`}><button onClick={() => navigate(block.id)}><b>Block {block.id} · {kind} · {highlight.color} highlight</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove highlight ${block.id} ${index}`} onClick={() => removeHighlight(block.id, highlight, kind)}><Trash2 size={14} /></button></div>)}
+    {viewNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigateView(note.scope)}><b>{note.scope}{validViewAnchor(paper, note) ? '' : ' · source changed, review needed'}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete view note ${note.id}`} onClick={() => removeViewNote(note.id)}><Trash2 size={14} /></button></div>)}
+    {viewHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigateView(highlight.scope)}><b>{highlight.scope} · {highlight.color}{validViewAnchor(paper, highlight) ? '' : ' · source changed, review needed'}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove view highlight ${highlight.id}`} onClick={() => removeViewHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
   </div>;
 }
 
@@ -604,6 +612,15 @@ function App() {
   }
   function addHighlight(color) {
     if (!selection) return;
+    if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) {
+      if (!validViewAnchor(paper, selection)) { setError('This selection cannot be anchored exactly in the saved document.'); return; }
+      rememberUndo();
+      const saved = paper.viewHighlights || [];
+      const exists = saved.find(item => item.scope === selection.scope && item.text === selection.text && item.offset === selection.offset && item.color === color);
+      commitPaper(current => ({ ...current, viewHighlights: exists ? saved.filter(item => item.id !== exists.id) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, color }] }));
+      setStatus(exists ? 'Highlight removed.' : 'Highlight saved in the annotation list.');
+      return;
+    }
     const block = paper.blocks.find(item => item.id === selection.id);
     const key = selection.kind === 'translation' ? 'translationHighlights' : 'highlights';
     const source = selection.kind === 'translation' ? block?.translation : block?.text;
@@ -616,6 +633,15 @@ function App() {
   }
   function saveNote() {
     if (!selection || !noteDraft.trim()) return;
+    if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) {
+      if (!validViewAnchor(paper, selection)) { setError('This note needs an exact selection in the saved document.'); return; }
+      rememberUndo();
+      const saved = paper.viewNotes || [];
+      const existing = saved.find(item => item.scope === selection.scope && item.text === selection.text && item.offset === selection.offset);
+      commitPaper(current => ({ ...current, viewNotes: existing ? saved.map(item => item.id === existing.id ? { ...item, body: noteDraft.trim() } : item) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, body: noteDraft.trim() }] }));
+      setStatus(existing ? 'Note updated.' : 'Note saved in the annotation list.');
+      return;
+    }
     const block = paper.blocks.find(item => item.id === selection.id);
     if (!['reader', 'paper'].includes(selection.scope) || !block || !Number.isInteger(selection.offset)) { setError('This note needs an exact source block selection.'); return; }
     rememberUndo();
@@ -625,6 +651,8 @@ function App() {
   }
   function removeNote(blockId, noteId) { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; rememberUndo(); updateBlock(blockId, { notes: (block.notes || []).filter(note => note.id !== noteId) }); }
   function removeHighlight(blockId, highlight, kind = 'source') { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; const key = kind === 'translation' ? 'translationHighlights' : 'highlights'; rememberUndo(); updateBlock(blockId, { [key]: (block[key] || []).filter(item => item !== highlight) }); }
+  function removeViewNote(id) { rememberUndo(); commitPaper(current => ({ ...current, viewNotes: (current.viewNotes || []).filter(item => item.id !== id) })); }
+  function removeViewHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, viewHighlights: (current.viewHighlights || []).filter(item => item.id !== id) })); }
   function addTerm() {
     if (!selection || !termDraft.trim()) return;
     setGlossary(current => [{ source: selection.text.slice(0, 160), target: termDraft.trim().slice(0, 300), sourceLanguage: settings.sourceLanguage, targetLanguage: settings.targetLanguage }, ...current].slice(0, 500));
@@ -632,6 +660,11 @@ function App() {
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
   function navigate(id) { setActiveBlock(id); setTab('Reader'); commitPaper(current => ({ ...current, position: { ...current.position, block: id } })); setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
+  function navigateView(scope) {
+    setTab(scope === 'fullTranslation' ? 'Full Translation' : 'Summary');
+    const target = scope === 'fullTranslation' ? '.content-column .document-preview' : scope === 'summaryTarget' ? '.summary-card.translated' : '.summary-card';
+    setTimeout(() => document.querySelector(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  }
   function modifyBlocks(transform) {
     if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
     rememberUndo();
@@ -664,12 +697,21 @@ function App() {
       }
     } else {
       const source = scope === 'summarySource' ? paperRef.current?.summary?.source : scope === 'summaryTarget' ? paperRef.current?.summary?.target : paperRef.current?.connectedTranslation;
-      const first = source?.indexOf(text) ?? -1;
-      if (first >= 0 && first === source.lastIndexOf(text)) offset = first;
+      const matches = [];
+      let searchAt = 0;
+      while (source && searchAt < source.length) {
+        const at = source.indexOf(text, searchAt);
+        if (at < 0) break;
+        matches.push(at); searchAt = at + text.length;
+      }
+      const before = document.createRange(); before.selectNodeContents(event.currentTarget); before.setEnd(range.startContainer, range.startOffset);
+      const ordinal = before.toString().split(text).length - 1;
+      offset = matches[ordinal] ?? null;
     }
     const rect = range.getBoundingClientRect();
     setSelection({ id, kind, text, offset, scope, rect: { x: rect.left, y: rect.top } });
-    setSelectionResult(null); setNoteDraft(''); setInspector(true);
+    const saved = paperRef.current?.viewNotes?.find(note => note.scope === scope && note.text === text && note.offset === offset);
+    setSelectionResult(null); setNoteDraft(saved?.body || ''); setInspector(true);
   }
   function mergeBlock(id) { if (id <= 1) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id).map(item => item.id === id - 1 ? mergeBlocks(item, blocks.find(block => block.id === id)) : item)); }
   function mergeNextBlock(id) { if (id >= paper.blocks.length) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id + 1).map(item => item.id === id ? mergeBlocks(item, blocks.find(block => block.id === id + 1)) : item)); }
@@ -719,7 +761,7 @@ function App() {
         {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown>{paper.connectedTranslation}</Markdown></article> : <Empty title="No full translation yet" body="This optional pass translates longer passages with context. The bilingual reader remains available separately." />}</div>}
       </div>
     </main>
-    <aside className="inspector"><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => setInspector(false)}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE</small><textarea placeholder="What should you remember?" value={noteDraft} onChange={event => setNoteDraft(event.target.value)} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Reader to translate or explain an exact phrase, highlight it, attach a note, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={setExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigate={navigate} removeNote={removeNote} removeHighlight={removeHighlight} />}</aside>
+    <aside className="inspector"><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => setInspector(false)}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE</small><textarea placeholder="What should you remember?" value={noteDraft} onChange={event => setNoteDraft(event.target.value)} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Reader to translate or explain an exact phrase, highlight it, attach a note, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={setExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigate={navigate} navigateView={navigateView} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} />}</aside>
     {selection?.rect && !modal && <div className="selection-toolbar" style={{ left: Math.min(window.innerWidth - 275, Math.max(8, selection.rect.x)), top: Math.max(8, selection.rect.y - 44) }} onMouseDown={event => event.preventDefault()}><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={14} /> Explain</button><button onClick={() => { setInspector(true); document.querySelector('.inspector-section textarea')?.focus(); }}><MessageSquareText size={14} /> Notes</button><button aria-label="Close selection tools" onClick={() => setSelection(null)}><X size={14} /></button></div>}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setModal(''); }}><div className="modal"><div className="modal-head"><h2>{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" onClick={() => setModal('')}><X size={19} /></button></div><div className="modal-body">
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}

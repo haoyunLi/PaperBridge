@@ -101,8 +101,8 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E01 | Reader 原文/译文选区 | Reader DOM 选区 | 部分 | 译文 Markdown 选区也能正确找回来源。 |
 | E02 | Paper 结构化 Markdown 选区 | Paper Markdown 预览可选区并打开查词、解释；唯一匹配可锚定源块 | 部分 | 跨块及重复文字的笔记/高亮仍需精确 Markdown 锚点。 |
 | E03 | 原 PDF 可选文字按页/偏移锚定 | PDF text layer 可选，但仅猜测同页块 | 部分 | 保存页码与文本范围；匹配失败不写错块。 |
-| E04 | 双语摘要两侧选区 | 双语摘要两侧可选区，区分 source/target 并进入检查器 | 部分 | 摘要内高亮和笔记保存仍缺。 |
-| E05 | Full Translation 选区 | Full Translation 可选区并进入检查器 | 部分 | 全文译稿内高亮和笔记保存仍缺。 |
+| E04 | 双语摘要两侧选区 | 双语摘要两侧选区，可查词、解释并保存笔记/高亮到检查器 | 部分 | 摘要正文内高亮显示及更精确 Markdown 锚点待补。 |
+| E05 | Full Translation 选区 | 全文译稿选区，可查词、解释并保存笔记/高亮到检查器 | 部分 | 译稿正文内高亮显示及复杂 Markdown 锚点待补。 |
 | E06 | 选中文字即时翻译 | 检查器 Translate | 部分 | 正确反转译文侧方向，保持原术语方向。 |
 | E07 | 选中文字解释 | 检查器 Explain | 对齐 | 输出异常、取消与切换论文时结果隔离。 |
 | E08 | 快速查词独立模型 | Settings 独立 quick lookup model 并纳入安装检测 | 对齐 | 四套模型分别配置。 |
@@ -111,7 +111,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E11 | 三种颜色高亮 | 三色高亮用起止偏移区分重复原文 | 部分 | Markdown/PDF 高亮显示仍缺。 |
 | E12 | 删除高亮保留笔记 | 同色点击移除高亮，笔记单独保存 | 部分 | 高亮与注释关联同一精确选区。 |
 | E13 | 为选区创建、更新、删除笔记 | Reader 同选区笔记可创建、更新、删除 | 对齐 | 标注清单提供删除入口。 |
-| E14 | 标注列表、预览、跨工作区跳转 | 检查器列出笔记和高亮，可跳 Reader | 部分 | 跨 PDF、摘要和全文视图的跳转仍缺。 |
+| E14 | 标注列表、预览、跨工作区跳转 | 检查器列出 Reader、摘要和全文译稿标注并跳转相应工作区 | 部分 | PDF 与 Markdown 选区坐标级跳转仍缺。 |
 | E15 | 标注位置失效时保留笔记并标明需检查 | 编辑后失效锚点标记 needsReview 并保留笔记 | 部分 | 更多编辑和跨视图路径仍需验证。 |
 | E16 | 高亮/笔记更改撤销 | 最多 20 次工作区快照撤销，覆盖标注与段落编辑 | 部分 | 跨重启撤销栈未保存；混合操作仍需更多回归。 |
 | E17 | 精确选区注释跨分段编辑迁移 | 拆分、合并、编辑迁移原文精确锚点 | 部分 | 重排及 Markdown 结构化编辑仍缺。 |
@@ -149,7 +149,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G01 | 导出原文 Markdown | 原文 Markdown 单文件及便携 bundle | 部分 | 复杂 MinerU 资产引用仍需验证。 |
 | G02 | 导出逐段译文 Markdown | 逐段译文 Markdown 单文件及便携 bundle | 部分 | 结构化全文稿和逐段译稿语义仍需比较。 |
 | G03 | 导出双语 Markdown | 双语 Markdown 单文件及便携 bundle | 部分 | 复杂资产及公式顺序仍需验证。 |
-| G04 | 导出摘要/笔记/证据 Markdown | 摘要、验证状态、来源 quote 和笔记 Markdown | 部分 | 摘要跨语言证据格式仍需比较。 |
+| G04 | 导出摘要/笔记/证据 Markdown | 摘要、验证状态、来源 quote、Reader 与视图笔记 Markdown | 部分 | 复杂 Markdown 锚点与证据格式仍需比较。 |
 | G05 | 资源 bundle、原 PDF、便携页面图片和独立全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与独立全文稿 | 部分 | 复杂 MinerU 资产和长 PDF 仍需真机验收。 |
 | G06 | 首次启动分步引导；可重新打开 | Windows 欢迎页 + 一页 Local AI setup | 部分 | 重现分步说明、模型选择及再次打开入口。 |
 | G07 | 自动检测/启动/安装 Ollama | SetupPanel 诊断 + 签名安装器 | 部分 | 真机测试安装、取消、已有安装复用。 |
