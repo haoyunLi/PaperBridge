@@ -252,7 +252,7 @@ function App() {
     if (!paperRef.current || busy) return;
     const token = startTask('Translating full paper…');
     try {
-      const chunks = chunkText(paperRef.current.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n'), 4800);
+      const chunks = chunkText(paperRef.current.blocks.map(block => block.text).join('\n\n'), 4800);
       const outputs = [];
       for (let i = 0; i < chunks.length; i++) {
         if (token.cancelled) return;
@@ -265,6 +265,11 @@ function App() {
   }
   async function runMineru() {
     if (!paper || paper.type !== 'pdf' || busy) return;
+    const hasMineruWork = blocks => blocks?.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
+    if ((paper.sourceMode === 'mineru' && hasMineruWork(paper.blocks)) || hasMineruWork(paper.mineruBlocks)) {
+      setError('This MinerU reader already contains saved work. Export it before parsing the PDF again.');
+      return;
+    }
     const token = startTask('MinerU is extracting structure…');
     try {
       const markdown = await api.extractMineru({ id: paper.id, executable: settings.mineruExecutable, backend: settings.mineruBackend });
@@ -272,7 +277,7 @@ function App() {
       const blocks = parsedMarkdownBlocks(markdown);
       commitPaper(current => {
         const hasUserWork = current.blocks.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
-        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, pdfBlocks: current.pdfBlocks || current.blocks, blocks: hasUserWork ? current.blocks : blocks, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? 'pdf' : 'mineru' };
+        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, pdfBlocks: current.pdfBlocks || current.blocks, blocks: hasUserWork ? current.blocks : blocks, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
       });
       setStatus(`MinerU structure ready: ${blocks.length} blocks. You can switch Reader source without discarding either version.`);
     } catch (err) { setError(err.message); } finally { endTask(token); }
