@@ -65,6 +65,20 @@ export function parseSummaryClaims(output, blocks, allowedSources = null, provid
   });
 }
 
+export function summarySourceCandidates(output, eligibleBlocks) {
+  const trimmed = String(output || '').trim();
+  const first = trimmed.indexOf('{');
+  const last = trimmed.lastIndexOf('}');
+  let parsed;
+  try { parsed = JSON.parse(trimmed.slice(first, last + 1)); } catch { return []; }
+  if (!Array.isArray(parsed?.claims)) return [];
+  const eligible = new Set(eligibleBlocks.map(block => block.id));
+  return parsed.claims.slice(0, 6).map(claim => (Array.isArray(claim.sources) ? claim.sources : [])
+    .map(source => source?.paragraphID)
+    .map(id => typeof id === 'string' && /^P?\d+$/i.test(id) ? Number(id.replace(/^P/i, '')) : id)
+    .filter(id => Number.isInteger(id) && eligible.has(id)).slice(0, 2));
+}
+
 export function claimsMarkdown(claims) {
   return claims.map((claim, index) => `${index + 1}. ${claim.text}`).join('\n\n');
 }

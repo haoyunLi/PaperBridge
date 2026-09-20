@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { createStore, safeId } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
@@ -177,14 +178,14 @@ function registerHandlers() {
     const data = await response.json();
     return (data.models || []).map(model => model.model || model.name).filter(Boolean);
   });
-  ipcMain.handle('ollama:generate', async (_event, { baseURL, model, prompt, system, requestId }) => {
+  ipcMain.handle('ollama:generate', async (_event, { baseURL, model, prompt, system, requestId, format }) => {
     if (typeof model !== 'string' || !model.trim() || typeof prompt !== 'string' || typeof requestId !== 'string') throw new Error('Invalid Ollama request.');
     const controller = new AbortController();
     requests.set(requestId, controller);
     try {
       const response = await ollamaRequest(baseURL, 'api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt, system, stream: false, options: { temperature: 0.1 } }),
+        body: JSON.stringify({ model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}), options: { temperature: 0.1 } }),
         signal: controller.signal
       });
       const data = await response.json();
@@ -203,22 +204,41 @@ function registerHandlers() {
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
     const command = String(executable || 'mineru').trim();
-    const output = path.join(store.root, 'mineru', id);
-    fs.mkdirSync(output, { recursive: true });
-    await new Promise((resolve, reject) => {
-      const args = ['-p', pdf, '-o', output];
-      if (backend === 'pipeline') args.push('-b', 'pipeline');
-      const child = spawn(command, args, { shell: false, windowsHide: true });
-      activeMineru = child;
-      let log = '';
-      child.stdout.on('data', data => { log += data.toString(); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
-      child.stderr.on('data', data => { log += data.toString(); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
-      child.on('error', error => { if (activeMineru === child) activeMineru = null; reject(new Error(`MinerU could not start: ${error.message}`)); });
-      child.on('close', code => { if (activeMineru === child) activeMineru = null; code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-500)}`)); });
-    });
-    const file = await findMarkdown(output);
-    if (!file) throw new Error('MinerU finished without a Markdown file.');
-    return readMineruMarkdown(file);
+    const savedOutput = path.join(store.root, 'mineru', id);
+    // MinerU repeats the input stem inside its temporary result paths. A SHA-256
+    // filename can push these paths past the Windows path limit, so use a short
+    // private input name while retaining the unchanged original in our library.
+    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-'));
+    try {
+      const stagedPdf = path.join(staging, 'paper.pdf');
+      const output = path.join(staging, 'output');
+      fs.copyFileSync(pdf, stagedPdf);
+      await new Promise((resolve, reject) => {
+        const args = ['-p', stagedPdf, '-o', output];
+        if (backend === 'pipeline') args.push('-b', 'pipeline');
+        const child = spawn(command, args, { shell: false, windowsHide: true });
+        activeMineru = child;
+        let log = '';
+        child.stdout.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
+        child.stderr.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
+        child.on('error', error => { if (activeMineru === child) activeMineru = null; reject(new Error(`MinerU could not start: ${error.message}`)); });
+        child.on('close', code => { if (activeMineru === child) activeMineru = null; code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
+      });
+      const file = await findMarkdown(output);
+      if (!file) throw new Error('MinerU finished without a Markdown file.');
+      const markdown = await readMineruMarkdown(file);
+      try {
+        fs.mkdirSync(savedOutput, { recursive: true });
+        fs.cpSync(output, savedOutput, { recursive: true, force: true });
+      } catch (error) {
+        progress({ kind: 'mineru', status: `Parsed text is ready, but the auxiliary MinerU files could not be kept: ${error.message.slice(0, 140)}` });
+      }
+      return markdown;
+    } finally {
+      const resolved = path.resolve(staging);
+      if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
+      fs.rmSync(resolved, { recursive: true, force: true });
+    }
   });
   ipcMain.handle('external:ollama', () => shell.openExternal('https://ollama.com/download/windows'));
 }

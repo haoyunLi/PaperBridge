@@ -40,7 +40,7 @@ async function run() {
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   fs.mkdirSync(workspace, { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, autoCheckUpdates: false }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false }));
   const pdfPath = path.join(artifacts, 'practice.pdf');
   fs.writeFileSync(pdfPath, samplePdf());
   const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
@@ -49,6 +49,16 @@ async function run() {
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.waitForSelector('.welcome', { timeout: 20000 });
     await page.screenshot({ path: path.join(artifacts, 'welcome.png') });
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('setup:status');
+      ipcMain.handle('setup:status', () => ({
+        hardware: { adapters: [{ name: 'Test Radeon', vendor: 'AMD' }] },
+        ollama: { installed: false, running: false, models: [] },
+        mineru: { installed: false, compatible: false, executable: '', runtime: null },
+        plan: { ollama: true, models: ['translategemma:4b'], mineru: true, gpu: { index: null, reason: 'Test AMD CPU parsing plan.' } },
+        busy: false
+      }));
+    });
     await page.getByRole('button', { name: 'Set up local AI' }).click();
     await page.locator('.setup-row').first().waitFor({ timeout: 25000 });
     assert.equal(await page.locator('.setup-row').count(), 3);

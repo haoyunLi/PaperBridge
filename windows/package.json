@@ -9,6 +9,8 @@
     "build": "vite build",
     "test": "node --test tests/*.test.cjs",
     "test:e2e": "node tests/e2e.cjs",
+    "test:live": "node tests/live-local.cjs",
+    "test:live-mineru": "node tests/live-mineru.cjs",
     "test:packaged": "node tests/packaged.cjs",
     "pack": "npm run build && electron-builder --win dir",
     "dist": "npm run build && electron-builder --win nsis portable"

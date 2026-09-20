@@ -78,6 +78,17 @@ async function sha256(file) {
   return hash.digest('hex');
 }
 
+function managedPythonPath(toolsRoot) {
+  const directory = path.join(toolsRoot, 'python');
+  if (!fs.existsSync(directory)) return '';
+  const architecture = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+  const version = new RegExp(`^cpython-3\\.12\\.(\\d+)-windows-${architecture}-none$`);
+  const candidates = fs.readdirSync(directory, { withFileTypes: true })
+    .filter(item => item.isDirectory() && version.test(item.name))
+    .sort((a, b) => Number(b.name.match(version)[1]) - Number(a.name.match(version)[1]));
+  return candidates.map(item => path.join(directory, item.name, 'python.exe')).find(fs.existsSync) || '';
+}
+
 function ownedPath(root, candidate) {
   const resolvedRoot = path.resolve(root);
   const resolved = path.resolve(candidate);
@@ -173,10 +184,13 @@ class SetupManager {
 
   async verifyOllamaSignature(file) {
     const literal = file.replace(/'/g, "''");
-    const script = `$s=Get-AuthenticodeSignature -LiteralPath '${literal}'; [pscustomobject]@{ Status=[string]$s.Status; Subject=[string]$s.SignerCertificate.Subject } | ConvertTo-Json -Compress`;
-    const result = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 30000, windowsHide: true });
+    const script = `$ErrorActionPreference='Stop'; $s=Get-AuthenticodeSignature -LiteralPath '${literal}'; [pscustomobject]@{ Status=[string]$s.Status; Subject=[string]$s.SignerCertificate.Subject } | ConvertTo-Json -Compress`;
+    // A parent process can prepend incompatible PowerShell modules to PSModulePath.
+    // Use the Windows PowerShell system modules for Authenticode verification.
+    const systemModules = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'Modules');
+    const result = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 30000, windowsHide: true, env: { ...process.env, PSModulePath: systemModules } });
     const signature = JSON.parse(result.stdout.trim());
-    if (signature.Status !== 'Valid' || !/ollama/i.test(signature.Subject)) throw new Error('The Ollama installer did not have a valid Ollama publisher signature. It was not opened.');
+    if (signature.Status !== 'Valid' || !/ollama/i.test(signature.Subject)) throw new Error(`The Ollama installer did not have a valid Ollama publisher signature (status: ${signature.Status}; signer: ${String(signature.Subject).slice(0, 100)}). It was not opened.`);
   }
 
   async startOrInstallOllama(baseURL) {
@@ -259,8 +273,19 @@ class SetupManager {
     }
     if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
     try {
-      await this.run(uv, ['python', 'install', '3.12'], 'mineru', 'Installing an isolated Python 3.12 runtime…', { env: environment });
-      await this.run(uv, ['venv', '--relocatable', '--python', '3.12', staging], 'mineru', 'Creating a private MinerU environment…', { env: environment });
+      let managedPython = managedPythonPath(this.toolsRoot);
+      if (!managedPython) {
+        try { await this.run(uv, ['python', 'install', '3.12'], 'mineru', 'Installing an isolated Python 3.12 runtime…', { env: environment }); }
+        catch (error) {
+          if (this.controller.signal.aborted || !managedPythonPath(this.toolsRoot)) throw error;
+          // uv can extract Python successfully, then fail while making its minor-version junction.
+          this.send('mineru', 'Python was extracted; checking its interpreter directly…');
+        }
+        managedPython = managedPythonPath(this.toolsRoot);
+      }
+      if (!managedPython) throw new Error('The managed Python 3.12 interpreter was not found.');
+      await this.run(managedPython, ['-c', 'import ssl, venv; print("Python 3.12 runtime ready")'], 'mineru', 'Verifying the isolated Python runtime…', { env: environment });
+      await this.run(uv, ['venv', '--relocatable', '--python', managedPython, staging], 'mineru', 'Creating a private MinerU environment…', { env: environment });
       const python = path.join(staging, 'Scripts', 'python.exe');
       let gpuWarning = '';
       if (gpu.index) {
@@ -333,4 +358,4 @@ class SetupManager {
   }
 }
 
-module.exports = { SetupManager, cudaPlan, setupPlan, versionAtLeast, mineruStatus };
+module.exports = { SetupManager, cudaPlan, setupPlan, versionAtLeast, mineruStatus, managedPythonPath };

@@ -20,7 +20,7 @@ test('reference exclusion stops when methods resume after bibliography', async (
 });
 
 test('summary source links require an exact quote in a real source block', async () => {
-  const { parseSummaryClaims } = await import('../src/paper.mjs');
+  const { parseSummaryClaims, summarySourceCandidates } = await import('../src/paper.mjs');
   const passage = 'The measured intervention improved response time in the tested sample by twelve percent.';
   const blocks = [{ id: 7, text: passage }];
   const quote = 'improved response time in the tested sample';
@@ -29,6 +29,8 @@ test('summary source links require an exact quote in a real source block', async
   assert.deepEqual(claims[0].sources, [{ paragraphID: 7, quote }]);
   assert.deepEqual(parseSummaryClaims('Model wrote plain text [7].', blocks)[0].sources, []);
   assert.deepEqual(parseSummaryClaims(output, blocks, [], `[P7]\n${passage}`)[0].sources, []);
+  assert.deepEqual(summarySourceCandidates(JSON.stringify({ claims: [{ text: 'A claim', sources: [{ paragraphID: 'P7' }, { paragraphID: 'P99' }] }] }), blocks), [[7]]);
+  assert.deepEqual(summarySourceCandidates('unstructured summary', blocks), []);
 });
 
 test('portable bundle writes real image assets and the unchanged original PDF', () => {

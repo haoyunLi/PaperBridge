@@ -1,6 +1,6 @@
 # macOS 1.9 ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **41 aligned, 70 partial, 0 missing**. These are implementation states, not a claim that every complex paper or GPU has passed device testing.
+The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **41 aligned, 70 partial, 0 missing**. The [AMD device report](AMD_DEVICE_TEST.md) records real RX 7800 XT translation, installation, and a 15-page MinerU paper import. These implementation states are not a claim that every complex paper or GPU has passed device testing.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
@@ -18,4 +18,4 @@ The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of tru
 
 ## GPU behavior
 
-The Windows port detects video adapters, NVIDIA driver presence and reported CUDA version, and Ollama's running-model VRAM use. Ollama chooses its own supported backend. One-click setup selects a PyTorch CUDA wheel only when a suitable NVIDIA driver is detected, then checks `torch.cuda.is_available()` inside the managed MinerU environment. MinerU falls back to its CPU pipeline when CUDA cannot be verified. CUDA does not apply to AMD; the Windows GPU driver itself is not installed by PaperBridge.
+The Windows port detects video adapters, NVIDIA driver presence and reported CUDA version, and Ollama's running-model VRAM use. Ollama chooses its own supported backend. One-click setup selects a PyTorch CUDA wheel only when a suitable NVIDIA driver is detected, then checks `torch.cuda.is_available()` inside the managed MinerU environment. MinerU falls back to its CPU pipeline when CUDA cannot be verified. CUDA does not apply to AMD; the Windows GPU driver itself is not installed by PaperBridge. On the tested RX 7800 XT, Ollama selected ROCm and loaded the 4B model fully into VRAM.

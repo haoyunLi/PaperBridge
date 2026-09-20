@@ -3,7 +3,20 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { SetupManager, cudaPlan, setupPlan } = require('../electron/setup.cjs');
+const { SetupManager, cudaPlan, setupPlan, managedPythonPath } = require('../electron/setup.cjs');
+
+test('managed Python lookup uses a real versioned interpreter and ignores the minor-version link', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-python-test-'));
+  const architecture = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+  const installed = path.join(root, 'python', `cpython-3.12.13-windows-${architecture}-none`, 'python.exe');
+  fs.mkdirSync(path.dirname(installed), { recursive: true });
+  fs.writeFileSync(installed, 'python');
+  try { assert.equal(managedPythonPath(root), installed); }
+  finally {
+    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test directory');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('one-click setup never assigns CUDA to AMD and keeps ready components', () => {
   const hardware = { adapters: [{ name: 'AMD Radeon RX', vendor: 'AMD' }], cudaDriver: null, cudaVersion: null };
@@ -73,8 +86,12 @@ test('one-click setup installs only missing parts and selects backend after CUDA
 test('failed MinerU activation restores the previous managed environment', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-test-'));
   const previous = path.join(root, 'mineru', 'Scripts', 'mineru.exe');
+  const architecture = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
+  const python = path.join(root, 'python', `cpython-3.12.13-windows-${architecture}-none`, 'python.exe');
   fs.mkdirSync(path.dirname(previous), { recursive: true });
   fs.writeFileSync(previous, 'previous');
+  fs.mkdirSync(path.dirname(python), { recursive: true });
+  fs.writeFileSync(python, 'python');
   const manager = new SetupManager({ toolsRoot: root, ollamaRequest: () => {}, pullModel: () => {}, emit: () => {} });
   manager.controller = new AbortController();
   manager.installUV = async () => 'uv.exe';

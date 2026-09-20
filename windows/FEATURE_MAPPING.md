@@ -1,6 +1,6 @@
 # PaperBridge macOS 1.9 ↔ Windows 0.2 功能逐项映射
 
-基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**41 对齐、70 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。所有状态仍需真实 Windows 设备与复杂论文回归验证，尤其是 CUDA、AMD、MinerU 和安装包。
+基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**41 对齐、70 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译与一篇复杂论文；其它硬件、扫描件、Mac 逐项对照和正式安装包仍需验证。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。
 
@@ -14,10 +14,10 @@
 | A04 | 无模型时试用虚构练习论文 | 有论文打开时保留原工作区并提示 | 对齐 | 练习论文只从空工作区创建。 |
 | A05 | 重复打开同一 PDF 恢复原工作区 | SHA-256 去重并载入保存文档 | 对齐 | 验证编辑、翻译、标注均未覆盖。 |
 | A06 | 重新提取为新的图书馆副本 | More 中重新提取为独立副本 | 对齐 | Electron 流程验证原副本保留且图书馆新增一项。 |
-| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，导入自动检测并解析 | 部分 | 仍需真实 MinerU 与复杂论文验证阅读顺序。 |
+| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，导入自动检测并解析 | 部分 | 15 页双栏论文已在 AMD/CPU pipeline 自动解析；更多论文及 OCR 待验证。 |
 | A08 | MinerU 失败自动降级，并说明原因 | MinerU preferred 失败显示原因并回退 PDF.js | 部分 | 真实失败和 OCR 设备路径待验证。 |
 | A09 | MinerU only / MinerU preferred / PDFKit only 三种模式 | Settings 提供 MinerU only / preferred / PDF only | 部分 | 三模式已有代码路径；真实 MinerU-only 失败行为待验证。 |
-| A10 | MinerU 多栏正文阅读顺序 | MinerU Markdown 或 PDF.js 简单双栏排序 | 部分 | 用双栏、跨栏图、脚注论文比对段落顺序。 |
+| A10 | MinerU 多栏正文阅读顺序 | MinerU Markdown 或 PDF.js 简单双栏排序 | 部分 | 一篇双栏论文的标题顺序已核对；跨栏图、脚注及 Mac 对照仍待验收。 |
 | A11 | 图片、表格、独立公式、代码随正文交错 | Reader 保留资源块且不发往翻译模型 | 部分 | 图表、HTML、公式等资源交错顺序仍需论文验证。 |
 | A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` | 部分 | 针对全部结构类型验证还原和原位置。 |
 | A13 | 原 PDF 无修改保存并原样查看 | 复制原 PDF，PDF.js canvas + text layer | 对齐 | 像素、页数和可选文字与源文件一致。 |
@@ -84,7 +84,7 @@ Mac 证据：[段落队列与全文翻译](../PaperBridge/PaperReaderViewModel.s
 | --- | --- | --- | --- | --- |
 | D01 | 原文语言与目标语言双摘要 | Summary 生成 source/target | 对齐 | 两种语言与设置匹配。 |
 | D02 | 长文分批摘要再合并 | Windows 6000 字分批再合并 | 部分 | 分批不漏结尾和中途章节。 |
-| D03 | 编号 claim 与来源摘录 | JSON claim、来源 quote 与块 ID 结构化保存 | 部分 | 真实模型输出可靠性待验证。 |
+| D03 | 编号 claim 与来源摘录 | JSON claim、来源 quote 与块 ID 结构化保存；真实模型漏 quote 时逐段提取并精确校验 | 部分 | AMD 实测练习论文 6 条 claim 均有精确来源；长论文和其它模型仍待验证。 |
 | D04 | 引文必须与原段落精确匹配 | 来源 quote 必须逐字匹配真实块 | 对齐 | 单元测试覆盖虚构来源不能生成链接。 |
 | D05 | “Check the Sources” 列出每条验证结果 | 逐条 claim 展示已验证摘录或未验证提示 | 对齐 | 旧摘要也标明无验证证据。 |
 | D06 | 点击有效证据回到确切原文段落 | 只有 quote 匹配后来源链接才可跳到块 | 对齐 | 不接受仅凭模型给出的块 ID。 |
@@ -152,10 +152,10 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G04 | 导出摘要/笔记/证据 Markdown | 摘要、验证状态、来源 quote、Reader 与视图笔记 Markdown | 部分 | 复杂 Markdown 锚点与证据格式仍需比较。 |
 | G05 | 资源 bundle、原 PDF、便携页面图片和独立全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与独立全文稿 | 部分 | 复杂 MinerU 资产和长 PDF 仍需真机验收。 |
 | G06 | 首次启动分步引导；可重新打开 | Windows 欢迎页 + 一页 Local AI setup | 部分 | 重现分步说明、模型选择及再次打开入口。 |
-| G07 | 自动检测/启动/安装 Ollama | SetupPanel 诊断 + 签名安装器 | 部分 | 真机测试安装、取消、已有安装复用。 |
+| G07 | 自动检测/启动/安装 Ollama | SetupPanel 诊断 + 签名安装器 | 部分 | AMD 真机已完成从无到有的签名安装和复用；取消及其它硬件待验证。 |
 | G08 | 自动发现、下载并选择模型 | 检测模型、下载当前三个任务模型 | 部分 | Mac 4B/12B/27B 与可选助手模型推荐卡片尚缺。 |
 | G09 | 翻译、摘要、解释、快速查词四套模型设置 | 翻译、摘要、解释、快速查词四套模型设置 | 对齐 | 一键安装计划检查四套已选模型。 |
-| G10 | 独立安装 MinerU，允许手动路径/后端 | 私有 Python/MinerU 安装，路径与后端设置 | 部分 | 多硬件与安装失败回滚真机测试。 |
+| G10 | 独立安装 MinerU，允许手动路径/后端 | 私有 Python/MinerU 安装，路径与后端设置 | 部分 | AMD 真机已装 MinerU 3.4.5 并解析论文；NVIDIA CUDA、回滚和扫描件待验证。 |
 | G11 | 后台下载及进度、取消 | 安装任务由主进程继续；状态可再打开 | 部分 | 最小化、关弹窗、重开与中途退出的状态恢复。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | Ctrl+O/F/L、Escape | 部分 | 补翻译、导出、选区、标注、检查器、Overview 快捷键。 |
@@ -166,7 +166,7 @@ Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swif
 
 ## Windows 特有的硬件映射
 
-这不是 Mac 功能的同名复制，而是 Windows 的平台适配：`electron/hardware.cjs` 检测显卡及 `nvidia-smi`；`electron/setup.cjs` 在 NVIDIA 驱动报告 CUDA ≥12.6 时选 `cu126`/`cu128` PyTorch wheel，并在 MinerU 私有环境里检查 `torch.cuda.is_available()`。AMD **不能使用 CUDA**；受支持的 AMD/Vulkan 显卡可由 Ollama 自行选择后端，MinerU 维持 CPU pipeline。Settings 可看 Ollama `/api/ps` 的实际 VRAM 使用。当前只有静态代码和自动测试，NVIDIA、AMD、纯 CPU 真机路径仍需逐台验收，不能因检测到显卡就声称已经 GPU 加速。
+这不是 Mac 功能的同名复制，而是 Windows 的平台适配：`electron/hardware.cjs` 检测显卡及 `nvidia-smi`；`electron/setup.cjs` 在 NVIDIA 驱动报告 CUDA ≥12.6 时选 `cu126`/`cu128` PyTorch wheel，并在 MinerU 私有环境里检查 `torch.cuda.is_available()`。AMD **不能使用 CUDA**；受支持的 AMD/Vulkan 显卡可由 Ollama 自行选择后端，MinerU 维持 CPU pipeline。Settings 可看 Ollama `/api/ps` 的实际 VRAM 使用。RX 7800 XT 真机已验证 Ollama 选择 ROCm 且模型全部放入 VRAM；NVIDIA 和纯 CPU 路径仍需逐台验收，不能因检测到显卡就声称已经 GPU 加速。
 
 ## 实施顺序和完成标准
 

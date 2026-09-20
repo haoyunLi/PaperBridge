@@ -7,8 +7,8 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
-import { translationSystem, translationPrompt, explainPrompt, summaryPrompt, mergeSummaryPrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
-import { referenceBlockIds, sectionRanges, qualityIssues, parseSummaryClaims, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
+import { translationSystem, translationPrompt, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
+import { referenceBlockIds, sectionRanges, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -389,9 +389,9 @@ function App() {
   }
   function startTask(label) { const token = { cancelled: false, ids: new Set() }; taskRef.current = token; setBusy({ label }); setProgress(null); setError(''); return token; }
   function endTask(token) { if (taskRef.current === token) { setBusy(null); setProgress(null); } }
-  async function generate(model, prompt, system, token) {
+  async function generate(model, prompt, system, token, format) {
     const requestId = crypto.randomUUID(); token.ids.add(requestId);
-    try { const answer = await api.generate({ baseURL: settings.ollamaBaseURL, model, prompt, system, requestId }); if (token.cancelled) throw new Error('Cancelled'); return answer; }
+    try { const answer = await api.generate({ baseURL: settings.ollamaBaseURL, model, prompt, system, requestId, format }); if (token.cancelled) throw new Error('Cancelled'); return answer; }
     finally { token.ids.delete(requestId); }
   }
   function cancelTask() { taskRef.current.cancelled = true; for (const id of taskRef.current.ids) api.cancel(id); api.cancelMineru(); setBusy(null); setStatus('Task cancelled. Completed work was saved.'); }
@@ -473,15 +473,36 @@ function App() {
       if (batch.length) batches.push(batch);
       const partials = [];
       const validatedPartials = [];
+      async function withExactQuotes(response, claims, eligible, allowedSources = null) {
+        const candidates = summarySourceCandidates(response, eligible);
+        const allowed = allowedSources && new Set(allowedSources.map(item => `${item.paragraphID}|${item.quote}`));
+        const byId = new Map(eligible.map(block => [block.id, block]));
+        for (let index = 0; index < claims.length; index++) {
+          if (token.cancelled || claims[index].sources.length) continue;
+          for (const id of candidates[index] || []) {
+            const block = byId.get(id);
+            if (!block) continue;
+            const answer = await generate(settings.summaryModel, summaryQuotePrompt(claims[index].text, id, block.text), 'Select only an exact supporting quote from the supplied paragraph, or return NONE.', token);
+            const quote = answer.trim().replace(/^["“‘]|["”’]$/g, '');
+            if (quote.length >= 20 && quote.length <= 500 && block.text.includes(quote) && (!allowed || allowed.has(`${id}|${quote}`))) {
+              claims[index] = { ...claims[index], sources: [{ paragraphID: id, quote }] };
+              break;
+            }
+          }
+        }
+        return claims;
+      }
       for (let i = 0; i < batches.length; i++) {
         if (token.cancelled) return;
         setBusy({ label: `Summarizing part ${i + 1} of ${batches.length}` }); setProgress({ done: i, total: batches.length + 1 });
-        const response = await generate(settings.summaryModel, summaryPrompt(batches[i], settings.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token);
+        const response = await generate(settings.summaryModel, summaryPrompt(batches[i], settings.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
         partials.push(response);
-        validatedPartials.push(...parseSummaryClaims(response, paperRef.current.blocks, null, batches[i].map(block => `[P${block.id}]\n${block.text}`).join('\n\n')));
+        const claims = parseSummaryClaims(response, paperRef.current.blocks, null, batches[i].map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
+        validatedPartials.push(...await withExactQuotes(response, claims, batches[i]));
       }
-      const merged = partials.length === 1 ? partials[0] : await generate(settings.summaryModel, mergeSummaryPrompt(validatedPartials, settings.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token);
-      const claims = parseSummaryClaims(merged, paperRef.current.blocks, partials.length === 1 ? null : validatedPartials.flatMap(claim => claim.sources));
+      const merged = partials.length === 1 ? partials[0] : await generate(settings.summaryModel, mergeSummaryPrompt(validatedPartials, settings.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
+      const allowedSources = partials.length === 1 ? null : validatedPartials.flatMap(claim => claim.sources);
+      const claims = partials.length === 1 ? validatedPartials : await withExactQuotes(merged, parseSummaryClaims(merged, paperRef.current.blocks, allowedSources), source, allowedSources);
       if (!claims.length) throw new Error('The summary model returned no usable claims; the saved summary was not replaced.');
       const sourceSummary = claimsMarkdown(claims);
       const targetSummary = settings.sourceLanguage === settings.targetLanguage ? sourceSummary : await generate(settings.translationModel, translationPrompt(sourceSummary, settings.sourceLanguage, settings.targetLanguage), translationSystem(settings.targetLanguage), token);
