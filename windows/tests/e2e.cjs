@@ -81,6 +81,27 @@ async function run() {
     await page.getByRole('button', { name: 'Save label' }).click();
     await page.locator('.modal-head .icon-button').click();
     assert.equal(await page.locator('.title-wrap h1').innerText(), 'Edited practice label');
+    const menuLabels = await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map(item => item.label));
+    assert.deepEqual(menuLabels, ['File', 'Paper', 'Selection', 'View', 'Help']);
+    await page.keyboard.press('Control+1');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Summary');
+    await page.keyboard.press('Control+f');
+    await page.locator('.search:focus').waitFor();
+    await page.locator('.inspector-title .icon-button').click();
+    await page.keyboard.press('Control+Shift+i');
+    await page.locator('.inspector').waitFor({ state: 'visible' });
+    await page.keyboard.press('Control+Shift+l');
+    await page.getByRole('heading', { name: 'Paper Library' }).waitFor();
+    await page.locator('.modal-head .icon-button').click();
+    await page.keyboard.press('Control+Shift+e');
+    await page.getByRole('heading', { name: 'Export Markdown' }).waitFor();
+    await page.locator('.modal-head .icon-button').click();
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(item => item.label === 'Paper').submenu.items.find(item => item.label === 'Saved Terminology').click());
+    await page.getByRole('heading', { name: 'Saved Terminology' }).waitFor();
+    await page.locator('.modal-head .icon-button').click();
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.keyboard.press('Control+Enter');
+    await page.getByText('Translation pass finished.', { exact: false }).waitFor({ timeout: 15000 });
     await page.evaluate(() => {
       const node = document.querySelector('.document-preview p').firstChild;
       const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, 12);
@@ -108,7 +129,11 @@ async function run() {
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
-    await page.locator('.inspector .highlight.amber').click();
+    await page.keyboard.press('Control+Shift+t');
+    await page.locator('.inspector-result.translate').waitFor({ timeout: 15000 });
+    await page.keyboard.press('Control+Alt+e');
+    await page.locator('.inspector-result.explain').waitFor({ timeout: 15000 });
+    await page.keyboard.press('Control+Shift+h');
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 1);
     await page.locator('.inspector textarea').fill('Keep this source passage.');
     await page.getByRole('button', { name: 'Save note' }).click();
@@ -271,7 +296,7 @@ async function run() {
     assert.match(await reopenedPage.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./);
     await reopenedPage.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
     await reopenedPage.waitForFunction(() => CSS.highlights.get('paperbridge-blue')?.size === 1);
-    console.log('Electron workflow verified: translation, summary and full-text annotations, PDF page anchors and notes, multi-step undo, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
+    console.log('Electron workflow verified: native menu and shortcuts, translation, summary and full-text annotations, PDF page anchors and notes, multi-step undo, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
   } finally { await app?.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

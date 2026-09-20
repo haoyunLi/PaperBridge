@@ -32,5 +32,10 @@ contextBridge.exposeInMainWorld('paperBridge', {
     const listener = (_event, data) => callback(data);
     ipcRenderer.on('paperbridge:progress', listener);
     return () => ipcRenderer.removeListener('paperbridge:progress', listener);
+  },
+  onCommand: callback => {
+    const listener = (_event, command) => callback(command);
+    ipcRenderer.on('paperbridge:command', listener);
+    return () => ipcRenderer.removeListener('paperbridge:command', listener);
   }
 });

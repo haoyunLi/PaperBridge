@@ -158,7 +158,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G10 | 独立安装 MinerU，允许手动路径/后端 | 私有 Python/MinerU 安装，路径与后端设置 | 部分 | AMD 真机已装 MinerU 3.4.5 并解析论文；NVIDIA CUDA、回滚和扫描件待验证。 |
 | G11 | 后台下载及进度、取消 | 安装任务由主进程继续；状态可再打开 | 部分 | 最小化、关弹窗、重开与中途退出的状态恢复。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
-| G13 | 自带程序菜单与快捷键 | Ctrl+O/F/L、Escape | 部分 | 补翻译、导出、选区、标注、检查器、Overview 快捷键。 |
+| G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L | 部分 | 快捷键与菜单点击已回归；菜单项按当前任务和选区动态禁用、其它键盘布局仍需补齐。 |
 | G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，设置可手动检查，发现新版显示提示并打开官方发布页 | 部分 | 签名后的应用内下载、验证与安装仍待 Windows 发布证书和正式 Release。 |
 | G15 | 发布安装包 | NSIS 与 portable 构建，当前未签名 | 部分 | 真机安装、卸载与签名后发布验证。 |
 

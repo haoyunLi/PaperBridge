@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -243,6 +243,44 @@ function registerHandlers() {
   ipcMain.handle('external:ollama', () => shell.openExternal('https://ollama.com/download/windows'));
 }
 
+function buildMenu() {
+  const action = (label, command, accelerator) => ({ label, ...(accelerator ? { accelerator } : {}), click: () => {
+    if (window && !window.isDestroyed()) window.webContents.send('paperbridge:command', command);
+  } });
+  return Menu.buildFromTemplate([
+    { label: 'File', submenu: [
+      action('Open PDF…', 'openPdf', 'CmdOrCtrl+O'),
+      action('Export Markdown or Bundle…', 'export', 'CmdOrCtrl+Shift+E'),
+      { type: 'separator' }, { role: 'quit' }
+    ] },
+    { label: 'Paper', submenu: [
+      action('Paper Library', 'library', 'CmdOrCtrl+Shift+L'),
+      action('Saved Terminology', 'glossary'),
+      { type: 'separator' },
+      action('Show Overview', 'summary', 'CmdOrCtrl+1'),
+      action('Find in Paper', 'find', 'CmdOrCtrl+F'),
+      action('Run Current Workspace Task', 'primaryTask', 'CmdOrCtrl+Return'),
+      action('Generate Summary', 'generateSummary'),
+      action('Generate Full Translation', 'generateFullTranslation')
+    ] },
+    { label: 'Selection', submenu: [
+      action('Undo Last Workspace Change', 'undo'),
+      { type: 'separator' },
+      action('Translate Selection', 'translateSelection', 'CmdOrCtrl+Shift+T'),
+      action('Explain Selection', 'explainSelection', 'CmdOrCtrl+Alt+E'),
+      action('Highlight Selection', 'highlightSelection', 'CmdOrCtrl+Shift+H')
+    ] },
+    { label: 'View', submenu: [
+      action('Show Research Inspector', 'inspector', 'CmdOrCtrl+Shift+I'),
+      action('Settings', 'settings')
+    ] },
+    { label: 'Help', submenu: [
+      action('Local AI Setup…', 'setup'),
+      action('Check for Updates…', 'checkUpdates')
+    ] }
+  ]);
+}
+
 function createWindow() {
   window = new BrowserWindow({
     width: 1320, height: 820, minWidth: 980, minHeight: 620, title: 'PaperBridge',
@@ -250,6 +288,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  Menu.setApplicationMenu(buildMenu());
   if (process.env.VITE_DEV_SERVER_URL) window.loadURL(process.env.VITE_DEV_SERVER_URL);
   else if (!app.isPackaged && process.env.NODE_ENV !== 'production') window.loadURL('http://127.0.0.1:5173');
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));

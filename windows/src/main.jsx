@@ -356,6 +356,8 @@ function App() {
   const scrollSaveTimer = useRef(null);
   const restoringScroll = useRef(false);
   const searchOrigin = useRef(null);
+  const lastCommand = useRef({ name: '', at: 0 });
+  const commandRef = useRef(null);
 
   const commitPaper = updater => {
     const current = paperRef.current;
@@ -470,14 +472,45 @@ function App() {
     setSelection({ ...viewNavigation, id: null, kind: viewNavigation.scope === 'summarySource' ? 'source' : 'translation', displayOffset: offset, rect: null });
     setSelectionResult(null); setNoteDraft((paper.viewNotes || []).find(item => item.scope === viewNavigation.scope && item.offset === viewNavigation.offset && item.text === viewNavigation.text)?.body || ''); setInspector(true); setViewNavigation(null);
   }, [viewNavigation?.id, tab, paper?.id]);
+  const command = name => {
+    const now = performance.now();
+    if (lastCommand.current.name === name && now - lastCommand.current.at < 150) return;
+    lastCommand.current = { name, at: now };
+    if (name === 'openPdf') { if (!busy) openFile(); }
+    else if (name === 'library') setModal('library');
+    else if (name === 'glossary') setModal('glossary');
+    else if (name === 'summary') { if (paper) setTab('Summary'); }
+    else if (name === 'find') { if (paper) { setTab('Reader'); setTimeout(() => searchRef.current?.focus(), 0); } }
+    else if (name === 'primaryTask' && paper && !busy) {
+      if (tab === 'Summary') { if (!paper.summary) summarize(); }
+      else if (tab === 'Full Translation') { if (!paper.connectedTranslation || paper.connectedStale) fullTranslation(!!paper.connectedTranslation); }
+      else if (paper.blocks.some(block => block.status !== 'ok')) translateBlocks(paper.blocks.map(block => block.id));
+    }
+    else if (name === 'generateSummary') { if (paper && !busy) { setTab('Summary'); summarize(); } }
+    else if (name === 'generateFullTranslation') { if (paper && !busy) { setTab('Full Translation'); fullTranslation(!!paper.connectedTranslation); } }
+    else if (name === 'export') { if (paper && !busy) setModal('export'); }
+    else if (name === 'inspector') { if (focus) toggleFocus(); setInspector(true); }
+    else if (name === 'translateSelection') { if (selection && !busy) runSelection('translate'); }
+    else if (name === 'explainSelection') { if (selection && !busy) runSelection('explain'); }
+    else if (name === 'highlightSelection') { if (selection) addHighlight('amber'); }
+    else if (name === 'undo') { if (paper && undo.length) { commitPaper(undo.at(-1)); setUndo(previous => previous.slice(0, -1)); } }
+    else if (name === 'settings') setModal('settings');
+    else if (name === 'setup') setModal('setup');
+    else if (name === 'checkUpdates') checkForUpdates(false);
+  };
+  commandRef.current = command;
   useEffect(() => {
+    const offCommand = api.onCommand(name => commandRef.current?.(name));
     const key = event => {
-      if (event.ctrlKey && event.key.toLowerCase() === 'o') { event.preventDefault(); openFile(); }
-      if (event.ctrlKey && event.key.toLowerCase() === 'f') { event.preventDefault(); setTab('Reader'); setTimeout(() => searchRef.current?.focus(), 0); }
-      if (event.ctrlKey && event.key.toLowerCase() === 'l') { event.preventDefault(); setModal('library'); }
       if (event.key === 'Escape') { setModal(''); setSelection(null); }
+      if (!event.ctrlKey || event.repeat) return;
+      const letter = event.key.toLowerCase();
+      const name = event.shiftKey && !event.altKey ? ({ l: 'library', e: 'export', i: 'inspector', t: 'translateSelection', h: 'highlightSelection' })[letter]
+        : event.altKey && !event.shiftKey ? ({ e: 'explainSelection' })[letter]
+        : !event.shiftKey && !event.altKey ? ({ o: 'openPdf', l: 'library', f: 'find', '1': 'summary', enter: 'primaryTask' })[letter] : null;
+      if (name) { event.preventDefault(); commandRef.current?.(name); }
     };
-    window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key);
+    window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
   }, []);
   useEffect(() => { if (paper) restoreMainScroll(); }, [tab, paper?.id]);
   useEffect(() => () => clearTimeout(scrollSaveTimer.current), []);
