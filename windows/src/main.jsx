@@ -53,7 +53,8 @@ function markdownHighlightRanges(root, highlights) {
   for (const highlight of highlights) {
     if (!result[highlight.color] || !highlight.text) continue;
     const first = text.indexOf(highlight.text);
-    const at = text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : -1;
+    const displayAt = Number.isInteger(highlight.displayOffset) && text.slice(highlight.displayOffset, highlight.displayOffset + highlight.text.length) === highlight.text ? highlight.displayOffset : -1;
+    const at = displayAt >= 0 ? displayAt : text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : -1;
     if (at < 0) continue;
     const start = nodes.find(item => item.end > at);
     const end = nodes.find(item => item.end >= at + highlight.text.length);
@@ -74,19 +75,55 @@ function Markdown({ children, highlights }) {
     refreshRichHighlights();
     return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
   }, [children, highlights]);
-  return <div ref={host}><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
+  return <div ref={host} data-markdown-host><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
 }
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
+function domSelectionIn(root) {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (!root || !range || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  const raw = range.cloneContents().textContent || '';
+  const text = raw.trim();
+  if (!text || text.length > 3000) return null;
+  const before = document.createRange();
+  before.selectNodeContents(root);
+  before.setEnd(range.startContainer, range.startOffset);
+  const offset = before.cloneContents().textContent.length + raw.length - raw.trimStart().length;
+  const rect = range.getBoundingClientRect();
+  return { text, offset, rect: { x: rect.left, y: rect.top }, context: root.textContent || '' };
+}
+function exactAnchorOffset(context, selection) {
+  if (context.slice(selection.offset, selection.offset + selection.text.length) === selection.text) return selection.offset;
+  const first = context.indexOf(selection.text);
+  return first >= 0 && first === context.lastIndexOf(selection.text) ? first : null;
+}
+function textRangeAt(root, offset, length) {
+  if (!root || !Number.isInteger(offset) || offset < 0 || !Number.isInteger(length) || length <= 0) return null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node; let seen = 0; let first = null; let last = null;
+  while ((node = walker.nextNode())) {
+    const next = seen + node.textContent.length;
+    if (!first && next > offset) first = { node, at: offset - seen };
+    if (first && next >= offset + length) { last = { node, at: offset + length - seen }; break; }
+    seen = next;
+  }
+  if (!first || !last) return null;
+  const range = document.createRange();
+  range.setStart(first.node, first.at);
+  range.setEnd(last.node, last.at);
+  return range;
+}
 function viewText(paper, scope) {
   return scope === 'summarySource' ? paper.summary?.source || '' : scope === 'summaryTarget' ? paper.summary?.target || '' : scope === 'fullTranslation' ? paper.connectedTranslation || '' : '';
 }
 function validViewAnchor(paper, item) { return Number.isInteger(item.offset) && viewText(paper, item.scope).slice(item.offset, item.offset + item.text.length) === item.text; }
+function validPdfSelection(selection) { return selection?.scope === 'pdf' && Number.isInteger(selection.page) && selection.page > 0 && Number.isInteger(selection.offset) && selection.pageText?.slice(selection.offset, selection.offset + selection.text.length) === selection.text; }
 function markdownDocuments(paper) {
   const original = paper.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
   const translated = paper.blocks.map(block => block.translationMarkdown || block.translation || (block.resource || block.heading ? block.sourceMarkdown || block.text : `[Untranslated block ${block.id}]`)).join('\n\n');
   const bilingual = paper.blocks.map(block => block.resource || block.heading ? block.sourceMarkdown || block.text : `### ${block.id}\n\n${block.sourceMarkdown || block.text}\n\n${block.translationMarkdown || block.translation || '*Not translated*'}`).join('\n\n');
   const evidence = (revalidateSummaryClaims(paper.summary?.claims, paper.blocks) || []).map((claim, index) => `### Claim ${index + 1}: ${claim.text}\n\n${claim.sources?.length ? claim.sources.map(source => `- Block ${source.paragraphID}: “${source.quote}”`).join('\n') : '- No exact source quotation validated.'}`).join('\n\n');
-  const notes = [...paper.blocks.flatMap(block => (block.notes || []).map(note => `- Block ${block.id}: ${note.text} — ${note.body}`)), ...(paper.viewNotes || []).map(note => `- ${note.scope}${validViewAnchor(paper, note) ? '' : ' (source changed, review needed)'}: ${note.text} — ${note.body}`)].join('\n');
+  const notes = [...paper.blocks.flatMap(block => (block.notes || []).map(note => `- Block ${block.id}: ${note.text} — ${note.body}`)), ...(paper.pdfNotes || []).map(note => `- Original PDF page ${note.page}${note.needsReview ? ' (source changed, review needed)' : ''}: ${note.text} — ${note.body}`), ...(paper.viewNotes || []).map(note => `- ${note.scope}${validViewAnchor(paper, note) ? '' : ' (source changed, review needed)'}: ${note.text} — ${note.body}`)].join('\n');
   const documents = [
     { kind: 'original', name: 'Original', content: original },
     { kind: 'translated', name: 'Translated', content: translated },
@@ -118,11 +155,13 @@ function withHighlight(text, highlights = []) {
 }
 async function sha256(value) { const bytes = new TextEncoder().encode(value); return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join(''); }
 
-function PdfView({ paper, pageNumber, onPage, onSelect, onRendered }) {
+function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, onNavigate, onNavigationFailure, onRendered }) {
   const canvas = useRef(null);
   const layer = useRef(null);
+  const highlightKey = useRef({});
   const [pdf, setPdf] = useState(null);
   const [error, setError] = useState('');
+  const [layerRevision, setLayerRevision] = useState(0);
   useEffect(() => {
     let live = true;
     setPdf(null); setError('');
@@ -146,7 +185,7 @@ function PdfView({ paper, pageNumber, onPage, onSelect, onRendered }) {
       surface.height = Math.round(viewport.height * ratio);
       surface.style.width = `${viewport.width}px`;
       surface.style.height = `${viewport.height}px`;
-      if (layer.current) { layer.current.innerHTML = ''; layer.current.style.width = `${viewport.width}px`; layer.current.style.height = `${viewport.height}px`; }
+      if (layer.current) { layer.current.dataset.page = ''; layer.current.innerHTML = ''; layer.current.style.width = `${viewport.width}px`; layer.current.style.height = `${viewport.height}px`; }
       task = page.render({ canvasContext: surface.getContext('2d'), canvas: surface, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
       await task.promise;
       if (cancelled || !layer.current) return;
@@ -155,12 +194,39 @@ function PdfView({ paper, pageNumber, onPage, onSelect, onRendered }) {
         const pdfjs = await import('pdfjs-dist');
         const textLayer = new pdfjs.TextLayer({ textContentSource: await page.getTextContent(), container: layer.current, viewport });
         await textLayer.render();
+        if (cancelled) return;
+        layer.current.dataset.page = String(pageNumber);
+        setLayerRevision(previous => previous + 1);
       } catch { /* canvas remains a faithful page preview */ }
     })().catch(err => { if (!cancelled) setError(err.message); });
     return () => { cancelled = true; task?.cancel(); };
   }, [pdf, pageNumber]);
+  useEffect(() => {
+    const root = layer.current;
+    if (!root || root.dataset.page !== String(pageNumber) || !CSS.highlights) return;
+    const valid = (highlights || []).filter(item => item.page === pageNumber && root.textContent.slice(item.offset, item.offset + item.text.length) === item.text);
+    richHighlights.set(highlightKey.current, markdownHighlightRanges(root, valid));
+    refreshRichHighlights();
+    return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
+  }, [highlights, pageNumber, layerRevision]);
+  useEffect(() => {
+    const root = layer.current;
+    if (!navigation || navigation.page !== pageNumber || root?.dataset.page !== String(pageNumber)) return;
+    const pageText = root.textContent || '';
+    if (pageText.slice(navigation.offset, navigation.offset + navigation.text.length) !== navigation.text) { onNavigationFailure?.(); return; }
+    const range = textRangeAt(root, navigation.offset, navigation.text.length);
+    if (!range) { onNavigationFailure?.(); return; }
+    const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+    range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
+    onNavigate?.({ text: navigation.text, offset: navigation.offset, page: navigation.page, pageText, context: pageText.slice(Math.max(0, navigation.offset - 300), navigation.offset + navigation.text.length + 300) });
+  }, [navigation?.id, pageNumber, layerRevision]);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
-  return <div className="pdf-panel"><div className="pdf-toolbar"><span>Exact original PDF · page {pageNumber} of {pdf?.numPages || '…'}</span><div className="row"><button className="icon-button" aria-label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}><ChevronLeft size={17} /></button><button className="icon-button" aria-label="Next page" disabled={!pdf || pageNumber >= pdf.numPages} onClick={() => onPage(pageNumber + 1)}><ChevronRight size={17} /></button></div></div>{error ? <Notice tone="error">{error}</Notice> : <div className="pdf-scroll" onMouseUp={event => { if (event.target.closest('.textLayer')) onSelect?.(window.getSelection()?.toString().trim()); }}><div className="pdf-sheet"><canvas ref={canvas} /><div ref={layer} className="textLayer" /></div></div>}</div>;
+  return <div className="pdf-panel"><div className="pdf-toolbar"><span>Exact original PDF · page {pageNumber} of {pdf?.numPages || '…'}</span><div className="row"><button className="icon-button" aria-label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}><ChevronLeft size={17} /></button><button className="icon-button" aria-label="Next page" disabled={!pdf || pageNumber >= pdf.numPages} onClick={() => onPage(pageNumber + 1)}><ChevronRight size={17} /></button></div></div>{error ? <Notice tone="error">{error}</Notice> : <div className="pdf-scroll" onMouseUp={event => {
+    if (!event.target.closest('.textLayer')) return;
+    const captured = domSelectionIn(layer.current);
+    if (!captured || layer.current.textContent.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return;
+    onSelect?.({ text: captured.text, offset: captured.offset, page: pageNumber, pageText: captured.context, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + captured.text.length + 300), rect: captured.rect });
+  }}><div className="pdf-sheet"><canvas ref={canvas} /><div ref={layer} className="textLayer" /></div></div>}</div>;
 }
 function Empty({ title, body, children }) { return <div className="empty"><BookOpen size={36} strokeWidth={1.5} /><h2>{title}</h2><p>{body}</p>{children}</div>; }
 function Notice({ children, tone = 'info', onClose }) { return <div className={`notice ${tone}`}><span>{children}</span>{onClose && <button className="icon-button" aria-label="Dismiss" onClick={onClose}><X size={15} /></button>}</div>; }
@@ -171,8 +237,8 @@ function SummaryView({ paper, busy, summarize, navigate, onSelect }) {
     <div className="section-heading"><div><h2>Paper summary</h2><p>Generated locally · verify each claim against the original</p></div><button className="button blue" disabled={!!busy} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
       {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
-      <article className="summary-card" onMouseUp={event => onSelect(event, 'summarySource', 'source')}><small>{paper.summary.sourceLanguage}</small><Markdown>{paper.summary.source}</Markdown></article>
-      <article className="summary-card translated" onMouseUp={event => onSelect(event, 'summaryTarget', 'translation')}><small>{paper.summary.targetLanguage}</small><Markdown>{paper.summary.target}</Markdown></article>
+      <article className="summary-card" data-view-scope="summarySource" onMouseUp={event => onSelect(event, 'summarySource', 'source')}><small>{paper.summary.sourceLanguage}</small><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'summarySource' && validViewAnchor(paper, item))}>{paper.summary.source}</Markdown></article>
+      <article className="summary-card translated" data-view-scope="summaryTarget" onMouseUp={event => onSelect(event, 'summaryTarget', 'translation')}><small>{paper.summary.targetLanguage}</small><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'summaryTarget' && validViewAnchor(paper, item))}>{paper.summary.target}</Markdown></article>
       <div className="source-links"><h3>Check the Sources</h3>
         {claims ? claims.map((claim, index) => <div className="evidence-claim" key={index}>
           <strong>Claim {index + 1}: {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</strong>
@@ -182,6 +248,17 @@ function SummaryView({ paper, busy, summarize, navigate, onSelect }) {
       </div>
     </> : <Empty title="No summary yet" body="Generate a source and target language summary using your local model. Exact source quotations are linked only after validation." />}
   </div>;
+}
+
+function PaperPreview({ paper, onSelect, onContinue }) {
+  const structured = paper.sourceMode === 'mineru' && Boolean(paper.mineruMarkdown);
+  const blocks = structured ? paper.blocks : paper.blocks.slice(0, 12);
+  return <article className="document-preview" onMouseUp={event => onSelect(event, 'paper', 'source')}>
+    {blocks.map(block => <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
+      {structured && block.sourceMarkdown ? <Markdown highlights={block.highlights}>{block.sourceMarkdown}</Markdown> : block.heading ? <h3>{withHighlight(block.text, block.highlights)}</h3> : <p>{withHighlight(block.text, block.highlights)}</p>}
+    </section>)}
+    {!structured && paper.blocks.length > 12 && <button className="text-button" onClick={onContinue}>Continue in Reader →</button>}
+  </article>;
 }
 
 function LibraryView({ items, query, setQuery, loadPaper, setModal, setError, setLibraryEdit }) {
@@ -195,7 +272,7 @@ function LibraryView({ items, query, setQuery, loadPaper, setModal, setError, se
   </>;
 }
 
-function SavedAnnotations({ paper, navigate, navigateView, removeNote, removeHighlight, removeViewNote, removeViewHighlight }) {
+function SavedAnnotations({ paper, navigate, navigateView, navigatePdf, removeNote, removeHighlight, removeViewNote, removeViewHighlight, removePdfNote, removePdfHighlight }) {
   const notes = paper.blocks.flatMap(block => (block.notes || []).map(note => ({ block, note })));
   const highlights = paper.blocks.flatMap(block => [
     ...(block.highlights || []).map(highlight => ({ block, highlight, kind: 'source' })),
@@ -203,12 +280,16 @@ function SavedAnnotations({ paper, navigate, navigateView, removeNote, removeHig
   ]);
   const viewNotes = paper.viewNotes || [];
   const viewHighlights = paper.viewHighlights || [];
-  if (!notes.length && !highlights.length && !viewNotes.length && !viewHighlights.length) return null;
-  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {notes.length + highlights.length + viewNotes.length + viewHighlights.length}</small>
+  const pdfNotes = paper.pdfNotes || [];
+  const pdfHighlights = paper.pdfHighlights || [];
+  if (!notes.length && !highlights.length && !viewNotes.length && !viewHighlights.length && !pdfNotes.length && !pdfHighlights.length) return null;
+  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {notes.length + highlights.length + viewNotes.length + viewHighlights.length + pdfNotes.length + pdfHighlights.length}</small>
     {notes.map(({ block, note }) => <div className="annotation-row" key={note.id}><button onClick={() => navigate(block.id)}><b>Block {block.id}{note.needsReview ? ' · source changed, note kept' : ''}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete note ${note.id}`} onClick={() => removeNote(block.id, note.id)}><Trash2 size={14} /></button></div>)}
     {highlights.map(({ block, highlight, kind }, index) => <div className="annotation-row" key={`${block.id}-${highlight.offset}-${index}`}><button onClick={() => navigate(block.id)}><b>Block {block.id} · {kind} · {highlight.color} highlight</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove highlight ${block.id} ${index}`} onClick={() => removeHighlight(block.id, highlight, kind)}><Trash2 size={14} /></button></div>)}
-    {viewNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigateView(note.scope)}><b>{note.scope}{validViewAnchor(paper, note) ? '' : ' · source changed, review needed'}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete view note ${note.id}`} onClick={() => removeViewNote(note.id)}><Trash2 size={14} /></button></div>)}
-    {viewHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigateView(highlight.scope)}><b>{highlight.scope} · {highlight.color}{validViewAnchor(paper, highlight) ? '' : ' · source changed, review needed'}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove view highlight ${highlight.id}`} onClick={() => removeViewHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
+    {viewNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigateView(note)}><b>{note.scope}{validViewAnchor(paper, note) ? '' : ' · source changed, review needed'}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete view note ${note.id}`} onClick={() => removeViewNote(note.id)}><Trash2 size={14} /></button></div>)}
+    {viewHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigateView(highlight)}><b>{highlight.scope} · {highlight.color}{validViewAnchor(paper, highlight) ? '' : ' · source changed, review needed'}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove view highlight ${highlight.id}`} onClick={() => removeViewHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
+    {pdfNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigatePdf(note)}><b>Original PDF · page {note.page}{note.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete PDF note ${note.id}`} onClick={() => removePdfNote(note.id)}><Trash2 size={14} /></button></div>)}
+    {pdfHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigatePdf(highlight)}><b>Original PDF · page {highlight.page} · {highlight.color} highlight{highlight.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove PDF highlight ${highlight.id}`} onClick={() => removePdfHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
   </div>;
 }
 
@@ -257,6 +338,8 @@ function App() {
   const [focus, setFocus] = useState(false);
   const focusRestore = useRef(null);
   const [pageNumber, setPageNumber] = useState(1);
+  const [pdfNavigation, setPdfNavigation] = useState(null);
+  const [viewNavigation, setViewNavigation] = useState(null);
   const [activeBlock, setActiveBlock] = useState(1);
   const [edit, setEdit] = useState(null);
   const [undo, setUndo] = useState([]);
@@ -284,7 +367,7 @@ function App() {
   const loadPaper = async item => {
     const loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (!loaded) throw new Error('Paper could not be loaded.');
-    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setSelection(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(`Opened ${loaded.name}.`);
+    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(`Opened ${loaded.name}.`);
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
   const updateSettings = change => setSettings(previous => ({ ...previous, ...change }));
@@ -371,6 +454,22 @@ function App() {
   useEffect(() => { if (ready) api.saveGlossary(glossary).catch(err => setError(err.message)); }, [glossary, ready]);
   useEffect(() => { if (paperRef.current && paperRef.current.position?.tab !== tab) commitPaper(current => ({ ...current, position: { ...current.position, tab } })); }, [tab]);
   useEffect(() => { setSelection(null); setSelectionResult(null); }, [tab, paper?.id]);
+  useEffect(() => {
+    if (!viewNavigation || !paper || tab !== (viewNavigation.scope === 'fullTranslation' ? 'Full Translation' : 'Summary')) return;
+    const host = document.querySelector(`[data-view-scope="${viewNavigation.scope}"] [data-markdown-host]`);
+    if (!host) return;
+    const source = host.textContent || '';
+    const savedOffset = viewNavigation.displayOffset;
+    const exact = Number.isInteger(savedOffset) && source.slice(savedOffset, savedOffset + viewNavigation.text.length) === viewNavigation.text ? savedOffset : null;
+    const first = source.indexOf(viewNavigation.text);
+    const offset = exact ?? (first >= 0 && first === source.lastIndexOf(viewNavigation.text) ? first : null);
+    const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, viewNavigation.text.length);
+    if (!range) { setError('The saved Markdown text no longer matches this view. The annotation was kept for review.'); setViewNavigation(null); return; }
+    const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+    range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
+    setSelection({ ...viewNavigation, id: null, kind: viewNavigation.scope === 'summarySource' ? 'source' : 'translation', displayOffset: offset, rect: null });
+    setSelectionResult(null); setNoteDraft((paper.viewNotes || []).find(item => item.scope === viewNavigation.scope && item.offset === viewNavigation.offset && item.text === viewNavigation.text)?.body || ''); setInspector(true); setViewNavigation(null);
+  }, [viewNavigation?.id, tab, paper?.id]);
   useEffect(() => {
     const key = event => {
       if (event.ctrlKey && event.key.toLowerCase() === 'o') { event.preventDefault(); openFile(); }
@@ -481,16 +580,17 @@ function App() {
   async function runSelection(kind) {
     if (!selection || busy) return;
     const block = paperRef.current.blocks.find(item => item.id === selection.id);
+    const context = selection.scope === 'pdf' ? selection.context || '' : block?.text || selection.context || '';
     const model = settings.quickLookupModel || (kind === 'translate' ? settings.translationModel : settings.explainModel);
     const from = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
     const to = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
-    const cacheKey = JSON.stringify([paperRef.current.id, kind, selection.text, block?.text || '', from, to, model]);
+    const cacheKey = JSON.stringify([paperRef.current.id, kind, selection.scope, selection.page, selection.offset, selection.text, context, from, to, model]);
     if (lookupCache.current.has(cacheKey)) { setSelectionResult({ kind, output: lookupCache.current.get(cacheKey) }); return; }
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
     try {
       const output = kind === 'translate'
          ? await generate(model, translationPrompt(selection.text, from, to, matchingTerms(selection.text, from, to)), translationSystem(to), token)
-         : await generate(model, explainPrompt(selection.text, block?.text || '', settings.targetLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
+         : await generate(model, explainPrompt(selection.text, context, settings.targetLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
       if (!token.cancelled) { lookupCache.current.set(cacheKey, output); setSelectionResult({ kind, output }); }
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
@@ -685,33 +785,38 @@ function App() {
   }
   function captureSelection() {
     const selected = window.getSelection();
-    const raw = selected?.toString() || '';
-    const text = raw.trim();
-    if (!text || text.length > 3000) return;
-    const anchor = selected.anchorNode?.nodeType === Node.ELEMENT_NODE ? selected.anchorNode : selected.anchorNode?.parentElement;
-    const element = anchor?.closest('[data-block-id]');
     const range = selected.rangeCount ? selected.getRangeAt(0) : null;
-    if (!element || !range || !element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
+    if (!range) return;
+    const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+    const element = start?.closest('[data-block-id]');
+    const captured = domSelectionIn(element);
+    if (!captured) return;
     const block = paperRef.current?.blocks.find(item => item.id === Number(element.dataset.blockId));
     const kind = element.dataset.kind || 'source';
     const source = anchorText(block, kind);
-    const before = document.createRange(); before.selectNodeContents(element); before.setEnd(range.startContainer, range.startOffset);
-    const measured = before.toString().length + raw.length - raw.trimStart().length;
-    const first = source?.indexOf(text) ?? -1;
-    const offset = source?.slice(measured, measured + text.length) === text ? measured : first >= 0 && first === source.lastIndexOf(text) ? first : null;
-    const rect = range.getBoundingClientRect();
-    setSelection({ id: block?.id ?? null, kind, text, offset, scope: 'reader', rect: { x: rect.left, y: rect.top } });
+    const { text, rect } = captured;
+    const offset = exactAnchorOffset(source, captured);
+    setSelection({ id: block?.id ?? null, kind, text, offset, scope: 'reader', rect });
     const saved = block?.notes?.find(note => note.text === text && note.offset === offset && (note.kind || 'source') === kind);
     setSelectionResult(null); setInspector(true); setNoteDraft(saved?.body || '');
   }
   function addHighlight(color) {
     if (!selection) return;
+    if (selection.scope === 'pdf') {
+      if (!validPdfSelection(selection) || selection.page !== pageNumber) { setError('Select exact text on the current PDF page before highlighting.'); return; }
+      rememberUndo();
+      const saved = paper.pdfHighlights || [];
+      const existing = saved.find(item => item.page === selection.page && item.offset === selection.offset && item.text === selection.text && item.color === color);
+      commitPaper(current => ({ ...current, pdfHighlights: existing ? saved.filter(item => item.id !== existing.id) : [...saved, { id: crypto.randomUUID(), page: selection.page, offset: selection.offset, text: selection.text, color }] }));
+      setStatus(existing ? 'PDF highlight removed; its note was kept.' : 'PDF highlight saved on the original page.');
+      return;
+    }
     if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) {
       if (!validViewAnchor(paper, selection)) { setError('This selection cannot be anchored exactly in the saved document.'); return; }
       rememberUndo();
       const saved = paper.viewHighlights || [];
       const exists = saved.find(item => item.scope === selection.scope && item.text === selection.text && item.offset === selection.offset && item.color === color);
-      commitPaper(current => ({ ...current, viewHighlights: exists ? saved.filter(item => item.id !== exists.id) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, color }] }));
+      commitPaper(current => ({ ...current, viewHighlights: exists ? saved.filter(item => item.id !== exists.id) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, color }] }));
       setStatus(exists ? 'Highlight removed.' : 'Highlight saved in the annotation list.');
       return;
     }
@@ -727,12 +832,21 @@ function App() {
   }
   function saveNote() {
     if (!selection || !noteDraft.trim()) return;
+    if (selection.scope === 'pdf') {
+      if (!validPdfSelection(selection) || selection.page !== pageNumber) { setError('Select exact text on the current PDF page before saving a note.'); return; }
+      rememberUndo();
+      const saved = paper.pdfNotes || [];
+      const existing = saved.find(item => item.page === selection.page && item.offset === selection.offset && item.text === selection.text);
+      commitPaper(current => ({ ...current, pdfNotes: existing ? saved.map(item => item.id === existing.id ? { ...item, body: noteDraft.trim(), needsReview: false } : item) : [...saved, { id: crypto.randomUUID(), page: selection.page, offset: selection.offset, text: selection.text, body: noteDraft.trim() }] }));
+      setStatus(existing ? 'PDF note updated.' : 'PDF note saved on the original page.');
+      return;
+    }
     if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) {
       if (!validViewAnchor(paper, selection)) { setError('This note needs an exact selection in the saved document.'); return; }
       rememberUndo();
       const saved = paper.viewNotes || [];
       const existing = saved.find(item => item.scope === selection.scope && item.text === selection.text && item.offset === selection.offset);
-      commitPaper(current => ({ ...current, viewNotes: existing ? saved.map(item => item.id === existing.id ? { ...item, body: noteDraft.trim() } : item) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, body: noteDraft.trim() }] }));
+      commitPaper(current => ({ ...current, viewNotes: existing ? saved.map(item => item.id === existing.id ? { ...item, body: noteDraft.trim(), displayOffset: selection.displayOffset ?? item.displayOffset } : item) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, body: noteDraft.trim() }] }));
       setStatus(existing ? 'Note updated.' : 'Note saved in the annotation list.');
       return;
     }
@@ -747,6 +861,8 @@ function App() {
   function removeHighlight(blockId, highlight, kind = 'source') { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; const key = kind === 'translation' ? 'translationHighlights' : 'highlights'; rememberUndo(); updateBlock(blockId, { [key]: (block[key] || []).filter(item => item !== highlight) }); }
   function removeViewNote(id) { rememberUndo(); commitPaper(current => ({ ...current, viewNotes: (current.viewNotes || []).filter(item => item.id !== id) })); }
   function removeViewHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, viewHighlights: (current.viewHighlights || []).filter(item => item.id !== id) })); }
+  function removePdfNote(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfNotes: (current.pdfNotes || []).filter(item => item.id !== id) })); }
+  function removePdfHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfHighlights: (current.pdfHighlights || []).filter(item => item.id !== id) })); }
   function addTerm() {
     if (!selection || !termDraft.trim()) return;
     setGlossary(current => [{ source: selection.text.slice(0, 160), target: termDraft.trim().slice(0, 300), sourceLanguage: settings.sourceLanguage, targetLanguage: settings.targetLanguage }, ...current].slice(0, 500));
@@ -754,10 +870,29 @@ function App() {
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
   function navigate(id) { setActiveBlock(id); setTab('Reader'); commitPaper(current => ({ ...current, position: { ...current.position, block: id } })); setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
-  function navigateView(scope) {
-    setTab(scope === 'fullTranslation' ? 'Full Translation' : 'Summary');
-    const target = scope === 'fullTranslation' ? '.content-column .document-preview' : scope === 'summaryTarget' ? '.summary-card.translated' : '.summary-card';
-    setTimeout(() => document.querySelector(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  function navigateView(item) {
+    setInspector(true);
+    setTab(item.scope === 'fullTranslation' ? 'Full Translation' : 'Summary');
+    setViewNavigation({ ...item, id: crypto.randomUUID() });
+  }
+  function navigatePdf(item) {
+    setInspector(true); setTab('Original'); setPageNumber(item.page);
+    setPdfNavigation({ ...item, id: crypto.randomUUID() });
+  }
+  function pdfNavigationReady(anchor) {
+    setSelection({ ...anchor, id: null, kind: 'source', scope: 'pdf', rect: null });
+    setSelectionResult(null);
+    setNoteDraft(paperRef.current?.pdfNotes?.find(item => item.page === anchor.page && item.offset === anchor.offset && item.text === anchor.text)?.body || '');
+    setPdfNavigation(null);
+  }
+  function pdfNavigationFailed() {
+    const requested = pdfNavigation;
+    if (requested) commitPaper(current => ({ ...current,
+      pdfNotes: (current.pdfNotes || []).map(item => item.page === requested.page && item.offset === requested.offset && item.text === requested.text ? { ...item, needsReview: true } : item),
+      pdfHighlights: (current.pdfHighlights || []).map(item => item.page === requested.page && item.offset === requested.offset && item.text === requested.text ? { ...item, needsReview: true } : item)
+    }));
+    setPdfNavigation(null);
+    setError('The saved PDF text no longer matches this page. The annotation was kept for review.');
   }
   function modifyBlocks(transform) {
     if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
@@ -775,23 +910,26 @@ function App() {
     setStatus(`Reflowed block ${id} into ${pieces.length} complete-sentence blocks.`);
   }
   function captureViewSelection(event, scope, kind) {
-    const selected = window.getSelection();
-    const raw = selected?.toString() || '';
-    const text = raw.trim();
-    const range = selected?.rangeCount ? selected.getRangeAt(0) : null;
-    if (!text || text.length > 3000 || !range || !event.currentTarget.contains(range.startContainer) || !event.currentTarget.contains(range.endContainer)) return;
+    const host = scope === 'paper' ? event.currentTarget : event.currentTarget.querySelector('[data-markdown-host]');
+    const captured = domSelectionIn(host);
+    if (!captured) return;
+    const { text, rect } = captured;
+    const range = window.getSelection().getRangeAt(0);
     let id = null;
     let offset = null;
+    let displayOffset = null;
     if (scope === 'paper') {
-      const matches = (paperRef.current?.blocks || []).filter(block => anchorText(block, 'source').includes(text));
-      if (matches.length === 1) {
-        id = matches[0].id;
-        const source = anchorText(matches[0], 'source');
-        const first = source.indexOf(text);
-        if (first === source.lastIndexOf(text)) offset = first;
+      const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+      const element = start?.closest('[data-paper-block-id]');
+      const block = paperRef.current?.blocks.find(item => item.id === Number(element?.dataset.paperBlockId));
+      const within = domSelectionIn(element);
+      if (block && within?.text === text) {
+        id = block.id;
+        offset = exactAnchorOffset(anchorText(block, 'source'), within);
       }
     } else {
       const source = scope === 'summarySource' ? paperRef.current?.summary?.source : scope === 'summaryTarget' ? paperRef.current?.summary?.target : paperRef.current?.connectedTranslation;
+      displayOffset = captured.offset;
       const matches = [];
       let searchAt = 0;
       while (source && searchAt < source.length) {
@@ -799,13 +937,11 @@ function App() {
         if (at < 0) break;
         matches.push(at); searchAt = at + text.length;
       }
-      const before = document.createRange(); before.selectNodeContents(event.currentTarget); before.setEnd(range.startContainer, range.startOffset);
-      const ordinal = before.toString().split(text).length - 1;
+      const ordinal = captured.context.slice(0, captured.offset).split(text).length - 1;
       offset = matches[ordinal] ?? null;
     }
-    const rect = range.getBoundingClientRect();
-    setSelection({ id, kind, text, offset, scope, rect: { x: rect.left, y: rect.top } });
-    const saved = paperRef.current?.viewNotes?.find(note => note.scope === scope && note.text === text && note.offset === offset);
+    setSelection({ id, kind, text, offset, displayOffset, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) });
+    const saved = scope === 'paper' ? paperRef.current?.blocks.find(block => block.id === id)?.notes?.find(note => note.text === text && note.offset === offset && (note.kind || 'source') === 'source') : paperRef.current?.viewNotes?.find(note => note.scope === scope && note.text === text && note.offset === offset);
     setSelectionResult(null); setNoteDraft(saved?.body || ''); setInspector(true);
   }
   function mergeBlock(id) { if (id <= 1) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id).map(item => item.id === id - 1 ? mergeBlocks(item, blocks.find(block => block.id === id)) : item)); }
@@ -850,16 +986,26 @@ function App() {
           {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
           <div className="reading-map">{readingMap(paper.blocks).map(entry => <button key={entry.label} onClick={() => navigate(entry.blockId)}><small>{entry.label}</small><strong>{entry.section}</strong><p>{short(entry.excerpt, 190)}</p><span>Read source block {entry.blockId} →</span></button>)}</div>
           {extractionIssues.length > 0 && <div className="quality-list"><h3>Extraction check · {extractionIssues.length} possible issue(s)</h3>{extractionIssues.slice(0, 20).map(issue => <button key={issue.id} onClick={() => navigate(issue.id)}>Review block {issue.id}: {issue.reason}</button>)}</div>}
-          <div className="section-heading smaller"><div><h2>Document preview</h2><p>{paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Exact source pages are available in Original' : 'Pasted source text'}</p></div>{paper.type === 'pdf' && <button className="button outline" onClick={() => setTab('Original')}>Original PDF</button>}</div>
-          <article className="document-preview" onMouseUp={event => captureViewSelection(event, 'paper', 'source')}>{paper.mineruMarkdown ? <Markdown>{paper.mineruMarkdown}</Markdown> : paper.blocks.slice(0, 12).map(block => block.heading ? <h3 key={block.id}>{block.text}</h3> : <p key={block.id}>{block.text}</p>)}{paper.blocks.length > 12 && <button className="text-button" onClick={() => setTab('Reader')}>Continue in Reader →</button>}</article>
+          <div className="section-heading smaller"><div><h2>Document preview</h2><p>{paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Selectable PDF text · exact pages are in Original' : 'Pasted source text'}</p></div>{paper.type === 'pdf' && <button className="button outline" onClick={() => setTab('Original')}>Original PDF</button>}</div>
+          <PaperPreview paper={paper} onSelect={captureViewSelection} onContinue={() => setTab('Reader')} />
         </div>}
         {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title="Bookmark" onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title="Edit source" disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button><button className="mini-action" title="Translate or retry block" onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button><button className="mini-action" title="Explain full paragraph" disabled={block.heading || block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={block.highlights}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, block.highlights)}</div>{!block.heading && !block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={block.translationHighlights}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, block.translationHighlights)) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{block.notes?.length > 0 && <div className="block-notes">{block.notes.map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && <Empty title="No matching blocks" body="Try another search term." />}</div>{undo.length > 0 && <button className="undo-button" onClick={() => { commitPaper(undo.at(-1)); setUndo(previous => previous.slice(0, -1)); }}><Undo2 size={16} /> Undo last change</button>}</div>}
-        {paper && tab === 'Original' && <PdfView paper={paper} pageNumber={pageNumber} onRendered={restoreMainScroll} onPage={number => { restoringScroll.current = true; setPageNumber(number); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }} onSelect={text => { const normalized = text.replace(/\s+/g, ' ').trim(); if (!normalized) return; const matches = paper.blocks.filter(item => item.page <= pageNumber && (item.endPage || item.page) >= pageNumber && item.text.includes(normalized)); const block = matches.length === 1 ? matches[0] : null; const first = block?.text.indexOf(normalized) ?? -1; const offset = first >= 0 && first === block.text.lastIndexOf(normalized) ? first : null; setSelection({ id: block?.id ?? null, kind: 'source', scope: 'pdf', page: pageNumber, text: normalized, offset }); setSelectionResult(null); setInspector(true); }} />}
+        {paper && tab === 'Original' && <PdfView
+          paper={paper}
+          pageNumber={pageNumber}
+          highlights={paper.pdfHighlights || []}
+          navigation={pdfNavigation}
+          onRendered={restoreMainScroll}
+          onPage={number => { restoringScroll.current = true; setPageNumber(number); setPdfNavigation(null); setSelection(null); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }}
+          onSelect={anchor => { setSelection({ ...anchor, id: null, kind: 'source', scope: 'pdf' }); setSelectionResult(null); setInspector(true); setNoteDraft((paperRef.current?.pdfNotes || []).find(item => item.page === anchor.page && item.offset === anchor.offset && item.text === anchor.text)?.body || ''); }}
+          onNavigate={pdfNavigationReady}
+          onNavigationFailure={pdfNavigationFailed}
+        />}
         {paper && tab === 'Summary' && <SummaryView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} />}
-        {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown>{paper.connectedTranslation}</Markdown></article> : <Empty title="No full translation yet" body="This optional pass translates longer passages with context. The bilingual reader remains available separately." />}</div>}
+        {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown></article> : <Empty title="No full translation yet" body="This optional pass translates longer passages with context. The bilingual reader remains available separately." />}</div>}
       </div>
     </main>
-    <aside className="inspector"><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => setInspector(false)}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE</small><textarea placeholder="What should you remember?" value={noteDraft} onChange={event => setNoteDraft(event.target.value)} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Reader to translate or explain an exact phrase, highlight it, attach a note, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={setExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigate={navigate} navigateView={navigateView} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} />}</aside>
+    <aside className="inspector"><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => setInspector(false)}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE</small><textarea placeholder="What should you remember?" value={noteDraft} onChange={event => setNoteDraft(event.target.value)} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Summary, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={setExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigate={navigate} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</aside>
     {selection?.rect && !modal && <div className="selection-toolbar" style={{ left: Math.min(window.innerWidth - 275, Math.max(8, selection.rect.x)), top: Math.max(8, selection.rect.y - 44) }} onMouseDown={event => event.preventDefault()}><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={14} /> Explain</button><button onClick={() => { setInspector(true); document.querySelector('.inspector-section textarea')?.focus(); }}><MessageSquareText size={14} /> Notes</button><button aria-label="Close selection tools" onClick={() => setSelection(null)}><X size={14} /></button></div>}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setModal(''); }}><div className="modal"><div className="modal-head"><h2>{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" onClick={() => setModal('')}><X size={19} /></button></div><div className="modal-body">
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}

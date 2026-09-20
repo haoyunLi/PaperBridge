@@ -18,7 +18,8 @@ async function run() {
     '<table><thead><tr><th>Method</th><th>Score</th></tr></thead><tbody><tr><td>Attention</td><td>42</td></tr></tbody></table>',
     `![Figure](${figure})`,
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
-    'A paragraph whose previous translation failed.'
+    'A paragraph whose previous translation failed.',
+    'Repeat repeat repeat.'
   ];
   const blocks = parts.map((sourceMarkdown, index) => ({
     id: index + 1, sourceMarkdown, text: sourceMarkdown, heading: index === 0,
@@ -52,6 +53,22 @@ async function run() {
     assert.equal(paperStyle.size, '21px');
     assert.ok(paperStyle.width <= 701);
     assert.ok(Number.parseFloat(paperStyle.line) > 35);
+    await page.evaluate(() => {
+      const paragraph = document.querySelector('[data-paper-block-id="7"] p');
+      const range = document.createRange();
+      range.setStart(paragraph.firstChild, 14);
+      range.setEnd(paragraph.firstChild, 20);
+      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+      paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.getByText('SELECTED TEXT · BLOCK 7', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.blue').click();
+    await page.locator('.inspector textarea').fill('The third occurrence belongs to block seven.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
+    const previewSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
+    assert.deepEqual(previewSaved.blocks[6].highlights.map(item => ({ text: item.text, offset: item.offset })), [{ text: 'repeat', offset: 14 }]);
+    assert.equal(previewSaved.blocks[6].notes[0].offset, 14);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     assert.equal(await page.locator('#block-2 .source-text sup').count(), 1);
     assert.equal(await page.locator('#block-2 .translation-text sup').count(), 1);
@@ -75,8 +92,11 @@ async function run() {
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.deepEqual(saved.blocks[1].highlights.map(item => ({ text: item.text, offset: item.offset })), [{ text: 'Vaswani∗', offset: 7 }]);
     assert.equal(saved.blocks[1].notes[0].body, 'Author marker is preserved.');
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.screenshot({ path: path.join(artifacts, 'markdown-parity-reader.png') });
-    console.log('Markdown HTML, image, table, typography, failed count, exact selection, and rich highlight verified.');
+    console.log('Markdown HTML, image, table, typography, failed count, repeated-text anchors, notes, and rich highlights verified.');
   } finally {
     await app.close();
     fs.rmSync(workspace, { recursive: true, force: true });

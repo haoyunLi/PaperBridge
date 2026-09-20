@@ -36,6 +36,6 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 
 本机从无 Ollama、无 MinerU 的状态开始安装。发现并修复两处真实安装问题：Windows PowerShell 被继承的模块路径干扰，导致真实有效的 Ollama 签名被误判；uv 在解压出有效 Python 后，创建次版本快捷链接时报错。签名校验现在只加载 Windows 系统模块；MinerU 安装可以直接验证并使用私有 Python 3.12 解释器。最终一键安装返回 Ollama 模型就绪、MinerU 3.4.5 就绪、MinerU backend `pipeline`。
 
-当前回归：26 个单元测试通过；Electron 工作流测试、真实 MinerU Markdown 重开测试和 HTML 安全/选区测试通过；真实 Ollama 翻译/解释/摘要测试通过；真实 MinerU 论文导入通过。NSIS 与 portable 安装包重新构建成功，打包程序启动测试通过。Windows 验签结果确认两个安装包目前均未签名。
+当前回归：26 个单元测试通过；Electron 工作流测试、真实 MinerU Markdown 重开测试和 HTML 安全/选区测试通过；双页同词 PDF 的独立标注、导出及重启恢复通过；真实 Ollama 翻译/解释/摘要复测通过，模型 2.68 GiB 全部驻留 AMD VRAM；真实 MinerU 论文图表说明翻译复测通过。NSIS 与 portable 安装包重新构建成功，打包程序启动测试通过。Windows 验签结果确认两个安装包目前均未签名。
 
 本次仅验证了一台 AMD 机器和一篇复杂论文。NVIDIA CUDA、无独显、扫描件 OCR、其它模型、长论文摘要的来源覆盖率、Mac 与 Windows 同机逐项对照、正式签名与 Windows Release 更新安装仍在 [功能映射](FEATURE_MAPPING.md)中保留为待验收项。

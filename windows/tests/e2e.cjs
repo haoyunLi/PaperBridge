@@ -6,12 +6,15 @@ const { _electron: electron } = require('playwright-core');
 
 function samplePdf() {
   const stream = 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj ET';
+  const secondStream = 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page.) Tj ET';
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
+    `<< /Length ${Buffer.byteLength(secondStream)} >>\nstream\n${secondStream}\nendstream`
   ];
   let body = '%PDF-1.4\n';
   const offsets = [0];
@@ -43,7 +46,7 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false }));
   const pdfPath = path.join(artifacts, 'practice.pdf');
   fs.writeFileSync(pdfPath, samplePdf());
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  let app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
@@ -129,9 +132,12 @@ async function run() {
     });
     await page.getByText('SELECTED TEXT · summarySource', { exact: true }).waitFor();
     await page.locator('.inspector .highlight.blue').click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
     await page.locator('.inspector textarea').fill('Summary selection note.');
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.match(await page.locator('.saved-annotations').innerText(), /summarySource/);
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Summary selection note.' }).locator('button').first().click();
+    await page.waitForFunction(() => window.getSelection()?.toString() === '本地测试');
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await page.getByRole('button', { name: 'Translate full paper' }).click();
     await page.locator('.content-column .document-preview').waitFor({ timeout: 15000 });
@@ -142,9 +148,13 @@ async function run() {
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · fullTranslation', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.amber').click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
     await page.locator('.inspector textarea').fill('Connected translation note.');
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.match(await page.locator('.saved-annotations').innerText(), /fullTranslation/);
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Connected translation note.' }).locator('button').first().click();
+    await page.waitForFunction(() => window.getSelection()?.toString() === '本地测试');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
     await page.waitForSelector('.hardware-panel');
@@ -176,17 +186,58 @@ async function run() {
       span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('ORIGINAL PDF · PAGE 1', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.blue').click();
+    await page.locator('.inspector textarea').fill('This note belongs to the original PDF page.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
+    await page.screenshot({ path: path.join(artifacts, 'original-pdf-annotated.png') });
+    const pdfRecord = fs.readdirSync(path.join(workspace, 'papers')).map(file => JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'))).find(item => item.type === 'pdf' && item.pdfNotes?.length);
+    assert.ok(pdfRecord, 'The PDF note should persist with its paper');
+    assert.deepEqual(pdfRecord.pdfHighlights.map(item => ({ page: item.page, offset: item.offset, text: item.text })), [{ page: 1, offset: 0, text: 'Abstract' }]);
+    assert.equal(pdfRecord.pdfNotes[0].body, 'This note belongs to the original PDF page.');
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByRole('button', { name: 'Original', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.waitForFunction(() => CSS.highlights.get('paperbridge-blue')?.size === 1);
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).locator('button').first().click();
+    await page.waitForFunction(() => window.getSelection()?.toString() === 'Abstract');
+    assert.match(await page.locator('.inspector blockquote').innerText(), /^Abstract$/);
+    await page.getByRole('button', { name: 'Next page' }).click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2');
+    await page.evaluate(() => {
+      const span = [...document.querySelectorAll('.textLayer span')].find(item => item.textContent.includes('Abstract'));
+      const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 8);
+      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+      span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.getByText('ORIGINAL PDF · PAGE 2', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.amber').click();
+    await page.locator('.inspector textarea').fill('The repeated heading belongs to page two.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size || 0), 0);
+    await page.getByRole('button', { name: 'Previous page' }).click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.waitForFunction(() => CSS.highlights.get('paperbridge-blue')?.size === 1);
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'The repeated heading belongs to page two.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2' && window.getSelection()?.toString() === 'Abstract');
+    assert.match(await page.locator('.inspector blockquote').innerText(), /^Abstract$/);
+    await page.getByRole('button', { name: 'Previous page' }).click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
     await page.getByRole('button', { name: 'More' }).click();
-    await page.getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
     await page.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
     await page.waitForFunction(() => /Exported|Bundle export incomplete/.test(document.body.innerText), null, { timeout: 30000 });
     assert.match(await page.locator('.main-scroll').innerText(), /Exported/, 'Bundle export should complete without an error');
-    const bundles = fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
+    const bundles = fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge')).sort((left, right) => fs.statSync(path.join(artifacts, left)).mtimeMs - fs.statSync(path.join(artifacts, right)).mtimeMs);
     assert.ok(bundles.length > 0);
     assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'original.pdf')));
     assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'pages', 'page-001.png')));
+    assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'pages', 'page-002.png')));
     assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Original Pages.md'), 'utf8'), /pages\/page-001\.png/);
+    assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8'), /Original PDF page 1: Abstract — This note belongs to the original PDF page\./);
+    assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8'), /Original PDF page 2: Abstract — The repeated heading belongs to page two\./);
     const pdfBytes = fs.readFileSync(pdfPath);
     await page.evaluate(bytes => {
       const file = new File([new Uint8Array(bytes)], 'practice.pdf', { type: 'application/pdf' });
@@ -204,7 +255,23 @@ async function run() {
     await page.locator('.library-row').filter({ hasText: 'Edited practice label' }).click();
     assert.match(await page.locator('.saved-annotations').innerText(), /Summary selection note\./);
     assert.match(await page.locator('.saved-annotations').innerText(), /Connected translation note\./);
-    console.log('Electron workflow verified: translation, summary and full-text annotations, multi-step undo, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
-  } finally { await app.close(); ollama.close(); }
+    let returnedToAnnotatedPdf = false;
+    const pdfRows = page.locator('.library-row').filter({ hasText: 'practice.pdf' });
+    for (let index = 0; index < await pdfRows.count(); index++) {
+      await pdfRows.nth(index).click();
+      if ((await page.locator('.saved-annotations').innerText().catch(() => '')).includes('This note belongs to the original PDF page.')) { returnedToAnnotatedPdf = true; break; }
+    }
+    assert.equal(returnedToAnnotatedPdf, true, 'The original annotated PDF should remain in the library');
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByRole('button', { name: 'Original', exact: true }).click();
+    await app.close();
+    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    const reopenedPage = await app.firstWindow();
+    await reopenedPage.getByRole('heading', { name: 'practice.pdf' }).waitFor();
+    assert.match(await reopenedPage.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./);
+    await reopenedPage.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await reopenedPage.waitForFunction(() => CSS.highlights.get('paperbridge-blue')?.size === 1);
+    console.log('Electron workflow verified: translation, summary and full-text annotations, PDF page anchors and notes, multi-step undo, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
+  } finally { await app?.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
