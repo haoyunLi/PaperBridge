@@ -1,6 +1,13 @@
 .reader-mode-select{min-width:125px;font-size:12px}
 .app[data-display-mode="source"] .block:not(.heading-block) .translation-text{display:none}
 .app[data-display-mode="translation"] .block:not(.heading-block) .source-text{display:none}
+.document-preview{width:min(100%,var(--reader-width,920px));margin-left:auto;margin-right:auto;font-size:var(--reader-font,17px);line-height:var(--reader-line,1.6)}
+.document-preview table{border-collapse:collapse;display:block;max-width:100%;overflow:auto;font:0.88em "Segoe UI",sans-serif;margin:1.5em 0}
+.document-preview td,.document-preview th{border:1px solid #cfc6b8;padding:6px 9px}
+.failed-stat,.failed-stat b{color:#ffaaa3}
+::highlight(paperbridge-amber){background:#ffe6a9;color:#563d0c}
+::highlight(paperbridge-blue){background:#dce9ff;color:#073c91}
+::highlight(paperbridge-coral){background:#fde6df;color:#8a251d}
 .evidence-claim{border-top:1px solid #e9e0d6;padding:13px 0}
 .evidence-claim strong{font-size:12px;color:#122033}
 .evidence-claim p,.evidence-claim small{font-size:12px;color:#56606c;line-height:1.5;margin:7px 0}

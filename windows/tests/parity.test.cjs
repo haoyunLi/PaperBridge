@@ -5,6 +5,35 @@ const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+test('MinerU Markdown keeps figures and tables separate from translatable captions', async () => {
+  const { parsedMarkdownBlocks, anchorText } = await import('../src/academicMarkdown.mjs');
+  const markdown = [
+    '# Results',
+    '',
+    'Ashish Vaswani<sup>∗</sup> measured the result.',
+    '',
+    '![plot](data:image/png;base64,AAAA)  ',
+    'Figure 1: Architecture.',
+    '',
+    'Table 1: Scores.',
+    '<table><tr><td>42</td></tr></table>',
+    '',
+    '$$E=mc^2$$',
+    '',
+    '```python',
+    'print(42)',
+    '```'
+  ].join('\n');
+  const blocks = parsedMarkdownBlocks(markdown);
+  assert.deepEqual(blocks.map(block => [block.heading, block.resource]), [
+    [true, false], [false, false], [false, true], [false, false],
+    [false, false], [false, true], [false, true], [false, true]
+  ]);
+  assert.equal(blocks[3].text, 'Figure 1: Architecture.');
+  assert.equal(blocks[4].text, 'Table 1: Scores.');
+  assert.equal(anchorText(blocks[1], 'source'), 'Ashish Vaswani∗ measured the result.');
+});
+
 test('reference exclusion stops when methods resume after bibliography', async () => {
   const { referenceBlockIds, sectionRanges } = await import('../src/paper.mjs');
   const blocks = [

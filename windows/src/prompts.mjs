@@ -7,7 +7,7 @@ export const summaryQuotePrompt = (claim, paragraphID, paragraph) => `Claim: ${c
 
 export function protectMarkdown(markdown) {
   const tokens = [];
-  const pattern = /!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\$[^$\n]+\$|`[^`]+`|https?:\/\/\S+/g;
+  const pattern = /```[\s\S]*?```|~~~[\s\S]*?~~~|<table\b[\s\S]*?<\/table>|!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|`[^`\n]+`|<[^>]+>|https?:\/\/[^\s)>]+|(?<!\\)\$(?!\$)(?:\\.|[^$\n])+\$/gi;
   const text = markdown.replace(pattern, match => {
     const token = `__PAPERBRIDGE_TOKEN_${tokens.length}__`;
     tokens.push([token, match]);

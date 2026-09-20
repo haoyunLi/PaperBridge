@@ -22,7 +22,11 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 
 ## 真实 PDF 与 MinerU
 
-使用 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) 的 15 页 PDF 测试了双栏、公式、图片和表格。AMD 上 MinerU 使用 CPU pipeline；应用自动导入约 83 秒，生成 153 个 MinerU 阅读块、25 个标题、5 个图片资源块，并保留 167 个 PDF.js 文本块。结构化 Markdown 含公式，原 PDF 页面可正常打开，MinerU 辅助文件也被保存。阅读截图可见作者上标的 `<sup>` 标签仍以文字显示，这类 HTML 排版还未与 Mac 版本一比一。
+使用 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) 的 15 页 PDF 测试了双栏、公式、图片和表格。AMD 上 MinerU 使用 CPU pipeline；应用自动导入约 83 秒，旧版粗分段生成 153 个阅读块，并保留 167 个 PDF.js 文本块。修正按行分段后，同一份 MinerU Markdown 得到 163 个阅读块，其中 25 个标题、5 张图、4 张 HTML 表和 5 个独立公式分别保留为独立结构；图注和表注成为可翻译段落。原 PDF 页面可正常打开，MinerU 辅助文件也被保存。
+
+修正后重开这份实际 MinerU 输出，Paper 和 Reader 都显示 11 处上标、5 张图、4 张表及 5 个独立公式；`Vaswani∗` 可跨上标精确选中并显示高亮。合成论文另验证了恶意 HTML 属性被过滤、图片仍加载、选区笔记偏移正确，以及阅读字号、行距和宽度能用于 Paper 预览。运行方式：先运行 `npm run build`，再运行 `npm run test:reopen-mineru` 和 `npm run test:markdown`。重开测试复用已解析的 Markdown，不重新耗时解析 PDF。
+
+再运行 `node tests/reopen-mineru.cjs --translate`，在真实 Reader 中分别翻译图 1 图注和表 1 表注，得到中文译文；对应的图片和 HTML 表格块没有进入翻译队列，原始资源内容不变。Ollama `/api/ps` 同时报告模型在 AMD GPU VRAM 占用 2.68 GiB。此回归使用已解析论文，仍只代表这一台 AMD 电脑和这两个图表说明。
 
 首次自动导入失败后回退到 PDF.js。原因是 MinerU 在临时输出路径中重复 PaperBridge 的 64 位哈希文件名，使 Windows 路径过长。现使用短名临时副本和短输出路径解析，再将辅助文件复制到论文工作区；原 PDF 始终保持原样。修复后重跑同一 PDF，自动 MinerU 导入成功。
 
@@ -32,6 +36,6 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 
 本机从无 Ollama、无 MinerU 的状态开始安装。发现并修复两处真实安装问题：Windows PowerShell 被继承的模块路径干扰，导致真实有效的 Ollama 签名被误判；uv 在解压出有效 Python 后，创建次版本快捷链接时报错。签名校验现在只加载 Windows 系统模块；MinerU 安装可以直接验证并使用私有 Python 3.12 解释器。最终一键安装返回 Ollama 模型就绪、MinerU 3.4.5 就绪、MinerU backend `pipeline`。
 
-当前回归：24 个单元测试通过；Electron 工作流测试通过；真实 Ollama 翻译/解释/摘要测试通过；真实 MinerU 论文导入通过；NSIS 与 portable 安装包构建成功，打包程序启动测试通过。两个安装包目前均未签名。
+当前回归：26 个单元测试通过；Electron 工作流测试、真实 MinerU Markdown 重开测试和 HTML 安全/选区测试通过；真实 Ollama 翻译/解释/摘要测试通过；真实 MinerU 论文导入通过。NSIS 与 portable 安装包重新构建成功，打包程序启动测试通过。Windows 验签结果确认两个安装包目前均未签名。
 
 本次仅验证了一台 AMD 机器和一篇复杂论文。NVIDIA CUDA、无独显、扫描件 OCR、其它模型、长论文摘要的来源覆盖率、Mac 与 Windows 同机逐项对照、正式签名与 Windows Release 更新安装仍在 [功能映射](FEATURE_MAPPING.md)中保留为待验收项。

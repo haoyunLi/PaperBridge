@@ -3,12 +3,15 @@ import { createRoot } from 'react-dom/client';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, translationPrompt, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
 import { referenceBlockIds, sectionRanges, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
+import { anchorText, parsedMarkdownBlocks } from './academicMarkdown.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -19,21 +22,65 @@ const api = window.paperBridge;
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
 const sample = ['Abstract', 'This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.', '1 Introduction', 'Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.', '2 Methods', 'Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.', '3 Results', 'Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.', '4 Limitations', 'A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.', '5 Conclusion', 'Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action.'];
 const markdownPlugins = [remarkGfm, remarkMath];
-const rehypePlugins = [rehypeKatex];
+const markdownSchema = {
+  ...defaultSchema,
+  protocols: { ...defaultSchema.protocols, src: [...(defaultSchema.protocols?.src || []), 'data'] }
+};
+const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeKatex];
+const richHighlights = new Map();
+const highlightColors = ['amber', 'blue', 'coral'];
 
 function safeMarkdownUrl(url, key) { return key === 'src' && /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(url) ? url : defaultUrlTransform(url); }
-function Markdown({ children }) { return <ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown>; }
+function refreshRichHighlights() {
+  if (!CSS.highlights) return;
+  for (const color of highlightColors) {
+    const ranges = [...richHighlights.values()].flatMap(entry => entry[color] || []);
+    if (ranges.length) CSS.highlights.set(`paperbridge-${color}`, new Highlight(...ranges));
+    else CSS.highlights.delete(`paperbridge-${color}`);
+  }
+}
+function markdownHighlightRanges(root, highlights) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.parentElement?.closest('.katex-mathml')) continue;
+    nodes.push({ node, start: nodes.length ? nodes.at(-1).end : 0, end: 0 });
+    nodes.at(-1).end = nodes.at(-1).start + node.textContent.length;
+  }
+  const text = nodes.map(item => item.node.textContent).join('');
+  const result = { amber: [], blue: [], coral: [] };
+  for (const highlight of highlights) {
+    if (!result[highlight.color] || !highlight.text) continue;
+    const first = text.indexOf(highlight.text);
+    const at = text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : -1;
+    if (at < 0) continue;
+    const start = nodes.find(item => item.end > at);
+    const end = nodes.find(item => item.end >= at + highlight.text.length);
+    if (!start || !end) continue;
+    const range = document.createRange();
+    range.setStart(start.node, at - start.start);
+    range.setEnd(end.node, at + highlight.text.length - end.start);
+    result[highlight.color].push(range);
+  }
+  return result;
+}
+function Markdown({ children, highlights }) {
+  const host = useRef(null);
+  const highlightKey = useRef({});
+  useEffect(() => {
+    if (!highlights?.length || !host.current || !CSS.highlights) return;
+    richHighlights.set(highlightKey.current, markdownHighlightRanges(host.current, highlights));
+    refreshRichHighlights();
+    return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
+  }, [children, highlights]);
+  return <div ref={host}><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
+}
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
 function viewText(paper, scope) {
   return scope === 'summarySource' ? paper.summary?.source || '' : scope === 'summaryTarget' ? paper.summary?.target || '' : scope === 'fullTranslation' ? paper.connectedTranslation || '' : '';
 }
 function validViewAnchor(paper, item) { return Number.isInteger(item.offset) && viewText(paper, item.scope).slice(item.offset, item.offset + item.text.length) === item.text; }
-function parsedMarkdownBlocks(markdown) {
-  return markdown.split(/\n\s*\n/).map(part => part.trim()).filter(Boolean).map((part, index) => {
-    const resource = /^(?:!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*\$\$|\\\[[\s\S]*\\\]|```[\s\S]*```|<table[\s\S]*<\/table>)$/i.test(part) || /^\|.+\|\n\|[-: |]+\|/.test(part);
-    return { id: index + 1, text: part.replace(/!\[[^\]]*\]\([^)]+\)/g, '[Figure]').replace(/\$[^$]+\$/g, '[Formula]').replace(/[#*_`]/g, '').trim(), sourceMarkdown: part, page: null, heading: /^#{1,6}\s/.test(part), resource, translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] };
-  });
-}
 function markdownDocuments(paper) {
   const original = paper.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
   const translated = paper.blocks.map(block => block.translationMarkdown || block.translation || (block.resource || block.heading ? block.sourceMarkdown || block.text : `[Untranslated block ${block.id}]`)).join('\n\n');
@@ -646,7 +693,7 @@ function App() {
     if (!element || !range || !element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
     const block = paperRef.current?.blocks.find(item => item.id === Number(element.dataset.blockId));
     const kind = element.dataset.kind || 'source';
-    const source = kind === 'translation' ? block?.translation : block?.text;
+    const source = anchorText(block, kind);
     const before = document.createRange(); before.selectNodeContents(element); before.setEnd(range.startContainer, range.startOffset);
     const measured = before.toString().length + raw.length - raw.trimStart().length;
     const first = source?.indexOf(text) ?? -1;
@@ -669,7 +716,7 @@ function App() {
     }
     const block = paper.blocks.find(item => item.id === selection.id);
     const key = selection.kind === 'translation' ? 'translationHighlights' : 'highlights';
-    const source = selection.kind === 'translation' ? block?.translation : block?.text;
+    const source = anchorText(block, selection.kind);
     if (!['reader', 'paper'].includes(selection.scope) || !block || !Number.isInteger(selection.offset) || source?.slice(selection.offset, selection.offset + selection.text.length) !== selection.text) { setError('This exact selection cannot be anchored to one source block.'); return; }
     rememberUndo();
     const highlights = block[key] || [];
@@ -689,7 +736,7 @@ function App() {
       return;
     }
     const block = paper.blocks.find(item => item.id === selection.id);
-    if (!['reader', 'paper'].includes(selection.scope) || !block || !Number.isInteger(selection.offset)) { setError('This note needs an exact source block selection.'); return; }
+    if (!['reader', 'paper'].includes(selection.scope) || !block || !Number.isInteger(selection.offset) || anchorText(block, selection.kind).slice(selection.offset, selection.offset + selection.text.length) !== selection.text) { setError('This note needs an exact source block selection.'); return; }
     rememberUndo();
     const existing = block.notes?.find(note => note.text === selection.text && note.offset === selection.offset && (note.kind || 'source') === selection.kind);
     updateBlock(block.id, { notes: existing ? block.notes.map(note => note.id === existing.id ? { ...note, body: noteDraft.trim(), needsReview: false } : note) : [...(block.notes || []), { id: crypto.randomUUID(), text: selection.text, offset: selection.offset, kind: selection.kind, body: noteDraft.trim() }] });
@@ -735,11 +782,12 @@ function App() {
     let id = null;
     let offset = null;
     if (scope === 'paper') {
-      const matches = (paperRef.current?.blocks || []).filter(block => block.text.includes(text));
+      const matches = (paperRef.current?.blocks || []).filter(block => anchorText(block, 'source').includes(text));
       if (matches.length === 1) {
         id = matches[0].id;
-        const first = matches[0].text.indexOf(text);
-        if (first === matches[0].text.lastIndexOf(text)) offset = first;
+        const source = anchorText(matches[0], 'source');
+        const first = source.indexOf(text);
+        if (first === source.lastIndexOf(text)) offset = first;
       }
     } else {
       const source = scope === 'summarySource' ? paperRef.current?.summary?.source : scope === 'summaryTarget' ? paperRef.current?.summary?.target : paperRef.current?.connectedTranslation;
@@ -768,19 +816,21 @@ function App() {
   const filteredLibrary = library.filter(item => `${item.name} ${(item.tags || []).join(' ')}`.toLowerCase().includes(librarySearch.toLowerCase()));
   const visibleBlocks = paper?.blocks.filter(block => !search || `${block.text} ${block.translation}`.toLowerCase().includes(search.toLowerCase())) || [];
   const translatedCount = paper?.blocks.filter(block => block.status === 'ok' && !block.heading && !block.resource && !referenceIDs.has(block.id)).length || 0;
+  const failedCount = paper?.blocks.filter(block => block.status === 'failed' && !block.heading && !block.resource && !referenceIDs.has(block.id)).length || 0;
   const translatableCount = paper?.blocks.filter(block => !block.heading && !block.resource && !referenceIDs.has(block.id)).length || 0;
+  const readingAppearance = { '--reader-font': `${settings?.fontSize || 17}px`, '--reader-line': settings?.lineHeight || 1.6, '--reader-width': `${settings?.readingWidth || 920}px` };
   const currentSection = sections.findLast(section => section.startId <= activeBlock);
   const currentSectionIds = currentSection?.ids || [];
   const abstractConclusionIds = sections.filter(section => /abstract|conclusion|摘要|结论/i.test(section.title)).flatMap(section => section.ids);
 
   if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
-  return <div data-display-mode={displayMode} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''}`}>
+  return <div data-display-mode={displayMode} style={readingAppearance} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''}`}>
     <aside className="sidebar">
       <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
       <div className="sidebar-scroll">
         <div className="side-group"><div className="side-label">SOURCE</div><button className="side-primary" onClick={openFile}><FilePlus2 size={16} /> Open PDF</button><button className="side-action" onClick={() => setModal('paste')}><FileText size={15} /> Paste Text</button><button className="side-action" onClick={loadPractice}><BookOpen size={15} /> Try a Practice Paper</button></div>
         <div className="side-group"><div className="side-label">LIBRARY <button title="Open library" onClick={() => setModal('library')}><Library size={15} /></button></div><input className="side-search" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.blockCount} blocks</small></button>)}</div>
-        {paper && <><div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Blocks</span><b>{paper.blocks.length}</b></div><div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div><div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div><div className="side-group"><div className="side-label">OUTLINE</div>{outline.slice(0, 60).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}><span>{short(block.text, 48)}</span><small>{block.page || block.id}</small></button>)}{!outline.length && <p className="side-hint">No headings detected.</p>}</div><div className="side-group"><div className="side-label">BOOKMARKS</div>{paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}>{short(block.text, 52)}</button>)}</div></>}
+        {paper && <><div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Blocks</span><b>{paper.blocks.length}</b></div><div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div><div className="side-group"><div className="side-label">OUTLINE</div>{outline.slice(0, 60).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}><span>{short(block.text, 48)}</span><small>{block.page || block.id}</small></button>)}{!outline.length && <p className="side-hint">No headings detected.</p>}</div><div className="side-group"><div className="side-label">BOOKMARKS</div>{paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}>{short(block.text, 52)}</button>)}</div></>}
       </div>
       <div className="sidebar-footer"><button onClick={() => setModal('setup')}><Download size={16} /> Local AI setup</button><button onClick={() => setModal('settings')}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
     </aside>
@@ -791,7 +841,7 @@ function App() {
       <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll}>
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
         {updateInfo?.status === 'available' && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setUpdateInfo(null)}>Later</button></div>}
-        {busy && <Notice>{busy.label}{progress?.total ? ` · ${progress.done}/${progress.total}` : ''}</Notice>}
+        {busy && <Notice>{busy.label}{progress?.total ? ` · ${progress.done}/${progress.total} processed` : ' · working…'}{failedCount > 0 ? ` · ${failedCount} failed` : ''}</Notice>}
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className="content-column">
@@ -802,7 +852,7 @@ function App() {
           <div className="section-heading smaller"><div><h2>Document preview</h2><p>{paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Exact source pages are available in Original' : 'Pasted source text'}</p></div>{paper.type === 'pdf' && <button className="button outline" onClick={() => setTab('Original')}>Original PDF</button>}</div>
           <article className="document-preview" onMouseUp={event => captureViewSelection(event, 'paper', 'source')}>{paper.mineruMarkdown ? <Markdown>{paper.mineruMarkdown}</Markdown> : paper.blocks.slice(0, 12).map(block => block.heading ? <h3 key={block.id}>{block.text}</h3> : <p key={block.id}>{block.text}</p>)}{paper.blocks.length > 12 && <button className="text-button" onClick={() => setTab('Reader')}>Continue in Reader →</button>}</article>
         </div>}
-        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title="Bookmark" onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title="Edit source" disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button><button className="mini-action" title="Translate or retry block" onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button><button className="mini-action" title="Explain full paragraph" disabled={block.heading || block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, block.highlights)}</div>{!block.heading && !block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, block.translationHighlights)) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{block.notes?.length > 0 && <div className="block-notes">{block.notes.map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && <Empty title="No matching blocks" body="Try another search term." />}</div>{undo.length > 0 && <button className="undo-button" onClick={() => { commitPaper(undo.at(-1)); setUndo(previous => previous.slice(0, -1)); }}><Undo2 size={16} /> Undo last change</button>}</div>}
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title="Bookmark" onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title="Edit source" disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button><button className="mini-action" title="Translate or retry block" onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button><button className="mini-action" title="Explain full paragraph" disabled={block.heading || block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={block.highlights}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, block.highlights)}</div>{!block.heading && !block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={block.translationHighlights}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, block.translationHighlights)) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{block.notes?.length > 0 && <div className="block-notes">{block.notes.map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && <Empty title="No matching blocks" body="Try another search term." />}</div>{undo.length > 0 && <button className="undo-button" onClick={() => { commitPaper(undo.at(-1)); setUndo(previous => previous.slice(0, -1)); }}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView paper={paper} pageNumber={pageNumber} onRendered={restoreMainScroll} onPage={number => { restoringScroll.current = true; setPageNumber(number); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }} onSelect={text => { const normalized = text.replace(/\s+/g, ' ').trim(); if (!normalized) return; const matches = paper.blocks.filter(item => item.page <= pageNumber && (item.endPage || item.page) >= pageNumber && item.text.includes(normalized)); const block = matches.length === 1 ? matches[0] : null; const first = block?.text.indexOf(normalized) ?? -1; const offset = first >= 0 && first === block.text.lastIndexOf(normalized) ? first : null; setSelection({ id: block?.id ?? null, kind: 'source', scope: 'pdf', page: pageNumber, text: normalized, offset }); setSelectionResult(null); setInspector(true); }} />}
         {paper && tab === 'Summary' && <SummaryView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} />}
         {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown>{paper.connectedTranslation}</Markdown></article> : <Empty title="No full translation yet" body="This optional pass translates longer passages with context. The bilingual reader remains available separately." />}</div>}

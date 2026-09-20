@@ -1,6 +1,6 @@
 # PaperBridge macOS 1.9 ↔ Windows 0.2 功能逐项映射
 
-基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**41 对齐、70 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译与一篇复杂论文；其它硬件、扫描件、Mac 逐项对照和正式安装包仍需验证。
+基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**42 对齐、69 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译与一篇复杂论文；其它硬件、扫描件、Mac 逐项对照和正式安装包仍需验证。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。
 
@@ -18,8 +18,8 @@
 | A08 | MinerU 失败自动降级，并说明原因 | MinerU preferred 失败显示原因并回退 PDF.js | 部分 | 真实失败和 OCR 设备路径待验证。 |
 | A09 | MinerU only / MinerU preferred / PDFKit only 三种模式 | Settings 提供 MinerU only / preferred / PDF only | 部分 | 三模式已有代码路径；真实 MinerU-only 失败行为待验证。 |
 | A10 | MinerU 多栏正文阅读顺序 | MinerU Markdown 或 PDF.js 简单双栏排序 | 部分 | 一篇双栏论文的标题顺序已核对；跨栏图、脚注及 Mac 对照仍待验收。 |
-| A11 | 图片、表格、独立公式、代码随正文交错 | Reader 保留资源块且不发往翻译模型 | 部分 | 图表、HTML、公式等资源交错顺序仍需论文验证。 |
-| A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` | 部分 | 针对全部结构类型验证还原和原位置。 |
+| A11 | 图片、表格、独立公式、代码随正文交错 | 按行拆出独立资源块，图表说明保留为可翻译段落；安全渲染 HTML | 部分 | 15 页论文重开验证 5 图、4 表、5 独立公式均按源顺序出现在 Paper/Reader；其它论文的复杂 HTML/代码仍待验收。 |
+| A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` 包括代码围栏、整张 HTML 表格、行内标签及多种公式 | 部分 | 单元测试覆盖 token 还原；更多模型对复杂结构的输出位置仍待验收。 |
 | A13 | 原 PDF 无修改保存并原样查看 | 复制原 PDF，PDF.js canvas + text layer | 对齐 | 像素、页数和可选文字与源文件一致。 |
 | A14 | 无文字层的扫描件仍可看原 PDF | 原 PDF 仍可翻页，提示用 MinerU OCR | 部分 | AI 动作应明确禁用或引导 OCR；现有提示尚不完整。 |
 | A15 | PDFKit 便携页面图片（最多前 120 页） | 导出 bundle 时逐页渲染 PNG，最多 120 页 | 部分 | Electron 测试覆盖单页；长 PDF 页面尺寸、取消和空间占用待验证。 |
@@ -29,7 +29,7 @@
 | A19 | 尾部参考文献或中途参考文献智能排除 | 参考文献区从正文翻译和摘要队列排除 | 部分 | 中途参考文献与后续章节边界仍需论文验证。 |
 | A20 | MinerU 资源目录与原 PDF 持久化 | 原 PDF 持久化；图片转 data URI，另留 MinerU 输出目录 | 部分 | 资源可跨重启引用，丢失资产时报告且可恢复。 |
 
-Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[PDF 文本修复](../PaperBridge/Services/PDFTextExtractor.swift)、[Markdown 结构](../PaperBridge/Services/AcademicMarkdownProcessor.swift)、[原页归档](../PaperBridge/Services/PDFVisualArchiveService.swift)。Windows 证据：[导入与手动 MinerU](src/main.jsx#L171)、[PDF.js 提取](src/pdf.mjs)、[Markdown 粗分段](src/main.jsx#L25)、[原 PDF 复制](electron/main.cjs#L105)。
+Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[PDF 文本修复](../PaperBridge/Services/PDFTextExtractor.swift)、[Markdown 结构](../PaperBridge/Services/AcademicMarkdownProcessor.swift)、[原页归档](../PaperBridge/Services/PDFVisualArchiveService.swift)。Windows 证据：[导入与手动 MinerU](src/main.jsx)、[PDF.js 提取](src/pdf.mjs)、[Markdown 按行分段](src/academicMarkdown.mjs)、[原 PDF 复制](electron/main.cjs#L105)。
 
 ## B. 工作区、阅读与导航
 
@@ -48,9 +48,9 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B11 | 显示/隐藏左右侧栏 | 两侧切换按钮 | 对齐 | 面板切换不丢当前阅读位置。 |
 | B12 | Focus Reading 退出后恢复进入前的面板状态 | 焦点阅读进入前保存左右面板状态，退出恢复 | 对齐 | 面板状态切换已实现。 |
 | B13 | 窄窗口检查器改为底部布局 | Windows CSS 响应布局 | 部分 | 在 980px 最小宽度和高 DPI 下真机验收。 |
-| B14 | 字号、行距、阅读宽度调节 | Settings 三项滑块，仅用于 Reader | 部分 | 同样应用到文字预览，不改变原 PDF 几何。 |
+| B14 | 字号、行距、阅读宽度调节 | Settings 三项滑块用于 Reader、Paper 和 Full Translation 文字预览 | 对齐 | Electron 检查 21px、1.9 行距、700px 宽度；原 PDF 几何不受文字预览样式影响。 |
 | B15 | 提取段落的质量提示与 Review 链接 | Overview 共用 A18 质量提示和段落 Review | 部分 | 识别率与复杂论文验证待完成。 |
-| B16 | 结构化 Markdown 公式/表格本地预览 | React Markdown、KaTeX、GFM | 部分 | 离线大文档、公式与图片按源顺序验收。 |
+| B16 | 结构化 Markdown 公式/表格本地预览 | React Markdown、KaTeX、GFM，加受限 HTML 渲染 | 部分 | 15 页论文的 11 处上标、4 张表、5 张图、5 个独立公式已在 Paper/Reader 验证；更多排版仍待验收。 |
 
 Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480)、[阅读地图](../PaperBridge/Services/ReadingGuideBuilder.swift)、[Markdown 预览](../PaperBridge/Views/MarkdownPreviewView.swift)。Windows 证据：[导航与阅读界面](src/main.jsx#L338)、[阅读地图](src/text.mjs)、[显示状态](src/main.jsx#L94)。
 
@@ -65,7 +65,7 @@ Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480
 | C05 | 只恢复 pending/failed，不重译 ok | 队列过滤 `status !== ok` | 对齐 | 重启后状态和结果仍在。 |
 | C06 | 单段 Retry | 块级翻译/Retry 按钮 | 对齐 | 成功块保持不变。 |
 | C07 | 停止请求并保留已完成翻译 | `cancelTask` + Ollama Abort | 部分 | 验证旧请求绝不会写入新任务或新论文。 |
-| C08 | 当前任务进度与失败数量 | Windows 显示进度、成功数量及块错误 | 部分 | 增加总体失败数和确定/不确定进度区分。 |
+| C08 | 当前任务进度与失败数量 | Windows 显示已处理数、成功数、侧栏总失败数及单块错误；无总量时提示正在处理 | 部分 | 缺 Mac 的可视进度条；长任务的失败数更新需真机回归。 |
 | C09 | Abstract & Conclusion 范围 | Translation Range 同名选项 | 部分 | 章节误检、缺失时禁用或解释。 |
 | C10 | 当前章节范围 | Translation Range 当前章节 | 部分 | 章节依据应跟随真实阅读位置。 |
 | C11 | 任意检测章节选择翻译 | Translation Range 列出检测章节 | 部分 | 入口与队列过滤已实现，复杂标题检测待验证。 |
@@ -108,7 +108,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E08 | 快速查词独立模型 | Settings 独立 quick lookup model 并纳入安装检测 | 对齐 | 四套模型分别配置。 |
 | E09 | 查词结果按选区与语言缓存 | 按论文、选区、方向和模型缓存本次会话的查词 | 部分 | 跨重启持久化及源文复杂变更失效仍缺。 |
 | E10 | 选区延伸保护与上下文边界 | 仅截取 DOM 字符串并限 3000 字 | 部分 | 不跨无关段落或抓取错误上下文。 |
-| E11 | 三种颜色高亮 | 三色高亮用起止偏移区分重复原文 | 部分 | Markdown/PDF 高亮显示仍缺。 |
+| E11 | 三种颜色高亮 | 三色高亮用起止偏移区分重复原文；Reader Markdown 用 CSS Highlight 显示 | 部分 | 真实 MinerU 上标选区高亮已验证；Paper 预览和原 PDF 仍缺可见高亮。 |
 | E12 | 删除高亮保留笔记 | 同色点击移除高亮，笔记单独保存 | 部分 | 高亮与注释关联同一精确选区。 |
 | E13 | 为选区创建、更新、删除笔记 | Reader 同选区笔记可创建、更新、删除 | 对齐 | 标注清单提供删除入口。 |
 | E14 | 标注列表、预览、跨工作区跳转 | 检查器列出 Reader、摘要和全文译稿标注并跳转相应工作区 | 部分 | PDF 与 Markdown 选区坐标级跳转仍缺。 |

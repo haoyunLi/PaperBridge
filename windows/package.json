@@ -9,6 +9,8 @@
     "build": "vite build",
     "test": "node --test tests/*.test.cjs",
     "test:e2e": "node tests/e2e.cjs",
+    "test:markdown": "node tests/markdown-parity.cjs",
+    "test:reopen-mineru": "node tests/reopen-mineru.cjs",
     "test:live": "node tests/live-local.cjs",
     "test:live-mineru": "node tests/live-mineru.cjs",
     "test:packaged": "node tests/packaged.cjs",
@@ -23,6 +25,8 @@
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0"
   },
