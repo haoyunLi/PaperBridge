@@ -22,7 +22,7 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 
 ## 真实 PDF 与 MinerU
 
-使用 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) 的 15 页 PDF 测试了双栏、公式、图片和表格。AMD 上 MinerU 使用 CPU pipeline；应用自动导入约 83 秒，生成 153 个 MinerU 阅读块、25 个标题、5 个图片资源块，并保留 167 个 PDF.js 文本块。结构化 Markdown 含公式，原 PDF 页面可正常打开，MinerU 辅助文件也被保存。
+使用 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) 的 15 页 PDF 测试了双栏、公式、图片和表格。AMD 上 MinerU 使用 CPU pipeline；应用自动导入约 83 秒，生成 153 个 MinerU 阅读块、25 个标题、5 个图片资源块，并保留 167 个 PDF.js 文本块。结构化 Markdown 含公式，原 PDF 页面可正常打开，MinerU 辅助文件也被保存。阅读截图可见作者上标的 `<sup>` 标签仍以文字显示，这类 HTML 排版还未与 Mac 版本一比一。
 
 首次自动导入失败后回退到 PDF.js。原因是 MinerU 在临时输出路径中重复 PaperBridge 的 64 位哈希文件名，使 Windows 路径过长。现使用短名临时副本和短输出路径解析，再将辅助文件复制到论文工作区；原 PDF 始终保持原样。修复后重跑同一 PDF，自动 MinerU 导入成功。
 
