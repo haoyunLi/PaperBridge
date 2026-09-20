@@ -1,0 +1,49 @@
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
+const fs = require('node:fs');
+const path = require('node:path');
+const run = promisify(execFile);
+
+function vendorOf(name) {
+  if (/nvidia/i.test(name)) return 'NVIDIA';
+  if (/amd|radeon/i.test(name)) return 'AMD';
+  if (/intel/i.test(name)) return 'Intel';
+  return 'Other';
+}
+
+async function graphicsStatus() {
+  let adapters = [];
+  try {
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM | ConvertTo-Json -Compress'], { timeout: 8000, windowsHide: true });
+    const values = JSON.parse(stdout.trim());
+    adapters = (Array.isArray(values) ? values : [values]).filter(item => item?.Name).map(item => ({ name: item.Name, vendor: vendorOf(item.Name), driver: item.DriverVersion || '', memoryBytes: item.AdapterRAM || null }));
+  } catch { /* Windows GPU inventory can be unavailable in VMs and restricted sessions. */ }
+  let cudaDriver = null;
+  try {
+    const { stdout } = await run('nvidia-smi', ['--query-gpu=name,driver_version,memory.total', '--format=csv,noheader,nounits'], { timeout: 5000, windowsHide: true });
+    cudaDriver = stdout.trim().split(/\r?\n/).filter(Boolean).map(line => {
+      const [name, driver, mib] = line.split(',').map(value => value.trim());
+      return { name, driver, memoryMiB: Number(mib) || null };
+    });
+  } catch { /* NVIDIA driver tool not present. */ }
+  return { adapters, cudaDriver, detectedAt: new Date().toISOString() };
+}
+
+async function mineruRuntime(executable) {
+  let command = String(executable || '').trim();
+  if (!command) {
+    try { command = (await run('where.exe', ['mineru'], { timeout: 3000, windowsHide: true })).stdout.split(/\r?\n/).find(Boolean) || ''; }
+    catch { return { checked: false, reason: 'MinerU executable was not found on PATH.' }; }
+  }
+  const resolved = fs.existsSync(command) ? command : '';
+  if (!resolved) return { checked: false, reason: 'Enter the full path to MinerU to check its Python environment.' };
+  const python = path.join(path.dirname(resolved), 'python.exe');
+  if (!fs.existsSync(python)) return { checked: false, reason: 'Could not identify the Python interpreter beside MinerU. Check CUDA in the same environment manually.' };
+  try {
+    const script = 'import json,torch; print(json.dumps({"torch":torch.__version__,"cuda":torch.cuda.is_available(),"devices":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}))';
+    const { stdout } = await run(python, ['-c', script], { timeout: 15000, windowsHide: true });
+    return { checked: true, ...JSON.parse(stdout.trim().split(/\r?\n/).at(-1)) };
+  } catch (error) { return { checked: false, reason: `Cannot verify MinerU PyTorch CUDA: ${error.message.slice(0, 140)}` }; }
+}
+
+module.exports = { graphicsStatus, mineruRuntime, vendorOf };

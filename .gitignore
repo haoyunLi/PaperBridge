@@ -37,3 +37,9 @@ Package.resolved
 .vscode/
 *.swp
 *.tmp
+
+# Windows desktop build artifacts
+windows/node_modules/
+windows/dist/
+windows/release/
+windows/test-artifacts/

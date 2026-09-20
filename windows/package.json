@@ -1,0 +1,58 @@
+{
+  "name": "paperbridge-windows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local academic paper reader for Windows",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
+    "build": "vite build",
+    "test": "node --test tests/*.test.cjs",
+    "test:e2e": "node tests/e2e.cjs",
+    "test:packaged": "node tests/packaged.cjs",
+    "pack": "npm run build && electron-builder --win dir",
+    "dist": "npm run build && electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "katex": "^0.16.22",
+    "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.63.0",
+    "vite": "^8.3.0",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "net.paperbridges.windows",
+    "productName": "PaperBridge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/paperbridge.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

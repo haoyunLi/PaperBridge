@@ -1,0 +1,31 @@
+# macOS 1.9 to Windows feature inventory
+
+This is a development ledger, not a claim of completed 1:1 parity. Each item is based on the macOS repository's README and product code. “Partial” means a working path exists with meaningful differences.
+
+| macOS feature | Windows state | Next parity work |
+| --- | --- | --- |
+| Exact original PDF | Implemented | Stress-test large, encrypted, and unusual PDFs. |
+| PDF text extraction | Partial | Improve two-column, footer, formula, and table reconstruction. |
+| MinerU structured Markdown and figures | Partial | Improve paragraph-level anchors, figure handling, and export asset folders. |
+| Pasted text and practice paper | Implemented | Validate more languages and large documents. |
+| Aligned paragraph translation | Implemented | Preserve structured Markdown tokens and exact formula positions. |
+| Resume failed or pending translations | Implemented | Add more queue prioritization and cancellation regression tests. |
+| Translation range | Partial | Add every detected section as a selectable range. |
+| Connected full-paper translation | Partial | Better context windows and structure-preserving output. |
+| Original and target summaries | Partial | Validate exact source quotations and reject fabricated citations like macOS 1.9. |
+| Selected text translation and explanation | Implemented | Add the stricter selection expansion guard from macOS. |
+| Highlights, notes, bookmarks | Partial | Exact offset anchors, PDF page annotations, and structured Markdown highlights. |
+| Paragraph edit, split, merge, undo | Partial | Better anchor migration and reflow action. |
+| Paper library, search, tags | Implemented | Detect damaged assets and improve recovery UI. |
+| Restore reading position | Partial | Restore exact PDF/Markdown viewport within the page. |
+| Reading appearance and focus mode | Implemented | Check more window sizes and dark mode. |
+| Search within Reader | Implemented | Add result navigation and PDF search. |
+| Saved terminology | Implemented | Add term review, matching diagnostics, and translation warnings. |
+| Markdown exports | Partial | Bundle MinerU image assets as files instead of data URIs. |
+| Ollama model download and setup | Partial | Add complete first-run setup and installed-tool diagnosis. |
+| Automatic updates | Not implemented | Choose a signed Windows update channel after release signing. |
+| Native macOS menus and shortcuts | Partial | Add Windows menus, accessibility audit, and remaining shortcuts. |
+
+## GPU behavior
+
+The Windows port detects video adapters, NVIDIA driver presence, and Ollama's running-model VRAM use. Ollama chooses its own backend. MinerU's automatic backend selection belongs to MinerU; its Windows CUDA readiness depends on the installed Python packages and driver. We do not force CUDA based only on a GPU name.
