@@ -1,32 +1,21 @@
-# macOS 1.9 to Windows feature inventory
+# macOS 1.9 ↔ Windows 0.2 parity summary
 
-This is a development ledger, not a claim of completed 1:1 parity. Each item is based on the macOS repository's README and product code. “Partial” means a working path exists with meaningful differences.
+The [111-item feature mapping](FEATURE_MAPPING.md) is the source of truth. It links each Mac behavior to the Windows entry point, marks the current gap, and gives a concrete acceptance check. These statuses come from code inspection; physical GPU and installer verification is still required.
 
-| macOS feature | Windows state | Next parity work |
+| Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
-| Exact original PDF | Implemented | Stress-test large, encrypted, and unusual PDFs. |
-| PDF text extraction | Partial | Improve two-column, footer, formula, and table reconstruction. |
-| MinerU structured Markdown and figures | Partial | Improve paragraph-level anchors, figure handling, and export asset folders. |
-| Pasted text and practice paper | Implemented | Validate more languages and large documents. |
-| Aligned paragraph translation | Implemented | Preserve structured Markdown tokens and exact formula positions. |
-| Resume failed or pending translations | Implemented | Add more queue prioritization and cancellation regression tests. |
-| Translation range | Partial | Add every detected section as a selectable range. |
-| Connected full-paper translation | Partial | Better context windows and structure-preserving output. |
-| Original and target summaries | Partial | Validate exact source quotations and reject fabricated citations like macOS 1.9. |
-| Selected text translation and explanation | Implemented | Add the stricter selection expansion guard from macOS. |
-| Highlights, notes, bookmarks | Partial | Exact offset anchors, PDF page annotations, and structured Markdown highlights. |
-| Paragraph edit, split, merge, undo | Partial | Better anchor migration and reflow action. |
-| Paper library, search, tags | Implemented | Detect damaged assets and improve recovery UI. |
-| Restore reading position | Partial | Restore exact PDF/Markdown viewport within the page. |
-| Reading appearance and focus mode | Implemented | Check more window sizes and dark mode. |
-| Search within Reader | Implemented | Add result navigation and PDF search. |
-| Saved terminology | Implemented | Add term review, matching diagnostics, and translation warnings. |
-| Markdown exports | Partial | Bundle MinerU image assets as files instead of data URIs. |
-| Ollama model download and setup | Implemented | Test the signed installer and large downloads on more physical Windows PCs. |
-| One-click local AI and MinerU setup | Partial | Test full MinerU installation, model preloading, rollback, and CUDA wheels on NVIDIA, AMD, and CPU-only machines. |
-| Automatic updates | Not implemented | Choose a signed Windows update channel after release signing. |
-| Native macOS menus and shortcuts | Partial | Add Windows menus, accessibility audit, and remaining shortcuts. |
+| PDF and text import | Working core, partial parity | Drag and drop; automatic MinerU-first strategy; complete PDF text cleanup. |
+| Original PDF and structured reading | Working core, partial parity | Interleaved Reader resources and portable facsimile/image assets. |
+| Reader and navigation | Working core, partial parity | Bilingual/original/translation modes and precise per-view position restore. |
+| Paragraph translation | Working core, partial parity | Reference exclusion, choose any section, prioritize a running queue. |
+| Full translation | Working plain-text path, partial parity | One structure-preserving document shared by preview and export. |
+| Summary and evidence | Working dual-language summary, partial parity | Exact-quote claim validation before a source link is trusted. |
+| Highlights, notes, terminology | Working Reader path, partial parity | Exact selection anchors, cross-workspace selection, annotation migration. |
+| Library and local recovery | Working core, partial parity | Title editing, new extraction copy, per-paper settings and exact position. |
+| Export | Working Markdown files, partial parity | Self-contained bundle with referenced assets and original PDF. |
+| One-click local AI setup | Implemented path, device verification pending | Real NVIDIA, AMD, CPU, installation, cancellation and rollback tests. |
+| Windows delivery | Unsigned NSIS and portable builds | Signing and a trusted update channel. |
 
 ## GPU behavior
 
-The Windows port detects video adapters, NVIDIA driver presence and reported CUDA version, and Ollama's running-model VRAM use. Ollama chooses its own backend. One-click setup selects a PyTorch CUDA wheel only when a suitable NVIDIA driver is detected, then checks `torch.cuda.is_available()` inside the managed MinerU environment. MinerU falls back to its CPU pipeline when CUDA cannot be verified. The Windows GPU driver itself is not installed by PaperBridge.
+The Windows port detects video adapters, NVIDIA driver presence and reported CUDA version, and Ollama's running-model VRAM use. Ollama chooses its own supported backend. One-click setup selects a PyTorch CUDA wheel only when a suitable NVIDIA driver is detected, then checks `torch.cuda.is_available()` inside the managed MinerU environment. MinerU falls back to its CPU pipeline when CUDA cannot be verified. CUDA does not apply to AMD; the Windows GPU driver itself is not installed by PaperBridge.

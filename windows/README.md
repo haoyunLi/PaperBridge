@@ -1,6 +1,6 @@
 # PaperBridge for Windows (development preview)
 
-This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; consult [PARITY.md](PARITY.md) before calling it a feature-complete 1:1 replacement.
+This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS↔Windows feature mapping](FEATURE_MAPPING.md) and [parity summary](PARITY.md) for current differences before treating it as a 1:1 replacement.
 
 ## Build and run
 
