@@ -273,12 +273,15 @@ async function run() {
     assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'pages', 'page-001.png')));
     assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'pages', 'page-002.png')));
     assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Original Pages.md'), 'utf8'), /pages\/page-001\.png/);
-    assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8'), /Original PDF page 1: Abstract — This note belongs to the original PDF page\./);
-    assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8'), /Original PDF page 2: Abstract — The repeated heading belongs to page two\./);
+    const exportedAnalysis = fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8');
+    assert.match(exportedAnalysis, /Original PDF · page 1\n\n> Abstract\n\nThis note belongs to the original PDF page\./);
+    assert.match(exportedAnalysis, /Original PDF · page 2\n\n> Abstract\n\nThe repeated heading belongs to page two\./);
+    assert.match(exportedAnalysis, /Original PDF · page 1 · blue/);
+    assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);
     const pdfBytes = fs.readFileSync(pdfPath);
     await page.evaluate(bytes => {
       const file = new File([new Uint8Array(bytes)], 'practice.pdf', { type: 'application/pdf' });
-      const transfer = new DataTransfer(); transfer.items.add(file);
+      const transfer = new DataTransfer(); transfer.items.add(new File(['ignore this non-PDF'], 'notes.txt', { type: 'text/plain' })); transfer.items.add(file);
       document.querySelector('.app').dispatchEvent(new DragEvent('drop', { bubbles: true, dataTransfer: transfer }));
     }, [...pdfBytes]);
     await page.getByText('Opened practice.pdf.', { exact: true }).waitFor({ timeout: 15000 });

@@ -1,8 +1,10 @@
 # PaperBridge for Windows (development preview)
 
-This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS↔Windows feature mapping](FEATURE_MAPPING.md) and [parity summary](PARITY.md) for current differences before treating it as a 1:1 replacement.
+This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS↔Windows feature mapping](FEATURE_MAPPING.md), [parity summary](PARITY.md), and [2026-09-20 whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Each paper saves its languages, models, parsing choices, explanation language and results, and inspector state; reading appearance stays global. Long tasks show a progress bar. Summary and Full Translation selections can save notes and highlights in the inspector; inline coloring in those Markdown views remains in progress. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Page images can take time and disk space on long papers. See the mapping for the remaining details.
+The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Each paper saves its languages, models, parsing choices, explanation language and results, and inspector state; reading appearance stays global. Output caches follow their settings and source, and the last opened paper is recorded separately from library modification order. Long tasks show a progress bar and ignore cancelled requests that finish late.
+
+Summary and Full Translation display inline highlights and support saved-note navigation. Annotation undo preserves AI outputs generated afterward. Reader navigation clears search filters, and the current translation section follows scrolling. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Analysis and bilingual exports include bookmarks, highlights, notes, source/translation sides, and review notices for changed anchors. Page images can take time and disk space on long papers. See the mapping for the remaining details.
 
 ## Build and run
 
@@ -20,12 +22,21 @@ npm test
 npm run build
 npm run test:e2e
 npm run test:paper-settings-e2e
+npm run test:last-opened-e2e
+npm run test:model-pull-e2e
+npm run test:reader-review-e2e
+npm run test:task-isolation-e2e
+npm run test:markdown
+npm run test:reopen-mineru
 npm run dist
+npm run test:packaged
 ```
 
 The NSIS installer and portable executable appear in `release/`. GitHub Actions also uploads the Windows build as a workflow artifact. Builds are currently unsigned, so Windows SmartScreen may warn until release signing is configured.
 
-For an opt-in device check, `npm run test:live-ocr` generates an image-only PDF, imports it through the app with MinerU, translates an OCR paragraph with local Ollama, and verifies that Original can return to the OCR Reader. It requires the managed MinerU Python environment, a running Ollama service, and `translategemma:4b` (or `PAPERBRIDGE_LIVE_MODEL`). The [AMD device report](AMD_DEVICE_TEST.md) records results from an RX 7800 XT.
+Build before running the Electron suites, which load `dist/`. Each regression suite uses an isolated workspace under `test-artifacts/`. The service-based regression tests use a local fake Ollama server or controlled IPC; real model and hardware checks are separate.
+
+For an opt-in device check, `npm run test:live-ocr` generates an image-only PDF, imports it through the app with MinerU, translates an OCR paragraph with local Ollama, and verifies that Original can return to the OCR Reader. It requires the managed MinerU Python environment, a running Ollama service, and `translategemma:4b` (or `PAPERBRIDGE_LIVE_MODEL`). The [AMD device report](AMD_DEVICE_TEST.md) records results from an RX 7800 XT; the latest [whole-app review](WHOLE_APP_REVIEW.md#验证范围) includes another successful real OCR and GPU translation run. Complex real-world scans and NVIDIA devices still require separate checks.
 
 ## Updates
 
@@ -34,6 +45,8 @@ PaperBridge checks the official GitHub Release API for published `windows-vX.Y.Z
 ## Local AI and GPU acceleration
 
 Open **Set up local AI** on the welcome screen, in the sidebar, or through Settings. PaperBridge checks the local Ollama service, selected models, MinerU installation, and graphics hardware. **Install missing components** starts an existing Ollama installation or downloads its official signed Windows installer, downloads the selected Ollama models, and installs MinerU into a private Python 3.12 environment. Progress and cancellation are available in the setup panel. Existing working installations are retained. MinerU can need several gigabytes; the first setup may take a while. GPU drivers are not installed by PaperBridge.
+
+Settings also supports manual model download with streaming progress, cancellation and retry. Manual downloads and one-click installation cannot run concurrently. The one-page setup still needs the Mac app's six-step onboarding, 4B/12B/27B and assistant recommendations, optional component controls, and explicit MinerU repair/upgrade actions.
 
 PaperBridge connects only to an Ollama HTTP server on `localhost`, `127.0.0.1`, or `::1`. Reading, notes, bookmarks, and the original PDF do not require Ollama. The manual [Ollama for Windows](https://ollama.com/download/windows) path remains available.
 
@@ -49,7 +62,7 @@ Papers, source PDF copies, translations, notes, and settings are stored in Paper
 
 - `electron/` — native dialogs, secure local storage, MinerU process, Ollama IPC, GPU inventory.
 - `src/` — reader, PDF.js original PDF, translation, summary, library, annotations, settings.
-- `tests/` — unit tests and an Electron workflow test with a local fake Ollama server and sample PDF.
+- `tests/` — unit tests, isolated Electron workflow suites, packaged startup checks, and opt-in real Ollama/MinerU device tests.
 - `assets/` — Windows icon generated from the macOS brand mark with `node scripts/make-icon.cjs`.
 
 Keep macOS and Windows in this repository, with separate platform folders and build jobs. Shared behavior can migrate into cross-platform packages once both ports are stable.

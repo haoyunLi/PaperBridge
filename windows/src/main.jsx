@@ -13,6 +13,9 @@ import { translationSystem, translationPrompt, explainPrompt, summaryPrompt, mer
 import { referenceBlockIds, sectionRanges, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, parsedMarkdownBlocks } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
+import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
+import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
+import { annotationsMarkdown } from './annotationsMarkdown.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -20,6 +23,7 @@ import './hardware.css';
 import './parity.css';
 
 const api = window.paperBridge;
+const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text]) : '';
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
 const sample = ['Abstract', 'This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.', '1 Introduction', 'Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.', '2 Methods', 'Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.', '3 Results', 'Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.', '4 Limitations', 'A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.', '5 Conclusion', 'Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action.'];
 const markdownPlugins = [remarkGfm, remarkMath];
@@ -120,22 +124,17 @@ function viewText(paper, scope) {
 function validViewAnchor(paper, item) { return Number.isInteger(item.offset) && viewText(paper, item.scope).slice(item.offset, item.offset + item.text.length) === item.text; }
 function validPdfSelection(selection) { return selection?.scope === 'pdf' && Number.isInteger(selection.page) && selection.page > 0 && Number.isInteger(selection.offset) && selection.pageText?.slice(selection.offset, selection.offset + selection.text.length) === selection.text; }
 function validBlockAnchor(block, item, kind) { return Number.isInteger(item?.offset) && anchorText(block, kind).slice(item.offset, item.offset + item.text.length) === item.text; }
-function cachedParagraphExplanation(paper, id, language) {
-  const block = paper?.blocks.find(item => item.id === id);
-  const result = paper?.paragraphExplanations?.[`${id}|${language}`];
-  return block && result?.source === block.text ? result : null;
-}
 function markdownDocuments(paper) {
   const original = paper.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
   const translated = paper.blocks.map(block => block.translationMarkdown || block.translation || (block.resource || block.heading ? block.sourceMarkdown || block.text : `[Untranslated block ${block.id}]`)).join('\n\n');
   const bilingual = paper.blocks.map(block => block.resource || block.heading ? block.sourceMarkdown || block.text : `### ${block.id}\n\n${block.sourceMarkdown || block.text}\n\n${block.translationMarkdown || block.translation || '*Not translated*'}`).join('\n\n');
   const evidence = (revalidateSummaryClaims(paper.summary?.claims, paper.blocks) || []).map((claim, index) => `### Claim ${index + 1}: ${claim.text}\n\n${claim.sources?.length ? claim.sources.map(source => `- Block ${source.paragraphID}: “${source.quote}”`).join('\n') : '- No exact source quotation validated.'}`).join('\n\n');
-  const notes = [...paper.blocks.flatMap(block => (block.notes || []).map(note => `- Block ${block.id}: ${note.text} — ${note.body}`)), ...(paper.pdfNotes || []).map(note => `- Original PDF page ${note.page}${note.needsReview ? ' (source changed, review needed)' : ''}: ${note.text} — ${note.body}`), ...(paper.viewNotes || []).map(note => `- ${note.scope}${validViewAnchor(paper, note) ? '' : ' (source changed, review needed)'}: ${note.text} — ${note.body}`)].join('\n');
+  const annotations = annotationsMarkdown(paper);
   const documents = [
     { kind: 'original', name: 'Original', content: original },
     { kind: 'translated', name: 'Translated', content: translated },
-    { kind: 'bilingual', name: 'Bilingual', content: bilingual },
-    { kind: 'analysis', name: 'Analysis', content: `# ${paper.name}\n\n## Source summary\n\n${paper.summary?.source || ''}\n\n## Target summary\n\n${paper.summary?.target || ''}\n\n## Checked sources\n\n${evidence || 'No exact source quotations validated.'}\n\n## Notes\n\n${notes}` }
+    { kind: 'bilingual', name: 'Bilingual', content: `${bilingual}\n\n${annotations}` },
+    { kind: 'analysis', name: 'Analysis', content: `# ${paper.name}\n\n## Source summary\n\n${paper.summary?.source || ''}\n\n## Target summary\n\n${paper.summary?.target || ''}\n\n## Checked sources\n\n${evidence || 'No exact source quotations validated.'}\n\n${annotations}` }
   ];
   if (paper.connectedTranslation) documents.push({ kind: 'full', name: 'Full Translation', content: paper.connectedTranslation });
   return documents;
@@ -364,11 +363,17 @@ function App() {
   const [activeBlock, setActiveBlock] = useState(1);
   const [edit, setEdit] = useState(null);
   const [undo, setUndo] = useState([]);
+  const pendingUndoSnapshot = useRef(null);
   const [pullModel, setPullModel] = useState('');
   const [pullProgress, setPullProgress] = useState(null);
+  const [pulling, setPulling] = useState(false);
+  const [cancellingPull, setCancellingPull] = useState(false);
+  const pullRef = useRef(false);
   const [setupProgress, setSetupProgress] = useState(null);
   const searchRef = useRef(null);
-  const taskRef = useRef({ cancelled: false, ids: new Set() });
+  const taskRef = useRef(null);
+  const selectionRef = useRef(null);
+  selectionRef.current = selection;
   const lookupCache = useRef(new Map());
   const translationQueueRef = useRef(null);
   const mineruPreflight = useRef(false);
@@ -384,15 +389,22 @@ function App() {
   const commitPaper = updater => {
     const current = paperRef.current;
     const next = typeof updater === 'function' ? updater(current) : updater;
+    if (pendingUndoSnapshot.current) {
+      const entry = createUndoEntry(pendingUndoSnapshot.current, next);
+      pendingUndoSnapshot.current = null;
+      if (entry) setUndo(previous => [...previous, entry].slice(-20));
+    }
     paperRef.current = next; setPaper(next);
     if (next) saveChain.current = saveChain.current.catch(() => {}).then(() => api.savePaper(next)).then(setLibrary).catch(err => setError(`Could not save paper: ${err.message}`));
     return next;
   };
-  const loadPaper = async (item, { fromImport = false } = {}) => {
-    if (busy && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
+  const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
+    if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
     await saveChain.current;
-    const loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
+    let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
+    if (token) requireActiveTask(token);
     if (!loaded) throw new Error('Paper could not be loaded.');
+    loaded = { ...loaded, paragraphExplanations: migrateExplanations(loaded, loaded.taskSettings ? restorePaperSettings(settingsRef.current, loaded.taskSettings) : null) };
     if (loaded.taskSettings) {
       const previous = settingsRef.current;
       const restored = restorePaperSettings(previous, loaded.taskSettings);
@@ -403,13 +415,20 @@ function App() {
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
   const updateSettings = change => {
-    const next = { ...settingsRef.current, ...change };
+    const previous = settingsRef.current;
+    const taskChanged = Object.keys(change).some(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
+    if (taskChanged && taskRef.current) cancelTask();
+    const next = { ...previous, ...change };
     settingsRef.current = next; setSettings(next);
-    if (paperRef.current && Object.keys(change).some(key => TASK_SETTING_KEYS.includes(key))) {
-      commitPaper(current => ({ ...current, taskSettings: snapshotPaperSettings(next) }));
+    if (paperRef.current && taskChanged) {
+      commitPaper(current => ({ ...switchOutputSettings(current, previous, next), taskSettings: snapshotPaperSettings(next) }));
+      setSelectionResult(null);
+      setUndo([]);
     }
   };
   const changeExplanationLanguage = language => {
+    if (taskRef.current?.kind === 'selection') cancelTask();
+    setSelectionResult(null);
     setExplanationLanguage(language);
     if (paperRef.current) commitPaper(current => ({ ...current, explanationLanguage: language }));
   };
@@ -432,7 +451,13 @@ function App() {
     setDisplayMode(mode);
     commitPaper(current => ({ ...current, position: { ...current.position, displayMode: mode } }));
   };
-  const rememberUndo = () => { const snapshot = paperRef.current; setUndo(previous => [...previous, snapshot].slice(-20)); };
+  const rememberUndo = () => { pendingUndoSnapshot.current = paperRef.current; };
+  function undoLastChange() {
+    const entry = undo.at(-1);
+    if (!entry) return;
+    if (entry.type === 'structure' && taskRef.current) { setError('Finish or stop the current task before undoing a source edit.'); return; }
+    commitPaper(current => applyUndoEntry(current, entry)); setUndo(previous => previous.slice(0, -1));
+  }
   const restoreMainScroll = () => {
     restoringScroll.current = true;
     requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -452,7 +477,12 @@ function App() {
     const offset = mainScrollRef.current?.scrollTop || 0;
     scrollSaveTimer.current = setTimeout(() => {
       if (paperRef.current?.id !== id) return;
-      commitPaper(current => ({ ...current, position: { ...current.position, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } } }));
+      const host = mainScrollRef.current;
+      const top = host?.getBoundingClientRect().top || 0;
+      const visible = tab === 'Reader' && !search ? [...host.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12) : null;
+      const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
+      if (visible) setActiveBlock(block);
+      commitPaper(current => ({ ...current, position: { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } } }));
     }, 350);
   };
   const changeSearch = value => {
@@ -482,12 +512,26 @@ function App() {
     try { const values = await api.listModels(config.ollamaBaseURL); if (requestId === modelRefreshId.current) { setModels(values); setOllamaError(''); } return values; }
     catch (err) { if (requestId === modelRefreshId.current) { setModels([]); setOllamaError(err.message); } return []; }
   };
+  async function downloadModel() {
+    if (pullRef.current) return;
+    pullRef.current = true; setPulling(true); setCancellingPull(false); setPullProgress(null); setError('');
+    const config = settingsRef.current;
+    try { await api.pullModel({ baseURL: config.ollamaBaseURL, model: pullModel.trim() || 'translategemma:4b' }); await refreshModels(config); setPullProgress(null); setStatus('Model downloaded. Choose its task in Settings.'); }
+    catch (cause) { if (/cancel|abort/i.test(cause.message)) { setStatus('Model download cancelled.'); setPullProgress(null); } else setError(cause.message); }
+    finally { pullRef.current = false; setPulling(false); setCancellingPull(false); }
+  }
+  async function cancelModelDownload() {
+    setCancellingPull(true);
+    try { await api.cancelPullModel(); } catch (cause) { setError(cause.message); setCancellingPull(false); }
+  }
   useEffect(() => {
-    api.bootstrap().then(data => { settingsRef.current = data.settings; setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library); setReady(true); refreshModels(data.settings); api.graphicsStatus().then(setHardware).catch(() => {}); api.mineruRuntime(data.settings.mineruExecutable).then(setMineruRuntime).catch(() => {}); if (data.library.length) loadPaper(data.library[0].id).catch(err => setError(err.message)); }).catch(err => setError(err.message));
+    api.bootstrap().then(data => { settingsRef.current = data.settings; setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library); setReady(true); refreshModels(data.settings); api.graphicsStatus().then(setHardware).catch(() => {}); api.mineruRuntime(data.settings.mineruExecutable).then(setMineruRuntime).catch(() => {}); if (data.library.length) loadPaper(data.library.some(item => item.id === data.lastPaperId) ? data.lastPaperId : data.library[0].id).catch(err => setError(err.message)); }).catch(err => setError(err.message));
     const off = api.onProgress(data => { if (data.kind === 'setup') setSetupProgress(data); else if (data.kind === 'model') setPullProgress(data); else setStatus(data.status || 'MinerU is processing the PDF…'); });
     return off;
   }, []);
   useEffect(() => { if (ready && settings) settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(settings)).catch(err => setError(err.message)); }, [settings, ready]);
+  useEffect(() => { if (paper?.id) { const id = paper.id; saveChain.current.then(() => api.markPaperOpened(id)).catch(cause => setError(cause.message)); } }, [paper?.id]);
+  useEffect(() => { if (taskRef.current?.kind === 'selection' && taskRef.current.selectionKey !== selectionIdentity(selection)) cancelTask(); }, [selectionIdentity(selection)]);
   useEffect(() => {
     if (!ready || settings?.autoCheckUpdates === false) return;
     checkForUpdates(true);
@@ -535,7 +579,7 @@ function App() {
     else if (name === 'translateSelection') { if (selection && !busy) runSelection('translate'); }
     else if (name === 'explainSelection') { if (selection && !busy) runSelection('explain'); }
     else if (name === 'highlightSelection') { if (selection) addHighlight('amber'); }
-    else if (name === 'undo') { if (paper && undo.length) { commitPaper(undo.at(-1)); setUndo(previous => previous.slice(0, -1)); } }
+    else if (name === 'undo') { if (paper && undo.length) undoLastChange(); }
     else if (name === 'settings') setModal('settings');
     else if (name === 'setup') setModal('setup');
     else if (name === 'checkUpdates') checkForUpdates(false);
@@ -587,71 +631,91 @@ function App() {
   useEffect(() => () => clearTimeout(scrollSaveTimer.current), []);
 
   async function openFile() {
+    if (taskRef.current) return;
+    const token = startTask('Opening PDF…');
     try {
-      setBusy({ label: 'Opening PDF…' }); setError('');
       const imported = await api.importPdf();
       if (!imported) return;
-      await ingestPdf(imported);
-    } catch (err) { setError(err.message); } finally { setBusy(null); setProgress(null); }
+      requireActiveTask(token);
+      await ingestPdf(imported, token);
+    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   async function dropPdf(event) {
     const files = [...event.dataTransfer.files];
     if (!files.length) return;
     event.preventDefault();
-    if (files.length !== 1 || !/\.pdf$/i.test(files[0].name)) { setError('Drop one PDF file at a time.'); return; }
+    if (taskRef.current) { setError('Finish or stop the current task before opening another paper.'); return; }
+    const file = files.find(item => /\.pdf$/i.test(item.name));
+    if (!file) { setError('Drop a PDF file to open it.'); return; }
+    const token = startTask('Opening dropped PDF…');
     try {
-      setBusy({ label: 'Opening dropped PDF…' }); setError('');
-      const imported = await api.importPdfBytes({ name: files[0].name, bytes: new Uint8Array(await files[0].arrayBuffer()) });
-      await ingestPdf(imported);
-    } catch (err) { setError(err.message); } finally { setBusy(null); setProgress(null); }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      requireActiveTask(token);
+      const imported = await api.importPdfBytes({ name: file.name, bytes });
+      requireActiveTask(token);
+      await ingestPdf(imported, token);
+    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
-  async function ingestPdf(imported) {
-      if (imported.existing) { await loadPaper(imported.existing, { fromImport: true }); return; }
+  async function ingestPdf(imported, token) {
+      requireActiveTask(token);
+      if (imported.existing) { await loadPaper(imported.existing, { fromImport: true, token }); return; }
       const pdf = await openPdf(imported.bytes);
+      try {
+      requireActiveTask(token);
       const mode = settings.pdfExtractionMode || 'mineruPreferred';
       let mineruMarkdown = '';
       let warning = '';
       if (mode !== 'pdfOnly') {
         const mineru = await api.mineruStatus(settings.mineruExecutable);
+        requireActiveTask(token);
         if (mineru.compatible) {
           setBusy({ label: 'MinerU is reconstructing the paper…' });
           try { mineruMarkdown = await api.extractMineru({ id: imported.id, executable: mineru.executable, backend: settings.mineruBackend }); }
-          catch (cause) { if (mode === 'mineruOnly') throw cause; warning = `MinerU failed: ${cause.message}. Using the selectable PDF text layer.`; }
+          catch (cause) { requireActiveTask(token); if (mode === 'mineruOnly') throw cause; warning = `MinerU failed: ${cause.message}. Using the selectable PDF text layer.`; }
         } else if (mode === 'mineruOnly') throw new Error('MinerU-only mode requires a working MinerU 3.x installation. Open Local AI setup.');
       }
+      requireActiveTask(token);
       setBusy({ label: 'Reading PDF text layer…' });
-      const pdfBlocks = await extractPdf(pdf, (done, total) => setProgress({ done, total }));
+      const pdfBlocks = await extractPdf(pdf, (done, total) => { requireActiveTask(token); setProgress({ done, total }); }, () => requireActiveTask(token));
+      requireActiveTask(token);
       const mineruBlocks = mineruMarkdown ? parsedMarkdownBlocks(mineruMarkdown) : [];
       const useMineru = mineruBlocks.length > 0;
       if (mineruMarkdown && !useMineru) warning = `MinerU returned no readable blocks.${mode === 'mineruOnly' ? ' The original PDF remains available.' : ' Using the selectable PDF text layer if present.'}`;
       const blocks = useMineru ? mineruBlocks : mode === 'mineruOnly' ? [] : pdfBlocks;
       const document = { id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(), blocks, pdfBlocks, mineruBlocks: useMineru ? mineruBlocks : null, mineruMarkdown: useMineru ? mineruMarkdown : '', sourceMode: useMineru ? 'mineru' : 'pdf', tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }, extraction: useMineru ? 'MinerU' : 'PDF.js' };
-      setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English');
+      setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
       setStatus(warning || (blocks.length ? `Extracted ${blocks.length} blocks from ${pdf.numPages} pages. Compare uncertain passages with Original PDF.` : 'No selectable text found. The exact original PDF is available; use MinerU for OCR.'));
+      } finally { await pdf.destroy(); }
   }
   async function importText(text, name = 'Pasted Text') {
-    if (!text.trim()) return;
+    if (!text.trim() || taskRef.current) return;
+    const token = startTask('Preparing pasted text…');
+    try {
     const id = await sha256(text.trim());
     const existing = await api.loadPaper(id);
-    if (existing) await loadPaper(existing);
-    else { setUndo([]); commitPaper({ id, name, type: 'text', createdAt: new Date().toISOString(), blocks: blocksFromText(text), tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper' }, extraction: 'Pasted text' }); setTab('Paper'); setExplanationLanguage('English'); }
+    requireActiveTask(token);
+    if (existing) await loadPaper(existing, { fromImport: true, token });
+    else { setUndo([]); commitPaper({ id, name, type: 'text', createdAt: new Date().toISOString(), blocks: blocksFromText(text), tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper' }, extraction: 'Pasted text' }); setTab('Paper'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch(''); }
     setModal(''); setPaste('');
+    } catch (cause) { if (!token.cancelled) setError(cause.message); } finally { endTask(token); }
   }
   function loadPractice() {
     if (paperRef.current) { setStatus('The practice paper is available from the empty workspace. Your open paper remains unchanged.'); return; }
     importText(sample.join('\n\n'), 'Welcome to PaperBridge (practice sample)').catch(cause => setError(cause.message));
   }
-  function startTask(label) { const token = { cancelled: false, ids: new Set() }; taskRef.current = token; setBusy({ label }); setProgress(null); setError(''); return token; }
-  function endTask(token) { if (taskRef.current === token) { setBusy(null); setProgress(null); } }
+  function startTask(label) { const token = { cancelled: false, ids: new Set(), paperId: paperRef.current?.id }; taskRef.current = token; setBusy({ label }); setProgress(null); setError(''); return token; }
+  function requireActiveTask(token) { if (token.cancelled || taskRef.current !== token) throw new Error('Cancelled'); }
+  function endTask(token) { if (taskRef.current === token) { taskRef.current = null; setBusy(null); setProgress(null); } }
   async function generate(model, prompt, system, token, format) {
+    requireActiveTask(token);
     const requestId = crypto.randomUUID(); token.ids.add(requestId);
-    try { const answer = await api.generate({ baseURL: settings.ollamaBaseURL, model, prompt, system, requestId, format }); if (token.cancelled) throw new Error('Cancelled'); return answer; }
+    try { const answer = await api.generate({ baseURL: settings.ollamaBaseURL, model, prompt, system, requestId, format }); requireActiveTask(token); return answer; }
     finally { token.ids.delete(requestId); }
   }
-  function cancelTask() { taskRef.current.cancelled = true; for (const id of taskRef.current.ids) api.cancel(id); api.cancelMineru(); setBusy(null); setStatus('Task cancelled. Completed work was saved.'); }
+  function cancelTask() { const token = taskRef.current; if (!token) return; token.cancelled = true; for (const id of token.ids) api.cancel(id).catch(() => {}); api.cancelMineru().catch(() => {}); taskRef.current = null; setBusy(null); setProgress(null); setStatus('Task cancelled. Completed work was saved.'); }
   function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) { return glossary.filter(term => term.sourceLanguage === from && term.targetLanguage === to && text.toLowerCase().includes(term.source.toLowerCase())).slice(0, 24); }
   async function translateBlocks(ids) {
-    if (!paperRef.current || busy) return;
+    if (!paperRef.current || busy || taskRef.current) return;
     const token = startTask('Translating paragraphs…');
     const references = referenceBlockIds(paperRef.current.blocks);
     const queue = paperRef.current.blocks.filter(block => ids.includes(block.id) && block.status !== 'ok' && !block.heading && !block.resource && !references.has(block.id));
@@ -686,44 +750,47 @@ function App() {
     setStatus('Current section will run after the block in progress. Completed translations are retained.');
   }
   async function runSelection(kind) {
-    if (!selection || busy) return;
+    if (!selection || busy || taskRef.current) return;
     const block = paperRef.current.blocks.find(item => item.id === selection.id);
-    const context = selection.scope === 'pdf' ? selection.context || '' : block?.text || selection.context || '';
+    const context = selection.scope === 'pdf' ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
     const model = settings.quickLookupModel || (kind === 'translate' ? settings.translationModel : settings.explainModel);
     const from = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
     const to = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
-    const cacheKey = JSON.stringify([paperRef.current.id, kind, selection.scope, selection.page, selection.offset, selection.text, context, from, to, model]);
+    const selectedKey = selectionIdentity(selection);
+    const cacheKey = JSON.stringify([paperRef.current.id, kind, selectedKey, context, from, to, model, settings.ollamaBaseURL, explanationLanguage, matchingTerms(selection.text, from, to)]);
     if (lookupCache.current.has(cacheKey)) { setSelectionResult({ kind, output: lookupCache.current.get(cacheKey) }); return; }
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
+    token.kind = 'selection'; token.selectionKey = selectedKey;
     try {
       const output = kind === 'translate'
          ? await generate(model, translationPrompt(selection.text, from, to, matchingTerms(selection.text, from, to)), translationSystem(to), token)
-         : await generate(model, explainPrompt(selection.text, context, settings.targetLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
-      if (!token.cancelled) { lookupCache.current.set(cacheKey, output); setSelectionResult({ kind, output }); }
+         : await generate(model, explainPrompt(selection.text, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
+      if (!token.cancelled && selectionIdentity(selectionRef.current) === selectedKey) { lookupCache.current.set(cacheKey, output); setSelectionResult({ kind, output }); }
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   async function reextractAsNew() {
-    if (paper?.type !== 'pdf' || busy) return;
-    setModal(''); setBusy({ label: 'Creating a new extraction…' }); setError('');
-    try { await ingestPdf(await api.copyPdfAsNew({ id: paper.id, name: paper.name })); }
-    catch (cause) { setError(cause.message); }
-    finally { setBusy(null); setProgress(null); }
+    if (paper?.type !== 'pdf' || busy || taskRef.current) return;
+    setModal(''); const token = startTask('Creating a new extraction…');
+    try { await ingestPdf(await api.copyPdfAsNew({ id: paper.id, name: paper.name }), token); }
+    catch (cause) { if (!token.cancelled) setError(cause.message); }
+    finally { endTask(token); }
   }
   async function explainBlock(id) {
     const block = paperRef.current?.blocks.find(item => item.id === id);
-    if (!block || busy) return;
+    if (!block || busy || taskRef.current) return;
     const token = startTask(`Explaining block ${id}…`);
     try {
       const output = await generate(settings.explainModel, explainPrompt(block.text, block.text, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
       if (!token.cancelled) {
-        const result = { id, language: explanationLanguage, source: block.text, output };
-        commitPaper(current => ({ ...current, paragraphExplanations: { ...current.paragraphExplanations, [`${id}|${explanationLanguage}`]: result } }));
+        const settingsKey = explanationKey(id, explanationLanguage, settings);
+        const result = { id, language: explanationLanguage, source: block.text, output, settingsKey };
+        commitPaper(current => ({ ...current, paragraphExplanations: { ...current.paragraphExplanations, [settingsKey]: result } }));
         setInspector(true);
       }
     } catch (cause) { if (!token.cancelled) setError(cause.message); } finally { endTask(token); }
   }
   async function summarize() {
-    if (!paperRef.current || busy) return;
+    if (!paperRef.current || busy || taskRef.current) return;
     if (!paperRef.current.blocks.some(block => !block.heading && !block.resource)) { setError('No readable text to summarize. Use MinerU OCR first.'); return; }
     const token = startTask('Summarizing paper…');
     try {
@@ -772,7 +839,7 @@ function App() {
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   async function fullTranslation(force = false) {
-    if (!paperRef.current || busy) return;
+    if (!paperRef.current || busy || taskRef.current) return;
     if (!paperRef.current.blocks.some(block => !block.heading && !block.resource)) { setError('No readable text to translate. Use MinerU OCR first.'); return; }
     const token = startTask('Translating full paper…');
     try {
@@ -814,7 +881,7 @@ function App() {
   async function runMineru() {
     if (!paper || paper.type !== 'pdf' || busy || mineruPreflight.current) return;
     const hasMineruWork = blocks => blocks?.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
-    if ((paper.sourceMode === 'mineru' && hasMineruWork(paper.blocks)) || hasMineruWork(paper.mineruBlocks)) {
+    if ((paper.sourceMode === 'mineru' && (hasMineruWork(paper.blocks) || paper.summary || paper.connectedTranslation)) || hasMineruWork(paper.mineruBlocks)) {
       setError('This MinerU reader already contains saved work. Export it before parsing the PDF again.');
       return;
     }
@@ -823,7 +890,7 @@ function App() {
     try { runtime = await api.mineruStatus(settings.mineruExecutable); }
     catch (cause) { setError(`MinerU detection failed: ${cause.message}`); return; }
     finally { mineruPreflight.current = false; }
-    if (paperRef.current?.id !== paper.id) return;
+    if (paperRef.current?.id !== paper.id || taskRef.current) return;
     if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); setModal('setup'); return; }
     const token = startTask('MinerU is extracting structure…');
     try {
@@ -832,17 +899,22 @@ function App() {
       const blocks = parsedMarkdownBlocks(markdown);
       if (!blocks.length) { setStatus('MinerU completed but found no readable blocks. The original PDF and existing Reader were kept.'); return; }
       commitPaper(current => {
-        const hasUserWork = current.blocks.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
+        const hasUserWork = current.summary || current.connectedTranslation || current.blocks.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
         return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, pdfBlocks: current.pdfBlocks || current.blocks, blocks: hasUserWork ? current.blocks : blocks, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
       });
       setStatus(`MinerU structure ready: ${blocks.length} blocks. You can switch Reader source without discarding either version.`);
-    } catch (err) { setError(err.message); } finally { endTask(token); }
+    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   function switchSourceMode(mode) {
-    if (!paper || paper.sourceMode === mode) return;
-    commitPaper(current => mode === 'mineru'
-      ? { ...current, pdfBlocks: current.blocks, blocks: current.mineruBlocks, extraction: 'MinerU', sourceMode: 'mineru' }
-      : { ...current, mineruBlocks: current.blocks, blocks: current.pdfBlocks, extraction: 'PDF.js', sourceMode: 'pdf' });
+    if (!paper || paper.sourceMode === mode || taskRef.current) return;
+    commitPaper(current => {
+      const switched = mode === 'mineru'
+        ? { ...current, pdfBlocks: current.blocks, blocks: current.mineruBlocks, extraction: 'MinerU', sourceMode: 'mineru' }
+        : { ...current, mineruBlocks: current.blocks, blocks: current.pdfBlocks, extraction: 'PDF.js', sourceMode: 'pdf' };
+      const restored = switchOutputSettings(switched, current.sourceSettings?.[mode] || settingsRef.current, settingsRef.current, { paragraphsOnly: true });
+      return { ...restored, summary: restored.summary ? { ...restored.summary, stale: true } : null, connectedStale: Boolean(restored.connectedTranslation) };
+    });
+    setUndo([]); setSelection(null); setSearch('');
     setActiveBlock(1);
     setStatus(`Reader source changed to ${mode === 'mineru' ? 'MinerU' : 'PDF text'}. The other version remains saved.`);
   }
@@ -991,11 +1063,16 @@ function App() {
   function removePdfHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfHighlights: (current.pdfHighlights || []).filter(item => item.id !== id) })); }
   function addTerm() {
     if (!selection || !termDraft.trim()) return;
-    setGlossary(current => [{ source: selection.text.slice(0, 160), target: termDraft.trim().slice(0, 300), sourceLanguage: settings.sourceLanguage, targetLanguage: settings.targetLanguage }, ...current].slice(0, 500));
+    if (selection.text.length > 160 || termDraft.trim().length > 300) { setError('Use at most 160 characters for the term and 300 for its translation.'); return; }
+    const sourceLanguage = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
+    const targetLanguage = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
+    const matches = term => term.source.toLocaleLowerCase() === selection.text.toLocaleLowerCase() && term.sourceLanguage === sourceLanguage && term.targetLanguage === targetLanguage;
+    if (glossary.length >= 500 && !glossary.some(matches)) { setError('The terminology list is full. Remove a term before adding another.'); return; }
+    setGlossary(current => [{ source: selection.text, target: termDraft.trim(), sourceLanguage, targetLanguage }, ...current.filter(term => !matches(term))]);
     setTermDraft(''); setStatus('Term saved for future translations.');
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
-  function navigate(id) { setActiveBlock(id); setTab('Reader'); commitPaper(current => ({ ...current, position: { ...current.position, block: id } })); setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
+  function navigate(id) { searchOrigin.current = null; setSearch(''); setActiveBlock(id); setTab('Reader'); commitPaper(current => ({ ...current, position: { ...current.position, block: id } })); setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
   function navigateBlockAnnotation(blockId, item, kind, recordType) {
     const mode = kind === 'translation' && displayMode === 'source' || kind === 'source' && displayMode === 'translation' ? 'bilingual' : displayMode;
     window.getSelection()?.removeAllRanges();
@@ -1028,6 +1105,7 @@ function App() {
     setError('The saved PDF text no longer matches this page. The annotation was kept for review.');
   }
   function modifyBlocks(transform) {
+    if (taskRef.current) { setError('Finish or stop the current task before editing the source.'); return; }
     if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
     rememberUndo();
     commitPaper(current => ({ ...current, blocks: transform(current.blocks).map((block, index) => ({ ...block, id: index + 1 })), summary: current.summary ? { ...current.summary, stale: true } : null, connectedStale: Boolean(current.connectedTranslation) }));
@@ -1086,7 +1164,7 @@ function App() {
   const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper, referenceIDs]);
   const filteredLibrary = library.filter(item => `${item.name} ${(item.tags || []).join(' ')}`.toLowerCase().includes(librarySearch.toLowerCase()));
   const visibleBlocks = paper?.blocks.filter(block => !search || `${block.text} ${block.translation}`.toLowerCase().includes(search.toLowerCase())) || [];
-  const paragraphExplanation = cachedParagraphExplanation(paper, activeBlock, explanationLanguage);
+  const paragraphExplanation = cachedExplanation(paper, activeBlock, explanationLanguage, settings);
   const translatedCount = paper?.blocks.filter(block => block.status === 'ok' && !block.heading && !block.resource && !referenceIDs.has(block.id)).length || 0;
   const failedCount = paper?.blocks.filter(block => block.status === 'failed' && !block.heading && !block.resource && !referenceIDs.has(block.id)).length || 0;
   const translatableCount = paper?.blocks.filter(block => !block.heading && !block.resource && !referenceIDs.has(block.id)).length || 0;
@@ -1114,6 +1192,7 @@ function App() {
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
         {updateInfo?.status === 'available' && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setUpdateInfo(null)}>Later</button></div>}
         {busy && <TaskProgress busy={busy} progress={progress} failedCount={failedCount} />}
+        {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className="content-column">
@@ -1125,7 +1204,7 @@ function App() {
           <div className="section-heading smaller"><div><h2>Document preview</h2><p>{paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Selectable PDF text · exact pages are in Original' : 'Pasted source text'}</p></div>{paper.type === 'pdf' && <button className="button outline" onClick={() => setTab('Original')}>Original PDF</button>}</div>
           <PaperPreview paper={paper} onSelect={captureViewSelection} onContinue={() => setTab('Reader')} />
         </div>}
-        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title="Bookmark" onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title="Edit source" disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button><button className="mini-action" title="Translate or retry block" onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button><button className="mini-action" title="Explain full paragraph" disabled={block.heading || block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={block.highlights}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, block.highlights)}</div>{!block.heading && !block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={block.translationHighlights}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, block.translationHighlights)) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{block.notes?.length > 0 && <div className="block-notes">{block.notes.map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={() => { commitPaper(undo.at(-1)); setUndo(previous => previous.slice(0, -1)); }}><Undo2 size={16} /> Undo last change</button>}</div>}
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title="Bookmark" onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title="Edit source" disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button><button className="mini-action" title="Translate or retry block" onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button><button className="mini-action" title="Explain full paragraph" disabled={block.heading || block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={block.highlights}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, block.highlights)}</div>{!block.heading && !block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={block.translationHighlights}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, block.translationHighlights)) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{block.notes?.length > 0 && <div className="block-notes">{block.notes.map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView
           paper={paper}
           pageNumber={pageNumber}
@@ -1151,7 +1230,7 @@ function App() {
       {modal === 'setup' && <SetupPanel settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => refreshModels(settings)} />}
       {modal === 'settings' && <button className="button blue" onClick={() => setModal('setup')}><Download size={16} /> Detect and install local AI</button>}
       {modal === 'settings' && <><label>PDF extraction mode<select value={settings.pdfExtractionMode || 'mineruPreferred'} onChange={event => updateSettings({ pdfExtractionMode: event.target.value })}><option value="mineruPreferred">MinerU, then selectable PDF text</option><option value="mineruOnly">MinerU only</option><option value="pdfOnly">Selectable PDF text only (no OCR)</option></select></label><label>Quick lookup model<select value={settings.quickLookupModel || settings.translationModel} onChange={event => updateSettings({ quickLookupModel: event.target.value })}>{[...new Set([settings.quickLookupModel || settings.translationModel, ...models])].map(value => <option key={value}>{value}</option>)}</select></label></>}
-      {modal === 'settings' && <><label>Ollama URL<input value={settings.ollamaBaseURL} onChange={event => updateSettings({ ollamaBaseURL: event.target.value })} /></label><button className="button outline" onClick={() => refreshModels(settings)}><RefreshCw size={15} /> Refresh models</button>{ollamaError && <Notice tone="error">{ollamaError}</Notice>}<div className="settings-grid"><label>Source language<select value={settings.sourceLanguage} onChange={event => updateSettings({ sourceLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label><label>Target language<select value={settings.targetLanguage} onChange={event => updateSettings({ targetLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label></div><button className="button ghost" onClick={() => updateSettings({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={15} /> Swap languages</button><div className="settings-grid">{[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model']].map(([key, label]) => <label key={key}>{label}<select value={settings[key]} onChange={event => updateSettings({ [key]: event.target.value })}>{[...new Set([settings[key], ...models])].map(value => <option key={value}>{value}</option>)}</select></label>)}</div><p className="settings-tip">Need a model? Enter its Ollama name and download it locally.</p><div className="row"><input value={pullModel} placeholder="translategemma:4b" onChange={event => setPullModel(event.target.value)} /><button className="button blue" onClick={async () => { try { await api.pullModel({ baseURL: settings.ollamaBaseURL, model: pullModel || 'translategemma:4b' }); refreshModels(settings); setPullProgress(null); } catch (err) { setError(err.message); } }}>Download model</button></div>{pullProgress && <p>{pullProgress.status} {pullProgress.total ? `${Math.round(100 * pullProgress.completed / pullProgress.total)}%` : ''}</p>}<label>MinerU executable<input value={settings.mineruExecutable} placeholder="mineru (from PATH)" onChange={event => updateSettings({ mineruExecutable: event.target.value })} /></label><div className="settings-grid"><label>Reader font size<input type="range" min="14" max="25" value={settings.fontSize} onChange={event => updateSettings({ fontSize: Number(event.target.value) })} />{settings.fontSize}px</label><label>Line spacing<input type="range" min="1.3" max="2.2" step="0.1" value={settings.lineHeight} onChange={event => updateSettings({ lineHeight: Number(event.target.value) })} />{settings.lineHeight}</label><label>Reading width<input type="range" min="560" max="1100" step="20" value={settings.readingWidth} onChange={event => updateSettings({ readingWidth: Number(event.target.value) })} />{settings.readingWidth}px</label></div></>}
+      {modal === 'settings' && <><label>Ollama URL<input value={settings.ollamaBaseURL} onChange={event => updateSettings({ ollamaBaseURL: event.target.value })} /></label><button className="button outline" onClick={() => refreshModels(settings)}><RefreshCw size={15} /> Refresh models</button>{ollamaError && <Notice tone="error">{ollamaError}</Notice>}<div className="settings-grid"><label>Source language<select value={settings.sourceLanguage} onChange={event => updateSettings({ sourceLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label><label>Target language<select value={settings.targetLanguage} onChange={event => updateSettings({ targetLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label></div><button className="button ghost" onClick={() => updateSettings({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={15} /> Swap languages</button><div className="settings-grid">{[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model']].map(([key, label]) => <label key={key}>{label}<select value={settings[key]} onChange={event => updateSettings({ [key]: event.target.value })}>{[...new Set([settings[key], ...models])].map(value => <option key={value}>{value}</option>)}</select></label>)}</div><p className="settings-tip">Need a model? Enter its Ollama name and download it locally.</p><div className="row"><input aria-label="Model to download" value={pullModel} disabled={pulling} placeholder="translategemma:4b" onChange={event => setPullModel(event.target.value)} /><button className="button blue" disabled={pulling} onClick={downloadModel}>Download model</button>{pulling && <button className="button outline" disabled={cancellingPull} onClick={cancelModelDownload}>{cancellingPull ? 'Cancelling…' : 'Cancel download'}</button>}</div>{pullProgress && <p>{pullProgress.status} {pullProgress.total ? `${Math.round(100 * pullProgress.completed / pullProgress.total)}%` : ''}</p>}<label>Maximum translation chunk<input type="range" min="500" max="6000" step="100" value={settings.maxParagraphChars} onChange={event => updateSettings({ maxParagraphChars: Number(event.target.value) })} />{settings.maxParagraphChars} characters</label><p className="settings-tip">Controls the maximum size of each translation request. Reader paragraphs remain visually intact.</p><label>MinerU executable<input value={settings.mineruExecutable} placeholder="mineru (from PATH)" onChange={event => updateSettings({ mineruExecutable: event.target.value })} /></label><div className="settings-grid"><label>Reader font size<input type="range" min="14" max="25" value={settings.fontSize} onChange={event => updateSettings({ fontSize: Number(event.target.value) })} />{settings.fontSize}px</label><label>Line spacing<input type="range" min="1.3" max="2.2" step="0.1" value={settings.lineHeight} onChange={event => updateSettings({ lineHeight: Number(event.target.value) })} />{settings.lineHeight}</label><label>Reading width<input type="range" min="560" max="1100" step="20" value={settings.readingWidth} onChange={event => updateSettings({ readingWidth: Number(event.target.value) })} />{settings.readingWidth}px</label></div></>}
       {modal === 'settings' && <div className="hardware-panel">
         <div className="row"><strong>Graphics acceleration</strong><button className="button outline" onClick={() => { api.graphicsStatus().then(setHardware); api.mineruRuntime(settings.mineruExecutable).then(setMineruRuntime); api.runningModels(settings.ollamaBaseURL).then(setRunningModels).catch(() => setRunningModels([])); }}><RefreshCw size={14} /> Check</button></div>
         <p>{hardware?.adapters?.length ? hardware.adapters.map(adapter => `${adapter.name} (${adapter.vendor})`).join(' · ') : 'No graphics adapter reported by Windows.'}</p>

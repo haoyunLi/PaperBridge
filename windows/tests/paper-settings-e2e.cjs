@@ -109,9 +109,26 @@ async function run() {
     await pastePaper(page, textA, 2);
     await chooseSettings(page, 'English', 'Simplified Chinese', modelA);
     await explainBlockIn(page, 'French');
+    await page.getByRole('button', { name: 'Translate Paper', exact: true }).click();
+    await waitFor(() => readPaper(textA).blocks[1]?.status === 'ok', 'paper A translation');
+    await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'detached' });
+    await chooseSettings(page, 'Japanese', 'English', modelB);
+    assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
+    await waitFor(() => readPaper(textA).blocks[1]?.status === 'pending', 'different settings do not reuse old translation');
+    await chooseSettings(page, 'English', 'Simplified Chinese', modelA);
+    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+    await waitFor(() => readPaper(textA).blocks[1]?.status === 'ok', 'original task settings restore translation');
+    await openSettings(page);
+    const chunkSlider = page.getByRole('slider', { name: /Maximum translation chunk/ });
+    const originalChunk = Number(await chunkSlider.inputValue());
+    await chunkSlider.press('ArrowRight');
+    await waitFor(() => readPaper(textA).taskSettings.maxParagraphChars === originalChunk + 100 && readPaper(textA).blocks[1].status === 'pending', 'chunk slider changes only the paragraph output variant');
+    await chunkSlider.press('ArrowLeft');
+    await waitFor(() => readPaper(textA).taskSettings.maxParagraphChars === originalChunk && readPaper(textA).blocks[1].status === 'ok', 'restoring chunk size recovers the completed paragraph');
+    await closeSettings(page);
     await page.locator('.inspector-title .icon-button').click();
     await waitFor(() => readPaper(textA).taskSettings?.translationModel === modelA, 'paper A task settings');
-    await waitFor(() => readPaper(textA).inspectorOpen === false && readPaper(textA).paragraphExplanations?.['2|French']?.output === 'Saved paragraph explanation', 'paper A explanation and inspector');
+    await waitFor(() => readPaper(textA).inspectorOpen === false && Object.values(readPaper(textA).paragraphExplanations || {}).some(result => result.language === 'French' && result.output === 'Saved paragraph explanation'), 'paper A explanation and inspector');
 
     await pastePaper(page, textB, 3);
     await chooseSettings(page, 'Japanese', 'English', modelB);
@@ -124,7 +141,7 @@ async function run() {
     await closeSettings(page);
     const appearance = { fontSize: '25', lineHeight: '2.2', readingWidth: '1100' };
     await waitFor(() => readPaper(textB).taskSettings?.translationModel === modelB, 'paper B task settings');
-    await waitFor(() => readPaper(textB).inspectorOpen === true && readPaper(textB).paragraphExplanations?.['2|German']?.output === 'Saved paragraph explanation', 'paper B explanation and inspector');
+    await waitFor(() => readPaper(textB).inspectorOpen === true && Object.values(readPaper(textB).paragraphExplanations || {}).some(result => result.language === 'German' && result.output === 'Saved paragraph explanation'), 'paper B explanation and inspector');
     await openByBlocks(page, 2, 'Paper A describes');
     assert.equal(await page.locator('.inspector').isVisible(), false);
     await assertSettings(page, 'English', 'Simplified Chinese', modelA, appearance);
@@ -169,6 +186,8 @@ async function run() {
     await page.waitForFunction(() => document.querySelector('.title-wrap p')?.textContent?.includes('Japanese → English'));
     assert.equal(await page.locator('.block').count(), 2);
     await page.locator('button[title="Toggle inspector"]').click();
+    assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
+    await chooseSettings(page, 'English', 'Simplified Chinese', modelA);
     await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
     await page.locator('#block-2 button[title="Edit source"]').click();
     await page.locator('#block-2 .edit-area textarea').fill('Paper A revised text invalidates the old explanation.');

@@ -42,11 +42,13 @@ function pageLines(content, pageWidth) {
   });
 }
 
-export async function extractPdf(pdf, onPage) {
+export async function extractPdf(pdf, onPage, checkActive) {
   const pages = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    checkActive?.();
     const page = await pdf.getPage(pageNumber);
     const content = await page.getTextContent();
+    checkActive?.();
     const viewport = page.getViewport({ scale: 1 });
     pages.push({ pageNumber, width: viewport.width, height: viewport.height, lines: pageLines(content, viewport.width) });
     onPage?.(pageNumber, pdf.numPages);

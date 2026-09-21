@@ -44,6 +44,7 @@ function writeJson(file, value) {
 function createStore(root) {
   const papersDir = path.join(root, 'papers');
   const pdfDir = path.join(root, 'pdfs');
+  const lastPaperFile = path.join(root, 'last-paper.json');
   const paperPath = id => path.join(papersDir, `${safeId(id)}.json`);
   const pdfPath = id => path.join(pdfDir, `${safeId(id)}.pdf`);
   return {
@@ -56,6 +57,17 @@ function createStore(root) {
     glossary() { return readJson(path.join(root, 'glossary.json'), []); },
     saveGlossary(glossary) { writeJson(path.join(root, 'glossary.json'), glossary.slice(0, 500)); },
     paper(id) { return readJson(paperPath(id), null); },
+    lastPaperId() {
+      const id = readJson(lastPaperFile, {})?.id;
+      try { return readJson(paperPath(id), null) ? id : null; }
+      catch { return null; }
+    },
+    markPaperOpened(id) {
+      safeId(id);
+      if (!readJson(paperPath(id), null)) throw new Error('Paper could not be loaded.');
+      writeJson(lastPaperFile, { id });
+      return id;
+    },
     savePaper(paper) {
       safeId(paper.id);
       writeJson(paperPath(paper.id), { ...paper, updatedAt: new Date().toISOString() });
@@ -66,7 +78,7 @@ function createStore(root) {
           if (/^[a-f0-9]{64}\.json(?:\.backup)?$/.test(name)) fs.unlinkSync(path.join(papersDir, name));
         }
       }
-      for (const name of ['settings.json', 'settings.json.backup', 'glossary.json', 'glossary.json.backup', 'updates.json', 'updates.json.backup']) {
+      for (const name of ['settings.json', 'settings.json.backup', 'glossary.json', 'glossary.json.backup', 'updates.json', 'updates.json.backup', 'last-paper.json', 'last-paper.json.backup']) {
         const file = path.join(root, name);
         if (fs.existsSync(file)) fs.unlinkSync(file);
       }
@@ -81,4 +93,8 @@ function createStore(root) {
   };
 }
 
-module.exports = { createStore, defaults, safeId, readJson, writeJson };
+function bootstrapSnapshot(store, version) {
+  return { settings: store.settings(), glossary: store.glossary(), library: store.list(), lastPaperId: store.lastPaperId(), version };
+}
+
+module.exports = { createStore, defaults, safeId, readJson, writeJson, bootstrapSnapshot };

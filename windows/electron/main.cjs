@@ -4,11 +4,12 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
-const { createStore, safeId } = require('./storage.cjs');
+const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { writeBundle } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
+const { createModelPullManager } = require('./model-pull.cjs');
 
 let window;
 let store;
@@ -16,6 +17,7 @@ let activeMineru = null;
 let setupManager = null;
 let activeBundle = null;
 const requests = new Map();
+const modelPullManager = createModelPullManager({ pullModel: pullOllamaModel, emit: progress, isSetupBusy: () => Boolean(setupManager?.controller) });
 
 function localOllamaURL(value, endpoint) {
   const url = new URL(value || 'http://localhost:11434');
@@ -102,14 +104,17 @@ async function readMineruMarkdown(file) {
 
 function registerHandlers() {
   const checkUpdates = createUpdateChecker({ store, currentVersion: () => app.getVersion() });
-  ipcMain.handle('bootstrap', () => ({ settings: store.settings(), glossary: store.glossary(), library: store.list(), version: app.getVersion() }));
+  ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   ipcMain.handle('updates:check', (_event, automatic = false) => checkUpdates(automatic));
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
   ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable));
   ipcMain.handle('mineru:status', (_event, executable) => mineruStatus(executable, setupManager.toolsRoot));
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
-  ipcMain.handle('setup:install', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.install(config); });
+  ipcMain.handle('setup:install', (_event, config) => {
+    if (modelPullManager.busy) throw new Error('A model download is already running. Cancel it or wait before starting Local AI setup.');
+    localOllamaURL(config.baseURL, 'api/tags'); return setupManager.install(config);
+  });
   ipcMain.handle('setup:cancel', () => setupManager.cancel());
   ipcMain.handle('ollama:running', async (_event, baseURL) => {
     const response = await ollamaRequest(baseURL, 'api/ps');
@@ -119,6 +124,7 @@ function registerHandlers() {
   ipcMain.handle('settings:save', (_event, settings) => store.saveSettings(settings));
   ipcMain.handle('glossary:save', (_event, glossary) => store.saveGlossary(glossary));
   ipcMain.handle('paper:load', (_event, id) => store.paper(safeId(id)));
+  ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
   ipcMain.handle('paper:save', (_event, paper) => { store.savePaper(paper); return store.list(); });
   ipcMain.handle('paper:clear-data', () => store.clearData());
   ipcMain.handle('pdf:import', async () => {
@@ -189,9 +195,8 @@ function registerHandlers() {
   });
   ipcMain.handle('ollama:cancel', (_event, requestId) => { requests.get(requestId)?.abort(); });
   ipcMain.handle('mineru:cancel', () => { activeMineru?.kill(); });
-  ipcMain.handle('ollama:pull', async (_event, { baseURL, model }) => {
-    return pullOllamaModel(baseURL, model, null, event => progress({ kind: 'model', model, status: event.status, completed: event.completed, total: event.total }));
-  });
+  ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
+  ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
   ipcMain.handle('mineru:extract', async (_event, { id, executable, backend }) => {
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
@@ -299,7 +304,7 @@ app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-app.on('before-quit', () => { setupManager?.cancel(); });
+app.on('before-quit', () => { setupManager?.cancel(); modelPullManager.cancel(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 module.exports = { localOllamaURL };

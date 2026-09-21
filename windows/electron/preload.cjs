@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   savePaper: paper => ipcRenderer.invoke('paper:save', paper),
   clearData: () => ipcRenderer.invoke('paper:clear-data'),
   loadPaper: id => ipcRenderer.invoke('paper:load', id),
+  markPaperOpened: id => ipcRenderer.invoke('paper:mark-opened', id),
   saveSettings: settings => ipcRenderer.invoke('settings:save', settings),
   saveGlossary: glossary => ipcRenderer.invoke('glossary:save', glossary),
   exportMarkdown: payload => ipcRenderer.invoke('markdown:export', payload),
@@ -27,6 +28,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   cancel: requestId => ipcRenderer.invoke('ollama:cancel', requestId),
   cancelMineru: () => ipcRenderer.invoke('mineru:cancel'),
   pullModel: payload => ipcRenderer.invoke('ollama:pull', payload),
+  cancelPullModel: () => ipcRenderer.invoke('ollama:cancel-pull'),
   extractMineru: payload => ipcRenderer.invoke('mineru:extract', payload),
   onProgress: callback => {
     const listener = (_event, data) => callback(data);
