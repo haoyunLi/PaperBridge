@@ -26,6 +26,11 @@ export function sectionRanges(blocks) {
   return sections;
 }
 
+export function translationRangeIds(blocks, requestedIds = null, excluded = referenceBlockIds(blocks)) {
+  const requested = Array.isArray(requestedIds) ? new Set(requestedIds) : null;
+  return blocks.filter(block => (!requested || requested.has(block.id)) && block.status !== 'ok' && !block.resource && !excluded.has(block.id)).map(block => block.id);
+}
+
 export function qualityIssues(blocks, excluded = new Set()) {
   return blocks.flatMap(block => {
     const value = String(block.text || '').trim();

@@ -225,7 +225,7 @@ async function run() {
     assert.ok(exports[1].name.endsWith('-bilingual'));
     for (const exported of exports) {
       assert.match(exported.content, /## Bookmarks\n\n- Block 4: Beta control/);
-      assert.match(exported.content, /## Highlights\n\n### Block 4 · source · amber\n\n> Beta control/);
+      assert.match(exported.content, /## Highlights\n\n### Reader · Block 4 · source · amber\n\n> Beta control/);
       assert.match(exported.content, /## Notes\n\nNone saved\./);
     }
     fs.writeFileSync(path.join(artifacts, 'reader-review-exports.json'), JSON.stringify(exports, null, 2));

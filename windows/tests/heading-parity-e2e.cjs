@@ -66,7 +66,8 @@ async function run() {
     { id: 1, text: 'Abstract', heading: true },
     { id: 2, text: 'Study design', sourceMarkdown: '## Study design', heading: true },
     { id: 3, text: '2 Methods We retained all evidence from both independent reviewers', heading: false },
-    { id: 4, text: 'A regular body paragraph remains available for translation.', heading: false }
+    { id: 4, text: 'A regular body paragraph remains available for translation.', heading: false },
+    { id: 5, text: 'Fixed figure resource', sourceMarkdown: '```text\nfixed resource\n```', heading: false, resource: true }
   ].map(block => ({ ...block, translation: '', translationMarkdown: null, status: 'pending', error: '', bookmark: false, highlights: [], translationHighlights: [], notes: [] }));
   fs.writeFileSync(paperFile, JSON.stringify({ id, name: 'Heading parity fixture', type: 'text', blocks,
     sourceMode: 'text', extraction: 'Pasted text', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -107,6 +108,12 @@ async function run() {
     await page.locator('#block-1 button[title="Retry heading"]').click();
     await page.locator('#block-1 .translation-text.done').getByText('摘要', { exact: true }).waitFor();
     assert.match(await page.locator('.reader-top').innerText(), /1 of 4 blocks translated/);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Translation Range', exact: true }).click();
+    assert.match(await page.getByRole('button', { name: /^All unfinished blocks/ }).innerText(), /3 blocks/);
+    assert.match(await page.getByRole('button', { name: /^Choose section: Study design/ }).innerText(), /3 unfinished blocks/);
+    assert.equal(await page.getByRole('button', { name: /^Abstract & Conclusion/ }).isDisabled(), true);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
     await page.getByLabel('Reading mode').selectOption('source');
     assert.equal(await page.locator('#block-1 .source-text').isVisible(), true);

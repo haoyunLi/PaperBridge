@@ -12,9 +12,9 @@ export function annotationsMarkdown(paper) {
   }
   for (const block of paper.blocks) {
     if (block.bookmark) bookmarks.push(`- Block ${block.id}${block.page ? ` · page ${block.page}` : ''}: ${block.text}`);
-    for (const note of block.notes || []) append(notes, `Block ${block.id} · ${note.kind || 'source'}`, note, anchorText(block, note.kind || 'source'));
-    for (const item of block.highlights || []) append(highlights, `Block ${block.id} · source`, item, anchorText(block, 'source'));
-    for (const item of block.translationHighlights || []) append(highlights, `Block ${block.id} · translation`, item, anchorText(block, 'translation'));
+    for (const note of block.notes || []) append(notes, `${note.scope === 'paper' ? 'Paper' : 'Reader'} · Block ${block.id} · ${note.kind || 'source'}`, note, anchorText(block, note.kind || 'source'));
+    for (const item of block.highlights || []) append(highlights, `${item.scope === 'paper' ? 'Paper' : 'Reader'} · Block ${block.id} · source`, item, anchorText(block, 'source'));
+    for (const item of block.translationHighlights || []) append(highlights, `${item.scope === 'paper' ? 'Paper' : 'Reader'} · Block ${block.id} · translation`, item, anchorText(block, 'translation'));
   }
   for (const [items, destination] of [[paper.pdfNotes, notes], [paper.pdfHighlights, highlights]]) {
     for (const item of items || []) append(destination, `Original PDF · page ${item.page}`, item);

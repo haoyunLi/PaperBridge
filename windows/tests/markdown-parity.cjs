@@ -68,9 +68,11 @@ async function run() {
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
     const previewSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
-    assert.deepEqual(previewSaved.blocks[6].highlights.map(item => ({ text: item.text, offset: item.offset })), [{ text: 'repeat', offset: 14 }]);
+    assert.deepEqual(previewSaved.blocks[6].highlights.map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'paper', text: 'repeat', offset: 14 }]);
     assert.equal(previewSaved.blocks[6].notes[0].offset, 14);
+    assert.equal(previewSaved.blocks[6].notes[0].scope, 'paper');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size || 0), 0);
     assert.equal(await page.locator('#block-2 .source-text sup').count(), 1);
     assert.equal(await page.locator('#block-2 .translation-text sup').count(), 1);
     assert.equal(await page.locator('#block-3 .source-text table td').count(), 2);
@@ -91,14 +93,19 @@ async function run() {
     await page.locator('.inspector textarea').fill('Author marker is preserved.');
     await page.getByRole('button', { name: 'Save note' }).click();
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
-    assert.deepEqual(saved.blocks[1].highlights.map(item => ({ text: item.text, offset: item.offset })), [{ text: 'Vaswani∗', offset: 7 }]);
+    assert.deepEqual(saved.blocks[1].highlights.map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'reader', text: 'Vaswani∗', offset: 7 }]);
     assert.equal(saved.blocks[1].notes[0].body, 'Author marker is preserved.');
+    assert.equal(saved.blocks[1].notes[0].scope, 'reader');
     await page.getByLabel('Reading mode').selectOption('translation');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'The third occurrence belongs to block seven.' }).locator('button').first().click();
-    await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === 'repeat');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && window.getSelection()?.toString() === 'repeat');
     assert.equal(await page.locator('.inspector textarea').inputValue(), 'The third occurrence belongs to block seven.');
+    await page.getByLabel('Back to previous reading location').click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader' && document.querySelector('.reader-mode-select')?.value === 'translation');
+    await page.getByLabel('Forward in reading history').click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Author marker is preserved.' }).locator('button').first().click();
-    await page.waitForFunction(() => window.getSelection()?.toString() === 'Vaswani∗');
+    await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === 'Vaswani∗');
     await page.evaluate(() => {
       const paragraph = document.querySelector('#block-2 .translation-text p');
       const range = document.createRange(); range.setStart(paragraph.firstChild, 0); range.setEnd(paragraph.firstChild, 3);
@@ -123,7 +130,7 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.screenshot({ path: path.join(artifacts, 'markdown-parity-reader.png') });
-    console.log('Markdown HTML, image, table, typography, repeated-text anchors, source and translation note navigation, and rich highlights verified.');
+    console.log('Markdown HTML, image, table, typography, scoped Paper/Reader anchors, source and translation note navigation, and rich highlights verified.');
   } finally {
     await app.close();
     fs.rmSync(workspace, { recursive: true, force: true });

@@ -1,5 +1,13 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第四阶段：翻译范围与 Paper 标注原位返回（2026-09-21）
+
+继续按 macOS 总映射复查后，修正了两个可直接复现的小功能差距。Translation Range 现在由实际可执行队列统一计算：排除已完成块、资源块和参考文献，包含待译/失败标题；当前章节、Abstract & Conclusion、任意章节与 All unfinished 的数字和禁用状态均与点击后的任务一致。
+
+Paper 预览和 Reader 的块级笔记/高亮现在保存独立 `paper` / `reader` 作用域。同一段同一偏移可在两个视图分别保存；正文只显示本视图记录，列表和 Markdown 导出明确标出来源，点击 Paper 记录会回到 Paper 原块并精确重选文字，同时接入 Back / Forward。旧版没有 scope 的记录继续按 Reader 处理。
+
+本阶段验证为 **95/95 单元测试**、生产构建，以及 `test:markdown`、`test:reader-review-e2e`、`test:note-autosave-e2e`、`test:heading-parity-e2e`、`test:reading-history-e2e` 和 `test:e2e`。`test:markdown` 还验证了 Paper→Reader 视图隔离、Paper 精确回跳及随后 Back / Forward 往返；当前剩余边界是复杂 Markdown 跨节点/跨块坐标和更多真实论文并排验收。
+
 ## 第三阶段：设置、自动发现、更新恢复与真实安装闭环（2026-09-21）
 
 这一阶段补齐了上一轮明确列出的 Settings 小入口，并把只做静态/模拟验证的交付链路推进到真实安装器。macOS `origin/main` 同时从 1.9 `73951d9` 前进到 1.9.1 `33cfb933`；1.9.1 新增行为见 [12 项增量差距报告](MAC_1_9_1_GAPS.md)，不混入原有 111 项历史统计。

@@ -48,6 +48,22 @@ test('reference exclusion stops when methods resume after bibliography', async (
   assert.deepEqual(sectionRanges(blocks).map(section => section.title), ['Introduction', 'References', 'STAR Methods']);
 });
 
+test('translation range counts exactly the unfinished queue including headings', async () => {
+  const { referenceBlockIds, translationRangeIds } = await import('../src/paper.mjs');
+  const blocks = [
+    { id: 1, text: 'Abstract', heading: true, status: 'pending' },
+    { id: 2, text: 'Body', status: 'ok' },
+    { id: 3, text: 'Figure', resource: true, status: 'pending' },
+    { id: 4, text: 'Methods', heading: true, status: 'failed' },
+    { id: 5, text: 'References', heading: true, status: 'pending' },
+    { id: 6, text: 'Citation entry', status: 'pending' }
+  ];
+  const references = referenceBlockIds(blocks);
+  assert.deepEqual(translationRangeIds(blocks, null, references), [1, 4]);
+  assert.deepEqual(translationRangeIds(blocks, [2, 3, 4, 5], references), [4]);
+  assert.deepEqual(translationRangeIds(blocks, [], references), []);
+});
+
 test('summary source links require an exact quote in a real source block', async () => {
   const { parseSummaryClaims, summarySourceCandidates } = await import('../src/paper.mjs');
   const passage = 'The measured intervention improved response time in the tested sample by twelve percent.';

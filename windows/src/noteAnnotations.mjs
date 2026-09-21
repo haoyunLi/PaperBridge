@@ -36,7 +36,7 @@ function matches(selection, item) {
   if (!item || item.needsReview) return false;
   if (selection.scope === 'pdf') return item.page === selection.page && item.offset === selection.offset && item.text === selection.text;
   if (viewScopes.has(selection.scope)) return item.scope === selection.scope && item.offset === selection.offset && item.text === selection.text;
-  return item.offset === selection.offset && item.text === selection.text && (item.kind || 'source') === (selection.kind || 'source');
+  return (item.scope || 'reader') === selection.scope && item.offset === selection.offset && item.text === selection.text && (item.kind || 'source') === (selection.kind || 'source');
 }
 
 export function findSelectionNote(paper, selection) {
@@ -74,10 +74,9 @@ export function applySelectionNote(paper, selection, body, makeId = () => crypto
   }
   const index = paper.blocks.findIndex(item => item.id === selection.id);
   const block = paper.blocks[index];
-  const notes = updateNotes(block.notes, selection, body, makeId, { kind: selection.kind || 'source' });
+  const notes = updateNotes(block.notes, selection, body, makeId, { kind: selection.kind || 'source', scope: selection.scope });
   if (notes === (block.notes || [])) return paper;
   const blocks = [...paper.blocks];
   blocks[index] = { ...block, notes };
   return { ...paper, blocks };
 }
-

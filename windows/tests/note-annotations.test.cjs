@@ -32,11 +32,27 @@ test('review-needed notes never match or get silently reused', async () => {
   assert.deepEqual(saved.blocks[0].notes.map(item => [item.id, item.body, item.needsReview]), [['old', 'stale', true], ['new', 'fresh', undefined]]);
 });
 
+test('Paper and Reader notes stay separate while legacy notes default to Reader', async () => {
+  const { applySelectionNote, findSelectionNote } = await annotations;
+  const reader = { scope: 'reader', id: 1, kind: 'source', text: 'Alpha', offset: 0 };
+  const preview = { ...reader, scope: 'paper' };
+  let paper = basePaper();
+  paper.blocks[0].notes = [{ id: 'legacy', text: 'source', offset: 6, kind: 'source', body: 'Legacy Reader note' }];
+  paper = applySelectionNote(paper, reader, 'Reader note', () => 'reader-note');
+  paper = applySelectionNote(paper, preview, 'Paper note', () => 'paper-note');
+  assert.equal(findSelectionNote(paper, reader).body, 'Reader note');
+  assert.equal(findSelectionNote(paper, preview).body, 'Paper note');
+  assert.equal(findSelectionNote(paper, { ...reader, text: 'source', offset: 6 }).body, 'Legacy Reader note');
+  assert.equal(findSelectionNote(paper, { ...preview, text: 'source', offset: 6 }), null);
+  assert.deepEqual(paper.blocks[0].notes.map(item => [item.id, item.scope]), [['legacy', undefined], ['reader-note', 'reader'], ['paper-note', 'paper']]);
+});
+
 test('notes map across reader translation, PDF, summary and full translation scopes', async () => {
   const { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection } = await annotations;
   let paper = basePaper();
   const selections = [
     { scope: 'reader', id: 1, kind: 'translation', text: '阿尔法', offset: 0 },
+    { scope: 'paper', id: 1, kind: 'source', text: 'Alpha', offset: 0 },
     { scope: 'pdf', page: 2, pageText: 'PDF exact quote', text: 'exact', offset: 4 },
     { scope: 'summarySource', text: 'summary', offset: 7 },
     { scope: 'summaryTarget', text: '摘要', offset: 0 },
