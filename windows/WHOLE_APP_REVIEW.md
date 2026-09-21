@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第八阶段：选区查询状态与取消（2026-09-21）
+
+对照 macOS `QuickSelectionView` 和 `SelectionInspectorView` 后，Windows 把选区查询状态统一到 Quick Selection 与展开的 Research Inspector。两处现在都会显示翻译/解释进行状态和 Cancel；完成后显示 Selection translated / explained，重复同一查询显示 Using cached quick lookup，失败显示在当前选区内。展开检查器同时补上当前选区的 Original / Translation 侧标识，避免同一段双语内容难以辨认。
+
+主 Electron 流程使用延迟本地服务，在完整检查器内启动翻译、主动取消、等待迟到响应并确认结果没有写回，然后重试成功并再次请求验证缓存命中；Quick Selection 也分别验证首次完成和缓存提示。生产构建及主流程通过，原有全局任务状态和 Stop 继续保留。
+
 ## 第七阶段：完整 Overview 阅读地图（2026-09-21）
 
 继续对照 macOS `ReadingGuideBuilder` 和 `ReadingGuideView` 后，Windows 阅读地图不再用包含关系宽松匹配章节标题。它现在使用与 Mac 相同的五类主题、规范化编号/罗马数字标题，并且只接受完整标题、`标题:` 或 `标题 and …` 形式；每个摘录只能来自当前章节，章节内没有足够正文时不再误借下一章节。无可靠标题时仍回退到第一段可读正文，并明确提示先核对来源。
