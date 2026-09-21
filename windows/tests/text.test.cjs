@@ -10,6 +10,24 @@ test('paste text retains paragraphs and identifies sections', async () => {
   assert.equal(readingMap(blocks)[0].blockId, 2);
 });
 
+test('standalone heading classification keeps heading-plus-body paragraphs translatable', async () => {
+  const { blocksFromText, isHeading } = await import('../src/text.mjs');
+  assert.equal(isHeading('Abstract'), true);
+  assert.equal(isHeading('2 Methods'), true);
+  assert.equal(isHeading('A Compact Custom Heading'), true);
+  assert.equal(isHeading('Study design', '## Study design'), true);
+  assert.equal(isHeading('Study design\nWe retained all evidence.', '## Study design\nWe retained all evidence.'), false);
+  assert.equal(isHeading('Abstract. We tested the complete workflow without dropping any evidence.'), false);
+  assert.equal(isHeading('2 Methods We retained all evidence from both independent reviewers.'), false);
+
+  const blocks = blocksFromText('Abstract\n\n2 Methods\nWe retained all evidence.\n\nA body paragraph without a final period');
+  assert.deepEqual(blocks.map(block => ({ text: block.text, heading: block.heading })), [
+    { text: 'Abstract', heading: true },
+    { text: '2 Methods We retained all evidence.', heading: false },
+    { text: 'A body paragraph without a final period', heading: false }
+  ]);
+});
+
 test('PDF lines split at headings and preserve page provenance', async () => {
   const { blocksFromLines } = await import('../src/text.mjs');
   const blocks = blocksFromLines([{ text: 'Abstract', x: 0, y: 100, height: 12 }, { text: 'A paper about careful reading.', x: 0, y: 80, height: 12 }, { text: 'It compares passages.', x: 0, y: 68, height: 12 }], 3);

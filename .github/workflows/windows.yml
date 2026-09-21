@@ -42,7 +42,7 @@ jobs:
       - name: Verify onboarding and desktop setup workflows
         shell: pwsh
         run: |
-          $desktopSuites = @('test:onboarding-e2e', 'test:onboarding-startup-e2e', 'test:settings-models-e2e', 'test:mineru-detect-e2e', 'test:update-restart-e2e', 'test:setup-components-e2e', 'test:menu-state-e2e', 'test:menu-ui-e2e', 'test:official-links-e2e', 'test:note-autosave-e2e', 'test:reading-history-e2e', 'test:markdown', 'test:reader-review-e2e')
+          $desktopSuites = @('test:onboarding-e2e', 'test:onboarding-startup-e2e', 'test:settings-models-e2e', 'test:mineru-detect-e2e', 'test:update-restart-e2e', 'test:setup-components-e2e', 'test:menu-state-e2e', 'test:menu-ui-e2e', 'test:official-links-e2e', 'test:note-autosave-e2e', 'test:reading-history-e2e', 'test:heading-parity-e2e', 'test:markdown', 'test:reader-review-e2e')
           foreach ($suite in $desktopSuites) {
             npm run $suite
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

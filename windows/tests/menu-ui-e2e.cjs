@@ -93,7 +93,10 @@ async function run() {
     await waitFor(() => generationRequests.length === 1, 'delayed translation request');
     await expectMenus({ openPdf: false, export: false, primaryTask: false, generateSummary: false, generateFullTranslation: false,
       translateSelection: false, explainSelection: false, summary: true, find: true, highlightSelection: true });
-    generationRequests[0].end(JSON.stringify({ response: '菜单状态回归测试译文。', done: true }));
+    generationRequests[0].end(JSON.stringify({ response: '摘要', done: true }));
+    await waitFor(() => generationRequests.length === 2, 'body translation after heading');
+    await expectMenus({ openPdf: false, export: false, primaryTask: false, generateSummary: false, generateFullTranslation: false });
+    generationRequests[1].end(JSON.stringify({ response: '菜单状态回归测试译文。', done: true }));
     await page.locator('#block-2 .translation-text.done').waitFor();
     await expectMenus({ openPdf: true, export: true, primaryTask: false, generateSummary: true, generateFullTranslation: true });
     await page.keyboard.press('Escape');

@@ -1,8 +1,21 @@
-const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|摘要|引言|方法|结果|讨论|结论)\s*$/i;
+const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|acknowledg(?:e)?ments|摘要|引言|方法|结果|讨论|结论)\s*$/i;
+const leadingNamedSection = /^(?:(?:\d+(?:\.\d+)*)\s+)?(?:abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|experiments?|evaluation|results?|discussion|conclusions?|appendix|acknowledg(?:e)?ments)(?:[.:])?\s+/i;
 
-export function isHeading(text) {
-  const value = text.trim();
-  return !!value && value.length < 100 && (headingNames.test(value) || /^\d+(?:\.\d+){0,3}\s+[A-Z][\w ,:&-]{2,80}$/.test(value));
+export function isHeading(text, sourceMarkdown = null) {
+  const value = String(text || '').trim();
+  const markdown = typeof sourceMarkdown === 'string' ? sourceMarkdown.trim() : '';
+  if (markdown && !markdown.includes('\n') && !value.includes('\n') && value.length <= 200 && /^#{1,6}[ \t]+\S/.test(markdown)) return true;
+  if (!value || value.includes('\n') || value.length > 120 || value.includes('@') || /[.!?]["')\]]?$/.test(value)) return false;
+  const leading = value.match(leadingNamedSection)?.[0] || '';
+  if (value.length >= 30 && leading && value.slice(leading.length).trim().length >= 20) return false;
+  if (headingNames.test(value) || /^\d+(?:\.\d+)*\s+[A-Z].*$/.test(value)) return true;
+  const words = value.split(/\s+/).filter(Boolean);
+  if (!words.length || words.length > 12) return false;
+  const titleCaseWords = words.filter(word => /^\p{Lu}/u.test(word)).length;
+  const letters = [...value].filter(character => /\p{L}/u.test(character));
+  const uppercaseLetters = letters.filter(character => /\p{Lu}/u.test(character)).length;
+  const uppercaseRatio = letters.length ? uppercaseLetters / letters.length : 0;
+  return uppercaseRatio > 0.6 || titleCaseWords / words.length > 0.8;
 }
 
 export function cleanLine(value) {
@@ -10,8 +23,12 @@ export function cleanLine(value) {
 }
 
 export function blocksFromText(text) {
-  return text.replace(/\r/g, '\n').split(/\n\s*\n/).map(part => part.split('\n').map(cleanLine).filter(Boolean).join(' ')).filter(Boolean)
-    .map((value, index) => ({ id: index + 1, text: value, page: null, heading: isHeading(value), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] }));
+  return text.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map(part => {
+    const raw = part.trim();
+    const value = raw.split('\n').map(cleanLine).filter(Boolean).join(' ');
+    return value ? { raw, value } : null;
+  }).filter(Boolean)
+    .map(({ raw, value }, index) => ({ id: index + 1, text: value, page: null, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] }));
 }
 
 export function joinLines(lines) {
@@ -33,7 +50,8 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   let group = [];
   const flush = () => {
     const text = joinLines(group);
-    if (text) blocks.push({ id: startId + blocks.length, text, page: pageNumber, heading: isHeading(text), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] });
+    const raw = group.map(line => cleanLine(line.text || line)).filter(Boolean).join('\n');
+    if (text) blocks.push({ id: startId + blocks.length, text, page: pageNumber, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] });
     group = [];
   };
   const widths = sorted.map(line => line.height || 12).sort((a, b) => a - b);

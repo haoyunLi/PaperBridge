@@ -11,9 +11,9 @@
 
 ## 结论与实施顺序
 
-笔记保存链路与阅读 Back / Forward 已补齐。Windows 现在会记录最多 50 条会话阅读位置，恢复 tab、显示模式、搜索、段落/PDF 页及各 surface 滚动位置，并隔离旧滚动回调。最后一批集中处理紧凑双语标题与正确标题分类。
+笔记保存、阅读 Back / Forward 和标题体验三批均已补齐。Windows 现在会记录最多 50 条会话阅读位置并完整恢复，也会把独立普通/Markdown 标题渲染为可翻译、可重试、可标注的紧凑双语行；标题与正文同段时继续作为正文翻译。
 
-此次列出 **12 个增量验收项：10 项对齐、2 项部分、0 项缺失**。其中标题翻译被排除等问题是新对照暴露出的既有差距，不应写成 Windows 从上一版本产生的回归。
+此次列出 **12 个增量验收项：12 项对齐、0 项部分、0 项缺失**。标题翻译被排除等问题是新对照暴露出的既有差距；现已连同分类、显示模式、动作和导出一起补齐。
 
 | ID | 优先级 / 状态 | Mac 1.9.1 行为与源码 | Windows 当前证据与差距 | 完成验收标准 |
 | --- | --- | --- | --- | --- |
@@ -26,8 +26,8 @@
 | R191-07 | P2 · **对齐** | 任务、保存及失败重试固定在正文滚动区外。 | `workspace-status-rail` 位于 header 与 `.main-scroll` 之间，容纳更新、任务进度/Stop、保存状态与 Retry。 | 1320×900 Electron 截图和完整流程已验证；现有 980×620 响应式回归继续覆盖正文可滚动空间。 |
 | R191-08 | P2 · **对齐** | 同论文 Back / Forward 两栈，去重、上限 50、新跳转清 Forward，无效目的地不入栈。 | `readingHistory.mjs` 管理会话历史；目录、书签、阅读地图、摘要来源、Reader/Markdown/PDF 标注及比较入口接入。头部按钮、Ctrl+[ / Ctrl+] 和原生 Paper 菜单动态启停。结构编辑、来源切换和换论文重置。 | 单元覆盖去重/50 条/分支；Electron 覆盖往返、重复跳转、新分支、快捷键、结构与论文隔离。 |
 | R191-09 | P2 · **对齐** | 位置包含 workspace/display/search 与各 surface 位置；旧恢复回调必须失效。 | 历史快照保存 tab、displayMode、search、block、PDF page 和完整 `scrollByTab`；恢复代次会取消旧 scroll timer，并拒绝旧 requestAnimationFrame/350 ms 回调。 | Electron 实测 Summary 滚动、Reader 搜索、PDF 第 2 页及迟到滚动回调；纯逻辑测试覆盖完整 surface map。 |
-| R191-10 | P2 · **部分** | 独立标题只显示一次紧凑行，可双语显示；支持 Translate/Retry Heading、错误说明、书签、解释、结构编辑菜单；source-only/translation-only遵循标题当前翻译状态。[Content:908][mac-heading-call]、[Content:1273][mac-heading]。 | Windows `.heading-block` 已缩小上下 padding，标题没有额外重复的 section marker，已有书签/编辑入口。但仍沿用 block card；`translateBlocks` 明确排除 `block.heading`，[main.jsx:827](src/main.jsx#L827)，Reader 也不渲染标题译文且禁用整段解释，[main.jsx:1322](src/main.jsx#L1322)。现有标题 Translate 图标会进入空队列，因此新增双语紧凑标题不能仅改 CSS。 | `Abstract` / `2 Methods` / Markdown 自定义标题只呈现一个标题块；单独翻译、失败重试、双语/原文/译文模式均显示正确；标题原文和译文可选择、标注、书签；解释/结构菜单遵守来源编辑权限。对应导出中的标题译文也需明确处理，不能仍无条件只输出源标题。 |
-| R191-11 | P2 · **部分** | 紧凑标题只接受整段等于已识别标题，或单行 Markdown heading、单行非空文本且不超过 200 字符；标题与正文同段时保留整段。[TextProcessing:268][mac-title-test]。 | Windows 普通标题用 [text.mjs:3](src/text.mjs#L3) 的正则和 100 字符限制；粘贴分段会将段内换行合并为空格，[text.mjs:12](src/text.mjs#L12)。结构化 Markdown 能区分 heading，[academicMarkdown.mjs:33/87](src/academicMarkdown.mjs#L33)，但两条输入路径没有统一“独立标题”判定。例如 `2 Methods\nWe retained all evidence` 合成一行后可被编号标题正则接受，并因 heading 标志从翻译队列排除。 | 纯标题可紧凑；`Abstract. We tested…`、`2 Methods\nWe retained all evidence.` 和不带末尾句号的同类段落保留全部正文并可翻译；`## Study design` 被识别为标题，带正文的 Markdown 不能整体替换成标题。用输入和输出内容断言，避免只检查样式 class。 |
+| R191-10 | P2 · **对齐** | 独立标题只显示一次紧凑行，可双语显示；支持 Translate/Retry Heading、错误说明、书签、解释、结构编辑菜单；source-only/translation-only遵循标题当前翻译状态。[Content:908][mac-heading-call]、[Content:1273][mac-heading]。 | 标题已进入逐块翻译、失败隔离、计数和导出；紧凑行按翻译状态处理三种显示模式，并复用原文/译文精确锚点、书签、解释和来源编辑权限。 | `heading-parity-e2e.cjs` 用模拟 Ollama 验证首次失败、重试成功、三种模式、两侧标注、书签、解释、结构入口及 translated/bilingual 导出。 |
+| R191-11 | P2 · **对齐** | 紧凑标题只接受整段等于已识别标题，或单行 Markdown heading、单行非空文本且不超过 200 字符；标题与正文同段时保留整段。[TextProcessing:268][mac-title-test]。 | `text.mjs` 在合并段内换行前判断独立性，并对普通标题使用 Mac 同类的长度、句末标点、编号、大小写和已知章节规则；单行 Markdown heading 保留 200 字符上限。编辑、拆分和合并也重新分类。 | 单元断言纯标题、单行 Markdown、`Abstract. We tested…`、`2 Methods\n正文` 和无句号正文的输入与输出；Electron 同时确认混合段落仍有正文翻译 UI。 |
 | R191-12 | P1 · **对齐** | `needsReview` 不参与当前选区匹配；无效跳转先校验。 | 所有 note 查找/更新排除 review 记录；Reader 与 Markdown 在改 tab/mode 前验证，PDF review 记录也会在导航前拒绝。旧记录仍可见和删除。 | 单元预置同 quote/offset 的 review note；Markdown Electron 回归确认无效 Reader 跳转保留原 view/selection并标记记录。 |
 
 ## 建议的验证批次
@@ -44,13 +44,13 @@ Mac [ReadingReliabilityRegression.swift:261][mac-tests] 已提供可移植案例
 
 ### 第三批：标题体验（R191-10～11）
 
-先统一标题独立性判定和标题翻译路径，再调整紧凑排版；同时核对双语导出、标注和标题动作。Mac 本次更改主要是标题检测和呈现，Windows 对 heading 的翻译排除属于此前实现差异，补齐时需独立检查正文统计、重试和剩余翻译任务数。
+**已完成。** 独立性判定、结构编辑后的重新分类、标题翻译/重试、任务计数、紧凑排版、三种显示模式、两侧标注、书签、解释及双语导出均已接入。专项 Electron 流程检查实际输出内容和样式，不只检查 class。
 
 ## 本次范围外与证据边界
 
 - 1.9.1 没有新增图书馆备份导入、逐论文删除或多论文后台任务；不能把这些写成本次 Mac 更新已具备的行为。
 - Mac 的 1.9.1/build 11 版本号、Xcode `netrc` 包认证参数、发布脚本保留依赖缓存/符号及锁定 resolved package version 属于 Mac 构建发布变更，不计入上面的 Windows 阅读功能缺失。Windows 的正式签名和更新机制仍应在发布清单单独处理。
-- 本报告现在同时记录源码增量审查和前两批落地证据。R191-10～11 的标题体验仍需按最后一批验收，不能因笔记与历史完成就把整个 1.9.1 增量标为一比一。
+- 本报告现在同时记录源码增量审查和三批落地证据，12 项 1.9.1 增量均已自动化验收。更早 1.9 基线中的复杂论文、其它设备、正式签名和跨版本更新仍按总映射与发布清单继续跟踪。
 
 ## 固定版本源码索引
 

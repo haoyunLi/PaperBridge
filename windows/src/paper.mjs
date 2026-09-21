@@ -1,3 +1,5 @@
+import { isHeading } from './text.mjs';
+
 const referenceHeading = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(?:references|bibliography|works cited|literature cited|reference list)\s*$/i;
 const postReferenceHeading = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(?:star[+\s-]*methods|resource availability|method details|key resources table|supplemental information|supplementary (?:information|materials?|figures?)|appendix|methods?|materials and methods)\s*$/i;
 
@@ -108,8 +110,8 @@ export function splitBlockAt(block, cut) {
   const [leftNotes, rightNotes] = divide((block.notes || []).filter(item => item.kind !== 'translation'));
   const translationNotes = (block.notes || []).filter(item => item.kind === 'translation').map(item => ({ ...item, needsReview: true }));
   return [
-    { ...block, text: leftText, translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
-    { ...block, text: rightText, translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', bookmark: false, highlights: rightHighlights, notes: rightNotes }
+    { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
+    { ...block, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', bookmark: false, highlights: rightHighlights, notes: rightNotes }
   ];
 }
 
@@ -130,7 +132,8 @@ export function reflowBlock(block, targetChars = 900) {
 
 export function mergeBlocks(left, right) {
   const offset = left.text.length + 1;
-  return { ...left, text: `${left.text} ${right.text}`, translation: '', translationMarkdown: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
+  const text = `${left.text} ${right.text}`;
+  return { ...left, text, heading: isHeading(text), translation: '', translationMarkdown: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
     highlights: [...(left.highlights || []), ...(right.highlights || []).map(item => ({ ...item, offset: Number.isInteger(item.offset) ? item.offset + offset : item.offset }))],
     translationHighlights: [],
     notes: [...(left.notes || []).map(item => item.kind === 'translation' ? { ...item, needsReview: true } : item), ...(right.notes || []).map(item => ({ ...item, offset: Number.isInteger(item.offset) && item.kind !== 'translation' ? item.offset + offset : item.offset, needsReview: item.kind === 'translation' ? true : item.needsReview }))]
@@ -144,7 +147,7 @@ export function editedBlock(block, newText) {
     const first = text.indexOf(item.text);
     return first >= 0 && first === text.lastIndexOf(item.text) ? first : null;
   }
-  return { ...block, text, translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending',
+  return { ...block, text, heading: isHeading(text), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending',
     highlights: (block.highlights || []).flatMap(item => { const offset = position(item); return offset === null ? [] : [{ ...item, offset }]; }),
     notes: (block.notes || []).map(item => {
       if (item.kind === 'translation') return { ...item, needsReview: true };

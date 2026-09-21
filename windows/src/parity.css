@@ -1,6 +1,17 @@
 .reader-mode-select{min-width:125px;font-size:12px}
-.app[data-display-mode="source"] .block:not(.heading-block) .translation-text{display:none}
-.app[data-display-mode="translation"] .block:not(.heading-block) .source-text{display:none}
+.app[data-display-mode="source"] .translation-text{display:none}
+.app[data-display-mode="translation"] .block:not(.heading-block) .source-text,
+.app[data-display-mode="translation"] .heading-block[data-heading-status="ok"] .source-text{display:none}
+.heading-block{position:relative;background:transparent;border:0;border-bottom:1px solid #cfc6b8;border-radius:0;padding:12px 0 10px;margin-bottom:12px}
+.heading-block.current{border-left:0;border-bottom-color:#0a59d6}
+.heading-block .block-header{position:absolute;right:0;top:8px;margin:0;z-index:1}
+.heading-block .block-header>span{display:none}
+.heading-block .source-text{min-height:28px;padding-right:142px}
+.heading-block .source-text :is(h1,h2,h3,h4,h5,h6),
+.heading-block .translation-text :is(h1,h2,h3,h4,h5,h6){font:inherit;margin:0}
+.heading-block .translation-text{margin-top:7px;padding:0 142px 0 0;border-radius:0;background:transparent;color:#6c7177;font-size:calc(var(--reader-font) * 1.16);font-weight:600;line-height:1.3}
+.heading-block .translation-text.done{background:transparent;color:#8a3a32}
+.heading-block .edit-area{padding-top:28px}
 .document-preview{width:min(100%,var(--reader-width,920px));margin-left:auto;margin-right:auto;font-size:var(--reader-font,17px);line-height:var(--reader-line,1.6)}
 .document-preview table{border-collapse:collapse;display:block;max-width:100%;overflow:auto;font:0.88em "Segoe UI",sans-serif;margin:1.5em 0}
 .document-preview td,.document-preview th{border:1px solid #cfc6b8;padding:6px 9px}
