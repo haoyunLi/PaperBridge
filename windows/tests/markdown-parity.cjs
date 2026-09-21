@@ -26,7 +26,8 @@ async function run() {
     resource: index === 2 || index === 3, status: index === 1 ? 'ok' : index === 5 ? 'failed' : 'pending',
     translation: index === 1 ? '阿什什<sup>∗</sup>报告了一个测量结果。' : '',
     translationMarkdown: index === 1 ? '阿什什<sup>∗</sup>报告了一个测量结果。' : null,
-    error: index === 5 ? 'Local model stopped.' : '', highlights: [], translationHighlights: [], notes: []
+    error: index === 5 ? 'Local model stopped.' : '', highlights: [], translationHighlights: [],
+    notes: index === 5 ? [{ id: 'stale-note', text: 'Missing citation', offset: 0, kind: 'source', body: 'Retain this stale note.' }] : []
   }));
   fs.writeFileSync(path.join(workspace, 'papers', `${id}.json`), JSON.stringify({
     id, name: 'Markdown parity fixture', type: 'text', blocks,
@@ -92,11 +93,36 @@ async function run() {
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.deepEqual(saved.blocks[1].highlights.map(item => ({ text: item.text, offset: item.offset })), [{ text: 'Vaswani∗', offset: 7 }]);
     assert.equal(saved.blocks[1].notes[0].body, 'Author marker is preserved.');
+    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'The third occurrence belongs to block seven.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === 'repeat');
+    assert.equal(await page.locator('.inspector textarea').inputValue(), 'The third occurrence belongs to block seven.');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Author marker is preserved.' }).locator('button').first().click();
+    await page.waitForFunction(() => window.getSelection()?.toString() === 'Vaswani∗');
+    await page.evaluate(() => {
+      const paragraph = document.querySelector('#block-2 .translation-text p');
+      const range = document.createRange(); range.setStart(paragraph.firstChild, 0); range.setEnd(paragraph.firstChild, 3);
+      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+      paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.locator('.inspector .highlight.coral').click();
+    await page.locator('.inspector textarea').fill('Translation wording is saved.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    await page.getByLabel('Reading mode').selectOption('source');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Translation wording is saved.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === '阿什什');
+    assert.equal(await page.locator('.inspector textarea').inputValue(), 'Translation wording is saved.');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Retain this stale note.' }).locator('button').first().click();
+    await page.getByText('The saved Reader text no longer matches this block.', { exact: false }).waitFor();
+    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), '');
+    await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.blocks[5]?.notes[0]?.needsReview === true, id);
+    const afterInvalidJump = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
+    assert.equal(afterInvalidJump.blocks[5].notes[0].needsReview, true);
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.screenshot({ path: path.join(artifacts, 'markdown-parity-reader.png') });
-    console.log('Markdown HTML, image, table, typography, failed count, repeated-text anchors, notes, and rich highlights verified.');
+    console.log('Markdown HTML, image, table, typography, repeated-text anchors, source and translation note navigation, and rich highlights verified.');
   } finally {
     await app.close();
     fs.rmSync(workspace, { recursive: true, force: true });

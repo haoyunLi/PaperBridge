@@ -24,6 +24,8 @@ npm run dist
 
 The NSIS installer and portable executable appear in `release/`. GitHub Actions also uploads the Windows build as a workflow artifact. Builds are currently unsigned, so Windows SmartScreen may warn until release signing is configured.
 
+For an opt-in device check, `npm run test:live-ocr` generates an image-only PDF, imports it through the app with MinerU, translates an OCR paragraph with local Ollama, and verifies that Original can return to the OCR Reader. It requires the managed MinerU Python environment, a running Ollama service, and `translategemma:4b` (or `PAPERBRIDGE_LIVE_MODEL`). The [AMD device report](AMD_DEVICE_TEST.md) records results from an RX 7800 XT.
+
 ## Updates
 
 PaperBridge checks the official GitHub Release API for published `windows-vX.Y.Z` releases at startup and, while open, at most once per day. Settings lets you turn off automatic checks or select **Check now**. When a newer Windows installer is published, the app shows a banner that opens that release page for review and download. The current unsigned preview does not download or run installers automatically. Mac releases use a separate tag and are ignored. The update request contains the app version and standard network metadata; no paper, note, or translation content is sent. A Windows release tag must match the version in `windows/package.json`; the GitHub workflow checks this before publishing its installer.

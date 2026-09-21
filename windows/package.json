@@ -13,6 +13,7 @@
     "test:reopen-mineru": "node tests/reopen-mineru.cjs",
     "test:live": "node tests/live-local.cjs",
     "test:live-mineru": "node tests/live-mineru.cjs",
+    "test:live-ocr": "node tests/live-ocr.cjs",
     "test:packaged": "node tests/packaged.cjs",
     "pack": "npm run build && electron-builder --win dir",
     "dist": "npm run build && electron-builder --win nsis portable"

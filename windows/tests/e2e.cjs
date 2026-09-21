@@ -4,9 +4,9 @@ const path = require('node:path');
 const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
-function samplePdf() {
-  const stream = 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj ET';
-  const secondStream = 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page.) Tj ET';
+function samplePdf(blank = false, variant = '') {
+  const stream = blank ? '' : 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj ET';
+  const secondStream = blank ? '' : `BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page${variant}.) Tj ET`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
@@ -296,7 +296,48 @@ async function run() {
     assert.match(await reopenedPage.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./);
     await reopenedPage.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
     await reopenedPage.waitForFunction(() => CSS.highlights.get('paperbridge-blue')?.size === 1);
-    console.log('Electron workflow verified: native menu and shortcuts, translation, summary and full-text annotations, PDF page anchors and notes, multi-step undo, PDF import, portable export, drag-and-drop deduplication, and new extraction copy.');
+    const blankPath = path.join(artifacts, 'scan-no-text.pdf');
+    fs.writeFileSync(blankPath, samplePdf(true));
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, blankPath);
+    await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
+    await reopenedPage.getByRole('heading', { name: 'scan-no-text.pdf' }).waitFor();
+    await reopenedPage.locator('.scan-notice').getByText('No selectable text in this PDF').waitFor();
+    assert.equal(await reopenedPage.getByRole('button', { name: 'Translate Paper' }).isDisabled(), true);
+    await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
+    await reopenedPage.locator('.scan-notice').getByText('No selectable text in this PDF').waitFor();
+    await reopenedPage.getByRole('button', { name: 'Summary', exact: true }).click();
+    assert.equal(await reopenedPage.getByRole('button', { name: 'Generate summary' }).isDisabled(), true);
+    await reopenedPage.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    assert.equal(await reopenedPage.getByRole('button', { name: 'Translate full paper' }).isDisabled(), true);
+    await reopenedPage.getByRole('button', { name: 'Original', exact: true }).click();
+    await reopenedPage.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500);
+    await reopenedPage.locator('.scan-notice').getByText('No selectable text on this PDF page').waitFor();
+    await reopenedPage.screenshot({ path: path.join(artifacts, 'scan-guidance.png') });
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('mineru:status');
+      ipcMain.handle('mineru:status', () => ({ compatible: false, executable: '' }));
+    });
+    await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Parse with MinerU' }).click();
+    await reopenedPage.getByRole('heading', { name: 'Local AI setup' }).waitFor();
+    await reopenedPage.locator('.modal-head .icon-button').click();
+    await reopenedPage.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await reopenedPage.getByLabel('PDF extraction mode').selectOption('mineruPreferred');
+    await reopenedPage.locator('.modal-head .icon-button').click();
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('mineru:status');
+      ipcMain.handle('mineru:status', () => ({ compatible: true, executable: 'test-mineru' }));
+      ipcMain.removeHandler('mineru:extract');
+      ipcMain.handle('mineru:extract', () => '  \n ');
+    });
+    const emptyMineruPath = path.join(artifacts, 'empty-mineru-result.pdf');
+    fs.writeFileSync(emptyMineruPath, samplePdf(false, ' after empty OCR'));
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, emptyMineruPath);
+    await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
+    await reopenedPage.getByRole('heading', { name: 'empty-mineru-result.pdf' }).waitFor();
+    await reopenedPage.getByText('MinerU returned no readable blocks.', { exact: false }).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
+    await reopenedPage.getByText('This practice PDF contains selectable academic text', { exact: false }).first().waitFor();
+    console.log('Electron workflow verified: native menu and shortcuts, source/PDF annotations, two-page export, scan OCR guidance, empty MinerU fallback, and restart recovery.');
   } finally { await app?.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

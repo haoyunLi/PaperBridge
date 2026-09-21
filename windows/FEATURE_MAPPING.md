@@ -1,6 +1,6 @@
 # PaperBridge macOS 1.9 ↔ Windows 0.2 功能逐项映射
 
-基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**42 对齐、69 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译与一篇复杂论文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、导出及重启恢复。其它硬件、扫描件、Mac 逐项对照和正式安装包仍需验证。
+基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**42 对齐、69 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式安装包仍需验证。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。
 
@@ -14,14 +14,14 @@
 | A04 | 无模型时试用虚构练习论文 | 有论文打开时保留原工作区并提示 | 对齐 | 练习论文只从空工作区创建。 |
 | A05 | 重复打开同一 PDF 恢复原工作区 | SHA-256 去重并载入保存文档 | 对齐 | 验证编辑、翻译、标注均未覆盖。 |
 | A06 | 重新提取为新的图书馆副本 | More 中重新提取为独立副本 | 对齐 | Electron 流程验证原副本保留且图书馆新增一项。 |
-| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，导入自动检测并解析 | 部分 | 15 页双栏论文已在 AMD/CPU pipeline 自动解析；更多论文及 OCR 待验证。 |
-| A08 | MinerU 失败自动降级，并说明原因 | MinerU preferred 失败显示原因并回退 PDF.js | 部分 | 真实失败和 OCR 设备路径待验证。 |
+| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，导入自动检测并解析 | 部分 | 15 页双栏论文和单页图像型扫描 PDF 已在 AMD/CPU pipeline 自动解析；更多真实扫描件待验证。 |
+| A08 | MinerU 失败自动降级，并说明原因 | MinerU preferred 失败或返回空块时保留 PDF.js 可用文本并说明原因 | 部分 | 合成空结果回归通过；真实失败和 OCR 设备路径待验证。 |
 | A09 | MinerU only / MinerU preferred / PDFKit only 三种模式 | Settings 提供 MinerU only / preferred / PDF only | 部分 | 三模式已有代码路径；真实 MinerU-only 失败行为待验证。 |
 | A10 | MinerU 多栏正文阅读顺序 | MinerU Markdown 或 PDF.js 简单双栏排序 | 部分 | 一篇双栏论文的标题顺序已核对；跨栏图、脚注及 Mac 对照仍待验收。 |
 | A11 | 图片、表格、独立公式、代码随正文交错 | 按行拆出独立资源块，图表说明保留为可翻译段落；安全渲染 HTML | 部分 | 15 页论文重开验证 5 图、4 表、5 独立公式均按源顺序出现在 Paper/Reader；其它论文的复杂 HTML/代码仍待验收。 |
 | A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` 包括代码围栏、整张 HTML 表格、行内标签及多种公式 | 部分 | 单元测试覆盖 token 还原；更多模型对复杂结构的输出位置仍待验收。 |
 | A13 | 原 PDF 无修改保存并原样查看 | 复制原 PDF，PDF.js canvas + text layer | 对齐 | 像素、页数和可选文字与源文件一致。 |
-| A14 | 无文字层的扫描件仍可看原 PDF | 原 PDF 仍可翻页，提示用 MinerU OCR | 部分 | AI 动作应明确禁用或引导 OCR；现有提示尚不完整。 |
+| A14 | 无文字层的扫描件仍可看原 PDF | 原 PDF 保留画面与翻页；无文字层时 Paper、Reader、Original 显示 OCR 引导，OCR 完成后原页可直接跳到 OCR Reader；翻译/摘要/全文任务在无文本时禁用，缺少 MinerU 则进入一键安装 | 部分 | 空白无文字层 PDF 引导和单页图像型 PDF 的真实 OCR、翻译已验证；复杂扫描件的 OCR 质量仍待验收。 |
 | A15 | PDFKit 便携页面图片（最多前 120 页） | 导出 bundle 时逐页渲染 PNG，最多 120 页 | 部分 | Electron 测试覆盖单页；长 PDF 页面尺寸、取消和空间占用待验证。 |
 | A16 | 跨页断词、断句修复 | 页内断词处理，并保守拼接跨页未完句与断词 | 部分 | 公式、复合词及双栏跨页仍需真实论文对照。 |
 | A17 | 重复页眉、页脚、图表标签过滤 | 按跨页重复签名过滤页眉、页脚和页码 | 部分 | 与 Mac 同类启发式；图表标签和复杂排版仍需验证。 |
@@ -44,7 +44,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B07 | 段落书签及侧栏文字预览 | 书签按钮与侧栏摘要 | 对齐 | 解析来源切换后位置应保持。 |
 | B08 | Reader 顶部搜索、清除后回到原位置 | 搜索前记录滚动位置并在清空时恢复 | 部分 | 长文和跨标签搜索仍需回归。 |
 | B09 | Paper/PDF/Markdown/Reader 各自保存阅读位置 | 逐视图滚动位置、PDF 逐页滚动位置、段落和页码保存 | 部分 | Markdown 内部锚点和复杂页面重排仍需验证。 |
-| B10 | 标注跳转校验锚点有效性 | 检查器验证 PDF 页码/偏移与 Markdown 原文偏移，定位后选回原文；失效锚点保留并提示检查 | 部分 | 双页同词回归通过；跨版本 Markdown 重排与真实长 PDF 仍需验证。 |
+| B10 | 标注跳转校验锚点有效性 | 检查器验证 Reader 块、PDF 页码/偏移与 Markdown 原文偏移，定位后选回原文；失效锚点保留并提示检查 | 部分 | Reader 重复词、译文选区和失效笔记回归通过；跨版本 Markdown 重排与真实长 PDF 仍需验证。 |
 | B11 | 显示/隐藏左右侧栏 | 两侧切换按钮 | 对齐 | 面板切换不丢当前阅读位置。 |
 | B12 | Focus Reading 退出后恢复进入前的面板状态 | 焦点阅读进入前保存左右面板状态，退出恢复 | 对齐 | 面板状态切换已实现。 |
 | B13 | 窄窗口检查器改为底部布局 | Windows CSS 响应布局 | 部分 | 在 980px 最小宽度和高 DPI 下真机验收。 |
@@ -111,8 +111,8 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E11 | 三种颜色高亮 | 三色高亮用偏移区分重复原文；Reader、Paper、PDF、摘要和全文译稿均在正文显示 | 部分 | 真实 MinerU 上标已验证；PDF 多页与 KaTeX 混排仍需验收。 |
 | E12 | 删除高亮保留笔记 | 同色点击移除高亮，笔记单独保存 | 部分 | 高亮与注释关联同一精确选区。 |
 | E13 | 为选区创建、更新、删除笔记 | Reader 同选区笔记可创建、更新、删除 | 对齐 | 标注清单提供删除入口。 |
-| E14 | 标注列表、预览、跨工作区跳转 | 检查器列出 Reader、PDF、摘要和全文译稿标注；PDF 页内及摘要/全文译稿选区可精确跳转 | 部分 | Reader/Paper 跨视图选区跳转与复杂 Markdown 坐标仍需补齐。 |
-| E15 | 标注位置失效时保留笔记并标明需检查 | 编辑后失效锚点标记 needsReview 并保留笔记 | 部分 | 更多编辑和跨视图路径仍需验证。 |
+| E14 | 标注列表、预览、跨工作区跳转 | 检查器列出 Reader、PDF、摘要和全文译稿标注；Reader 原/译文、PDF 页内及摘要/全文译稿选区可精确跳转 | 部分 | Paper 原位置回跳与复杂 Markdown 坐标仍需补齐。 |
+| E15 | 标注位置失效时保留笔记并标明需检查 | Reader 失效选区不跳错文字，保存笔记并标记 needsReview；PDF 与视图锚点也校验 | 部分 | 合成失效笔记回归通过；更多编辑和跨视图路径仍需验证。 |
 | E16 | 高亮/笔记更改撤销 | 最多 20 次工作区快照撤销，覆盖标注与段落编辑 | 部分 | 跨重启撤销栈未保存；混合操作仍需更多回归。 |
 | E17 | 精确选区注释跨分段编辑迁移 | 拆分、合并、编辑迁移原文精确锚点 | 部分 | 重排及 Markdown 结构化编辑仍缺。 |
 | E18 | 保存术语及语言方向 | Reader 选区 Save term | 对齐 | 160/300 字与 500 条上限。 |
