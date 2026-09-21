@@ -199,7 +199,7 @@ async function run() {
     // Highlight-only reading records and bookmarks must survive both export routes.
     await page.locator('#block-4 button[title="Bookmark"]').click();
     await selectText(page, '#block-4 .source-text', 'Beta control');
-    await page.locator('.inspector button[title="Amber"]').click();
+    await page.locator('.inspector button[title="Amber highlight"]').click();
     await waitFor(() => {
       const saved = readPaper();
       return saved.blocks[3].bookmark && saved.blocks[3].highlights?.some(item => item.text === 'Beta control');

@@ -63,8 +63,8 @@ async function run() {
       paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · BLOCK 3', { exact: true }).waitFor();
-    await page.locator('.inspector .highlight.blue').click();
-    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
+    await page.locator('.inspector .highlight.teal').click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
     let captionTranslation = '';
     let tableCaptionTranslation = '';
     let modelVramGiB = null;

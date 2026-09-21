@@ -89,7 +89,7 @@ async function run() {
     assert.equal(await page.getByRole('button', { name: 'Continue in Reader →', exact: true }).count(), 0);
     await selectText(page, '[data-paper-block-id="14"]', 0, 17);
     await page.getByText('SELECTED TEXT · BLOCK 14', { exact: true }).waitFor();
-    await page.locator('.inspector .highlight.blue').click();
+    await page.locator('.inspector .highlight.teal').click();
     await page.locator('.inspector textarea').fill('Late Paper block remains annotatable.');
     await page.getByRole('button', { name: 'Save note', exact: true }).click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
@@ -135,7 +135,7 @@ async function run() {
 
     await selectText(page, '#block-1 .source-text', 0, 8);
     await page.getByText('SELECTED TEXT · BLOCK 1', { exact: true }).waitFor();
-    await page.locator('.inspector button[title="Amber"]').click();
+    await page.locator('.inspector button[title="Amber highlight"]').click();
     await page.locator('#block-1 button[title="Bookmark heading"]').click();
     await selectText(page, '#block-1 .translation-text', 0, 2);
     await page.locator('.inspector textarea').fill('Translated heading wording is approved.');

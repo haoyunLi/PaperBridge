@@ -64,16 +64,16 @@ async function run() {
       paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · BLOCK 7', { exact: true }).waitFor();
-    await page.locator('.inspector .highlight.blue').click();
+    await page.locator('.inspector .highlight.teal').click();
     await page.locator('.inspector textarea').fill('The third occurrence belongs to block seven.');
     await page.getByRole('button', { name: 'Save note' }).click();
-    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
     const previewSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.deepEqual(previewSaved.blocks[6].highlights.map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'paper', text: 'repeat', offset: 14 }]);
     assert.equal(previewSaved.blocks[6].notes[0].offset, 14);
     assert.equal(previewSaved.blocks[6].notes[0].scope, 'paper');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size || 0), 0);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size || 0), 0);
     assert.equal(await page.locator('#block-2 .source-text sup').count(), 1);
     assert.equal(await page.locator('#block-2 .translation-text sup').count(), 1);
     assert.equal(await page.locator('#block-3 .source-text table td').count(), 2);
@@ -128,7 +128,7 @@ async function run() {
     const afterInvalidJump = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.equal(afterInvalidJump.blocks[5].notes[0].needsReview, true);
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
-    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-blue')?.size), 1);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.screenshot({ path: path.join(artifacts, 'markdown-parity-reader.png') });
     console.log('Markdown HTML, image, table, typography, scoped Paper/Reader anchors, source and translation note navigation, and rich highlights verified.');

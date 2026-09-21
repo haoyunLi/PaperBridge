@@ -112,8 +112,8 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E08 | 快速查词独立模型 | Settings 独立 quick lookup model 并纳入安装检测 | 对齐 | 四套模型分别配置。 |
 | E09 | 查词结果按选区与语言缓存 | 按论文、选区、上下文、方向、模型、地址、解释语言及匹配术语缓存本次会话结果 | 部分 | 切换选区取消旧请求；跨重启持久化及复杂 Markdown 原文变更仍需验收。 |
 | E10 | 选区延伸保护与上下文边界 | 仅截取 DOM 字符串并限 3000 字 | 部分 | 不跨无关段落或抓取错误上下文。 |
-| E11 | 三种颜色高亮 | 三色高亮用偏移区分重复原文；Reader、Paper、PDF、摘要和全文译稿均在正文显示 | 部分 | 真实 MinerU 上标已验证；PDF 多页与 KaTeX 混排仍需验收。 |
-| E12 | 删除高亮保留笔记 | 同色点击移除高亮，笔记单独保存 | 部分 | 高亮与注释关联同一精确选区。 |
+| E11 | 三种颜色高亮 | Amber / Cobalt / Coral 三色按精确偏移保存；同一选区换色会替换原色，Reader、Paper、PDF、摘要和全文译稿均在正文显示；旧 `blue` 数据继续按 Cobalt 渲染 | 部分 | 真实 MinerU 上标已验证；更多 PDF 跨行与 KaTeX 混排仍需验收。 |
+| E12 | 删除高亮保留笔记 | 检查器和 Quick Selection 均提供显式 Remove Highlight；只清除同一精确选区的颜色，笔记保持，支持会话撤销 | 对齐 | Reader Electron 流程验证换色、删除、笔记保留及逐步撤销。 |
 | E13 | 为选区创建、更新、删除笔记 | Reader 同选区笔记可创建、更新、删除 | 对齐 | 标注清单提供删除入口。 |
 | E14 | 标注列表、预览、跨工作区跳转 | 检查器区分 Paper/Reader 原译文、Paper exact PDF/Original PDF、摘要与全文译稿；均可返回创建视图并精确重选，Paper 译文恢复 Bilingual | 部分 | 复杂 Markdown、跨节点与跨块坐标仍需更多真实论文验收。 |
 | E15 | 标注位置失效时保留笔记并标明需检查 | Reader 失效选区不跳错文字，保存笔记并标记 needsReview；PDF 与视图锚点也校验 | 部分 | 合成失效笔记回归通过；更多编辑和跨视图路径仍需验证。 |
@@ -121,7 +121,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E17 | 精确选区注释跨分段编辑迁移 | 拆分、合并、编辑迁移原文精确锚点 | 部分 | 重排及 Markdown 结构化编辑仍缺。 |
 | E18 | 保存术语及语言方向 | 各视图 Save term 按选区侧决定方向，同词同方向替换 | 对齐 | Chinese→English 和重复替换已回归；160/300 字及 500 条上限报错，不静默截断或删除旧项。 |
 | E19 | 术语搜索、审阅和删除 | 术语列表按原词或译词搜索、删除 | 对齐 | 索引按当前术语数组执行。 |
-| E20 | 紧凑选区工具条和展开检查器 | 选区旁浮动查词、解释、笔记入口；滚动后收起工具条并保留检查器选区 | 部分 | 真实论文翻译图表说明并滚动时已验证工具条不遮挡；窄屏位置需回归。 |
+| E20 | 紧凑选区工具条和展开检查器 | 检查器关闭时显示底部 Quick Selection：选文预览、翻译、解释、三色高亮/移除、保存术语、取消任务及 Notes & More；检查器打开时不重复显示，滚动后自动收起 | 对齐 | Electron 验证 1320×820 与 980×620 完整可见、直接存术语、展开检查器，以及同一选区翻译/解释结果并存。 |
 | E21 | 检查器隐藏/显示 | 顶部按钮 | 对齐 | 窄窗口与焦点模式状态一致。 |
 
 Mac 证据：[选区行为](../PaperBridge/PaperReaderViewModel+Selection.swift)、[检查器与标注列表](../PaperBridge/Views/SelectionInspectorView.swift)、[选区数据模型](../PaperBridge/Models.swift#L420)。Windows 证据：[选区与注释](src/main.jsx#L305)、[检查器](src/main.jsx#L386)。

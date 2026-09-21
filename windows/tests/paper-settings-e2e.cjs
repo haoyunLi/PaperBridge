@@ -133,7 +133,7 @@ async function run() {
     await chunkSlider.press('ArrowLeft');
     await waitFor(() => readPaper(textA).taskSettings.maxParagraphChars === originalChunk && readPaper(textA).blocks[1].status === 'ok', 'restoring chunk size recovers the completed paragraph');
     await closeSettings(page);
-    await page.locator('.inspector-title .icon-button').click();
+    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
     await waitFor(() => readPaper(textA).taskSettings?.translationModel === modelA, 'paper A task settings');
     await waitFor(() => readPaper(textA).inspectorOpen === false && Object.values(readPaper(textA).paragraphExplanations || {}).some(result => result.language === 'French' && result.output === 'Saved paragraph explanation'), 'paper A explanation and inspector');
 
@@ -156,7 +156,7 @@ async function run() {
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'French');
     await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
-    await page.locator('.inspector-title .icon-button').click();
+    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
     await openByBlocks(page, 3, 'Paper B describes');
     assert.equal(await page.locator('.inspector').isVisible(), true);
     await assertSettings(page, 'Japanese', 'English', modelB, appearance);
@@ -174,7 +174,7 @@ async function run() {
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'French');
     await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
-    await page.locator('.inspector-title .icon-button').click();
+    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
     await openByBlocks(page, 3, 'Paper B describes');
     assert.equal(await page.locator('.inspector').isVisible(), true);
     await assertSettings(page, 'Japanese', 'English', modelB, appearance);

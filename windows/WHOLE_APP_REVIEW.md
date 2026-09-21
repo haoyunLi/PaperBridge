@@ -1,5 +1,13 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第五阶段：Quick Selection 与高亮语义（2026-09-21）
+
+继续对照 macOS `QuickSelectionView` 和 `SelectionInspectorView` 后，Windows 不再在每次选文时强制打开研究检查器。检查器关闭时，正文右下角显示完整 Quick Selection 卡片，包含选文预览、Translate、Explain、取消任务、Amber / Cobalt / Coral、高亮移除、Save Term 与 Notes & More；检查器已打开时不会重复显示。翻译和解释结果现在可同时保留，快速术语保存可直接使用翻译结果。卡片在滚动导致选区离开时收起，并在 1320×820、最小 980×620 窗口内保持完整可见。
+
+高亮数据也改为 macOS 的单标注语义：同一 scope、页/块、原译文侧、文字和偏移只能有一种颜色，选择新颜色会替换原色；删除改为显式 Remove Highlight，并只移除颜色而保留独立笔记。旧 Windows `blue` 记录继续按 Cobalt 显示，用户下次换色时会写为新 `teal` 值。检查器标题补上与 macOS 相同的标注撤销入口。
+
+本阶段验证为 **95/95 单元测试**、生产构建，以及 `test:e2e`、`test:markdown`、`test:heading-parity-e2e`、`test:reader-review-e2e`、`test:reopen-mineru`、`test:paper-settings-e2e` 和 `test:note-autosave-e2e`。主 Electron 流程实际验证 Quick Selection 保存术语、Notes & More、双结果并存、单色替换、显式删除、笔记保留和逐步撤销。
+
 ## 第四阶段：翻译范围与 Paper 标注原位返回（2026-09-21）
 
 继续按 macOS 总映射复查后，修正了两个可直接复现的小功能差距。Translation Range 现在由实际可执行队列统一计算：排除已完成块、资源块和参考文献，包含待译/失败标题；当前章节、Abstract & Conclusion、任意章节与 All unfinished 的数字和禁用状态均与点击后的任务一致。
