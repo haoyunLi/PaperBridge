@@ -43,7 +43,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Overview（阅读地图、质量检查与双语摘要）、Full Translation，另有 Original；内部保留旧 `Summary` 状态值兼容已保存位置 | 对齐 | Original 是 Windows 额外的原生 PDF 工作区。 |
 | B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 的 Original 模式直接复用精确 PDF 画布/文字层，Bilingual / Translation 显示完整结构文档；Windows 另保留 Original 标签 | 对齐 | Paper 内即可完成 Mac 对应切换，额外 Original 入口不改变 Paper 行为。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存 | 对齐 | Electron 流程验证三模式切换。 |
-| B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 的 `readingMap` 五类标题匹配并跳转 Reader 原块 | 部分 | 无标题时回退；更多真实论文需验证所有主题与段落链接不串页。 |
+| B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 使用 Mac 同组五类规范化标题、问题提示和精确原文摘录；只在当前章节内找正文，无标题时回退开篇，并提供 Reader 精确跳转、Start Reading、View Original、翻译进度及来源免责声明 | 对齐 | 单元测试覆盖编号/罗马数字标题、拒绝宽松子串误匹配及不借用下一章节正文；Electron 实际验证段落跳转和 Original 模式。 |
 | B06 | 章节大纲跳转 | 侧栏 OUTLINE，跳转前清除 Reader 搜索 | 对齐 | 搜索后目录跳转已回归；复杂 MinerU 标题层级仍需验证。 |
 | B07 | 段落书签及侧栏文字预览 | 书签按钮与侧栏摘要 | 对齐 | 解析来源切换后位置应保持。 |
 | B08 | Reader 顶部搜索、清除后回到原位置 | 搜索前记录滚动位置并在清空时恢复；目录、书签和来源跳转先清搜索 | 部分 | 搜索后目录跳转已回归；跨标签与复杂重排仍需验证。 |

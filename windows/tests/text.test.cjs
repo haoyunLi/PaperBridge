@@ -7,7 +7,32 @@ test('paste text retains paragraphs and identifies sections', async () => {
   assert.equal(blocks.length, 4);
   assert.equal(blocks[0].heading, true);
   assert.equal(blocks[2].heading, true);
-  assert.equal(readingMap(blocks)[0].blockId, 2);
+  const guide = readingMap(blocks);
+  assert.equal(guide[0].paragraphID, 2);
+  assert.deepEqual({ id: guide[0].id, title: guide[0].title, question: guide[0].question, sectionTitle: guide[0].sectionTitle }, {
+    id: 'question',
+    title: 'The research question',
+    question: 'What problem does this paper address?',
+    sectionTitle: 'Abstract'
+  });
+});
+
+test('reading map matches complete normalized headings and never borrows the next section passage', async () => {
+  const { readingMap } = await import('../src/text.mjs');
+  const blocks = [
+    { id: 1, text: 'A Method Mentioned in Context', heading: true },
+    { id: 2, text: 'This opening passage is long enough but its custom heading must not be classified as the methods section.', heading: false },
+    { id: 3, text: '2 Approach', heading: true },
+    { id: 4, text: 'Too short.', heading: false },
+    { id: 5, text: 'III. Results', heading: true },
+    { id: 6, text: 'The evidence passage belongs only to Results and must never be borrowed by the preceding Approach section.', heading: false },
+    { id: 7, text: 'IV. Discussion', heading: true },
+    { id: 8, text: 'This discussion passage explains the limits carefully enough to appear as its own exact source excerpt.', heading: false }
+  ];
+  const guide = readingMap(blocks);
+  assert.deepEqual(guide.map(entry => entry.id), ['evidence', 'limits']);
+  assert.deepEqual(guide.map(entry => entry.paragraphID), [6, 8]);
+  assert.equal(guide.some(entry => entry.id === 'method'), false);
 });
 
 test('standalone heading classification keeps heading-plus-body paragraphs translatable', async () => {

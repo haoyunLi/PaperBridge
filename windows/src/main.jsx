@@ -302,12 +302,17 @@ function SummaryView({ paper, busy, summarize, navigate, onSelect }) {
   </div>;
 }
 
-function OverviewView({ paper, busy, summarize, navigate, onSelect, issues, onPaper, onReader }) {
+function OverviewView({ paper, busy, summarize, navigate, onSelect, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
   const entries = readingMap(paper.blocks);
   return <div className="content-column">
-    <div className="section-heading"><div><h2>Paper overview</h2><p>Source-linked reading map, extraction review and optional local summary</p></div><div className="row"><button className="button outline" onClick={onPaper}>Open Paper</button><button className="button outline" onClick={onReader}>Open Reader</button></div></div>
-    <div className="reading-map">{entries.map(entry => <button key={entry.label} onClick={() => navigate(entry.blockId)}><small>{entry.label}</small><strong>{entry.section}</strong><p>{short(entry.excerpt, 190)}</p><span>Read source block {entry.blockId} →</span></button>)}</div>
     {issues.length > 0 && <div className="quality-list"><h3>Extraction check · {issues.length} possible issue(s)</h3>{issues.slice(0, 20).map(issue => <button key={issue.id} onClick={() => navigate(issue.id)}>Review block {issue.id}: {issue.reason}</button>)}</div>}
+    <section className="reading-guide">
+      <div className="reading-guide-heading"><h2>Find your way into the paper.</h2><p>A map of detected sections with exact source excerpts. No model is used, and these passages are not an AI summary.</p></div>
+      <div className="reading-guide-actions"><button className="button blue" disabled={!paragraphCount} onClick={onReader}>Start Reading</button><button className="button outline" onClick={onOriginal}>View Original</button><span>{translatedCount} / {paragraphCount} translated</span></div>
+      {!entries.length && <p className="reading-guide-empty">{paragraphCount ? 'No suitable section passages were detected. Start in Reader and inspect the source directly.' : 'This document has no selectable text. You can still view its original pages; use MinerU/OCR to make scanned text readable by the analysis tools.'}</p>}
+      <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID)}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
+      <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
+    </section>
     <SummaryView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={onSelect} />
   </div>;
 }
@@ -1619,7 +1624,7 @@ function App() {
           onSetup={() => setModal('setup')}
           onReader={() => navigateToTab('Reader')}
         />}
-        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onPaper={() => navigateToTab('Paper')} onReader={() => navigateToTab('Reader')} />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
         {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy || !paper.blocks.some(block => !block.heading && !block.resource)} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown></article> : <Empty title={paper.blocks.length ? "No full translation yet" : "No readable text yet"} body={paper.blocks.length ? "This optional pass translates longer passages with context. The bilingual reader remains available separately." : "Use MinerU OCR from Paper or Original before translating this PDF."} />}</div>}
       </div>
     </main>

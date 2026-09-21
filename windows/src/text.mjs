@@ -71,24 +71,30 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
 }
 
 export function readingMap(blocks) {
-  const sections = blocks.filter(block => block.heading);
+  const normalized = value => String(value || '').trim().toLowerCase()
+    .replace(/^(?:\d+(?:\.\d+)*[.)]?|[ivx]+\.)\s+/i, '')
+    .replace(/^[.:：\s]+|[.:：\s]+$/g, '');
+  const sections = blocks.filter(block => block.heading && !block.resource);
   const topics = [
-    ['Research question', /abstract|introduction|background|摘要|引言/i],
-    ['Approach', /method|approach|方法/i],
-    ['Evidence', /result|experiment|evaluation|结果|实验/i],
-    ['Interpretation', /discussion|limitation|讨论|局限/i],
-    ['Conclusion', /conclusion|结论/i]
+    { id: 'question', title: 'The research question', question: 'What problem does this paper address?', headings: ['abstract', 'introduction', 'background', '摘要', '引言', '背景'] },
+    { id: 'method', title: 'The approach', question: 'How did the authors investigate it?', headings: ['method', 'methods', 'methodology', 'materials and methods', 'approach', 'model', 'architecture', '方法', '材料与方法'] },
+    { id: 'evidence', title: 'The evidence', question: 'Which experiments support the claims?', headings: ['results', 'experiments', 'evaluation', 'experimental results', '结果', '实验'] },
+    { id: 'limits', title: 'Interpretation and limits', question: 'Where should the conclusions be treated cautiously?', headings: ['limitations', 'discussion', 'limitations and discussion', '讨论', '局限性'] },
+    { id: 'conclusion', title: 'The takeaway', question: 'What do the authors conclude?', headings: ['conclusion', 'conclusions', 'concluding remarks', '结论'] }
   ];
-  const matches = topics.map(([label, pattern]) => {
-    const section = sections.find(block => pattern.test(block.text));
+  const matches = topics.map(topic => {
+    const section = sections.find(block => {
+      const title = normalized(block.text);
+      return topic.headings.some(name => title === name || title.startsWith(`${name}:`) || title.startsWith(`${name} and `));
+    });
     if (!section) return null;
     const end = sections.find(block => block.id > section.id)?.id || Infinity;
-    const passage = blocks.find(block => block.id > section.id && block.id < end && block.text.length >= 40);
-    return passage ? { label, section: section.text, blockId: passage.id, excerpt: passage.text } : null;
+    const passage = blocks.find(block => block.id >= section.id && block.id < end && !block.resource && block.text.trim().length >= 40 && normalized(block.text) !== normalized(section.text));
+    return passage ? { id: topic.id, title: topic.title, question: topic.question, sectionTitle: section.text, paragraphID: passage.id, excerpt: passage.text } : null;
   }).filter(Boolean);
   if (matches.length) return matches;
-  const first = blocks.find(block => block.text.length >= 40);
-  return first ? [{ label: 'Start reading', section: 'Opening passage', blockId: first.id, excerpt: first.text }] : [];
+  const first = blocks.find(block => !block.resource && String(block.text || '').trim().length >= 40);
+  return first ? [{ id: 'beginning', title: 'Start at the beginning', question: 'Section headings were not identified reliably. Read the source before drawing conclusions.', sectionTitle: 'Opening passage', paragraphID: first.id, excerpt: first.text }] : [];
 }
 
 export function chunkText(text, maxLength = 1800) {

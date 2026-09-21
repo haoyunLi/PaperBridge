@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第七阶段：完整 Overview 阅读地图（2026-09-21）
+
+继续对照 macOS `ReadingGuideBuilder` 和 `ReadingGuideView` 后，Windows 阅读地图不再用包含关系宽松匹配章节标题。它现在使用与 Mac 相同的五类主题、规范化编号/罗马数字标题，并且只接受完整标题、`标题:` 或 `标题 and …` 形式；每个摘录只能来自当前章节，章节内没有足够正文时不再误借下一章节。无可靠标题时仍回退到第一段可读正文，并明确提示先核对来源。
+
+Overview 界面补齐 Mac 的 “Find your way into the paper.” 引导、五类问题、完整来源摘录标签、翻译进度、Start Reading、View Original 和缺失章节免责声明。View Original 会进入 Paper 的 Original 模式；PDF 因而显示精确原页，文本论文显示原文重排预览。主 Electron 流程实际点击阅读地图并核对 Reader 块，验证两个顶部入口和 Original 状态，并保存目视截图。新增单元测试覆盖宽松标题拒绝、编号与罗马数字标题，以及短章节不借用下一节正文。本阶段通过 **96/96 单元测试**、生产构建和主 Electron 流程。
+
 ## 第六阶段：响应式 Research Inspector（2026-09-21）
 
 对照 macOS `ContentView` 和 `SelectionInspectorView` 后，Windows 把原先 1190px 以下的固定浮层改为相同的 1400px 响应断点。窗口小于 1400px 时，检查器占据工作区自己的底部网格行，不再遮住正文；高度随窗口取约 30%，并限制为 190–340px。抽屉内容与 Mac 一样分为两个独立滚动列：左列处理当前选区，右列显示当前 Reader 段落解释和已存标注。PDF、Paper、Overview 或 Full Translation 选区不会再混入无关的 Reader 段落解释。窗口达到 1400px 后，检查器恢复为完整高度的右侧栏，并使用对应的侧栏关闭图标和无障碍名称。
