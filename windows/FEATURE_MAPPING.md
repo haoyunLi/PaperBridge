@@ -2,6 +2,8 @@
 
 固定基线：macOS 1.9 commit `73951d9` 与本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式签名仍需验证。
 
+macOS 1.9.1 的 12 项新增行为单独记录在 [MAC_1_9_1_GAPS.md](MAC_1_9_1_GAPS.md)，当前为 **8 对齐、3 部分、1 缺失**。其中笔记 350 ms autosave、离开/退出 flush、原始空白、会话 Undo、保存状态/重试、固定状态栏及 `needsReview` 隔离已有专项自动化证据；这里的 111 项历史统计不回写。
+
 本轮 [全软件复查](WHOLE_APP_REVIEW.md)最初对比 `73951d9`，记录了修复及验证。macOS 主分支随后前进到 1.9.1 commit `33cfb933`；新增的 12 项行为在 [1.9.1 增量差距报告](MAC_1_9_1_GAPS.md)中单独跟踪，不回写这张 1.9 历史基线的 111 项统计。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。

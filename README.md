@@ -42,7 +42,7 @@ It can also:
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
 
-The same repository contains the active [Windows development preview](windows/README.md), including six-section Settings, local Ollama/MinerU setup with AMD/NVIDIA-aware detection, MinerU Auto-Detect, Windows update prompts that survive restart, and NSIS/portable packaging. Its macOS 1.9 baseline and the newer 1.9.1 gaps are tracked separately in the [feature mapping](windows/FEATURE_MAPPING.md) and [1.9.1 incremental report](windows/MAC_1_9_1_GAPS.md).
+The same repository contains the active [Windows development preview](windows/README.md), including six-section Settings, local Ollama/MinerU setup with AMD/NVIDIA-aware detection, MinerU Auto-Detect, restart-persistent update prompts, NSIS/portable packaging, and the 1.9.1 note reliability path: 350 ms autosave, edit-end/quit flush, session undo, fixed save status and retry. Its macOS 1.9 baseline and the remaining 1.9.1 gaps are tracked separately in the [feature mapping](windows/FEATURE_MAPPING.md) and [1.9.1 incremental report](windows/MAC_1_9_1_GAPS.md).
 
 ## Reading Continuity in 1.9.1
 

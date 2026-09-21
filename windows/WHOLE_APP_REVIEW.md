@@ -96,8 +96,8 @@
 | --- | --- | --- |
 | P1 | 新增组件选择与 MinerU 修复还需更多真实安装环境验收。 | 在干净机器、损坏旧环境、激活失败、取消和重启的条件下检查实际安装及回滚；现有新增流程验证使用受控安装响应。 |
 | P1 | Windows 尚未完成正式签名与跨版本更新交付。 | 真实首装/同版本重装/卸载已通过；仍需签名后的 NSIS/portable、正式 Windows Release、下载校验和旧版本→新版本更新安装。当前应用检查新版并打开发布页。 |
-| P1 | macOS 1.9.1 新增的笔记可靠性仍待补。 | 按 [增量报告](MAC_1_9_1_GAPS.md)完成 350 ms autosave、离开/退出 flush、保留空白、会话 Undo、identity guard、Saving/Saved/Error/Retry。 |
-| P2 | macOS 1.9.1 阅读连续性和标题体验仍待补。 | 固定任务/保存状态栏、50 条 Back/Forward、全 surface 位置恢复、紧凑双语标题、标题分类及待复核标注隔离。 |
+| P1 | macOS 1.9.1 笔记可靠性第一批已补齐。 | 350 ms autosave、离开/退出 flush、原始空白、会话 Undo、paper/selection identity、Saving/Saved/Error/Retry、固定状态栏及 `needsReview` 隔离均有单元和 Electron 回归；继续做真实复杂文档并排验收。 |
+| P2 | macOS 1.9.1 阅读连续性和标题体验仍待补。 | 实现 50 条 Back/Forward、全 surface 位置恢复与代次保护、紧凑双语标题和正确标题分类。 |
 | P2 | 高 DPI、最小窗口、复杂结构和真实扫描件覆盖不足。 | 在多种缩放与分辨率下验证面板、选区、滚动位置；同一批普通/双栏/扫描/公式图表论文与 Mac 真机逐项比较。 |
 | P2 | NVIDIA CUDA 与更多设备未实测。 | 在 NVIDIA、纯 CPU 及其它 AMD 实机检查安装、推理后端、VRAM、失败降级、取消和恢复。 |
 

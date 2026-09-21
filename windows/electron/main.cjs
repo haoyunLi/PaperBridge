@@ -21,8 +21,36 @@ const mineruJobs = createMineruJobGuard();
 let setupManager = null;
 let activeBundle = null;
 let menuState = normalizeMenuState({});
+let closeReady = false;
+let closeRequested = false;
+let quitAfterClose = false;
+let closeTimer = null;
 const requests = new Map();
 const modelPullManager = createModelPullManager({ pullModel: pullOllamaModel, emit: progress, isSetupBusy: () => Boolean(setupManager?.controller) });
+
+function finishClose() {
+  closeReady = true;
+  closeRequested = false;
+  if (closeTimer) clearTimeout(closeTimer);
+  closeTimer = null;
+  if (quitAfterClose) app.quit();
+  else if (window && !window.isDestroyed()) window.close();
+}
+
+function requestRendererClose(quitting = false) {
+  quitAfterClose ||= quitting;
+  if (closeRequested || !window || window.isDestroyed()) return;
+  closeRequested = true;
+  window.webContents.send('paperbridge:prepare-close');
+  closeTimer = setTimeout(finishClose, 10_000);
+}
+
+function cancelRendererClose() {
+  closeRequested = false;
+  quitAfterClose = false;
+  if (closeTimer) clearTimeout(closeTimer);
+  closeTimer = null;
+}
 
 function localOllamaURL(value, endpoint) {
   const url = new URL(value || 'http://localhost:11434');
@@ -114,6 +142,8 @@ function registerHandlers() {
     menuState = normalizeMenuState(state);
     return applyMenuState(Menu.getApplicationMenu(), menuState);
   });
+  ipcMain.on('app:close-ready', event => { if (event.sender === window?.webContents) finishClose(); });
+  ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   ipcMain.handle('updates:check', (_event, automatic = false) => checkUpdates(automatic));
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
@@ -302,6 +332,8 @@ function buildMenu() {
 }
 
 function createWindow() {
+  closeReady = false;
+  cancelRendererClose();
   window = new BrowserWindow({
     width: 1320, height: 820, minWidth: 980, minHeight: 620, title: 'PaperBridge',
     backgroundColor: '#F3EEE4',
@@ -316,6 +348,11 @@ function createWindow() {
   window.webContents.on('did-start-loading', () => {
     menuState = normalizeMenuState({});
     applyMenuState(Menu.getApplicationMenu(), menuState);
+  });
+  window.on('close', event => {
+    if (closeReady) return;
+    event.preventDefault();
+    requestRendererClose(false);
   });
   if (process.env.VITE_DEV_SERVER_URL) window.loadURL(process.env.VITE_DEV_SERVER_URL);
   else if (!app.isPackaged && process.env.NODE_ENV !== 'production') window.loadURL('http://127.0.0.1:5173');
@@ -335,7 +372,14 @@ app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-app.on('before-quit', () => { setupManager?.cancel(); modelPullManager.cancel(); mineruJobs.cancel(); });
+app.on('before-quit', event => {
+  if (window && !window.isDestroyed() && !closeReady) {
+    event.preventDefault();
+    requestRendererClose(true);
+    return;
+  }
+  setupManager?.cancel(); modelPullManager.cancel(); mineruJobs.cancel();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 module.exports = { localOllamaURL };

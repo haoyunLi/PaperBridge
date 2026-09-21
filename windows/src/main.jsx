@@ -16,6 +16,8 @@ import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from '
 import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
 import { annotationsMarkdown } from './annotationsMarkdown.mjs';
+import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection } from './noteAnnotations.mjs';
+import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import Onboarding from './Onboarding.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
@@ -25,6 +27,7 @@ import 'katex/dist/katex.min.css';
 import './style.css';
 import './hardware.css';
 import './parity.css';
+import './save-status.css';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
@@ -358,6 +361,7 @@ function App() {
   const [ollamaError, setOllamaError] = useState('');
   const [status, setStatus] = useState('Open a PDF or try the practice paper.');
   const [error, setError] = useState('');
+  const [workspaceSave, setWorkspaceSave] = useState({ status: 'idle', error: null });
   const [busy, setBusy] = useState(null);
   const [progress, setProgress] = useState(null);
   const [search, setSearch] = useState('');
@@ -381,6 +385,7 @@ function App() {
   const [edit, setEdit] = useState(null);
   const [undo, setUndo] = useState([]);
   const pendingUndoSnapshot = useRef(null);
+  const noteEditingIdentity = useRef('');
   const [pullModel, setPullModel] = useState('');
   const [pullProgress, setPullProgress] = useState(null);
   const [pulling, setPulling] = useState(false);
@@ -394,7 +399,7 @@ function App() {
   const lookupCache = useRef(new Map());
   const translationQueueRef = useRef(null);
   const mineruPreflight = useRef(false);
-  const saveChain = useRef(Promise.resolve());
+  const saveQueue = useRef(null);
   const fileInputRef = useRef(null);
   const mainScrollRef = useRef(null);
   const scrollSaveTimer = useRef(null);
@@ -403,21 +408,40 @@ function App() {
   const lastCommand = useRef({ name: '', at: 0 });
   const commandRef = useRef(null);
 
-  const commitPaper = updater => {
+  if (!saveQueue.current) saveQueue.current = createPaperSaveQueue({
+    save: snapshot => api.savePaper(snapshot),
+    onState: next => setWorkspaceSave(next),
+    onSaved: result => setLibrary(result)
+  });
+
+  const commitPaper = (updater, { delay = 0, deferUndo = false } = {}) => {
     const current = paperRef.current;
     const next = typeof updater === 'function' ? updater(current) : updater;
-    if (pendingUndoSnapshot.current) {
+    if (next === current) return current;
+    if (pendingUndoSnapshot.current && !deferUndo) {
       const entry = createUndoEntry(pendingUndoSnapshot.current, next);
       pendingUndoSnapshot.current = null;
       if (entry) setUndo(previous => [...previous, entry].slice(-20));
     }
     paperRef.current = next; setPaper(next);
-    if (next) saveChain.current = saveChain.current.catch(() => {}).then(() => api.savePaper(next)).then(setLibrary).catch(err => setError(`Could not save paper: ${err.message}`));
+    if (next) saveQueue.current.schedule(next, delay);
     return next;
   };
+  async function finishNoteEditing() {
+    if (noteEditingIdentity.current && pendingUndoSnapshot.current) {
+      const entry = createUndoEntry(pendingUndoSnapshot.current, paperRef.current);
+      pendingUndoSnapshot.current = null;
+      if (entry) setUndo(previous => [...previous, entry].slice(-20));
+    }
+    noteEditingIdentity.current = '';
+    return saveQueue.current.flush();
+  }
+  async function retryPaperSave() {
+    await saveQueue.current.retry();
+  }
   const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
     if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
-    await saveChain.current;
+    if (!await finishNoteEditing()) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
     if (!loaded) throw new Error('Paper could not be loaded.');
@@ -499,7 +523,10 @@ function App() {
     const entry = undo.at(-1);
     if (!entry) return;
     if (entry.type === 'structure' && taskRef.current) { setError('Finish or stop the current task before undoing a source edit.'); return; }
-    commitPaper(current => applyUndoEntry(current, entry)); setUndo(previous => previous.slice(0, -1));
+    noteEditingIdentity.current = '';
+    const restored = commitPaper(current => applyUndoEntry(current, entry));
+    setNoteDraft(findSelectionNote(restored, selectionRef.current)?.body || '');
+    setUndo(previous => previous.slice(0, -1));
   }
   const restoreMainScroll = () => {
     restoringScroll.current = true;
@@ -632,7 +659,7 @@ function App() {
       if (previous?.isConnected && !previous.closest('[inert]')) previous.focus({ preventScroll: true });
     };
   }, [modal]);
-  useEffect(() => { if (paper?.id) { const id = paper.id; saveChain.current.then(() => api.markPaperOpened(id)).catch(cause => setError(cause.message)); } }, [paper?.id]);
+  useEffect(() => { if (paper?.id) { const id = paper.id; saveQueue.current.flush().then(saved => saved && api.markPaperOpened(id)).catch(cause => setError(cause.message)); } }, [paper?.id]);
   useEffect(() => { if (taskRef.current?.kind === 'selection' && taskRef.current.selectionKey !== selectionIdentity(selection)) cancelTask(); }, [selectionIdentity(selection)]);
   useEffect(() => {
     if (!ready || settings?.autoCheckUpdates === false) return;
@@ -643,7 +670,10 @@ function App() {
   useEffect(() => { if (ready) api.saveGlossary(glossary).catch(err => setError(err.message)); }, [glossary, ready]);
   useEffect(() => { if (paperRef.current && paperRef.current.position?.tab !== tab) commitPaper(current => ({ ...current, position: { ...current.position, tab } })); }, [tab]);
   useEffect(() => { if (paperRef.current && !focus && paperRef.current.inspectorOpen !== inspector) commitPaper(current => ({ ...current, inspectorOpen: inspector })); }, [inspector, paper?.id, focus]);
-  useEffect(() => { setSelection(null); setSelectionResult(null); }, [tab, paper?.id]);
+  useEffect(() => {
+    void finishNoteEditing();
+    setSelection(null); setSelectionResult(null);
+  }, [tab, paper?.id]);
   useEffect(() => {
     if (!viewNavigation || !paper || tab !== (viewNavigation.scope === 'fullTranslation' ? 'Full Translation' : 'Summary')) return;
     const host = document.querySelector(`[data-view-scope="${viewNavigation.scope}"] [data-markdown-host]`);
@@ -658,7 +688,7 @@ function App() {
     const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
     range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
     setSelection({ ...viewNavigation, id: null, kind: viewNavigation.scope === 'summarySource' ? 'source' : 'translation', displayOffset: offset, rect: null });
-    setSelectionResult(null); setNoteDraft((paper.viewNotes || []).find(item => item.scope === viewNavigation.scope && item.offset === viewNavigation.offset && item.text === viewNavigation.text)?.body || ''); setInspector(true); setViewNavigation(null);
+    setSelectionResult(null); setNoteDraft(findSelectionNote(paper, viewNavigation)?.body || ''); setInspector(true); setViewNavigation(null);
   }, [viewNavigation?.id, tab, paper?.id]);
   const command = name => {
     if (name === 'dismiss') { dismissModal(); setSelection(null); return; }
@@ -703,6 +733,14 @@ function App() {
     };
     window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
   }, []);
+  useEffect(() => api.onPrepareClose(async () => {
+    const saved = await finishNoteEditing();
+    if (saved) api.closeReady();
+    else {
+      setError('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
+      api.closeCancelled();
+    }
+  }), []);
   useEffect(() => { if (paper) restoreMainScroll(); }, [tab, paper?.id]);
   useEffect(() => {
     if (!blockNavigation || !paper || tab !== 'Reader') return;
@@ -728,8 +766,9 @@ function App() {
       }
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-      setSelection({ id: block.id, kind: request.kind, text: request.text, offset: request.offset, displayOffset: at, scope: 'reader', rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
-      setSelectionResult(null); setNoteDraft(block.notes?.find(note => note.text === request.text && note.offset === request.offset && (note.kind || 'source') === request.kind)?.body || ''); setInspector(true); setBlockNavigation(null);
+      const nextSelection = { id: block.id, kind: request.kind, text: request.text, offset: request.offset, displayOffset: at, scope: 'reader', rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) };
+      setSelection(nextSelection);
+      setSelectionResult(null); setNoteDraft(findSelectionNote(paperRef.current, nextSelection)?.body || ''); setInspector(true); setBlockNavigation(null);
     }));
     return () => { cancelled = true; };
   }, [blockNavigation?.requestId, tab, displayMode, paper?.id]);
@@ -1067,7 +1106,7 @@ function App() {
   async function clearSavedData() {
     if (busy) return;
     try {
-      await saveChain.current;
+      if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
       await settingsSaveChain.current;
       await api.clearData();
       const data = await api.bootstrap();
@@ -1100,8 +1139,10 @@ function App() {
     const source = anchorText(block, kind);
     const { text, rect } = captured;
     const offset = exactAnchorOffset(source, captured);
-    setSelection({ id: block?.id ?? null, kind, text, offset, displayOffset: captured.offset, scope: 'reader', rect });
-    const saved = block?.notes?.find(note => note.text === text && note.offset === offset && (note.kind || 'source') === kind);
+    const nextSelection = { id: block?.id ?? null, kind, text, offset, displayOffset: captured.offset, scope: 'reader', rect };
+    if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing();
+    setSelection(nextSelection);
+    const saved = findSelectionNote(paperRef.current, nextSelection);
     setSelectionResult(null); setInspector(true); setNoteDraft(saved?.body || '');
   }
   function addHighlight(color) {
@@ -1134,32 +1175,28 @@ function App() {
     updateBlock(block.id, { [key]: exists ? highlights.filter(item => !(item.text === selection.text && item.offset === selection.offset && item.color === color)) : [...highlights, { id: crypto.randomUUID(), text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, color }] });
     setStatus(exists ? 'Highlight removed; its notes were kept.' : 'Highlight saved.');
   }
-  function saveNote() {
-    if (!selection || !noteDraft.trim()) return;
-    if (selection.scope === 'pdf') {
-      if (!validPdfSelection(selection) || selection.page !== pageNumber) { setError('Select exact text on the current PDF page before saving a note.'); return; }
-      rememberUndo();
-      const saved = paper.pdfNotes || [];
-      const existing = saved.find(item => item.page === selection.page && item.offset === selection.offset && item.text === selection.text);
-      commitPaper(current => ({ ...current, pdfNotes: existing ? saved.map(item => item.id === existing.id ? { ...item, body: noteDraft.trim(), needsReview: false } : item) : [...saved, { id: crypto.randomUUID(), page: selection.page, offset: selection.offset, text: selection.text, body: noteDraft.trim() }] }));
-      setStatus(existing ? 'PDF note updated.' : 'PDF note saved on the original page.');
+  function updateNote(body, sourceIdentity) {
+    const currentPaper = paperRef.current;
+    const currentSelection = selectionRef.current;
+    if (!currentPaper || !sameNoteSelection(currentPaper.id, currentSelection, sourceIdentity)) return;
+    if (!validNoteSelection(currentPaper, currentSelection) || currentSelection.scope === 'pdf' && currentSelection.page !== pageNumber) {
+      setError('This note needs an exact selection in the current saved document.');
       return;
     }
-    if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) {
-      if (!validViewAnchor(paper, selection)) { setError('This note needs an exact selection in the saved document.'); return; }
+    const next = applySelectionNote(currentPaper, currentSelection, body);
+    setNoteDraft(body);
+    if (next === currentPaper) return;
+    const identity = noteSelectionIdentity(currentPaper.id, currentSelection);
+    if (noteEditingIdentity.current !== identity) {
+      noteEditingIdentity.current = identity;
       rememberUndo();
-      const saved = paper.viewNotes || [];
-      const existing = saved.find(item => item.scope === selection.scope && item.text === selection.text && item.offset === selection.offset);
-      commitPaper(current => ({ ...current, viewNotes: existing ? saved.map(item => item.id === existing.id ? { ...item, body: noteDraft.trim(), displayOffset: selection.displayOffset ?? item.displayOffset } : item) : [...saved, { id: crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, body: noteDraft.trim() }] }));
-      setStatus(existing ? 'Note updated.' : 'Note saved in the annotation list.');
-      return;
     }
-    const block = paper.blocks.find(item => item.id === selection.id);
-    if (!['reader', 'paper'].includes(selection.scope) || !block || !Number.isInteger(selection.offset) || anchorText(block, selection.kind).slice(selection.offset, selection.offset + selection.text.length) !== selection.text) { setError('This note needs an exact source block selection.'); return; }
-    rememberUndo();
-    const existing = block.notes?.find(note => note.text === selection.text && note.offset === selection.offset && (note.kind || 'source') === selection.kind);
-    updateBlock(block.id, { notes: existing ? block.notes.map(note => note.id === existing.id ? { ...note, body: noteDraft.trim(), displayOffset: selection.displayOffset ?? note.displayOffset, needsReview: false } : note) : [...(block.notes || []), { id: crypto.randomUUID(), text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, kind: selection.kind, body: noteDraft.trim() }] });
-    setStatus(existing ? 'Note updated.' : 'Note saved.');
+    commitPaper(next, { delay: 350, deferUndo: true });
+  }
+  async function saveNote() {
+    if (!selection) return;
+    const saved = await finishNoteEditing();
+    setStatus(saved ? 'Note saved on this PC.' : 'The note is still in memory. Retry the failed save.');
   }
   function removeNote(blockId, noteId) { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; rememberUndo(); updateBlock(blockId, { notes: (block.notes || []).filter(note => note.id !== noteId) }); }
   function removeHighlight(blockId, highlight, kind = 'source') { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; const key = kind === 'translation' ? 'translationHighlights' : 'highlights'; rememberUndo(); updateBlock(blockId, { [key]: (block[key] || []).filter(item => item !== highlight) }); }
@@ -1180,6 +1217,14 @@ function App() {
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
   function navigate(id) { searchOrigin.current = null; setSearch(''); setActiveBlock(id); setTab('Reader'); commitPaper(current => ({ ...current, position: { ...current.position, block: id } })); setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
   function navigateBlockAnnotation(blockId, item, kind, recordType) {
+    const block = paperRef.current?.blocks.find(entry => entry.id === blockId);
+    if (item.needsReview || !block || !validBlockAnchor(block, item, kind)) {
+      if (!item.needsReview && block) commitPaper(current => ({ ...current, blocks: current.blocks.map(entry => entry.id !== blockId ? entry : recordType === 'note'
+        ? { ...entry, notes: (entry.notes || []).map(note => note.id === item.id ? { ...note, needsReview: true } : note) }
+        : { ...entry, [kind === 'translation' ? 'translationHighlights' : 'highlights']: (entry[kind === 'translation' ? 'translationHighlights' : 'highlights'] || []).map(highlight => highlight === item ? { ...highlight, needsReview: true } : highlight) }) }));
+      setError('The saved Reader text no longer matches this block. The annotation was kept for review.');
+      return;
+    }
     const mode = kind === 'translation' && displayMode === 'source' || kind === 'source' && displayMode === 'translation' ? 'bilingual' : displayMode;
     window.getSelection()?.removeAllRanges();
     setInspector(true); setSelection(null); setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab('Reader');
@@ -1187,18 +1232,27 @@ function App() {
     commitPaper(current => ({ ...current, position: { ...current.position, block: blockId, displayMode: mode } }));
   }
   function navigateView(item) {
+    if (item.needsReview || !validViewAnchor(paperRef.current, item)) {
+      if (!item.needsReview) commitPaper(current => ({ ...current,
+        viewNotes: (current.viewNotes || []).map(note => note.id === item.id ? { ...note, needsReview: true } : note),
+        viewHighlights: (current.viewHighlights || []).map(highlight => highlight.id === item.id ? { ...highlight, needsReview: true } : highlight)
+      }));
+      setError('The saved Markdown text no longer matches this view. The annotation was kept for review.');
+      return;
+    }
     setInspector(true);
     setTab(item.scope === 'fullTranslation' ? 'Full Translation' : 'Summary');
     setViewNavigation({ ...item, id: crypto.randomUUID() });
   }
   function navigatePdf(item) {
+    if (item.needsReview) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
     setInspector(true); setTab('Original'); setPageNumber(item.page);
     setPdfNavigation({ ...item, id: crypto.randomUUID() });
   }
   function pdfNavigationReady(anchor) {
     setSelection({ ...anchor, id: null, kind: 'source', scope: 'pdf', rect: null });
     setSelectionResult(null);
-    setNoteDraft(paperRef.current?.pdfNotes?.find(item => item.page === anchor.page && item.offset === anchor.offset && item.text === anchor.text)?.body || '');
+    setNoteDraft(findSelectionNote(paperRef.current, { ...anchor, scope: 'pdf' })?.body || '');
     setPdfNavigation(null);
   }
   function pdfNavigationFailed() {
@@ -1258,9 +1312,10 @@ function App() {
       const ordinal = captured.context.slice(0, captured.offset).split(text).length - 1;
       offset = matches[ordinal] ?? null;
     }
-    setSelection({ id, kind, text, offset, displayOffset, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) });
-    const saved = scope === 'paper' ? paperRef.current?.blocks.find(block => block.id === id)?.notes?.find(note => note.text === text && note.offset === offset && (note.kind || 'source') === 'source') : paperRef.current?.viewNotes?.find(note => note.scope === scope && note.text === text && note.offset === offset);
-    setSelectionResult(null); setNoteDraft(saved?.body || ''); setInspector(true);
+    const nextSelection = { id, kind, text, offset, displayOffset, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
+    if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing();
+    const saved = findSelectionNote(paperRef.current, nextSelection);
+    setSelection(nextSelection); setSelectionResult(null); setNoteDraft(saved?.body || ''); setInspector(true);
   }
   function mergeBlock(id) { if (id <= 1) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id).map(item => item.id === id - 1 ? mergeBlocks(item, blocks.find(block => block.id === id)) : item)); }
   function mergeNextBlock(id) { if (id >= paper.blocks.length) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id + 1).map(item => item.id === id ? mergeBlocks(item, blocks.find(block => block.id === id + 1)) : item)); }
@@ -1300,14 +1355,20 @@ function App() {
       <div className="sidebar-footer"><button onClick={() => setModal('setup')}><Download size={16} /> Local AI setup</button><button onClick={() => setModal('settings')}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
     </aside>
     <main className="workspace" inert={Boolean(modal)}>
-      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" onClick={() => setSidebar(!sidebar)}>{sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><div className="title-wrap"><h1>{paper?.name || 'PaperBridge'}</h1><p>{paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${ollamaError ? 'offline' : ''}`} title={ollamaError || 'Local Ollama is available'}>● {ollamaError ? 'Ollama unavailable' : 'Ollama Ready'}</div><button className="icon-button" title="Toggle inspector" onClick={() => setInspector(!inspector)}>{inspector ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
+      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" onClick={() => setSidebar(!sidebar)}>{sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><div className="title-wrap"><h1>{paper?.name || 'PaperBridge'}</h1><p>{paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${ollamaError ? 'offline' : ''}`} title={ollamaError || 'Local Ollama is available'}>● {ollamaError ? 'Ollama unavailable' : 'Ollama Ready'}</div><button className="icon-button" title="Toggle inspector" onClick={() => { if (inspector) void finishNoteEditing(); setInspector(!inspector); }}>{inspector ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
       {paper && <div className="header-tools"><nav className="tabs">{['Paper', 'Reader', 'Original', 'Summary', 'Full Translation'].map(name => <button key={name} className={tab === name ? 'active' : ''} onClick={() => setTab(name)}>{name}</button>)}</nav><div className="toolbar-actions">{busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : <button className="button coral" disabled={!translatableCount || translatedCount === translatableCount} onClick={() => translateBlocks(paper.blocks.map(block => block.id))}><Languages size={16} /> {translatedCount ? 'Resume Translation' : 'Translate Paper'}</button>}<button className="button ghost" onClick={() => setModal('more')}>More ···</button></div></div>}
       </header>
-      <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll}>
+      {(error || updateInfo?.status === 'available' || busy || paper && workspaceSave.status !== 'idle') && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
         {updateInfo?.status === 'available' && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setUpdateInfo(null)}>Later</button></div>}
         {busy && <TaskProgress busy={busy} progress={progress} failedCount={failedCount} />}
         {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
+        {paper && workspaceSave.status !== 'idle' && <div className={`save-status ${workspaceSave.status}`} role={workspaceSave.status === 'error' ? 'alert' : 'status'}>
+          <span>{workspaceSave.status === 'saving' ? 'Saving changes…' : workspaceSave.status === 'saved' ? 'Saved on this PC' : `Could not save changes${workspaceSave.error?.message ? `: ${workspaceSave.error.message}` : '.'}`}</span>
+          {workspaceSave.status === 'error' && <button className="button outline" onClick={retryPaperSave}>Retry save</button>}
+        </div>}
+      </div>}
+      <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll}>
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className="content-column">
@@ -1326,8 +1387,8 @@ function App() {
           highlights={paper.pdfHighlights || []}
           navigation={pdfNavigation}
           onRendered={restoreMainScroll}
-          onPage={number => { restoringScroll.current = true; setPageNumber(number); setPdfNavigation(null); setSelection(null); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }}
-          onSelect={anchor => { setSelection({ ...anchor, id: null, kind: 'source', scope: 'pdf' }); setSelectionResult(null); setInspector(true); setNoteDraft((paperRef.current?.pdfNotes || []).find(item => item.page === anchor.page && item.offset === anchor.offset && item.text === anchor.text)?.body || ''); }}
+          onPage={number => { void finishNoteEditing(); restoringScroll.current = true; setPageNumber(number); setPdfNavigation(null); setSelection(null); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }}
+          onSelect={anchor => { const nextSelection = { ...anchor, id: null, kind: 'source', scope: 'pdf' }; if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing(); setSelection(nextSelection); setSelectionResult(null); setInspector(true); setNoteDraft(findSelectionNote(paperRef.current, nextSelection)?.body || ''); }}
           onNavigate={pdfNavigationReady}
           onNavigationFailure={pdfNavigationFailed}
           onOcr={runMineru}
@@ -1338,8 +1399,8 @@ function App() {
         {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy || !paper.blocks.some(block => !block.heading && !block.resource)} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown></article> : <Empty title={paper.blocks.length ? "No full translation yet" : "No readable text yet"} body={paper.blocks.length ? "This optional pass translates longer passages with context. The bilingual reader remains available separately." : "Use MinerU OCR from Paper or Original before translating this PDF."} />}</div>}
       </div>
     </main>
-    <aside className="inspector" inert={Boolean(modal)}><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => setInspector(false)}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE</small><textarea placeholder="What should you remember?" value={noteDraft} onChange={event => setNoteDraft(event.target.value)} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Summary, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</aside>
-    {selection?.rect && !modal && <div className="selection-toolbar" style={{ left: Math.min(window.innerWidth - 275, Math.max(8, selection.rect.x)), top: Math.max(8, selection.rect.y - 44) }} onMouseDown={event => event.preventDefault()}><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={14} /> Explain</button><button onClick={() => { setInspector(true); document.querySelector('.inspector-section textarea')?.focus(); }}><MessageSquareText size={14} /> Notes</button><button aria-label="Close selection tools" onClick={() => setSelection(null)}><X size={14} /></button></div>}
+    <aside className="inspector" inert={Boolean(modal)}><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => { void finishNoteEditing(); setInspector(false); }}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Summary, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</aside>
+    {selection?.rect && !modal && <div className="selection-toolbar" style={{ left: Math.min(window.innerWidth - 275, Math.max(8, selection.rect.x)), top: Math.max(8, selection.rect.y - 44) }} onMouseDown={event => event.preventDefault()}><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={14} /> Explain</button><button onClick={() => { setInspector(true); document.querySelector('.inspector-section textarea')?.focus(); }}><MessageSquareText size={14} /> Notes</button><button aria-label="Close selection tools" onClick={() => { void finishNoteEditing(); setSelection(null); }}><X size={14} /></button></div>}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}

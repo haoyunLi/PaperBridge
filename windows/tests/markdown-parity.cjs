@@ -114,7 +114,8 @@ async function run() {
     assert.equal(await page.locator('.inspector textarea').inputValue(), 'Translation wording is saved.');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Retain this stale note.' }).locator('button').first().click();
     await page.getByText('The saved Reader text no longer matches this block.', { exact: false }).waitFor();
-    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), '');
+    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), '阿什什');
+    assert.equal(await page.getByRole('button', { name: 'Reader', exact: true }).getAttribute('class'), 'active');
     await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.blocks[5]?.notes[0]?.needsReview === true, id);
     const afterInvalidJump = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.equal(afterInvalidJump.blocks[5].notes[0].needsReview, true);

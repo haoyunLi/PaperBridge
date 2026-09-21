@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('paperBridge', {
   copyPdfAsNew: payload => ipcRenderer.invoke('pdf:copy-as-new', payload),
   readPdf: id => ipcRenderer.invoke('pdf:read', id),
   savePaper: paper => ipcRenderer.invoke('paper:save', paper),
+  closeReady: () => ipcRenderer.send('app:close-ready'),
+  closeCancelled: () => ipcRenderer.send('app:close-cancelled'),
   clearData: () => ipcRenderer.invoke('paper:clear-data'),
   loadPaper: id => ipcRenderer.invoke('paper:load', id),
   markPaperOpened: id => ipcRenderer.invoke('paper:mark-opened', id),
@@ -41,5 +43,10 @@ contextBridge.exposeInMainWorld('paperBridge', {
     const listener = (_event, command) => callback(command);
     ipcRenderer.on('paperbridge:command', listener);
     return () => ipcRenderer.removeListener('paperbridge:command', listener);
+  },
+  onPrepareClose: callback => {
+    const listener = () => callback();
+    ipcRenderer.on('paperbridge:prepare-close', listener);
+    return () => ipcRenderer.removeListener('paperbridge:prepare-close', listener);
   }
 });

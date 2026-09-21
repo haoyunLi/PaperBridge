@@ -13,6 +13,7 @@
     "test:model-pull-e2e": "node tests/model-pull-e2e.cjs",
     "test:last-opened-e2e": "node tests/last-opened-e2e.cjs",
     "test:reader-review-e2e": "node tests/reader-review-e2e.cjs",
+    "test:note-autosave-e2e": "node tests/note-autosave-e2e.cjs",
     "test:task-isolation-e2e": "node tests/task-isolation-e2e.cjs",
     "test:menu-state-e2e": "node tests/menu-state-e2e.cjs",
     "test:menu-ui-e2e": "node tests/menu-ui-e2e.cjs",
