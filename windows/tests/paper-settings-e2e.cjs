@@ -75,12 +75,22 @@ async function openByBlocks(page, count, distinctiveText) {
   await page.getByText(distinctiveText, { exact: false }).first().waitFor();
 }
 
+async function waitForSavedExplanation(page) {
+  const explainedBlock = page.locator('#block-2');
+  await explainedBlock.scrollIntoViewIfNeeded();
+  await explainedBlock.click();
+  const result = page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation');
+  await result.waitFor({ state: 'attached' });
+  await result.scrollIntoViewIfNeeded();
+  await result.waitFor({ state: 'visible' });
+}
+
 async function explainBlockIn(page, language) {
   await page.getByRole('button', { name: 'Reader', exact: true }).click();
   await page.locator('#block-2').click();
   await page.getByLabel('Explanation language').selectOption(language);
   await page.locator('.paragraph-explanation .inspector-link').click();
-  await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+  await waitForSavedExplanation(page);
 }
 
 async function run() {
@@ -122,7 +132,7 @@ async function run() {
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
     await waitFor(() => readPaper(textA).blocks[1]?.status === 'pending', 'different settings do not reuse old translation');
     await chooseSettings(page, 'English', 'Simplified Chinese', modelA);
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+    await waitForSavedExplanation(page);
     await waitFor(() => readPaper(textA).blocks[1]?.status === 'ok', 'original task settings restore translation');
     await openSettings(page);
     await page.getByRole('tab', { name: 'Reading', exact: true }).click();
@@ -133,7 +143,7 @@ async function run() {
     await chunkSlider.press('ArrowLeft');
     await waitFor(() => readPaper(textA).taskSettings.maxParagraphChars === originalChunk && readPaper(textA).blocks[1].status === 'ok', 'restoring chunk size recovers the completed paragraph');
     await closeSettings(page);
-    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await waitFor(() => readPaper(textA).taskSettings?.translationModel === modelA, 'paper A task settings');
     await waitFor(() => readPaper(textA).inspectorOpen === false && Object.values(readPaper(textA).paragraphExplanations || {}).some(result => result.language === 'French' && result.output === 'Saved paragraph explanation'), 'paper A explanation and inspector');
 
@@ -155,13 +165,13 @@ async function run() {
     await assertSettings(page, 'English', 'Simplified Chinese', modelA, appearance);
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'French');
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
-    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
+    await waitForSavedExplanation(page);
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await openByBlocks(page, 3, 'Paper B describes');
     assert.equal(await page.locator('.inspector').isVisible(), true);
     await assertSettings(page, 'Japanese', 'English', modelB, appearance);
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'German');
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+    await waitForSavedExplanation(page);
 
     await app.close(); app = null;
     app = await launch();
@@ -173,13 +183,13 @@ async function run() {
     await assertSettings(page, 'English', 'Simplified Chinese', modelA, appearance);
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'French');
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
-    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
+    await waitForSavedExplanation(page);
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await openByBlocks(page, 3, 'Paper B describes');
     assert.equal(await page.locator('.inspector').isVisible(), true);
     await assertSettings(page, 'Japanese', 'English', modelB, appearance);
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'German');
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+    await waitForSavedExplanation(page);
 
     await app.close(); app = null;
     const legacyPaper = readPaper(textA);
@@ -196,13 +206,13 @@ async function run() {
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
     await chooseSettings(page, 'English', 'Simplified Chinese', modelA);
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+    await waitForSavedExplanation(page);
     await page.locator('#block-2 button[title="Edit source"]').click();
     await page.locator('#block-2 .edit-area textarea').fill('Paper A revised text invalidates the old explanation.');
     await page.locator('#block-2 .edit-area').getByRole('button', { name: 'Save edit' }).click();
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
     await page.locator('.undo-button').click();
-    await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
+    await waitForSavedExplanation(page);
     console.log('Per-paper task settings, explanation cache, and inspector state restored across switching and restart; legacy paper inherited current settings.');
   } finally {
     await app?.close();

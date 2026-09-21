@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第六阶段：响应式 Research Inspector（2026-09-21）
+
+对照 macOS `ContentView` 和 `SelectionInspectorView` 后，Windows 把原先 1190px 以下的固定浮层改为相同的 1400px 响应断点。窗口小于 1400px 时，检查器占据工作区自己的底部网格行，不再遮住正文；高度随窗口取约 30%，并限制为 190–340px。抽屉内容与 Mac 一样分为两个独立滚动列：左列处理当前选区，右列显示当前 Reader 段落解释和已存标注。PDF、Paper、Overview 或 Full Translation 选区不会再混入无关的 Reader 段落解释。窗口达到 1400px 后，检查器恢复为完整高度的右侧栏，并使用对应的侧栏关闭图标和无障碍名称。
+
+主 Electron 流程自动验证了 1320×820 的底部行、两列结构和动态高度，980×620 的 190px 最小高度与两列可用宽度，以及 1500×820 恢复右侧栏；随后再缩回 1320px 验证运行时断点切换。两张抽屉截图经过目视检查。逐论文设置回归也重新选择解释所属段落，确认布局变化后解释缓存、检查器开关、论文切换和重启恢复仍然正确。本阶段继续通过 **95/95 单元测试**、生产构建及主流程、逐论文设置、Markdown、标题、Reader Review、阅读历史和便签自动保存回归。
+
 ## 第五阶段：Quick Selection 与高亮语义（2026-09-21）
 
 继续对照 macOS `QuickSelectionView` 和 `SelectionInspectorView` 后，Windows 不再在每次选文时强制打开研究检查器。检查器关闭时，正文右下角显示完整 Quick Selection 卡片，包含选文预览、Translate、Explain、取消任务、Amber / Cobalt / Coral、高亮移除、Save Term 与 Notes & More；检查器已打开时不会重复显示。翻译和解释结果现在可同时保留，快速术语保存可直接使用翻译结果。卡片在滚动导致选区离开时收起，并在 1320×820、最小 980×620 窗口内保持完整可见。

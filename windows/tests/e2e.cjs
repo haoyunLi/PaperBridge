@@ -85,13 +85,42 @@ async function run() {
     await page.getByRole('button', { name: 'Save label' }).click();
     await page.locator('.modal-head .icon-button').click();
     assert.equal(await page.locator('.title-wrap h1').innerText(), 'Edited practice label');
+    await page.locator('.inspector.inspector-drawer').waitFor();
+    const drawerLayout = await page.evaluate(() => {
+      const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+      const workspace = document.querySelector('.workspace').getBoundingClientRect();
+      const inspector = document.querySelector('.inspector').getBoundingClientRect();
+      const body = getComputedStyle(document.querySelector('.inspector-body'));
+      return { sidebar: { right: sidebar.right }, workspace: { x: workspace.x, bottom: workspace.bottom }, inspector: { x: inspector.x, y: inspector.y, right: inspector.right, bottom: inspector.bottom, height: inspector.height }, display: body.display, columns: body.gridTemplateColumns };
+    });
+    assert.ok(Math.abs(drawerLayout.inspector.x - drawerLayout.sidebar.right) < 2 && Math.abs(drawerLayout.inspector.x - drawerLayout.workspace.x) < 2, 'Compact inspector should start after the document sidebar');
+    assert.ok(drawerLayout.inspector.y >= drawerLayout.workspace.bottom - 2 && Math.abs(drawerLayout.inspector.bottom - 820) < 2, 'Compact inspector should occupy its own bottom row');
+    assert.ok(drawerLayout.inspector.height >= 190 && drawerLayout.inspector.height <= 340 && drawerLayout.display === 'grid' && drawerLayout.columns.split(' ').length === 2, 'Compact inspector should use the Mac-style two-column drawer');
+    await page.screenshot({ path: path.join(artifacts, 'inspector-drawer-1320x820.png') });
+    await page.setViewportSize({ width: 980, height: 620 });
+    await page.locator('.inspector.inspector-drawer').waitFor();
+    const smallDrawer = await page.evaluate(() => {
+      const drawer = document.querySelector('.inspector').getBoundingClientRect();
+      const primary = document.querySelector('.inspector-primary').getBoundingClientRect();
+      const supporting = document.querySelector('.inspector-supporting').getBoundingClientRect();
+      return { drawer: { bottom: drawer.bottom, height: drawer.height }, primary: { width: primary.width }, supporting: { width: supporting.width } };
+    });
+    assert.ok(Math.abs(smallDrawer.drawer.bottom - 620) < 2 && Math.abs(smallDrawer.drawer.height - 190) < 2, 'Minimum-height drawer should use the Mac 190px floor');
+    assert.ok(smallDrawer.primary.width > 300 && smallDrawer.supporting.width > 300, 'Both inspector columns should remain usable at 980px');
+    await page.screenshot({ path: path.join(artifacts, 'inspector-drawer-980x620.png') });
+    await page.setViewportSize({ width: 1500, height: 820 });
+    await page.locator('.inspector.inspector-sidebar').waitFor();
+    const sidebarInspector = await page.locator('.inspector').boundingBox();
+    assert.ok(sidebarInspector && sidebarInspector.height > 800 && sidebarInspector.width >= 320 && sidebarInspector.width <= 430, 'Wide windows should restore the right inspector column');
+    await page.setViewportSize({ width: 1320, height: 820 });
+    await page.locator('.inspector.inspector-drawer').waitFor();
     const menuLabels = await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map(item => item.label));
     assert.deepEqual(menuLabels, ['File', 'Paper', 'Selection', 'View', 'Help']);
     await page.keyboard.press('Control+1');
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
     await page.keyboard.press('Control+f');
     await page.locator('.search:focus').waitFor();
-    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await page.keyboard.press('Control+Shift+i');
     await page.locator('.inspector').waitFor({ state: 'visible' });
     await page.keyboard.press('Control+Shift+l');
@@ -114,7 +143,7 @@ async function run() {
     await page.screenshot({ path: path.join(artifacts, 'task-progress.png') });
     await page.getByText('Translation pass finished.', { exact: false }).waitFor({ timeout: 15000 });
     generateDelayMs = 0;
-    await page.getByRole('button', { name: 'Hide inspector', exact: true }).click();
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await page.locator('.inspector').waitFor({ state: 'hidden' });
     await page.evaluate(() => {
       const node = document.querySelector('.document-preview p').firstChild;
@@ -141,6 +170,7 @@ async function run() {
     await quickSelection.getByRole('button', { name: 'Notes & More', exact: true }).click();
     await page.locator('.inspector').waitFor({ state: 'visible' });
     await quickSelection.waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('.paragraph-explanation').count(), 0, 'Paper selections should not show an unrelated Reader paragraph explanation');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.waitForSelector('.block');
     assert.ok((await page.locator('.block').count()) >= 8);
@@ -195,6 +225,7 @@ async function run() {
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     await page.getByText('SELECTED TEXT · summarySource', { exact: true }).waitFor();
+    assert.equal(await page.locator('.paragraph-explanation').count(), 0, 'Overview selections should keep the supporting column scoped to relevant content');
     await page.locator('.inspector .highlight.teal').click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
     await page.locator('.inspector textarea').fill('Summary selection note.');
