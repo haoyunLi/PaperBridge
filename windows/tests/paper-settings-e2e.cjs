@@ -94,7 +94,7 @@ async function run() {
     response.statusCode = 404; response.end('{}');
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, autoCheckUpdates: false }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
 
   const paperPath = text => path.join(workspace, 'papers', `${paperId(text)}.json`);
   const readPaper = text => JSON.parse(fs.readFileSync(paperPath(text), 'utf8'));

@@ -47,7 +47,7 @@ async function run() {
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   fs.mkdirSync(workspace, { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
   const pdfPath = path.join(artifacts, 'practice.pdf');
   fs.writeFileSync(pdfPath, samplePdf());
   let app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });

@@ -45,7 +45,7 @@ async function run() {
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   const baseURL = `http://127.0.0.1:${ollama.address().port}`;
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: baseURL, autoCheckUpdates: false }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: baseURL, autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
 
   let app;
   try {

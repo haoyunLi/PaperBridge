@@ -24,6 +24,12 @@ npm run test:e2e
 npm run test:paper-settings-e2e
 npm run test:last-opened-e2e
 npm run test:model-pull-e2e
+npm run test:menu-state-e2e
+npm run test:menu-ui-e2e
+npm run test:setup-components-e2e
+npm run test:onboarding-e2e
+npm run test:onboarding-startup-e2e
+npm run test:official-links-e2e
 npm run test:reader-review-e2e
 npm run test:task-isolation-e2e
 npm run test:markdown
@@ -44,9 +50,13 @@ PaperBridge checks the official GitHub Release API for published `windows-vX.Y.Z
 
 ## Local AI and GPU acceleration
 
-Open **Set up local AI** on the welcome screen, in the sidebar, or through Settings. PaperBridge checks the local Ollama service, selected models, MinerU installation, and graphics hardware. **Install missing components** starts an existing Ollama installation or downloads its official signed Windows installer, downloads the selected Ollama models, and installs MinerU into a private Python 3.12 environment. Progress and cancellation are available in the setup panel. Existing working installations are retained. MinerU can need several gigabytes; the first setup may take a while. GPU drivers are not installed by PaperBridge.
+First launch opens a six-step **Getting Started** guide: introduction, Ollama, translation model, optional MinerU, optional assistant model, and readiness summary. The guide saves its page, supports skipping, and can be reopened from Settings or the Help menu. Downloads start only after you click their button; running setup or model downloads keep the guide open until completion or cancellation. The final step can open a PDF or load a practice paper.
 
-Settings also supports manual model download with streaming progress, cancellation and retry. Manual downloads and one-click installation cannot run concurrently. The one-page setup still needs the Mac app's six-step onboarding, 4B/12B/27B and assistant recommendations, optional component controls, and explicit MinerU repair/upgrade actions.
+The guide has the Mac app's three TranslateGemma sizes (4B/12B/27B) and six optional assistants, with download estimates and installed/selected states. The starting suggestion uses system RAM, which is separate from GPU VRAM. Choosing an assistant applies it to summary, explanation and quick lookup. Choosing a translation model preserves installed specialist assistants and updates roles that followed the previous translation model or are missing locally.
+
+Open **Local AI setup** from the sidebar or Settings for component selection. Choose Ollama, the models assigned to your tasks, and/or MinerU. **Install missing components** retains working components. Model downloads start or install Ollama if it is needed. **Repair / update MinerU** reinstalls the app-supported version in a private environment and restores the previous managed environment if activation fails. Progress and cancellation are available. MinerU can need several gigabytes; GPU drivers remain managed by Windows and your graphics vendor.
+
+Settings also supports manual model download with streaming progress, cancellation and retry. Manual downloads and one-click installation cannot run concurrently. Component-selection and repair/cancellation flows have automated tests with controlled installation responses; the existing RX 7800 XT installation was retained during this review.
 
 PaperBridge connects only to an Ollama HTTP server on `localhost`, `127.0.0.1`, or `::1`. Reading, notes, bookmarks, and the original PDF do not require Ollama. The manual [Ollama for Windows](https://ollama.com/download/windows) path remains available.
 

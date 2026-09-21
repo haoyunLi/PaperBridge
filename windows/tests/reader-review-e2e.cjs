@@ -78,7 +78,7 @@ async function run() {
     ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`,
     translationModel: model, summaryModel: model, explainModel: model, quickLookupModel: model,
     sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
-    autoCheckUpdates: false, pdfExtractionMode: 'pdfOnly', maxParagraphChars: 10000
+    autoCheckUpdates: false, onboardingCompletedVersion: 1, pdfExtractionMode: 'pdfOnly', maxParagraphChars: 10000
   };
   const id = crypto.createHash('sha256').update('PaperBridge reader review regression fixture').digest('hex');
   const document = {

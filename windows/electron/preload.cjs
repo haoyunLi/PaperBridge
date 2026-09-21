@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('paperBridge', {
   bootstrap: () => ipcRenderer.invoke('bootstrap'),
+  updateMenuState: state => ipcRenderer.invoke('menu:update-state', state),
   checkUpdates: automatic => ipcRenderer.invoke('updates:check', automatic),
   openUpdateRelease: tag => ipcRenderer.invoke('updates:open-release', tag),
   importPdf: () => ipcRenderer.invoke('pdf:import'),

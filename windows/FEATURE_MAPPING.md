@@ -153,18 +153,18 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G03 | 导出双语 Markdown | 双语 Markdown 单文件及 bundle 包含书签、各视图高亮和笔记 | 部分 | 仅高亮加书签的导出 UI 已回归；复杂资产及公式顺序仍需验证。 |
 | G04 | 导出摘要/笔记/证据 Markdown | 摘要、证据、书签、各视图高亮/笔记含原译文侧、PDF 页码及需复核提示 | 部分 | 仅高亮加书签的 Analysis 导出已回归；复杂 Markdown 锚点与证据格式仍需比较。 |
 | G05 | 资源 bundle、原 PDF、便携页面图片和独立全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与独立全文稿 | 部分 | 复杂 MinerU 资产和长 PDF 仍需真机验收。 |
-| G06 | 首次启动分步引导；可重新打开 | Windows 欢迎页 + 一页 Local AI setup | 部分 | 重现分步说明、模型选择及再次打开入口。 |
-| G07 | 自动检测/启动/安装 Ollama | SetupPanel 诊断 + 签名安装器 | 部分 | AMD 真机已完成从无到有的签名安装和复用；取消及其它硬件待验证。 |
-| G08 | 自动发现、下载并选择模型 | 检测四套已选任务模型，Settings 可手动下载、取消和重试 | 部分 | Mac 4B/12B/27B 与可选助手模型推荐卡片尚缺。 |
-| G09 | 翻译、摘要、解释、快速查词四套模型设置 | 翻译、摘要、解释、快速查词四套模型设置 | 对齐 | 一键安装计划检查四套已选模型。 |
-| G10 | 独立安装 MinerU，允许手动路径/后端 | 私有 Python/MinerU 安装，路径与后端设置 | 部分 | AMD 已安装 MinerU 3.4.5 并解析论文和清晰图像型 PDF；NVIDIA CUDA、回滚及复杂扫描件待验证。 |
-| G11 | 后台下载及进度、取消 | 安装和手动模型下载由主进程管理；模型下载可取消、重试并与安装互斥 | 部分 | 模型下载关闭流、旧消息隔离和重试已回归；安装中退出、回滚及更多设备仍需验收。 |
+| G06 | 首次启动分步引导；可重新打开 | 首次启动六步 Getting Started：Ollama、翻译模型、MinerU、解释模型及就绪检查；Settings 与 Help 可重开，可跳过并记录完成状态 | 部分 | 六步、跨启动页码恢复、跳过/重开、忙时焦点和关闭锁、保存去重、练习文档及 980×620/1320×820 布局已通过 Electron 验证；仍需更多 DPI 和 Mac 实机并排对照。 |
+| G07 | 自动检测/启动/安装 Ollama | SetupPanel 可勾选 Ollama、模型、MinerU；仅选模型时自动补 Ollama 依赖，单选 MinerU 不启动 Ollama | 部分 | AMD 真机已完成签名安装和复用；组件选择及依赖由单元与 Electron mock 回归验证，真实安装取消及其它硬件待验收。 |
+| G08 | 自动发现、下载并选择模型 | 六步引导提供 TranslateGemma 4B/12B/27B 和六个可选助手模型卡片、内存建议、下载/选择/取消；Settings 保留手动模型下载 | 部分 | 卡片与角色继承、下载取消/重试、启动恢复配置一致性已通过单元和 Electron 回归；Settings 中尚无 Mac 的推荐卡片，12B/27B 等大模型仍需实际下载及内存适配验证。 |
+| G09 | 翻译、摘要、解释、快速查词四套模型设置 | 四套任务模型可分别设置；引导选择翻译或助手模型会更新相应角色，保留用户另选的已安装助手模型 | 对齐 | 安装计划检查四套已选模型；引导模型角色继承有单元验证。 |
+| G10 | 独立安装 MinerU，允许手动路径/后端 | 私有 Python/MinerU 安装、手动路径/后端；可单独选择 MinerU，并对已兼容版本显式 Repair / update，使用暂存环境及旧版本回滚 | 部分 | AMD 已实际安装 MinerU 3.4.5 并解析论文与清晰图像型 PDF；选择/修复由 Electron mock、失败回滚由单元验证，真实修复、NVIDIA CUDA 和复杂扫描件待验收。 |
+| G11 | 后台下载及进度、取消 | 安装与模型下载由主进程管理；模型下载可取消、重试并与安装互斥，引导与 SetupPanel 都可显示进度及取消 | 部分 | 模型流关闭、旧消息隔离与重试已回归；安装状态检测期间取消不误报完成的单元和组件界面取消/重开的 Electron mock 已过；真实安装中退出及恢复待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
-| G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L | 部分 | 快捷键与菜单点击已回归；菜单项按当前任务和选区动态禁用、其它键盘布局仍需补齐。 |
+| G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L；菜单项随论文、任务、选区和更新检查状态动态启停 | 部分 | 状态转换有单元覆盖，空白页、论文、选区、忙碌任务、撤销及重开引导有 Electron 菜单回归；其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
 | G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，设置可手动检查，发现新版显示提示并打开官方发布页；网络失败不占用每日间隔，下次自动重试 | 部分 | 失败后重试已有单元回归；签名后的应用内下载、验证与安装仍待 Windows 发布证书和正式 Release。 |
 | G15 | 发布安装包 | NSIS 与 portable 构建，当前未签名 | 部分 | 真机安装、卸载与签名后发布验证。 |
 
-Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出](src/main.jsx#L295)、[安装 UI](src/SetupPanel.jsx)、[安装逻辑](electron/setup.cjs)、[快捷键](src/main.jsx#L159)、[构建](package.json)。
+Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[安装逻辑](electron/setup.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[引导回归](tests/onboarding-e2e.cjs)、[启动配置恢复](tests/onboarding-startup-e2e.cjs)、[组件 mock 回归](tests/setup-components-e2e.cjs)、[安装取消/回滚单元](tests/setup.test.cjs)、[菜单回归](tests/menu-ui-e2e.cjs)、[构建](package.json)。
 
 ## Windows 特有的硬件映射
 
@@ -174,6 +174,6 @@ Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swif
 
 1. **P0：阅读和数据正确性** — A07–A09 自动解析策略；A19 参考文献过滤；B04 三种阅读模式；C15 结构化全文译稿；D03–D06 精确证据；E03/E11/E15/E17 标注锚点；F07 MinerU 编辑保护；G05 完整导出。任一项“对齐”须有 Mac 同一用户流程与 Windows 结果对照。
 2. **P1：1.9 小功能** — 拖放、练习论文不误替换、跨页修复、质量警告、搜索位置、任意章节/队列插队、整段解释与独立语言、术语搜索、编辑/撤销、图书馆标签和多视图位置。
-3. **P2：交付与体验** — 引导页、剩余快捷键、安装器签名与自动更新、窄窗口和设备兼容性。
+3. **P2：交付与体验** — Settings 推荐卡片和自动发现入口、剩余快捷键验收、安装器签名与自动更新、更多 DPI 和设备兼容性。
 
 关闭某一行前，至少使用同一份普通 PDF、双栏 PDF、扫描 PDF、含公式/图片的 MinerU PDF 和粘贴文本做 Mac↔Windows 行为核对；保存、关闭、重启、取消任务、切换论文、导出后复查结果。GPU 安装流程另需 NVIDIA、AMD、纯 CPU 设备分别验收。这里的状态是代码审计结论，并非这些真实设备验收已经完成。

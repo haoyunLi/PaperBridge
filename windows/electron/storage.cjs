@@ -16,7 +16,10 @@ const defaults = {
   mineruBackend: 'auto',
   pdfExtractionMode: 'mineruPreferred',
   quickLookupModel: 'translategemma:4b',
-  autoCheckUpdates: true
+  autoCheckUpdates: true,
+  onboardingCompletedVersion: 0,
+  onboardingPage: 0,
+  setupComponents: { ollama: true, models: true, mineru: true }
 };
 
 function safeId(id) {

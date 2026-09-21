@@ -34,7 +34,7 @@ async function run() {
   fs.rmSync(workspace, { recursive: true, force: true });
   const papersDir = path.join(workspace, 'papers');
   fs.mkdirSync(papersDir, { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ autoCheckUpdates: false, ollamaBaseURL: 'http://127.0.0.1:9' }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ autoCheckUpdates: false, onboardingCompletedVersion: 1, ollamaBaseURL: 'http://127.0.0.1:9' }));
   const a = paper(paperAId, 'Recently edited A', 'Paper A contains the newer saved content.', '2099-01-01T00:00:00.000Z');
   const b = paper(paperBId, 'Last opened B', 'Paper B is the last paper opened without editing.', '2020-01-01T00:00:00.000Z');
   fs.writeFileSync(path.join(papersDir, `${paperAId}.json`), JSON.stringify(a));

@@ -39,6 +39,14 @@ jobs:
             throw "Tag $env:GITHUB_REF_NAME must match Windows package version $packageVersion"
           }
       - run: npm run dist
+      - name: Verify onboarding and desktop setup workflows
+        shell: pwsh
+        run: |
+          $desktopSuites = @('test:onboarding-e2e', 'test:onboarding-startup-e2e', 'test:setup-components-e2e', 'test:menu-state-e2e', 'test:menu-ui-e2e', 'test:official-links-e2e')
+          foreach ($suite in $desktopSuites) {
+            npm run $suite
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: PaperBridge-Windows

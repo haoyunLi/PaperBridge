@@ -1,6 +1,6 @@
 # macOS 1.9 ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **43 aligned, 68 partial, 0 missing**. The [2026-09-20 whole-app review](WHOLE_APP_REVIEW.md) compares Windows 0.2 with macOS 1.9 at `origin/main` commit `73951d9` and records 12 classes of fixes. The [AMD device report](AMD_DEVICE_TEST.md) records real RX 7800 XT translation, installation, a 15-page MinerU paper import, and OCR of an image-only PDF. These implementation states do not establish complete Mac device parity or coverage of every complex paper and GPU.
+The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **43 aligned, 68 partial, 0 missing**. The [2026-09-20 whole-app review](WHOLE_APP_REVIEW.md) compares Windows 0.2 with macOS 1.9 at `origin/main` commit `73951d9`, records 12 initial classes of fixes, and follows up with the six-step guide, model recommendations, component selection, menu state and interaction fixes. The [AMD device report](AMD_DEVICE_TEST.md) records real RX 7800 XT translation, installation, a 15-page MinerU paper import, and OCR of an image-only PDF. These implementation states do not establish complete Mac device parity or coverage of every complex paper and GPU.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
@@ -13,10 +13,10 @@ The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of tru
 | Highlights, notes, terminology | Inline highlights and notes in Reader, Paper, PDF, Summary and Full Translation; scoped undo; selection-bound explanations; reverse-direction terms and duplicate replacement | Complex cross-view PDF/Markdown anchors and mixed edits. |
 | Library and local recovery | Label/tag editing, new extraction copy, per-paper settings, saved positions, distinct last-opened record and data clearing | Cross-version recovery and long-document checks. |
 | Export | Bundle with external assets, original PDF and up to 120 page PNGs; Analysis/bilingual include all saved highlights, notes and bookmarks | Long bundle and asset portability checks. |
-| One-click local AI setup | Real AMD installation and reuse verified; manual model download has streaming progress, cancellation, retry and installation exclusion | Six-step onboarding, model recommendations, optional components, MinerU repair/upgrade, NVIDIA/CPU and rollback tests. |
-| Windows delivery | Unsigned NSIS and portable builds; automatic daily release checks, failure retry and update prompts | Dynamic native menu availability, signing and verified in-app installation (G14). |
+| One-click local AI setup | Six-step resumable guide; all nine Mac model recommendations; selectable components; managed MinerU repair; model download progress, cancellation and role assignment; previous real AMD installation and reuse verified | Real MinerU repair on multiple machines, NVIDIA/CPU installation and failure recovery; model suitability on more memory configurations. |
+| Windows delivery | Native menu availability follows paper, selection, undo and task state; unsigned NSIS and portable builds; automatic daily release checks, failure retry and update prompts | Signing and verified in-app installation (G14). |
 
-The latest review passed 53 unit tests, eight Electron workflow suites, and another AMD live OCR run. See [the review's validation table](WHOLE_APP_REVIEW.md#验证范围) for commands and the distinction between simulated service tests and real device checks.
+The initial review passed 53 unit tests, eight Electron workflow suites, and another AMD live OCR run. The follow-up adds onboarding, component selection and native-menu coverage; see [the review](WHOLE_APP_REVIEW.md) for current results and boundaries. Automated fake-service tests verify workflow and data isolation, not translation quality or real installation compatibility.
 
 ## GPU behavior
 

@@ -28,14 +28,27 @@ function cudaPlan(hardware) {
   return { index: null, reason: `NVIDIA driver reports CUDA ${hardware.cudaVersion || 'unknown'}. Update the driver to enable automatic MinerU CUDA setup; CPU parsing remains available.` };
 }
 
-function setupPlan(status, requiredModels) {
-  const models = [...new Set(requiredModels)].filter(model => !status.ollama.models.includes(model));
+function selectedComponents(components) {
+  if (components == null) return { ollama: true, models: true, mineru: true };
+  if (typeof components !== 'object' || Array.isArray(components)) throw new Error('Choose valid setup components.');
+  for (const key of ['ollama', 'models', 'mineru']) {
+    if (Object.hasOwn(components, key) && typeof components[key] !== 'boolean') throw new Error('Choose valid setup components.');
+  }
+  return { ollama: components.ollama === true, models: components.models === true, mineru: components.mineru === true };
+}
+
+function setupPlan(status, requiredModels = [], config = {}) {
+  const components = selectedComponents(config.components);
+  const models = components.models ? [...new Set(requiredModels)].filter(model => !status.ollama.models.includes(model)) : [];
   const gpu = cudaPlan(status.hardware);
+  const ollamaRequiredByModels = components.models && !components.ollama && !status.ollama.running;
   return {
-    ollama: !status.ollama.running,
+    ollama: !status.ollama.running && (components.ollama || components.models),
     models,
-    mineru: !status.mineru.compatible || Boolean(gpu.index && !status.mineru.runtime?.cuda),
-    gpu
+    mineru: components.mineru && (Boolean(config.repairMineru) || !status.mineru.compatible || Boolean(gpu.index && !status.mineru.runtime?.cuda)),
+    gpu,
+    components,
+    ollamaRequiredByModels
   };
 }
 
@@ -112,13 +125,13 @@ class SetupManager {
     this.emit(this.lastProgress);
   }
 
-  async status({ baseURL, mineruExecutable, models }) {
+  async status({ baseURL, mineruExecutable, models = [], components, repairMineru = false }) {
     const [hardware, mineru, appPath, response] = await Promise.all([
       graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot), ollamaAppPath(),
       this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }).then(async value => ({ running: true, models: (await value.json()).models?.map(item => item.model || item.name).filter(Boolean) || [] })).catch(error => ({ running: false, models: [], error: error.message }))
     ]);
     const result = { hardware, mineru, ollama: { installed: Boolean(appPath), path: appPath, ...response } };
-    result.plan = setupPlan(result, models);
+    result.plan = setupPlan(result, models, { components, repairMineru });
     result.progress = this.lastProgress;
     result.busy = Boolean(this.controller);
     return result;
@@ -329,28 +342,31 @@ class SetupManager {
 
   async install(config) {
     if (this.controller) throw new Error('A setup is already running.');
-    if (!Array.isArray(config.models) || config.models.length > 4 || config.models.some(model => typeof model !== 'string' || !/^[\w./:-]{2,100}$/.test(model))) throw new Error('Choose valid local model names before setup.');
+    const components = selectedComponents(config.components);
+    if (components.models && (!Array.isArray(config.models) || config.models.length > 4 || config.models.some(model => typeof model !== 'string' || !/^[\w./:-]{2,100}$/.test(model)))) throw new Error('Choose valid local model names before setup.');
     this.controller = new AbortController();
     try {
       this.send('detect', 'Checking existing local tools and graphics hardware…');
       const status = await this.status(config);
+      cancelled(this.controller.signal);
       let mineruExecutable = status.mineru.executable;
       let mineruCuda = Boolean(status.mineru.runtime?.cuda);
       let warning = '';
-      if (status.plan.ollama) await this.startOrInstallOllama(config.baseURL);
-      for (const model of status.plan.models) {
+      if ((components.ollama || components.models) && status.plan.ollama) await this.startOrInstallOllama(config.baseURL);
+      for (const model of components.models ? status.plan.models : []) {
         cancelled(this.controller.signal);
         this.send('model', `Downloading ${model} into Ollama…`);
         await this.pullModel(config.baseURL, model, this.controller.signal, update => this.send('model', `${model}: ${update.status}`, { received: update.completed || 0, total: update.total || null }));
       }
-      if (status.plan.mineru) {
+      if (components.mineru && status.plan.mineru) {
         const result = await this.installMineru(status.plan.gpu);
         mineruExecutable = result.executable;
         mineruCuda = Boolean(result.runtime?.cuda);
         warning = result.warning;
       }
+      cancelled(this.controller.signal);
       this.send('done', warning || 'Local AI setup is ready.');
-      return { mineruExecutable, mineruBackend: mineruCuda ? 'auto' : 'pipeline', warning };
+      return components.mineru ? { mineruExecutable, mineruBackend: mineruCuda ? 'auto' : 'pipeline', warning } : { warning };
     } catch (error) {
       this.send(error.name === 'AbortError' ? 'cancelled' : 'error', error.message);
       throw error;

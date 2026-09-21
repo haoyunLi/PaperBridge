@@ -25,7 +25,7 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'papers', papers[0]), JSON.stringify({
     ...savedPaper, blocks, mineruBlocks: blocks, position: { ...savedPaper.position, tab: 'Paper', block: 1 }
   }));
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ autoCheckUpdates: false }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
   const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     const page = await app.firstWindow();

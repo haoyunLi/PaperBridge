@@ -27,8 +27,40 @@ test('one-click setup never assigns CUDA to AMD and keeps ready components', () 
   };
   assert.equal(cudaPlan(hardware).index, null);
   assert.deepEqual(setupPlan(status, ['translategemma:4b', 'translategemma:4b']), {
-    ollama: false, models: [], mineru: true, gpu: cudaPlan(hardware)
+    ollama: false, models: [], mineru: true, gpu: cudaPlan(hardware),
+    components: { ollama: true, models: true, mineru: true }, ollamaRequiredByModels: false
   });
+});
+
+test('component plans isolate MinerU and identify Ollama as a model dependency', () => {
+  const status = {
+    hardware: { adapters: [{ vendor: 'AMD' }], cudaDriver: null, cudaVersion: null },
+    ollama: { running: false, models: [] },
+    mineru: { compatible: false, runtime: null }
+  };
+  const mineruOnly = setupPlan(status, ['translategemma:4b'], { components: { ollama: false, models: false, mineru: true } });
+  assert.equal(mineruOnly.ollama, false);
+  assert.deepEqual(mineruOnly.models, []);
+  assert.equal(mineruOnly.mineru, true);
+  assert.equal(mineruOnly.ollamaRequiredByModels, false);
+  const modelsOnly = setupPlan(status, ['translategemma:4b'], { components: { ollama: false, models: true, mineru: false } });
+  assert.equal(modelsOnly.ollama, true);
+  assert.equal(modelsOnly.ollamaRequiredByModels, true);
+  assert.deepEqual(modelsOnly.models, ['translategemma:4b']);
+  assert.equal(modelsOnly.mineru, false);
+  assert.throws(() => setupPlan(status, [], { components: { mineru: 'yes' } }), /valid setup components/);
+});
+
+test('explicit MinerU repair is planned even when the pinned 3.x installation is compatible', () => {
+  const status = {
+    hardware: { adapters: [{ vendor: 'AMD' }], cudaDriver: null, cudaVersion: null },
+    ollama: { running: true, models: ['translategemma:4b'] },
+    mineru: { compatible: true, executable: 'managed-mineru.exe', runtime: { cuda: false } }
+  };
+  const selected = { ollama: false, models: false, mineru: true };
+  assert.equal(setupPlan(status, [], { components: selected }).mineru, false);
+  assert.equal(setupPlan(status, [], { components: selected, repairMineru: true }).mineru, true);
+  assert.equal(setupPlan(status, [], { components: { ...selected, mineru: false }, repairMineru: true }).mineru, false);
 });
 
 test('NVIDIA setup chooses supported wheel index and repairs CPU-only MinerU', () => {
@@ -81,6 +113,68 @@ test('one-click setup installs only missing parts and selects backend after CUDA
   assert.deepEqual(calls, ['ollama', 'model:translategemma:4b', 'mineru']);
   assert.equal(result.mineruBackend, 'pipeline');
   assert.equal(result.mineruExecutable, 'managed-mineru.exe');
+});
+
+test('MinerU-only repair skips Ollama and model installation and reuses managed activation path', async () => {
+  const calls = [];
+  const manager = new SetupManager({ toolsRoot: os.tmpdir(), ollamaRequest: () => {}, pullModel: async () => { calls.push('model'); }, emit: () => {} });
+  manager.status = async config => ({
+    plan: setupPlan({
+      hardware: { adapters: [{ vendor: 'AMD' }], cudaDriver: null, cudaVersion: null },
+      ollama: { running: false, models: [] },
+      mineru: { compatible: true, executable: 'old-managed-mineru.exe', runtime: { cuda: false } }
+    }, [], config),
+    mineru: { executable: 'old-managed-mineru.exe', runtime: { cuda: false } }
+  });
+  manager.startOrInstallOllama = async () => { calls.push('ollama'); };
+  manager.installMineru = async () => { calls.push('mineru'); return { executable: 'new-managed-mineru.exe', runtime: { cuda: false }, warning: '' }; };
+  const result = await manager.install({ baseURL: 'http://localhost:11434', models: ['invalid model name'],
+    components: { ollama: false, models: false, mineru: true }, repairMineru: true });
+  assert.deepEqual(calls, ['mineru']);
+  assert.equal(result.mineruExecutable, 'new-managed-mineru.exe');
+  assert.equal(result.mineruBackend, 'pipeline');
+});
+
+test('models-only setup starts missing Ollama as a dependency and does not return MinerU overrides', async () => {
+  const calls = [];
+  const manager = new SetupManager({ toolsRoot: os.tmpdir(), ollamaRequest: () => {}, pullModel: async (_baseURL, model) => { calls.push(`model:${model}`); }, emit: () => {} });
+  manager.status = async config => ({
+    plan: setupPlan({
+      hardware: { adapters: [], cudaDriver: null, cudaVersion: null },
+      ollama: { running: false, models: [] },
+      mineru: { compatible: false, runtime: null }
+    }, config.models, config),
+    mineru: { executable: 'configured-mineru.exe', runtime: { cuda: false } }
+  });
+  manager.startOrInstallOllama = async () => { calls.push('ollama'); };
+  manager.installMineru = async () => { calls.push('mineru'); return { executable: 'unexpected.exe', runtime: null, warning: '' }; };
+  const result = await manager.install({ baseURL: 'http://localhost:11434', models: ['translategemma:4b'],
+    components: { ollama: false, models: true, mineru: false } });
+  assert.deepEqual(calls, ['ollama', 'model:translategemma:4b']);
+  assert.deepEqual(result, { warning: '' });
+});
+
+test('cancelling during status detection does not report setup as done', async () => {
+  const events = [];
+  let completeStatus;
+  let beganStatus;
+  const statusStarted = new Promise(resolve => { beganStatus = resolve; });
+  const manager = new SetupManager({
+    toolsRoot: os.tmpdir(), ollamaRequest: () => {}, pullModel: async () => {},
+    emit: event => events.push(event)
+  });
+  manager.status = () => new Promise(resolve => { completeStatus = resolve; beganStatus(); });
+  manager.startOrInstallOllama = async () => { throw new Error('Ollama must not start after cancellation'); };
+  const installing = manager.install({ baseURL: 'http://localhost:11434', models: [],
+    components: { ollama: true, models: false, mineru: false } });
+  await statusStarted;
+  assert.equal(manager.cancel(), true);
+  completeStatus({
+    plan: { ollama: false, models: [], mineru: false, gpu: { index: null } },
+    mineru: { executable: '', runtime: null }
+  });
+  await assert.rejects(installing, { name: 'AbortError' });
+  assert.deepEqual(events.map(event => event.phase), ['detect', 'cancelled']);
 });
 
 test('failed MinerU activation restores the previous managed environment', async () => {

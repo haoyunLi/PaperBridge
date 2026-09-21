@@ -70,7 +70,7 @@ async function verifyManualMineruPreservesDocumentOutputs(root, artifacts, pdfBy
   fs.rmSync(workspace, { recursive: true, force: true });
   fs.mkdirSync(path.join(workspace, 'papers'), { recursive: true });
   fs.mkdirSync(path.join(workspace, 'pdfs'), { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ autoCheckUpdates: false, mineruExecutable: 'mock-mineru', ollamaBaseURL: 'http://127.0.0.1:9' }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ autoCheckUpdates: false, onboardingCompletedVersion: 1, mineruExecutable: 'mock-mineru', ollamaBaseURL: 'http://127.0.0.1:9' }));
   fs.writeFileSync(path.join(workspace, 'pdfs', `${pdfId}.pdf`), pdfBytes);
   const pdfBlock = { id: 1, text: 'Original PDF reader text remains selected.', heading: false, translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] };
   const paperFile = path.join(workspace, 'papers', `${pdfId}.json`);
@@ -118,7 +118,7 @@ async function run() {
   fs.mkdirSync(artifacts, { recursive: true });
   fs.rmSync(workspace, { recursive: true, force: true });
   fs.mkdirSync(workspace, { recursive: true });
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, mineruExecutable: 'mock-mineru', ollamaBaseURL: 'http://127.0.0.1:9' }));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, onboardingCompletedVersion: 1, mineruExecutable: 'mock-mineru', ollamaBaseURL: 'http://127.0.0.1:9' }));
 
   const pdfBytes = samplePdf();
   const pdfId = crypto.createHash('sha256').update(pdfBytes).digest('hex');

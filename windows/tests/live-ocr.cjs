@@ -22,7 +22,7 @@ async function run() {
   fs.rmSync(workspace, { recursive: true, force: true });
   fs.mkdirSync(workspace, { recursive: true });
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
-    mineruExecutable: mineru, mineruBackend: 'pipeline', pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false,
+    mineruExecutable: mineru, mineruBackend: 'pipeline', pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, onboardingCompletedVersion: 1,
     translationModel: model, ollamaBaseURL
   }));
   const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });

@@ -10,12 +10,15 @@ const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { writeBundle } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
+const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
+const { createOfficialLinkHandler } = require('./official-links.cjs');
 
 let window;
 let store;
 let activeMineru = null;
 let setupManager = null;
 let activeBundle = null;
+let menuState = normalizeMenuState({});
 const requests = new Map();
 const modelPullManager = createModelPullManager({ pullModel: pullOllamaModel, emit: progress, isSetupBusy: () => Boolean(setupManager?.controller) });
 
@@ -104,6 +107,11 @@ async function readMineruMarkdown(file) {
 
 function registerHandlers() {
   const checkUpdates = createUpdateChecker({ store, currentVersion: () => app.getVersion() });
+  ipcMain.handle('menu:update-state', (event, state) => {
+    if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Menu state must come from the main app window.');
+    menuState = normalizeMenuState(state);
+    return applyMenuState(Menu.getApplicationMenu(), menuState);
+  });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   ipcMain.handle('updates:check', (_event, automatic = false) => checkUpdates(automatic));
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
@@ -241,8 +249,8 @@ function registerHandlers() {
 }
 
 function buildMenu() {
-  const action = (label, command, accelerator) => ({ label, ...(accelerator ? { accelerator } : {}), click: () => {
-    if (window && !window.isDestroyed()) window.webContents.send('paperbridge:command', command);
+  const action = (label, command, accelerator) => ({ id: `command:${command}`, label, enabled: menuCommandState(menuState)[command], ...(accelerator ? { accelerator } : {}), click: () => {
+    if (menuCommandState(menuState)[command] && window && !window.isDestroyed()) window.webContents.send('paperbridge:command', command);
   } });
   return Menu.buildFromTemplate([
     { label: 'File', submenu: [
@@ -272,6 +280,7 @@ function buildMenu() {
       action('Settings', 'settings')
     ] },
     { label: 'Help', submenu: [
+      action('PaperBridge Getting Started…', 'onboarding'),
       action('Local AI Setup…', 'setup'),
       action('Check for Updates…', 'checkUpdates')
     ] }
@@ -284,8 +293,16 @@ function createWindow() {
     backgroundColor: '#F3EEE4',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.setWindowOpenHandler(createOfficialLinkHandler(
+    url => shell.openExternal(url),
+    error => dialog.showErrorBox('Could not open the official website', error.message)
+  ));
+  menuState = normalizeMenuState({});
   Menu.setApplicationMenu(buildMenu());
+  window.webContents.on('did-start-loading', () => {
+    menuState = normalizeMenuState({});
+    applyMenuState(Menu.getApplicationMenu(), menuState);
+  });
   if (process.env.VITE_DEV_SERVER_URL) window.loadURL(process.env.VITE_DEV_SERVER_URL);
   else if (!app.isPackaged && process.env.NODE_ENV !== 'production') window.loadURL('http://127.0.0.1:5173');
   else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));

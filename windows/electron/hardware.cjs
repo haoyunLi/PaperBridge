@@ -2,6 +2,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const run = promisify(execFile);
 
 function vendorOf(name) {
@@ -41,7 +42,7 @@ async function graphicsStatus() {
       cudaVersion = stdout.match(/CUDA Version:\s*(\d+\.\d+)/i)?.[1] || null;
     } catch { /* Driver inventory still works when the full report is unavailable. */ }
   }
-  return { adapters, cudaDriver, cudaVersion, detectedAt: new Date().toISOString() };
+  return { adapters, cudaDriver, cudaVersion, systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
 }
 
 async function mineruRuntime(executable) {
