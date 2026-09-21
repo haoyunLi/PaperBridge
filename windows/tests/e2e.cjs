@@ -194,7 +194,7 @@ async function run() {
     await page.waitForFunction(() => window.getSelection()?.toString() === '本地测试');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
-    await page.waitForSelector('.hardware-panel');
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('updates:check');
       ipcMain.handle('updates:check', () => ({ status: 'available', currentVersion: '0.2.0', latestVersion: '0.3.0', tag: 'windows-v0.3.0' }));
@@ -336,6 +336,7 @@ async function run() {
     await reopenedPage.getByRole('heading', { name: 'Local AI setup' }).waitFor();
     await reopenedPage.locator('.modal-head .icon-button').click();
     await reopenedPage.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await reopenedPage.getByRole('tab', { name: 'Parsing', exact: true }).click();
     await reopenedPage.getByLabel('PDF extraction mode').selectOption('mineruPreferred');
     await reopenedPage.locator('.modal-head .icon-button').click();
     await app.evaluate(({ ipcMain }) => {

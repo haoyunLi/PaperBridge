@@ -1,5 +1,6 @@
 const RELEASES_API = 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100';
 const RELEASE_TAG = /^windows-v(\d+\.\d+\.\d+)$/;
+const CHECK_INTERVAL = 24 * 60 * 60 * 1000;
 
 function versionParts(value) {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(value));
@@ -20,6 +21,14 @@ function releaseUrl(tag) {
   return `https://github.com/haoyunLi/PaperBridge/releases/tag/${tag}`;
 }
 
+function releaseResult(tag, installerName, currentVersion) {
+  if (typeof tag !== 'string') return null;
+  const latestVersion = RELEASE_TAG.exec(tag)?.[1];
+  if (!versionParts(currentVersion) || !versionParts(latestVersion) || installerName !== `PaperBridge Setup ${latestVersion}.exe`) return null;
+  return { status: compareVersions(latestVersion, currentVersion) > 0 ? 'available' : 'current', currentVersion, latestVersion, tag,
+    installerName, releaseUrl: releaseUrl(tag) };
+}
+
 function selectWindowsRelease(releases, currentVersion) {
   if (!versionParts(currentVersion) || !Array.isArray(releases)) throw new Error('Invalid release information.');
   const candidates = releases.filter(release => {
@@ -31,7 +40,7 @@ function selectWindowsRelease(releases, currentVersion) {
   const latest = candidates[0];
   if (!latest) return { status: 'unpublished', currentVersion };
   const latestVersion = RELEASE_TAG.exec(latest.tag_name)[1];
-  return { status: compareVersions(latestVersion, currentVersion) > 0 ? 'available' : 'current', currentVersion, latestVersion, tag: latest.tag_name, releaseUrl: releaseUrl(latest.tag_name) };
+  return releaseResult(latest.tag_name, `PaperBridge Setup ${latestVersion}.exe`, currentVersion);
 }
 
 async function checkWindowsRelease(currentVersion, fetchImpl = fetch) {
@@ -43,24 +52,50 @@ async function checkWindowsRelease(currentVersion, fetchImpl = fetch) {
   return selectWindowsRelease(await response.json(), currentVersion);
 }
 
+function validatedCache(record, currentVersion, time) {
+  if (!record || record.cacheVersion !== 1 || !Number.isSafeInteger(record.lastCheckAt) || record.lastCheckAt <= 0 || record.lastCheckAt > time) return null;
+  const result = record.release === null ? { status: 'unpublished', currentVersion }
+    : releaseResult(record.release?.tag, record.release?.installerName, currentVersion);
+  return result ? { result, lastCheckAt: record.lastCheckAt } : null;
+}
+
 function createUpdateChecker({ store, currentVersion, checkRelease = checkWindowsRelease, now = Date.now }) {
   let activeCheck = null;
+  let memoryCache = null;
   return function checkUpdates(automatic = false) {
     const version = currentVersion();
-    if (automatic && (!store.settings().autoCheckUpdates || now() - store.lastUpdateCheckAt() < 24 * 60 * 60 * 1000)) {
+    const time = now();
+    if (automatic && !store.settings().autoCheckUpdates) {
       return Promise.resolve({ status: 'skipped', currentVersion: version });
+    }
+    let persisted = null;
+    try { persisted = validatedCache(store.updateCheckState(), version, time); } catch { /* A cache read failure must not block an update check. */ }
+    const memory = validatedCache(memoryCache, version, time);
+    const cached = memory && (!persisted || memory.lastCheckAt >= persisted.lastCheckAt) ? memory : persisted;
+    if (automatic && cached && time - cached.lastCheckAt < CHECK_INTERVAL) {
+      return Promise.resolve(cached.result.status === 'available' ? { ...cached.result, fromCache: true }
+        : { status: 'skipped', currentVersion: version });
     }
     if (!activeCheck) {
       activeCheck = Promise.resolve()
         .then(() => checkRelease(version))
-        .then(result => {
-          // A failed network request must not silence automatic checks for the next day.
-          store.saveUpdateCheckAt(now());
+        .then(value => {
+          const result = value?.status === 'unpublished' ? { status: 'unpublished', currentVersion: version }
+            : ['available', 'current'].includes(value?.status) && releaseResult(value.tag, value.installerName, version);
+          if (!result || (value.latestVersion != null && value.latestVersion !== result.latestVersion)) throw new Error('Invalid Windows release information.');
+          // Store identities only. URLs and available/current status are always rebuilt.
+          memoryCache = { cacheVersion: 1, lastCheckAt: now(), release: result.status === 'unpublished' ? null
+            : { tag: result.tag, installerName: result.installerName } };
+          try { store.saveUpdateCheckState(memoryCache); }
+          catch { return { ...result, cachePersisted: false }; }
           return result;
         })
         .finally(() => { activeCheck = null; });
     }
-    return activeCheck;
+    // Keep a known update visible while offline, without delaying the next retry.
+    return automatic && cached?.result.status === 'available'
+      ? activeCheck.catch(() => ({ ...cached.result, fromCache: true, stale: true }))
+      : activeCheck;
   };
 }
 

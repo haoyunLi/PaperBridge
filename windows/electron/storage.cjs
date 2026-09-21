@@ -57,6 +57,8 @@ function createStore(root) {
     saveSettings(settings) { writeJson(path.join(root, 'settings.json'), { ...defaults, ...settings }); },
     lastUpdateCheckAt() { return Number(readJson(path.join(root, 'updates.json'), {}).lastCheckAt || 0); },
     saveUpdateCheckAt(value) { writeJson(path.join(root, 'updates.json'), { lastCheckAt: value }); },
+    updateCheckState() { return readJson(path.join(root, 'updates.json'), {}); },
+    saveUpdateCheckState(value) { writeJson(path.join(root, 'updates.json'), value); },
     glossary() { return readJson(path.join(root, 'glossary.json'), []); },
     saveGlossary(glossary) { writeJson(path.join(root, 'glossary.json'), glossary.slice(0, 500)); },
     paper(id) { return readJson(paperPath(id), null); },

@@ -58,6 +58,7 @@ async function run() {
       window.paperBridge.onProgress(event => { if (event.kind === 'model') window.__modelPullEvents.push(event); });
     });
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Models', exact: true }).click();
     await page.getByLabel('Model to download').fill(model);
     const download = page.getByRole('button', { name: 'Download model', exact: true });
     await download.click();

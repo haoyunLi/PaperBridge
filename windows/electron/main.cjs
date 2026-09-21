@@ -7,6 +7,8 @@ const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
+const { detectMineruExecutable } = require('./mineru-discovery.cjs');
+const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
@@ -15,7 +17,7 @@ const { createOfficialLinkHandler } = require('./official-links.cjs');
 
 let window;
 let store;
-let activeMineru = null;
+const mineruJobs = createMineruJobGuard();
 let setupManager = null;
 let activeBundle = null;
 let menuState = normalizeMenuState({});
@@ -116,8 +118,9 @@ function registerHandlers() {
   ipcMain.handle('updates:check', (_event, automatic = false) => checkUpdates(automatic));
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
-  ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable));
+  ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable, setupManager.toolsRoot));
   ipcMain.handle('mineru:status', (_event, executable) => mineruStatus(executable, setupManager.toolsRoot));
+  ipcMain.handle('mineru:detect', () => mineruStatus('', setupManager.toolsRoot));
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
   ipcMain.handle('setup:install', (_event, config) => {
     if (modelPullManager.busy) throw new Error('A model download is already running. Cancel it or wait before starting Local AI setup.');
@@ -202,19 +205,24 @@ function registerHandlers() {
     } finally { requests.delete(requestId); }
   });
   ipcMain.handle('ollama:cancel', (_event, requestId) => { requests.get(requestId)?.abort(); });
-  ipcMain.handle('mineru:cancel', () => { activeMineru?.kill(); });
+  ipcMain.handle('mineru:cancel', () => mineruJobs.cancel());
   ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
   ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
   ipcMain.handle('mineru:extract', async (_event, { id, executable, backend }) => {
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
-    const command = String(executable || 'mineru').trim();
-    const savedOutput = path.join(store.root, 'mineru', id);
-    // MinerU repeats the input stem inside its temporary result paths. A SHA-256
-    // filename can push these paths past the Windows path limit, so use a short
-    // private input name while retaining the unchanged original in our library.
-    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-'));
+    const job = mineruJobs.begin();
+    let staging = null;
     try {
+      const detected = await detectMineruExecutable(executable, setupManager.toolsRoot);
+      mineruJobs.check(job);
+      if (!detected.compatible) throw new Error(detected.reason);
+      const command = detected.executable;
+      const savedOutput = path.join(store.root, 'mineru', id);
+      // MinerU repeats the input stem inside its temporary result paths. A SHA-256
+      // filename can push these paths past the Windows path limit, so use a short
+      // private input name while retaining the unchanged original in our library.
+      staging = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-'));
       const stagedPdf = path.join(staging, 'paper.pdf');
       const output = path.join(staging, 'output');
       fs.copyFileSync(pdf, stagedPdf);
@@ -222,16 +230,19 @@ function registerHandlers() {
         const args = ['-p', stagedPdf, '-o', output];
         if (backend === 'pipeline') args.push('-b', 'pipeline');
         const child = spawn(command, args, { shell: false, windowsHide: true });
-        activeMineru = child;
+        mineruJobs.attach(job, child);
         let log = '';
         child.stdout.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
         child.stderr.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
-        child.on('error', error => { if (activeMineru === child) activeMineru = null; reject(new Error(`MinerU could not start: ${error.message}`)); });
-        child.on('close', code => { if (activeMineru === child) activeMineru = null; code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
+        child.on('error', error => { mineruJobs.detach(job, child); reject(new Error(`MinerU could not start: ${error.message}`)); });
+        child.on('close', code => { mineruJobs.detach(job, child); code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
       });
+      mineruJobs.check(job);
       const file = await findMarkdown(output);
+      mineruJobs.check(job);
       if (!file) throw new Error('MinerU finished without a Markdown file.');
       const markdown = await readMineruMarkdown(file);
+      mineruJobs.check(job);
       try {
         fs.mkdirSync(savedOutput, { recursive: true });
         fs.cpSync(output, savedOutput, { recursive: true, force: true });
@@ -240,9 +251,12 @@ function registerHandlers() {
       }
       return markdown;
     } finally {
-      const resolved = path.resolve(staging);
-      if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
-      fs.rmSync(resolved, { recursive: true, force: true });
+      mineruJobs.finish(job);
+      if (staging) {
+        const resolved = path.resolve(staging);
+        if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
+        fs.rmSync(resolved, { recursive: true, force: true });
+      }
     }
   });
   ipcMain.handle('external:ollama', () => shell.openExternal('https://ollama.com/download/windows'));
@@ -321,7 +335,7 @@ app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
-app.on('before-quit', () => { setupManager?.cancel(); modelPullManager.cancel(); });
+app.on('before-quit', () => { setupManager?.cancel(); modelPullManager.cancel(); mineruJobs.cancel(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 
 module.exports = { localOllamaURL };

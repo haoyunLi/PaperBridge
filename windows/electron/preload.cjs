@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   graphicsStatus: () => ipcRenderer.invoke('hardware:status'),
   mineruRuntime: executable => ipcRenderer.invoke('mineru:runtime', executable),
   mineruStatus: executable => ipcRenderer.invoke('mineru:status', executable),
+  detectMineru: () => ipcRenderer.invoke('mineru:detect'),
   setupStatus: config => ipcRenderer.invoke('setup:status', config),
   setupInstall: config => ipcRenderer.invoke('setup:install', config),
   setupCancel: () => ipcRenderer.invoke('setup:cancel'),

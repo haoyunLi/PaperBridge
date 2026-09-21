@@ -42,7 +42,7 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 
 本机从无 Ollama、无 MinerU 的状态开始安装。发现并修复两处真实安装问题：Windows PowerShell 被继承的模块路径干扰，导致真实有效的 Ollama 签名被误判；uv 在解压出有效 Python 后，创建次版本快捷链接时报错。签名校验现在只加载 Windows 系统模块；MinerU 安装可以直接验证并使用私有 Python 3.12 解释器。最终一键安装返回 Ollama 模型就绪、MinerU 3.4.5 就绪、MinerU backend `pipeline`。
 
-当前回归：53 个单元测试通过；Electron 工作流测试、双论文任务设置与解释缓存恢复、真实 MinerU Markdown 重开测试和 HTML 安全/选区测试通过；双页同词 PDF 的独立标注、导出及重启恢复通过；真实 Ollama 翻译/解释/摘要复测通过，模型 2.68 GiB 全部驻留 AMD VRAM；真实 MinerU 论文图表说明翻译，以及图像型扫描 PDF 的 OCR 到中文翻译复测通过。NSIS 与 portable 安装包重新构建成功，打包程序启动测试通过。Windows 验签结果确认两个安装包目前均未签名。
+该阶段回归：53 个单元测试通过；Electron 工作流测试、双论文任务设置与解释缓存恢复、真实 MinerU Markdown 重开测试和 HTML 安全/选区测试通过；双页同词 PDF 的独立标注、导出及重启恢复通过；真实 Ollama 翻译/解释/摘要复测通过，模型 2.68 GiB 全部驻留 AMD VRAM；真实 MinerU 论文图表说明翻译，以及图像型扫描 PDF 的 OCR 到中文翻译复测通过。NSIS 与 portable 安装包重新构建成功，打包程序启动测试通过。Windows 验签结果确认两个安装包目前均未签名。
 
 本次仅验证了一台 AMD 机器、一篇复杂论文和一页清晰扫描图像。NVIDIA CUDA、无独显、复杂扫描件 OCR、其它模型、长论文摘要的来源覆盖率、Mac 与 Windows 同机逐项对照、正式签名与 Windows Release 更新安装仍在 [功能映射](FEATURE_MAPPING.md)中保留为待验收项。
 
@@ -51,3 +51,11 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 2026-09-20（本机时区）再次执行 `npm run test:live-ocr`：真实 MinerU 提取加 Ollama 翻译共 50.8 秒。输入没有文字层，`pdfBlocks=0`、`mineruBlocks=5`，生成的中文译文为“研究人员测量了陶瓷样品对变化的磁场反应。磁场从零提升到两特斯拉，并在多次试验中进行。”本轮模型大小和 VRAM 占用仍均为 2,875,656,764 字节。
 
 本轮同时补充模型/语言缓存切换、撤销保留后写译文、选区结果隔离、最近打开论文、模型下载取消/重试、导入取消及手动 OCR 保留文档结果的自动回归。安装包已重新构建，打包程序启动测试通过；NSIS 和 portable 的 Authenticode 状态均为 `NotSigned`。具体已修复和仍需对齐的项目见 [整体审查记录](WHOLE_APP_REVIEW.md)。
+
+## Settings 与自动发现补齐后的设备复测
+
+2026-09-21 再次执行 `npm run test:live-ocr`，测试没有传入 `PAPERBRIDGE_LIVE_MINERU`，保存设置中的 `mineruExecutable` 也为空，因此必须走应用统一的自动发现 resolver。应用找到私有 MinerU 3.4.5，runtime 检查为 `checked=true`、`cuda=false`，符合这台 AMD 机器使用 MinerU CPU pipeline 的设计。
+
+这次图像型 PDF 的真实提取与翻译约 **40.7 秒**：`pdfBlocks=0`、`mineruBlocks=5`，Reader 获得中文译文；`autoDetectedMineru=true`。Ollama `/api/ps` 再次得到 `modelBytes = modelVramBytes = 2,875,656,764`，说明翻译模型在 RX 7800 XT 的 AMD GPU 显存中完整加载。自动测试同时验证 Settings 的硬件重新检测、九张推荐卡、四个任务模型和下载跨分页取消/恢复。
+
+当前自动回归为 **83/83 单元测试**；真实 NSIS 最终包还完成了首装、应用内保存论文/高亮/笔记、同版本重装后恢复、卸载并保留论文数据。NSIS、portable 与 unpacked 主程序仍为 `NotSigned`。这些新增证据解决了“本机自动发现是否真的用于 OCR”和“真实安装器是否保留数据”，不扩大到 NVIDIA CUDA、其它 AMD 卡或复杂扫描件质量。

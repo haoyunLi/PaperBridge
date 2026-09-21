@@ -18,6 +18,8 @@ import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
 import { annotationsMarkdown } from './annotationsMarkdown.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import Onboarding from './Onboarding.jsx';
+import SettingsPanel from './SettingsPanel.jsx';
+import { modelSettingsPatch } from './modelCatalog.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -348,6 +350,11 @@ function App() {
   const [hardware, setHardware] = useState(null);
   const [mineruRuntime, setMineruRuntime] = useState(null);
   const [runningModels, setRunningModels] = useState([]);
+  const [checkingHardware, setCheckingHardware] = useState(false);
+  const [hardwareError, setHardwareError] = useState('');
+  const hardwareCheckId = useRef(0);
+  const [modelDownloadMessage, setModelDownloadMessage] = useState('');
+  const [modelDownloadError, setModelDownloadError] = useState('');
   const [ollamaError, setOllamaError] = useState('');
   const [status, setStatus] = useState('Open a PDF or try the practice paper.');
   const [error, setError] = useState('');
@@ -419,7 +426,7 @@ function App() {
       const previous = settingsRef.current;
       const restored = restorePaperSettings(previous, loaded.taskSettings);
       settingsRef.current = restored; setSettings(restored);
-      if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) refreshModels(restored);
+      if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
     }
     paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(loaded.taskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`);
   };
@@ -429,6 +436,10 @@ function App() {
     const taskChanged = Object.keys(change).some(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
     if (taskChanged && taskRef.current) cancelTask();
     const next = { ...previous, ...change };
+    if (change.ollamaBaseURL !== undefined && change.ollamaBaseURL !== previous.ollamaBaseURL) {
+      setModels([]); setRunningModels([]); setOllamaError('Refresh models to check this local endpoint.');
+    }
+    if (change.mineruExecutable !== undefined && change.mineruExecutable !== previous.mineruExecutable) setMineruRuntime(null);
     settingsRef.current = next; setSettings(next);
     if (paperRef.current && taskChanged) {
       commitPaper(current => ({ ...switchOutputSettings(current, previous, next), taskSettings: snapshotPaperSettings(next) }));
@@ -541,20 +552,46 @@ function App() {
   };
   const refreshModels = async config => {
     const requestId = ++modelRefreshId.current;
-    try { const values = await api.listModels(config.ollamaBaseURL); if (requestId === modelRefreshId.current) { setModels(values); setOllamaError(''); } return values; }
-    catch (err) { if (requestId === modelRefreshId.current) { setModels([]); setOllamaError(err.message); } return []; }
+    const isCurrent = () => requestId === modelRefreshId.current && settingsRef.current?.ollamaBaseURL === config.ollamaBaseURL;
+    try { const values = await api.listModels(config.ollamaBaseURL); if (isCurrent()) { setModels(values); setOllamaError(''); } return values; }
+    catch (err) { if (isCurrent()) { setModels([]); setOllamaError(err.message); } return []; }
   };
-  async function downloadModel() {
-    if (pullRef.current) return;
-    pullRef.current = true; setPulling(true); setCancellingPull(false); setPullProgress(null); setError('');
+  function useRecommendedModel(model) {
+    if (pullRef.current || taskRef.current) return;
+    try { updateSettings(modelSettingsPatch(settingsRef.current, model, models)); setModelDownloadError(''); setModelDownloadMessage(`${model.title} is selected for ${model.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`); }
+    catch (cause) { setModelDownloadError(cause.message); }
+  }
+  async function downloadModel(requestedModel = pullModel.trim() || 'translategemma:4b', recommendation = null) {
+    if (pullRef.current || taskRef.current) return;
+    pullRef.current = true; setPulling(true); setCancellingPull(false); setPullProgress(null); setError(''); setModelDownloadMessage(''); setModelDownloadError('');
     const config = settingsRef.current;
-    try { await api.pullModel({ baseURL: config.ollamaBaseURL, model: pullModel.trim() || 'translategemma:4b' }); await refreshModels(config); setPullProgress(null); setStatus('Model downloaded. Choose its task in Settings.'); }
-    catch (cause) { if (/cancel|abort/i.test(cause.message)) { setStatus('Model download cancelled.'); setPullProgress(null); } else setError(cause.message); }
+    const paperId = paperRef.current?.id;
+    try {
+      await api.pullModel({ baseURL: config.ollamaBaseURL, model: requestedModel });
+      const available = await refreshModels(config);
+      let message = 'Model downloaded. Choose its task in Settings.';
+      if (recommendation && settingsRef.current.ollamaBaseURL === config.ollamaBaseURL && paperRef.current?.id === paperId) {
+        updateSettings(modelSettingsPatch(settingsRef.current, recommendation, available));
+        message = `${recommendation.title} downloaded and selected for ${recommendation.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`;
+      }
+      setPullProgress(null); setStatus(message); setModelDownloadMessage(message);
+    }
+    catch (cause) { if (/cancel|abort/i.test(cause.message)) { setStatus('Model download cancelled.'); setModelDownloadMessage('Model download cancelled.'); setPullProgress(null); } else { setError(cause.message); setModelDownloadError(cause.message); } }
     finally { pullRef.current = false; setPulling(false); setCancellingPull(false); }
   }
   async function cancelModelDownload() {
     setCancellingPull(true);
-    try { await api.cancelPullModel(); } catch (cause) { setError(cause.message); setCancellingPull(false); }
+    try { await api.cancelPullModel(); } catch (cause) { setError(cause.message); setModelDownloadError(cause.message); setCancellingPull(false); }
+  }
+  async function checkHardware() {
+    const request = ++hardwareCheckId.current, config = settingsRef.current;
+    setCheckingHardware(true); setHardwareError('');
+    const results = await Promise.allSettled([api.graphicsStatus(), api.mineruRuntime(config.mineruExecutable), api.runningModels(config.ollamaBaseURL)]);
+    if (request !== hardwareCheckId.current) return;
+    if (results[0].status === 'fulfilled') setHardware(results[0].value);
+    if (config.mineruExecutable === settingsRef.current.mineruExecutable && results[1].status === 'fulfilled') setMineruRuntime(results[1].value);
+    if (config.ollamaBaseURL === settingsRef.current.ollamaBaseURL) setRunningModels(results[2].status === 'fulfilled' ? results[2].value : []);
+    setHardwareError(results.filter(result => result.status === 'rejected').map(result => result.reason.message).join(' ')); setCheckingHardware(false);
   }
   useEffect(() => {
     api.bootstrap().then(async data => {
@@ -1303,23 +1340,17 @@ function App() {
     </main>
     <aside className="inspector" inert={Boolean(modal)}><div className="inspector-title"><h2>Research Inspector</h2><button className="icon-button" onClick={() => setInspector(false)}><X size={16} /></button></div>{selection ? <div className="inspector-scroll"><div className="inspector-section"><small>{selection.scope === 'pdf' ? `ORIGINAL PDF · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div></div>{selectionResult && <div className={`inspector-result ${selectionResult.kind}`}><small>{selectionResult.kind.toUpperCase()}</small><p>{selectionResult.output}</p></div>}<div className="inspector-section"><small>HIGHLIGHT</small><div className="row"><button className="highlight amber" title="Amber" onClick={() => addHighlight('amber')}><Highlighter size={16} /></button><button className="highlight blue" title="Blue" onClick={() => addHighlight('blue')}><Highlighter size={16} /></button><button className="highlight coral" title="Coral" onClick={() => addHighlight('coral')}><Highlighter size={16} /></button></div></div><div className="inspector-section"><small>NOTE</small><textarea placeholder="What should you remember?" value={noteDraft} onChange={event => setNoteDraft(event.target.value)} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Summary, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}{paper && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</aside>
     {selection?.rect && !modal && <div className="selection-toolbar" style={{ left: Math.min(window.innerWidth - 275, Math.max(8, selection.rect.x)), top: Math.max(8, selection.rect.y - 44) }} onMouseDown={event => event.preventDefault()}><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={14} /> Explain</button><button onClick={() => { setInspector(true); document.querySelector('.inspector-section textarea')?.focus(); }}><MessageSquareText size={14} /> Notes</button><button aria-label="Close selection tools" onClick={() => setSelection(null)}><X size={14} /></button></div>}
-    {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+    {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}
       {modal === 'setup' && <SetupPanel settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => refreshModels(settings)} />}
-      {modal === 'settings' && <button className="button outline" onClick={openOnboarding}>Getting Started guide</button>}
-      {modal === 'settings' && <button className="button blue" onClick={() => setModal('setup')}><Download size={16} /> Detect and install local AI</button>}
-      {modal === 'settings' && <><label>PDF extraction mode<select value={settings.pdfExtractionMode || 'mineruPreferred'} onChange={event => updateSettings({ pdfExtractionMode: event.target.value })}><option value="mineruPreferred">MinerU, then selectable PDF text</option><option value="mineruOnly">MinerU only</option><option value="pdfOnly">Selectable PDF text only (no OCR)</option></select></label><label>Quick lookup model<select value={settings.quickLookupModel || settings.translationModel} onChange={event => updateSettings({ quickLookupModel: event.target.value })}>{[...new Set([settings.quickLookupModel || settings.translationModel, ...models])].map(value => <option key={value}>{value}</option>)}</select></label></>}
-      {modal === 'settings' && <><label>Ollama URL<input value={settings.ollamaBaseURL} onChange={event => updateSettings({ ollamaBaseURL: event.target.value })} /></label><button className="button outline" onClick={() => refreshModels(settings)}><RefreshCw size={15} /> Refresh models</button>{ollamaError && <Notice tone="error">{ollamaError}</Notice>}<div className="settings-grid"><label>Source language<select value={settings.sourceLanguage} onChange={event => updateSettings({ sourceLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label><label>Target language<select value={settings.targetLanguage} onChange={event => updateSettings({ targetLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label></div><button className="button ghost" onClick={() => updateSettings({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={15} /> Swap languages</button><div className="settings-grid">{[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model']].map(([key, label]) => <label key={key}>{label}<select value={settings[key]} onChange={event => updateSettings({ [key]: event.target.value })}>{[...new Set([settings[key], ...models])].map(value => <option key={value}>{value}</option>)}</select></label>)}</div><p className="settings-tip">Need a model? Enter its Ollama name and download it locally.</p><div className="row"><input aria-label="Model to download" value={pullModel} disabled={pulling} placeholder="translategemma:4b" onChange={event => setPullModel(event.target.value)} /><button className="button blue" disabled={pulling} onClick={downloadModel}>Download model</button>{pulling && <button className="button outline" disabled={cancellingPull} onClick={cancelModelDownload}>{cancellingPull ? 'Cancelling…' : 'Cancel download'}</button>}</div>{pullProgress && <p>{pullProgress.status} {pullProgress.total ? `${Math.round(100 * pullProgress.completed / pullProgress.total)}%` : ''}</p>}<label>Maximum translation chunk<input type="range" min="500" max="6000" step="100" value={settings.maxParagraphChars} onChange={event => updateSettings({ maxParagraphChars: Number(event.target.value) })} />{settings.maxParagraphChars} characters</label><p className="settings-tip">Controls the maximum size of each translation request. Reader paragraphs remain visually intact.</p><label>MinerU executable<input value={settings.mineruExecutable} placeholder="mineru (from PATH)" onChange={event => updateSettings({ mineruExecutable: event.target.value })} /></label><div className="settings-grid"><label>Reader font size<input type="range" min="14" max="25" value={settings.fontSize} onChange={event => updateSettings({ fontSize: Number(event.target.value) })} />{settings.fontSize}px</label><label>Line spacing<input type="range" min="1.3" max="2.2" step="0.1" value={settings.lineHeight} onChange={event => updateSettings({ lineHeight: Number(event.target.value) })} />{settings.lineHeight}</label><label>Reading width<input type="range" min="560" max="1100" step="20" value={settings.readingWidth} onChange={event => updateSettings({ readingWidth: Number(event.target.value) })} />{settings.readingWidth}px</label></div></>}
-      {modal === 'settings' && <div className="hardware-panel">
-        <div className="row"><strong>Graphics acceleration</strong><button className="button outline" onClick={() => { api.graphicsStatus().then(setHardware); api.mineruRuntime(settings.mineruExecutable).then(setMineruRuntime); api.runningModels(settings.ollamaBaseURL).then(setRunningModels).catch(() => setRunningModels([])); }}><RefreshCw size={14} /> Check</button></div>
-        <p>{hardware?.adapters?.length ? hardware.adapters.map(adapter => `${adapter.name} (${adapter.vendor})`).join(' · ') : 'No graphics adapter reported by Windows.'}</p>
-        <p>{hardware?.cudaDriver?.length ? `NVIDIA driver detected: ${hardware.cudaDriver.map(device => `${device.name}, ${device.memoryMiB || '?'} MiB`).join('; ')}.` : hardware?.adapters?.some(adapter => adapter.vendor === 'AMD') ? 'AMD detected. Ollama may use supported ROCm or Vulkan hardware.' : 'Ollama chooses its available CPU or GPU backend automatically.'}</p>
-        <p>{mineruRuntime?.checked ? `MinerU Python: PyTorch ${mineruRuntime.torch}; CUDA ${mineruRuntime.cuda ? `available (${mineruRuntime.devices.join(', ')})` : 'unavailable'}.` : mineruRuntime?.reason || 'Checking MinerU Python environment…'}</p>
-        {runningModels.length > 0 && <p>Ollama loaded: {runningModels.map(model => `${model.name} · ${(model.sizeVram / 1024 ** 3).toFixed(1)} GB VRAM`).join('; ')}</p>}
-        <label>MinerU backend<select value={settings.mineruBackend || 'auto'} onChange={event => updateSettings({ mineruBackend: event.target.value })}><option value="auto">Auto (MinerU selects available acceleration)</option><option value="pipeline">Pipeline compatibility mode</option></select></label>
-      </div>}
-      {modal === 'settings' && <div className="hardware-panel update-settings"><div className="row"><strong>Windows updates · {appVersion || 'unknown version'}</strong><button className="button outline" disabled={checkingUpdates} onClick={() => checkForUpdates(false)}><RefreshCw size={14} /> Check now</button></div><label><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => updateSettings({ autoCheckUpdates: event.target.checked })} /> Check official Windows releases at most once per day</label>{updateStatus && <p role="status">{updateStatus}</p>}<p>New versions open on the official GitHub release page. This unsigned preview does not install updates automatically.</p></div>}
+      {modal === 'settings' && <SettingsPanel settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)}
+        onOnboarding={openOnboarding} onOpenSetup={() => setModal('setup')} onClearData={() => setModal('clearData')}
+        modelTools={{ models, ollamaError, pulling, cancelling: cancellingPull, progress: pullProgress, message: modelDownloadMessage, error: modelDownloadError,
+          name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,
+          onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
+        hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => `${term.source} ${term.target}`.toLowerCase().includes(glossarySearch.toLowerCase())).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} onClick={() => setGlossary(current => current.filter((_, at) => at !== index))}><Trash2 size={16} /></button></div>)}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} setError={setError} setLibraryEdit={setLibraryEdit} />}
       {modal === 'libraryLabel' && libraryEdit && <><p>Only the library label changes; the original PDF stays unchanged.</p><label>Title<input value={libraryEdit.name} onChange={event => setLibraryEdit({ ...libraryEdit, name: event.target.value })} /></label><label>Tags, separated by commas<input value={libraryEdit.tags} onChange={event => setLibraryEdit({ ...libraryEdit, tags: event.target.value })} /></label><div className="row"><button className="button blue" disabled={!libraryEdit.name.trim()} onClick={saveLibraryLabel}>Save label</button><button className="button outline" onClick={() => setModal('library')}>Cancel</button></div></>}
@@ -1331,7 +1362,7 @@ function App() {
         {sections.map(section => <button key={section.startId} disabled={!!busy} onClick={() => { setModal(''); translateBlocks(section.ids); }}>Choose section: {section.title}<small>{section.ids.length} blocks</small></button>)}
         <button disabled={!!busy} onClick={() => { setModal(''); translateBlocks(paper.blocks.map(block => block.id)); }}>All unfinished blocks <small>{paper.blocks.filter(block => block.status !== 'ok' && !referenceIDs.has(block.id)).length} blocks</small></button>
       </div>}
-      {modal === 'settings' && <button className="button danger" disabled={!!busy} onClick={() => setModal('clearData')}>Remove all saved PaperBridge data…</button>}
+
       {modal === 'clearData' && <><p>This removes saved papers, translations, bookmarks, notes, terminology, and settings. Original PDF copies remain in the local workspace.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => setModal('settings')}>Cancel</button></div></>}
       {modal === 'export' && <div className="menu-list"><button onClick={exportBundle}><Download size={17} /> Export portable Markdown bundle</button>{[['original', 'Original Markdown'], ['translated', 'Translated Markdown'], ['bilingual', 'Bilingual Markdown'], ['analysis', 'Summary, sources and notes'], ...(paper.connectedTranslation ? [['full', 'Full Translation Markdown']] : [])].map(([kind, label]) => <button key={kind} onClick={() => exportMarkdown(kind)}><Download size={17} /> {label}</button>)}</div>}
     </div></div></div>}

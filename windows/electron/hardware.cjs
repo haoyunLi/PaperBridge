@@ -3,6 +3,7 @@ const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { detectMineruExecutable } = require('./mineru-discovery.cjs');
 const run = promisify(execFile);
 
 function vendorOf(name) {
@@ -45,11 +46,12 @@ async function graphicsStatus() {
   return { adapters, cudaDriver, cudaVersion, systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
 }
 
-async function mineruRuntime(executable) {
+async function mineruRuntime(executable, toolsRoot) {
   let command = String(executable || '').trim();
   if (!command) {
-    try { command = (await run('where.exe', ['mineru'], { timeout: 3000, windowsHide: true })).stdout.split(/\r?\n/).find(Boolean) || ''; }
-    catch { return { checked: false, reason: 'MinerU executable was not found on PATH.' }; }
+    const detected = await detectMineruExecutable('', toolsRoot);
+    if (!detected.compatible) return { checked: false, reason: detected.reason };
+    command = detected.executable;
   }
   const resolved = fs.existsSync(command) ? command : '';
   if (!resolved) return { checked: false, reason: 'Enter the full path to MinerU to check its Python environment.' };

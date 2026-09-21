@@ -38,8 +38,10 @@ async function closeSettings(page) { await page.locator('.modal-head .icon-butto
 
 async function chooseSettings(page, source, target, model) {
   await openSettings(page);
+  await page.getByRole('tab', { name: 'Reading', exact: true }).click();
   await page.getByLabel('Source language').selectOption(source);
   await page.getByLabel('Target language').selectOption(target);
+  await page.getByRole('tab', { name: 'Models', exact: true }).click();
   for (const label of ['Translation model', 'Summary model', 'Explanation model', 'Quick lookup model']) {
     await page.getByLabel(label).selectOption(model);
   }
@@ -50,15 +52,19 @@ async function chooseSettings(page, source, target, model) {
 async function assertSettings(page, source, target, model, appearance) {
   await page.waitForFunction(([from, to]) => document.querySelector('.title-wrap p')?.textContent?.includes(`${from} → ${to}`), [source, target]);
   await openSettings(page);
+  await page.getByRole('tab', { name: 'Reading', exact: true }).click();
   assert.equal(await page.getByLabel('Source language').inputValue(), source);
   assert.equal(await page.getByLabel('Target language').inputValue(), target);
+  await page.getByRole('tab', { name: 'Models', exact: true }).click();
   for (const label of ['Translation model', 'Summary model', 'Explanation model', 'Quick lookup model']) {
     assert.equal(await page.getByLabel(label).inputValue(), model);
   }
   if (appearance) {
+    await page.getByRole('tab', { name: 'Reading', exact: true }).click();
     assert.equal(await page.getByRole('slider', { name: /Reader font size/ }).inputValue(), appearance.fontSize);
     assert.equal(await page.getByRole('slider', { name: /Line spacing/ }).inputValue(), appearance.lineHeight);
     assert.equal(await page.getByRole('slider', { name: /Reading width/ }).inputValue(), appearance.readingWidth);
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
     assert.equal(await page.getByLabel(/Check official Windows releases/).isChecked(), false);
   }
   await closeSettings(page);
@@ -119,6 +125,7 @@ async function run() {
     await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation').waitFor();
     await waitFor(() => readPaper(textA).blocks[1]?.status === 'ok', 'original task settings restore translation');
     await openSettings(page);
+    await page.getByRole('tab', { name: 'Reading', exact: true }).click();
     const chunkSlider = page.getByRole('slider', { name: /Maximum translation chunk/ });
     const originalChunk = Number(await chunkSlider.inputValue());
     await chunkSlider.press('ArrowRight');
@@ -135,6 +142,7 @@ async function run() {
     await page.locator('button[title="Toggle inspector"]').click();
     await explainBlockIn(page, 'German');
     await openSettings(page);
+    await page.getByRole('tab', { name: 'Reading', exact: true }).click();
     await page.getByRole('slider', { name: /Reader font size/ }).press('End');
     await page.getByRole('slider', { name: /Line spacing/ }).press('End');
     await page.getByRole('slider', { name: /Reading width/ }).press('End');

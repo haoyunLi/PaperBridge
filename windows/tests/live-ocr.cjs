@@ -22,7 +22,7 @@ async function run() {
   fs.rmSync(workspace, { recursive: true, force: true });
   fs.mkdirSync(workspace, { recursive: true });
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
-    mineruExecutable: mineru, mineruBackend: 'pipeline', pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, onboardingCompletedVersion: 1,
+    mineruExecutable: process.env.PAPERBRIDGE_LIVE_MINERU || '', mineruBackend: 'pipeline', pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, onboardingCompletedVersion: 1,
     translationModel: model, ollamaBaseURL
   }));
   const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
@@ -53,7 +53,8 @@ async function run() {
       extraction: paper.extraction, sourceMode: paper.sourceMode,
       pdfBlocks: paper.pdfBlocks?.length || 0, mineruBlocks: paper.mineruBlocks?.length || 0,
       readerCharacters: readerText.length, readerExcerpt: readerText.slice(0, 1200), translation,
-      model, modelBytes: active.size, modelVramBytes: active.size_vram
+      model, modelBytes: active.size, modelVramBytes: active.size_vram,
+      autoDetectedMineru: !process.env.PAPERBRIDGE_LIVE_MINERU
     };
     fs.writeFileSync(path.join(artifacts, 'live-ocr-report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));

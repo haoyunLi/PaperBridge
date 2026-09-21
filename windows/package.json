@@ -19,6 +19,10 @@
     "test:setup-components-e2e": "node tests/setup-components-e2e.cjs",
     "test:onboarding-e2e": "node tests/onboarding-e2e.cjs",
     "test:onboarding-startup-e2e": "node tests/onboarding-startup-e2e.cjs",
+    "test:settings-models-e2e": "node tests/settings-models-e2e.cjs",
+    "test:mineru-detect-e2e": "node tests/mineru-detect-e2e.cjs",
+    "test:update-restart-e2e": "node tests/update-restart-e2e.cjs",
+    "test:installer-e2e": "node tests/installer-e2e.cjs",
     "test:official-links-e2e": "node tests/official-links-e2e.cjs",
     "test:markdown": "node tests/markdown-parity.cjs",
     "test:reopen-mineru": "node tests/reopen-mineru.cjs",
@@ -70,7 +74,7 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": false
     }
   }
 }

@@ -36,11 +36,12 @@ test('release fetch uses the official GitHub API and reports errors', async () =
 test('failed automatic update check is retried and only a successful check starts the daily interval', async () => {
   let time = 1_000_000_000;
   let lastCheckAt = 0;
+  let cachedState = {};
   let calls = 0;
   const store = {
     settings: () => ({ autoCheckUpdates: true }),
-    lastUpdateCheckAt: () => lastCheckAt,
-    saveUpdateCheckAt: value => { lastCheckAt = value; }
+    updateCheckState: () => cachedState,
+    saveUpdateCheckState: value => { cachedState = value; lastCheckAt = value.lastCheckAt; }
   };
   const checkUpdates = createUpdateChecker({
     store,
@@ -61,6 +62,6 @@ test('failed automatic update check is retried and only a successful check start
   assert.equal(result.latestVersion, '0.3.0');
   assert.equal(lastCheckAt, time);
   time += 60 * 60 * 1000;
-  assert.equal((await checkUpdates(true)).status, 'skipped');
+  assert.equal((await checkUpdates(true)).status, 'available');
   assert.equal(calls, 2);
 });

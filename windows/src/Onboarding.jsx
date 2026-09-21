@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, Download, FileText, HardDrive, Languages, LockKeyhole, RefreshCw, Settings2, Sparkles, Square } from 'lucide-react';
 import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, modelSettingsPatch, isCatalogModelSelected, suggestedTranslationModel } from './modelCatalog.mjs';
+import { ModelCard } from './ModelRecommendations.jsx';
 import './onboarding.css';
 
 const api = window.paperBridge;
@@ -24,18 +25,6 @@ function Callout({ title, children }) {
 
 function ReadinessRow({ title, detail, ready, optional }) {
   return <div className={`onboarding-readiness ${ready ? 'ready' : ''}`}><span aria-hidden="true">{ready ? <Check size={18} /> : optional ? '—' : '!'}</span><div><strong>{title} {optional && <small>Optional</small>}</strong><p>{detail}</p></div></div>;
-}
-
-function ModelCard({ model, installed, selected, active, disabled, onAction }) {
-  return <article className={`onboarding-model-card ${selected ? 'selected' : ''}`} data-model-id={model.id}>
-    <div className="onboarding-model-copy"><div className="onboarding-model-title"><h3>{model.title}</h3><span>{model.badge}</span>{installed && <b><Check size={12} /> Installed</b>}</div>
-      <code>{model.id}</code><p>{model.detail}</p><small>{model.guidance}</small>
-      <div className="onboarding-model-meta"><span>About {model.downloadGB.toFixed(1)} GB download</span><a href={model.url} target="_blank" rel="noreferrer">Official model details</a></div>
-    </div>
-    <button className={`button ${selected ? 'outline' : 'blue'}`} disabled={disabled || selected || active} onClick={onAction}>
-      {selected ? <Check size={14} /> : <Download size={14} />}{active ? 'Downloading…' : selected ? 'Selected' : installed ? 'Use model' : 'Download & use'}
-    </button>
-  </article>;
 }
 
 export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup, progress, pullProgress, models = emptyModels, onModelsChanged, onBusyChange }) {

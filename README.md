@@ -42,6 +42,8 @@ It can also:
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
 
+The same repository contains the active [Windows development preview](windows/README.md), including six-section Settings, local Ollama/MinerU setup with AMD/NVIDIA-aware detection, MinerU Auto-Detect, Windows update prompts that survive restart, and NSIS/portable packaging. Its macOS 1.9 baseline and the newer 1.9.1 gaps are tracked separately in the [feature mapping](windows/FEATURE_MAPPING.md) and [1.9.1 incremental report](windows/MAC_1_9_1_GAPS.md).
+
 ## Reading Reliability in 1.9
 
 **New in PaperBridge 1.9.** This release focuses on staying with the paper rather than redoing work. [Try the interactive website examples](https://paperbridges.net/#reading-update) or read the [implementation and verification notes](docs/reliability-update.md).

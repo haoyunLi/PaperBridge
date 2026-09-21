@@ -6,6 +6,7 @@ const { promisify } = require('node:util');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
+const { detectMineruExecutable } = require('./mineru-discovery.cjs');
 
 const exec = promisify(execFile);
 const UV_VERSION = '0.11.29';
@@ -68,21 +69,9 @@ async function ollamaAppPath() {
   return where('ollama app.exe');
 }
 
-async function mineruPath(configured, toolsRoot) {
-  const candidates = [configured, path.join(toolsRoot, 'mineru', 'Scripts', 'mineru.exe'), await where('mineru.exe')];
-  return candidates.find(candidate => candidate && fs.existsSync(candidate)) || '';
-}
-
 async function mineruStatus(configured, toolsRoot) {
-  const executable = await mineruPath(configured, toolsRoot);
-  if (!executable) return { installed: false, compatible: false, executable: '', version: '', runtime: null };
-  let version = '';
-  try {
-    const result = await exec(executable, ['--version'], { timeout: 15000, windowsHide: true });
-    version = (result.stdout || result.stderr).trim().slice(0, 200);
-  } catch { return { installed: true, compatible: false, executable, version: 'The command did not start', runtime: null }; }
-  const compatible = /(?:^|\D)3\.\d+/.test(version);
-  return { installed: true, compatible, executable, version, runtime: compatible ? await mineruRuntime(executable) : null };
+  const found = await detectMineruExecutable(configured, toolsRoot);
+  return { ...found, runtime: found.compatible ? await mineruRuntime(found.executable, toolsRoot) : null };
 }
 
 async function sha256(file) {

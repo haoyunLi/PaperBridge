@@ -1,5 +1,22 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第三阶段：设置、自动发现、更新恢复与真实安装闭环（2026-09-21）
+
+这一阶段补齐了上一轮明确列出的 Settings 小入口，并把只做静态/模拟验证的交付链路推进到真实安装器。macOS `origin/main` 同时从 1.9 `73951d9` 前进到 1.9.1 `33cfb933`；1.9.1 新增行为见 [12 项增量差距报告](MAC_1_9_1_GAPS.md)，不混入原有 111 项历史统计。
+
+| 本次补齐 | 行为与验证 |
+| --- | --- |
+| 六分页 Settings | Local AI、Parsing、Models、Reading、Updates、Local Data；980×620 与 150% Electron 缩放可用，键盘 Left/Right/Home/End 导航通过。 |
+| Settings 推荐模型 | 与引导共用 3 个翻译模型和 6 个助手模型；支持 RAM 建议、下载/取消/重试、Use、四任务角色、跨分页进度、重启恢复，迟到完成不会写错论文或 Ollama 端点。 |
+| MinerU Auto-Detect | 设置按钮、导入、安装状态共用 resolver：优先兼容的应用私有 MinerU，再检查 PATH；显式路径保持权威。检测中取消、重复任务和原生菜单启动新任务均有 identity guard。 |
+| 更新提示恢复 | 仅缓存校验后的 release tag 与精确 installer 名，启动时按当前版本重新计算；新版提示跨重启保留，过期刷新失败时保留 stale 提示并允许重试，损坏/未来缓存不能抑制检查。 |
+| 安装路径保护 | 真实测试暴露 268 字符自定义路径会让 electron-builder NSIS 旧版原子移除失败；生产 assisted installer 现固定安全默认目录，测试在变更系统前计算最长安装路径并拒绝 ≥260 字符的 fixture。 |
+| 真实 NSIS 生命周期 | 最终安装包完成首装、启动、创建练习论文与高亮/笔记、同版本重装、重新打开并恢复数据、卸载、确认注册/快捷方式/程序已移除且论文设置仍保留。测试前检查 HKCU/HKLM、32/64 位视图、进程、快捷方式和 updater cache；清理只处理本次验证过的安装和匹配 SHA-256 的缓存。 |
+
+最终验证为 **83/83 单元测试**，以及 `test:e2e`、`test:settings-models-e2e`、`test:model-pull-e2e`、`test:paper-settings-e2e`、`test:onboarding-e2e`、`test:mineru-detect-e2e`、`test:update-restart-e2e`、`test:packaged` 和 opt-in `installer-e2e`。最新真实 AMD OCR 使用空 `mineruExecutable`，由应用自动发现私有 MinerU 3.4.5；约 **40.7 秒**得到 `pdfBlocks=0`、`mineruBlocks=5` 并完成中文翻译，Ollama 报告 `modelBytes = modelVramBytes = 2,875,656,764`。
+
+最终 NSIS、portable 和 unpacked 主程序的 Authenticode 状态仍为 **NotSigned**。安装/重装/卸载已经真机验证；代码签名、正式 Windows Release、跨版本更新安装、NVIDIA/纯 CPU/更多 AMD 设备仍是发布前边界。
+
 ## 第二阶段：首次使用和系统交互补齐
 
 在下述整软件复查之后，继续实现 Mac 对应的首次引导和安装细节。映射仍为 **43 对齐、68 部分、0 缺失**，保留尚待真机与复杂文档验收的部分状态。
@@ -78,8 +95,9 @@
 | 优先级 | 剩余差距 | 完成验收点 |
 | --- | --- | --- |
 | P1 | 新增组件选择与 MinerU 修复还需更多真实安装环境验收。 | 在干净机器、损坏旧环境、激活失败、取消和重启的条件下检查实际安装及回滚；现有新增流程验证使用受控安装响应。 |
-| P1 | Windows 尚未完成正式签名更新交付。 | 签名后的 NSIS/portable、正式 Windows Release、下载校验、更新安装及安装/卸载真机验证。当前仅检查新版并打开发布页。 |
-| P2 | Settings 的小入口仍与 Mac 不完全一致。 | 推荐模型卡片目前在引导中；Settings 内的对应卡片及明确的 MinerU Use Auto-Detect 按钮还可补齐。Mac 引导本身没有语言选择页，两版 Settings 已有对应的 11 种语言与交换。 |
+| P1 | Windows 尚未完成正式签名与跨版本更新交付。 | 真实首装/同版本重装/卸载已通过；仍需签名后的 NSIS/portable、正式 Windows Release、下载校验和旧版本→新版本更新安装。当前应用检查新版并打开发布页。 |
+| P1 | macOS 1.9.1 新增的笔记可靠性仍待补。 | 按 [增量报告](MAC_1_9_1_GAPS.md)完成 350 ms autosave、离开/退出 flush、保留空白、会话 Undo、identity guard、Saving/Saved/Error/Retry。 |
+| P2 | macOS 1.9.1 阅读连续性和标题体验仍待补。 | 固定任务/保存状态栏、50 条 Back/Forward、全 surface 位置恢复、紧凑双语标题、标题分类及待复核标注隔离。 |
 | P2 | 高 DPI、最小窗口、复杂结构和真实扫描件覆盖不足。 | 在多种缩放与分辨率下验证面板、选区、滚动位置；同一批普通/双栏/扫描/公式图表论文与 Mac 真机逐项比较。 |
 | P2 | NVIDIA CUDA 与更多设备未实测。 | 在 NVIDIA、纯 CPU 及其它 AMD 实机检查安装、推理后端、VRAM、失败降级、取消和恢复。 |
 
