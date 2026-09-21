@@ -293,12 +293,27 @@ function OverviewView({ paper, busy, summarize, navigate, onSelect, issues, onPa
   </div>;
 }
 
-function PaperPreview({ paper, onSelect }) {
+function PaperPreview({ paper, displayMode, onSelect }) {
   const structured = paper.sourceMode === 'mineru' && Boolean(paper.mineruMarkdown);
   const blocks = paper.blocks;
-  return <article className="document-preview" onMouseUp={event => onSelect(event, 'paper', 'source')}>
-    {blocks.map(block => { const highlights = blockAnnotationsFor(block.highlights, 'paper'); return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
-      {structured && block.sourceMarkdown ? <Markdown highlights={highlights}>{block.sourceMarkdown}</Markdown> : block.heading ? <h3>{withHighlight(block.text, highlights)}</h3> : <p>{withHighlight(block.text, highlights)}</p>}
+  const renderText = (block, kind) => {
+    const translation = kind === 'translation';
+    const markdown = translation ? block.translationMarkdown : block.sourceMarkdown;
+    const text = translation ? block.translation : block.text;
+    const highlights = blockAnnotationsFor(translation ? block.translationHighlights : block.highlights, 'paper');
+    return structured && markdown ? <Markdown highlights={highlights}>{markdown}</Markdown> : block.heading ? <h3>{withHighlight(text, highlights)}</h3> : <p>{withHighlight(text, highlights)}</p>;
+  };
+  const select = event => {
+    const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
+    const start = range?.startContainer?.nodeType === Node.ELEMENT_NODE ? range.startContainer : range?.startContainer?.parentElement;
+    onSelect(event, 'paper', start?.closest('[data-paper-kind]')?.dataset.paperKind || 'source');
+  };
+  return <article className={`document-preview paper-mode-${displayMode}`} onMouseUp={select}>
+    {blocks.map(block => { const translated = block.status === 'ok' && Boolean(block.translation || block.translationMarkdown); const sourceOnlyFallback = displayMode === 'translation' && (!translated || block.resource); return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
+      {(displayMode !== 'translation' || sourceOnlyFallback) && <div className={sourceOnlyFallback ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source">{renderText(block, 'source')}</div>}
+      {displayMode !== 'source' && !block.resource && (translated
+        ? <div className="paper-preview-translation" data-paper-kind="translation">{renderText(block, 'translation')}</div>
+        : displayMode === 'bilingual' && <div className="paper-preview-translation unavailable"><p>Translation unavailable</p></div>)}
     </section>; })}
   </article>;
 }
@@ -847,7 +862,7 @@ function App() {
       const request = blockNavigation;
       const block = paperRef.current.blocks.find(item => item.id === request.blockId);
       const root = request.scope === 'paper'
-        ? document.querySelector(`[data-paper-block-id="${request.blockId}"]`)
+        ? document.querySelector(`[data-paper-block-id="${request.blockId}"] [data-paper-kind="${request.kind}"]`)
         : document.querySelector(`[data-block-id="${request.blockId}"][data-kind="${request.kind}"]`);
       const rendered = root?.textContent || '';
       const displayAt = Number.isInteger(request.displayOffset) && rendered.slice(request.displayOffset, request.displayOffset + request.text.length) === request.text ? request.displayOffset : null;
@@ -1337,7 +1352,7 @@ function App() {
       setError(`The saved ${scope === 'paper' ? 'Paper' : 'Reader'} text no longer matches this block. The annotation was kept for review.`);
       return;
     }
-    const mode = scope === 'reader' && (kind === 'translation' && displayMode === 'source' || kind === 'source' && displayMode === 'translation') ? 'bilingual' : displayMode;
+    const mode = scope === 'paper' ? 'bilingual' : (kind === 'translation' && displayMode === 'source' || kind === 'source' && displayMode === 'translation') ? 'bilingual' : displayMode;
     recordReadingJump(location => location.tab === targetTab && (scope === 'paper' || !location.search) && location.block === blockId && location.displayMode === mode
       && selectionRef.current?.scope === scope && selectionRef.current?.id === blockId && selectionRef.current?.kind === kind
       && selectionRef.current?.offset === item.offset && selectionRef.current?.text === item.text);
@@ -1412,12 +1427,13 @@ function App() {
     let displayOffset = null;
     if (scope === 'paper') {
       const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
-      const element = start?.closest('[data-paper-block-id]');
+      const side = start?.closest('[data-paper-kind]');
+      const element = side?.closest('[data-paper-block-id]');
       const block = paperRef.current?.blocks.find(item => item.id === Number(element?.dataset.paperBlockId));
-      const within = domSelectionIn(element);
+      const within = domSelectionIn(side);
       if (block && within?.text === text) {
         id = block.id;
-        offset = exactAnchorOffset(anchorText(block, 'source'), within);
+        offset = exactAnchorOffset(anchorText(block, kind), within);
         displayOffset = within.offset;
       }
     } else {
@@ -1495,10 +1511,10 @@ function App() {
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className="content-column">
-          <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Selectable PDF text · exact pages are in Original' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
+          <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Selectable PDF text · exact pages are in Original' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
           {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
           {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} />}
-          <PaperPreview paper={paper} onSelect={captureViewSelection} />
+          <PaperPreview paper={paper} displayMode={displayMode} onSelect={captureViewSelection} />
         </div>}
         {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{(!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={blockAnnotationsFor(block.highlights, 'reader')}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, blockAnnotationsFor(block.highlights, 'reader'))}</div>{!block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={blockAnnotationsFor(block.translationHighlights, 'reader')}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, blockAnnotationsFor(block.translationHighlights, 'reader'))) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView

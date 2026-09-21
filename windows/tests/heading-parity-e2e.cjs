@@ -158,6 +158,23 @@ async function run() {
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Late Paper block remains annotatable.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && window.getSelection()?.toString() === 'Fixed resource 14');
+    await page.getByLabel('Paper display mode').selectOption('source');
+    assert.equal(await page.locator('[data-paper-block-id="1"] [data-paper-kind="source"]').count(), 1);
+    assert.equal(await page.locator('[data-paper-block-id="1"] [data-paper-kind="translation"]').count(), 0);
+    await page.getByLabel('Paper display mode').selectOption('translation');
+    assert.equal(await page.locator('[data-paper-block-id="1"] [data-paper-kind="source"]').count(), 0);
+    assert.equal(await page.locator('[data-paper-block-id="1"] [data-paper-kind="translation"]').innerText(), '摘要');
+    assert.equal(await page.locator('[data-paper-block-id="2"] [data-paper-kind="source"]').innerText(), 'Study design', 'untranslated Paper blocks retain source context');
+    await page.getByLabel('Paper display mode').selectOption('bilingual');
+    await selectText(page, '[data-paper-block-id="1"] [data-paper-kind="translation"]', 0, 2);
+    await page.locator('.inspector textarea').fill('Paper translation stays separate from Reader.');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).blocks[0].notes
+      .some(note => note.scope === 'paper' && note.kind === 'translation' && note.body === 'Paper translation stays separate from Reader.'), 'Paper translation note');
+    await page.getByLabel('Paper display mode').selectOption('source');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Paper translation stays separate from Reader.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('[aria-label="Paper display mode"]')?.value === 'bilingual' && window.getSelection()?.toString() === '摘要');
+    await page.screenshot({ path: path.join(artifacts, 'paper-bilingual-preview.png') });
 
     await app.evaluate(({ ipcMain }) => {
       global.__headingExports = [];
@@ -176,7 +193,7 @@ async function run() {
     assert.match(exports[1].content, /^Abstract\n\n摘要\n\n## Study design\n\n\*Not translated\*/);
     assert.ok(requests.some(payload => /Explain this whole academic paragraph/i.test(payload.system || '')));
     await page.screenshot({ path: path.join(artifacts, 'heading-parity-reader.png') });
-    console.log('Heading parity checks passed: full Paper preview, late-block annotations, compact rendering, classification, retry, display modes, actions and translated exports.');
+    console.log('Heading parity checks passed: full Paper preview, source/bilingual/translation modes, late-block and translated-side annotations, compact rendering, classification, retry, actions and exports.');
   } finally {
     await app?.close();
     ollama.closeAllConnections();

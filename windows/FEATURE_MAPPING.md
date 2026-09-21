@@ -41,7 +41,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | --- | --- | --- | --- | --- |
 | B01 | 三栏：文档侧栏、正文、研究检查器 | 三栏布局 | 对齐 | 窄窗口各面板仍能使用。 |
 | B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Overview（阅读地图、质量检查与双语摘要）、Full Translation，另有 Original；内部保留旧 `Summary` 状态值兼容已保存位置 | 对齐 | Original 是 Windows 额外的原生 PDF 工作区。 |
-| B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Windows 用独立 Original 标签；Paper 渲染 Markdown | 部分 | 保持同一纸张上下文和视图切换位置。 |
+| B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 共用 Original / Bilingual / Translation 模式渲染完整结构文档；Windows 另以 Original 标签保留精确 PDF 及页码位置 | 部分 | 精确 PDF 仍是独立标签；Paper 与 Original 的位置映射需更多长文验证。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存 | 对齐 | Electron 流程验证三模式切换。 |
 | B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 的 `readingMap` 五类标题匹配并跳转 Reader 原块 | 部分 | 无标题时回退；更多真实论文需验证所有主题与段落链接不串页。 |
 | B06 | 章节大纲跳转 | 侧栏 OUTLINE，跳转前清除 Reader 搜索 | 对齐 | 搜索后目录跳转已回归；复杂 MinerU 标题层级仍需验证。 |
@@ -103,7 +103,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | ID | Mac 1.9 行为 | Windows 0.2 对应 | 状态 | 补齐与验收点 |
 | --- | --- | --- | --- | --- |
 | E01 | Reader 原文/译文选区 | Reader DOM 选区 | 部分 | 译文 Markdown 选区也能正确找回来源。 |
-| E02 | Paper 结构化 Markdown 选区 | Paper 预览按块定位选区，重复文字保留精确偏移；笔记/高亮保存 Paper 作用域并只在 Paper 正文显示 | 部分 | 跨块选区及格式复杂时的 Markdown 原文偏移仍需补齐。 |
+| E02 | Paper 结构化 Markdown 选区 | Paper 三种显示模式均按块/原译文侧定位选区，重复文字保留精确偏移；笔记/高亮保存 Paper 作用域并只在 Paper 对应侧显示 | 部分 | 跨块选区及格式复杂时的 Markdown 原文偏移仍需补齐。 |
 | E03 | 原 PDF 可选文字按页/偏移锚定 | PDF text layer 按页码、页内偏移与原文保存独立笔记/高亮；导航时校验原文，失效则保留并提示 | 部分 | 双页同词不同色标注、跳转与重启回归通过；真实长 PDF 的跨行选区和扫描件仍需验收。 |
 | E04 | 双语摘要两侧选区 | 两侧选区可查词、解释、保存笔记；三色高亮正文可见，列表可跳回选区 | 部分 | 复杂 Markdown 和源文重排时的显示偏移仍需验收。 |
 | E05 | Full Translation 选区 | 全文译稿可查词、解释、保存笔记；三色高亮正文可见，列表可跳回选区 | 部分 | 复杂 Markdown 和译稿重生成后的锚点仍需验收。 |
@@ -115,7 +115,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E11 | 三种颜色高亮 | 三色高亮用偏移区分重复原文；Reader、Paper、PDF、摘要和全文译稿均在正文显示 | 部分 | 真实 MinerU 上标已验证；PDF 多页与 KaTeX 混排仍需验收。 |
 | E12 | 删除高亮保留笔记 | 同色点击移除高亮，笔记单独保存 | 部分 | 高亮与注释关联同一精确选区。 |
 | E13 | 为选区创建、更新、删除笔记 | Reader 同选区笔记可创建、更新、删除 | 对齐 | 标注清单提供删除入口。 |
-| E14 | 标注列表、预览、跨工作区跳转 | 检查器按 Paper/Reader 作用域标记块级记录；两者以及 PDF、摘要和全文译稿均可返回原视图并精确重选，Paper 跳转进入阅读历史 | 部分 | 复杂 Markdown、跨节点与跨块坐标仍需更多真实论文验收。 |
+| E14 | 标注列表、预览、跨工作区跳转 | 检查器按 Paper/Reader 作用域及原译文侧标记块级记录；两者以及 PDF、摘要和全文译稿均可返回原视图并精确重选，Paper 译文跳转自动恢复 Bilingual 并进入阅读历史 | 部分 | 复杂 Markdown、跨节点与跨块坐标仍需更多真实论文验收。 |
 | E15 | 标注位置失效时保留笔记并标明需检查 | Reader 失效选区不跳错文字，保存笔记并标记 needsReview；PDF 与视图锚点也校验 | 部分 | 合成失效笔记回归通过；更多编辑和跨视图路径仍需验证。 |
 | E16 | 高亮/笔记更改撤销 | 最多 20 次变更记录，仅还原相关注释/书签字段 | 部分 | 书签→翻译→撤销不会丢译文，后来便签修改保留；复杂混合操作和重启仍需验收。 |
 | E17 | 精确选区注释跨分段编辑迁移 | 拆分、合并、编辑迁移原文精确锚点 | 部分 | 重排及 Markdown 结构化编辑仍缺。 |

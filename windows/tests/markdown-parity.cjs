@@ -43,7 +43,8 @@ async function run() {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Markdown parity fixture' }).waitFor();
-    assert.equal(await page.locator('.document-preview sup').count(), 1);
+    assert.equal(await page.locator('.document-preview [data-paper-kind="source"] sup').count(), 1);
+    assert.equal(await page.locator('.document-preview [data-paper-kind="translation"] sup').count(), 1);
     assert.equal(await page.locator('.document-preview table td').allInnerTexts().then(cells => cells.join(',')), 'Attention,42');
     assert.equal(await page.locator('.document-preview img[src^="data:image/png"]').count(), 1);
     assert.equal(await page.locator('.document-preview img[src^="data:image/png"]').evaluate(img => img.naturalWidth), 1);

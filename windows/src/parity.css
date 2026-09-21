@@ -26,6 +26,10 @@
 .quality-list{background:#fff9ec;border:1px solid #e7d2a8;border-radius:10px;padding:13px;margin:12px 0}
 .quality-list h3{font-size:14px;margin:0 0 8px}
 .quality-list button{display:block;border:0;background:none;color:#073c91;text-align:left;font-size:12px;padding:5px 0}
+.paper-preview-source.unavailable{color:#5f6872}
+.paper-preview-translation{margin:4px 0 20px;padding:12px 16px;border-left:3px solid #e8493e;background:#fff5f1;color:#3e2927}
+.paper-preview-translation.unavailable{font:12px "Segoe UI",sans-serif;color:#777;background:#f4f0e9;border-left-color:#cfc6b8}
+.paper-preview-translation>:last-child,.paper-preview-source>:last-child{margin-bottom:0}
 .scan-notice{display:flex;align-items:flex-start;gap:12px;max-width:1000px;margin:12px auto;padding:15px 17px;background:#fff8e8;border:1px solid #e4c88c;border-radius:10px;color:#674314}
 .scan-notice>div{flex:1}.scan-notice strong{font-size:14px}.scan-notice p{font-size:12px;line-height:1.5;margin:5px 0 12px}.scan-notice .row{flex-wrap:wrap}
 .task-progress{max-width:1000px;margin:0 auto 11px;padding:12px 15px;background:#e8f1ff;border:1px solid #b4cef0;border-radius:10px;color:#153964}.task-progress-heading{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:9px}.task-progress-heading strong{font-size:13px;font-weight:600}.task-progress-heading span{font-size:12px;white-space:nowrap}.task-progress progress{display:block;width:100%;height:8px;accent-color:#0a59d6}
