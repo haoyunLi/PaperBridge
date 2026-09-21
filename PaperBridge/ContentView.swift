@@ -289,7 +289,6 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(viewModel.documentSections) { section in
                     Button {
-                        viewModel.workspaceMode = .reader
                         viewModel.navigateToParagraph(section.paragraphID)
                     } label: {
                         HStack(spacing: 8) {
@@ -324,7 +323,6 @@ struct ContentView: View {
         SidebarCard(title: "Bookmarks", icon: "bookmark.fill") {
             ForEach(viewModel.bookmarkedParagraphIDs.sorted(), id: \.self) { paragraphID in
                 Button {
-                    viewModel.workspaceMode = .reader
                     viewModel.navigateToParagraph(paragraphID)
                 } label: {
                     HStack {
@@ -480,8 +478,10 @@ struct ContentView: View {
     private var workspace: some View {
         VStack(spacing: 0) {
             workspaceHeader
+            persistentWorkspaceStatus
             Divider()
             workspaceContent
+                .id(viewModel.readingRestorationID)
         }
         .overlay(alignment: .bottomTrailing) {
             if viewModel.isQuickLookupPresented && !viewModel.isInspectorPresented && viewModel.activeTextSelection != nil {
@@ -493,6 +493,17 @@ struct ContentView: View {
     private var workspaceHeader: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .center, spacing: 14) {
+                HStack(spacing: 4) {
+                    Button(action: viewModel.goBackInReading) { Image(systemName: "chevron.left") }
+                        .disabled(!viewModel.canGoBackInReading)
+                        .help("Back to previous reading location (Command-[)")
+                        .accessibilityLabel("Back to Previous Reading Location")
+                    Button(action: viewModel.goForwardInReading) { Image(systemName: "chevron.right") }
+                        .disabled(!viewModel.canGoForwardInReading)
+                        .help("Forward in reading history (Command-])")
+                        .accessibilityLabel("Forward in Reading History")
+                }
+                .buttonStyle(.bordered)
                 Button {
                     focusRestoreState = nil
                     isDocumentSidebarPresented.toggle()
@@ -894,12 +905,11 @@ struct ContentView: View {
                             VStack(alignment: .leading, spacing: 16) {
                                 switch item {
                                 case .paragraph(let paragraph):
-                                    if let sectionTitle = TextProcessing.detectedSectionTitle(
-                                        in: paragraph.original
-                                    ) {
-                                        sectionMarker(sectionTitle)
+                                    if TextProcessing.standaloneSectionTitle(in: paragraph.original, sourceMarkdown: paragraph.sourceMarkdown) != nil {
+                                        compactHeading(paragraph)
+                                    } else {
+                                        paragraphCard(paragraph)
                                     }
-                                    paragraphCard(paragraph)
                                 case .resource(let resource):
                                     readerResourceBlock(resource)
                                 }
@@ -966,7 +976,11 @@ struct ContentView: View {
 
     private func positionHandler(for key: String) -> (ReadingPosition) -> Void {
         let checksum = viewModel.loadedPaper?.checksum
-        return { position in viewModel.updateReadingPosition(position, key: key, paperChecksum: checksum) }
+        let restorationID = viewModel.readingRestorationID
+        return { position in
+            guard restorationID == viewModel.readingRestorationID else { return }
+            viewModel.updateReadingPosition(position, key: key, paperChecksum: checksum)
+        }
     }
 
     private func readerResourceBlock(_ resource: ReaderResourceBlock) -> some View {
@@ -1186,13 +1200,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var statusStrip: some View {
-        if let saveError = viewModel.workspaceSaveError {
-            Label("Local save failed: \(saveError). Export your work before quitting.", systemImage: "exclamationmark.triangle")
-                .font(.callout)
-                .foregroundStyle(.red)
-                .textSelection(.enabled)
-        }
-        if viewModel.isBusy || !viewModel.statusMessage.isEmpty {
+        if !viewModel.isBusy && !viewModel.statusMessage.isEmpty {
             SurfaceCard(contentPadding: 14) {
                 VStack(alignment: .leading, spacing: viewModel.isBusy ? 9 : 0) {
                     HStack(spacing: 10) {
@@ -1225,15 +1233,97 @@ struct ContentView: View {
         }
     }
 
-    private func sectionMarker(_ title: String) -> some View {
-        HStack(spacing: 12) {
-            Text(title)
-                .font(.system(size: 21, weight: .semibold, design: .serif))
-            Rectangle()
-                .fill(PaperBridgeTheme.border)
-                .frame(height: 1)
+    private var persistentWorkspaceStatus: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                if viewModel.isBusy {
+                    ProgressView().controlSize(.small)
+                    Text(viewModel.statusMessage).lineLimit(2).help(viewModel.statusMessage)
+                    Spacer(minLength: 8)
+                    if !viewModel.isProgressIndeterminate {
+                        Text(viewModel.progressValue, format: .percent.precision(.fractionLength(0)))
+                            .monospacedDigit()
+                    }
+                } else {
+                    Spacer(minLength: 0)
+                }
+                Label(viewModel.workspaceSaveError != nil ? "Save failed" :
+                      (viewModel.isNoteSavePending || viewModel.isWorkspaceSaving ? "Saving..." : "Saved on this Mac"),
+                      systemImage: viewModel.workspaceSaveError != nil ? "exclamationmark.triangle" : "internaldrive")
+                    .foregroundStyle(viewModel.workspaceSaveError != nil ? Color.red : Color.secondary)
+            }
+            if viewModel.isBusy {
+                if viewModel.isProgressIndeterminate { ProgressView().progressViewStyle(.linear) }
+                else { ProgressView(value: viewModel.progressValue) }
+            }
+            if let error = viewModel.workspaceSaveError {
+                HStack(alignment: .top) {
+                    Text("Local save failed: \(error). Keep this window open or export your work.")
+                        .foregroundStyle(.red).textSelection(.enabled).lineLimit(3).help(error)
+                    Spacer(minLength: 4)
+                    Button("Retry Save") { viewModel.persistWorkspace() }.buttonStyle(.borderless)
+                }
+            }
         }
-        .padding(.top, 10)
+        .font(.caption)
+        .padding(.horizontal, 20).padding(.vertical, 7)
+        .background(PaperBridgeTheme.surface)
+    }
+
+    private func compactHeading(_ paragraph: ParagraphResult) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 12) {
+                if viewModel.displayMode != .translationOnly || paragraph.status != .ok {
+                    SelectableAcademicText(
+                        text: paragraph.original, paragraphID: paragraph.id, side: .original,
+                        annotations: viewModel.annotations(for: paragraph.id, side: .original),
+                        font: NSFont(name: "NewYork-Bold", size: 21) ?? NSFont.systemFont(ofSize: 21, weight: .semibold),
+                        navigationRequest: viewModel.annotationNavigationRequest,
+                        onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
+                        onSelection: viewModel.captureTextSelection
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 24)
+                }
+                if paragraph.status != .ok && viewModel.displayMode != .sourceOnly {
+                    Button(paragraph.status == .failed ? "Retry Heading" : "Translate Heading") {
+                        if viewModel.translationSetupMessage != nil { onShowGettingStarted() }
+                        else { viewModel.retryTranslation(for: paragraph.id) }
+                    }.buttonStyle(.borderless).controlSize(.small).disabled(viewModel.isBusy)
+                }
+                Button { viewModel.toggleBookmark(for: paragraph.id) } label: {
+                    Image(systemName: viewModel.bookmarkedParagraphIDs.contains(paragraph.id) ? "bookmark.fill" : "bookmark")
+                }.buttonStyle(.borderless).help("Bookmark heading").accessibilityLabel("Bookmark heading")
+                Menu {
+                    Button("Explain Heading") { viewModel.selectParagraphForExplanation(paragraph.id) }
+                    Button("Edit or Split") { viewModel.beginEditingParagraph(paragraph.id) }
+                        .disabled(!viewModel.canEditParagraphStructure)
+                    Button("Merge with Previous") { viewModel.mergeParagraphWithPrevious(paragraph.id) }
+                        .disabled(!viewModel.canEditParagraphStructure || paragraph.id == viewModel.paragraphResults.first?.id)
+                    Button("Merge with Next") { viewModel.mergeParagraphWithNext(paragraph.id) }
+                        .disabled(!viewModel.canEditParagraphStructure || paragraph.id == viewModel.paragraphResults.last?.id)
+                } label: { Image(systemName: "ellipsis.circle") }
+                .menuStyle(.borderlessButton).fixedSize().disabled(viewModel.isBusy)
+                .help("Heading actions").accessibilityLabel("Heading actions")
+            }
+            if viewModel.displayMode != .sourceOnly && paragraph.status == .ok {
+                SelectableAcademicText(
+                    text: paragraph.translation, paragraphID: paragraph.id, side: .translation,
+                    annotations: viewModel.annotations(for: paragraph.id, side: .translation),
+                    font: NSFont(name: "NewYork-Regular", size: 19) ?? NSFont.systemFont(ofSize: 19, weight: .medium),
+                    textColor: NSColor(PaperBridgeTheme.translationInk),
+                    navigationRequest: viewModel.annotationNavigationRequest,
+                    onNavigationFailure: viewModel.reportAnnotationNavigationFailure,
+                    onSelection: viewModel.captureTextSelection
+                )
+                .frame(maxWidth: .infinity, minHeight: 24)
+            }
+            if paragraph.status == .failed {
+                Text(paragraph.errorMessage ?? "Heading translation failed. Retry when ready.")
+                    .font(.caption).foregroundStyle(.red).textSelection(.enabled)
+            }
+            Divider()
+        }
+        .padding(.top, 12).padding(.bottom, 4)
         .accessibilityAddTraits(.isHeader)
     }
 
@@ -1349,8 +1439,7 @@ struct ContentView: View {
                             Button("Edit or Split") { viewModel.beginEditingParagraph(paragraph.id) }
                                 .disabled(!viewModel.canEditParagraphStructure)
                             Button("Compare Original") {
-                                viewModel.workspaceMode = .preview
-                                viewModel.displayMode = .sourceOnly
+                                viewModel.showOriginalForComparison()
                             }
                         }.controlSize(.small)
                         if !viewModel.canEditParagraphStructure && viewModel.loadedPaper?.hasStructuredMarkdown == true {
@@ -1431,10 +1520,6 @@ struct ContentView: View {
                             }
                         } else {
                             HStack {
-                                Text("Read first. Translate just this paragraph when you need it.")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
                                 Button(viewModel.translationSetupMessage == nil ? "Translate Paragraph" : "Set Up Translation") {
                                     if viewModel.translationSetupMessage != nil { onShowGettingStarted() }
                                     else { viewModel.retryTranslation(for: paragraph.id) }
@@ -1512,9 +1597,7 @@ struct ContentView: View {
                                     Button("Read Original Paragraph \(source.paragraphID)") {
                                         guard viewModel.loadedPaper?.paragraphs.indices.contains(source.paragraphID - 1) == true,
                                               viewModel.loadedPaper?.paragraphs[source.paragraphID - 1].contains(source.quote) == true else { return }
-                                        viewModel.workspaceMode = .reader
-                                        viewModel.displayMode = .bilingual
-                                        viewModel.navigateToParagraph(source.paragraphID)
+                                        viewModel.navigateToParagraph(source.paragraphID, revealSource: true)
                                     }
                                 }
                             }.padding(.vertical, 8)

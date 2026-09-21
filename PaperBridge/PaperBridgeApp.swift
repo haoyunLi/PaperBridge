@@ -2,6 +2,12 @@ import AppKit
 import SwiftUI
 
 final class PaperBridgeAppDelegate: NSObject, NSApplicationDelegate {
+    weak var viewModel: PaperReaderViewModel?
+
+    func applicationWillTerminate(_ notification: Notification) {
+        viewModel?.flushPendingSaves()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         let bundledIcon = Bundle.main
             .url(forResource: "AppIcon", withExtension: "icns")
@@ -41,6 +47,8 @@ struct PaperBridgeApp: App {
         WindowGroup("PaperBridge") {
             ContentView(viewModel: viewModel, onShowGettingStarted: { isGettingStartedPresented = true })
                 .frame(minWidth: 980, minHeight: 620)
+                .onAppear { appDelegate.viewModel = viewModel }
+                .onDisappear { viewModel.flushPendingSaves() }
                 .sheet(isPresented: $isGettingStartedPresented) {
                     OnboardingView(
                         viewModel: viewModel,
@@ -79,6 +87,13 @@ struct PaperBridgeApp: App {
             }
 
             CommandMenu("Paper") {
+                Button("Back to Previous Reading Location", action: viewModel.goBackInReading)
+                    .keyboardShortcut("[", modifiers: .command)
+                    .disabled(!viewModel.canGoBackInReading)
+                Button("Forward in Reading History", action: viewModel.goForwardInReading)
+                    .keyboardShortcut("]", modifiers: .command)
+                    .disabled(!viewModel.canGoForwardInReading)
+                Divider()
                 Button("Paper Library", action: viewModel.showLibrary)
                     .keyboardShortcut("l", modifiers: [.command, .shift])
                 Button("Saved Terminology") { viewModel.isGlossaryPresented = true }

@@ -498,6 +498,14 @@ struct ReadingPosition: Hashable, Codable {
     var readerItemID: String?
 }
 
+struct ReadingLocation: Equatable {
+    let workspaceMode: ReaderWorkspaceMode
+    let displayMode: ReaderDisplayMode
+    let selectedParagraphID: Int?
+    let searchText: String
+    let positions: [String: ReadingPosition]
+}
+
 struct ReaderTextSelection: Hashable {
     let scope: TextSelectionScope
     let paragraphID: Int

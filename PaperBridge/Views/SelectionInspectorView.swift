@@ -8,7 +8,6 @@ struct SelectionInspectorView: View {
 
     @ObservedObject var viewModel: PaperReaderViewModel
     var placement: Placement = .sidebar
-    @State private var noteDraft = ""
 
     var body: some View {
         Group {
@@ -19,13 +18,7 @@ struct SelectionInspectorView: View {
             }
         }
         .background(PaperBridgeTheme.canvas)
-        .onAppear(perform: syncNoteDraft)
-        .onChange(of: viewModel.activeTextSelection) { _, _ in
-            syncNoteDraft()
-        }
-        .onChange(of: viewModel.activeSelectionAnnotation?.note) { _, _ in
-            syncNoteDraft()
-        }
+        .onDisappear { viewModel.finishNoteEditing() }
     }
 
     private var sidebarBody: some View {
@@ -129,7 +122,8 @@ struct SelectionInspectorView: View {
     }
 
     private func selectionPanel(_ selection: ReaderTextSelection) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let checksum = viewModel.loadedPaper?.checksum
+        return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Label(
                     selection.scope == .reader
@@ -275,7 +269,12 @@ struct SelectionInspectorView: View {
                     .tracking(0.8)
                     .foregroundStyle(.secondary)
 
-                TextEditor(text: $noteDraft)
+                TextEditor(text: Binding(
+                    get: { viewModel.noteText(for: selection) },
+                    set: { viewModel.updateSelectionNote($0, for: selection, paperChecksum: checksum) }
+                ))
+                    .id(selection.identity)
+                    .accessibilityLabel("Note for selected passage")
                     .font(.body)
                     .scrollContentBackground(.hidden)
                     .padding(8)
@@ -290,9 +289,13 @@ struct SelectionInspectorView: View {
                     )
 
                 HStack {
+                    Text(viewModel.workspaceSaveError != nil ? "Not saved to disk" :
+                         (viewModel.isNoteSavePending || viewModel.isWorkspaceSaving ? "Saving note..." : "Notes save automatically"))
+                        .font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Save Note") {
-                        viewModel.saveSelectionNote(noteDraft)
+                    Button("Save Now") {
+                        viewModel.finishNoteEditing()
+                        viewModel.flushPendingSaves()
                     }
                     .buttonStyle(.bordered)
                 }
@@ -405,7 +408,6 @@ struct SelectionInspectorView: View {
             ForEach(viewModel.annotations.sorted { $0.createdAt > $1.createdAt }) { annotation in
                 Button {
                     viewModel.activateAnnotation(annotation)
-                    syncNoteDraft()
                 } label: {
                     VStack(alignment: .leading, spacing: 5) {
                         HStack {
@@ -486,7 +488,4 @@ struct SelectionInspectorView: View {
         )
     }
 
-    private func syncNoteDraft() {
-        noteDraft = viewModel.activeSelectionAnnotation?.note ?? ""
-    }
 }

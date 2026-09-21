@@ -1,6 +1,6 @@
 # Reading Reliability Update
 
-Release scope: PaperBridge 1.9 (build 10). Isolated development tests do not replace the installed app or personal workspaces. See [release notes](release-1.9.md) for user-facing changes.
+Release scope: PaperBridge 1.9 (build 10), followed by the reading-continuity fixes in 1.9.1 (build 11). Isolated development tests do not replace the installed app or personal workspaces. See the [1.9 release notes](release-1.9.md) and [1.9.1 release notes](release-1.9.1.md) for user-facing changes.
 
 ## Completed Scope
 
@@ -15,6 +15,21 @@ Release scope: PaperBridge 1.9 (build 10). Isolated development tests do not rep
 - Update Markdown highlights in place, preserve block-relative scroll position during content updates, and add unique heading anchors for local links.
 - Save Reader block positions, PDF pages, and Markdown viewport positions. Keep search above the scrolling Reader, prioritize outline/bookmarks, and use a bottom inspector in narrower windows.
 - Show local save failures and allow setup downloads to continue after leaving the getting-started guide.
+
+## Reading Continuity in 1.9.1
+
+This small update retains the existing signed Sparkle feed and stable latest-DMG URL. The website demonstrates note autosave and reading Back / Forward alongside the earlier reliability improvements.
+
+- The note editor binds to selection-scoped annotations instead of a disposable view-local draft. Edits preserve whitespace, coalesce disk writes after 350 ms, and flush on selection changes, inspector dismissal, paper changes, window closure, and normal app termination. A late editor callback is checked against both selection and paper identity. Undo groups a continuous note edit rather than recording every keystroke. Force quit/power failure during the debounce window is not guaranteed to retain the last keystrokes.
+- Workspace save completion is tracked by request identity. Only the most recent completion updates the save indicator. Errors retain in-memory content and are shown in a persistent status bar with retry; success is not shown merely because a write was queued.
+- Reading jumps retain bounded back/forward history for the current paper, including view, display mode, search, and saved viewport anchors. Restoration recreates only the reading surface; obsolete viewport callbacks are rejected. Changing papers and structural paragraph repair invalidate history. This is navigation history, not document version history.
+- Standalone heading detection requires the entire paragraph to equal its detected title, or a single short heading explicitly marked in source Markdown. Inline Abstract/body paragraphs are never replaced with a heading-only row. Pending paragraph prompts are shortened, and generation progress no longer scrolls away.
+
+Automated coverage in `test_reading_reliability.sh` includes selection changes before autosave, whitespace, restart, grouped undo, delayed writes after undo, paper-switch isolation, stale callbacks, note removal with a retained highlight, save failure/retry, source-view return, forward-branch invalidation, search/resource anchors, history limits/reset, and heading/body distinctions. Existing extraction, Markdown, MinerU, PDF-facsimile, and WebKit interaction regressions are retained.
+
+The Debug build/isolated launch and all three regression scripts passed. Native interaction checks verified note typing without Save Now, changing selection and returning, closing/reopening the inspector, normal quit/relaunch with the saved note, chapter Back and keyboard Forward, and compact bilingual MinerU headings. The final dark-mode window was visually inspected with both side panels open (the inspector used the bottom layout). Full VoiceOver, every window size/theme, physical Intel hardware, and force-quit recovery were not tested. Existing capture-ownership compiler warnings in `PaperReaderViewModel+Setup.swift` remain unrelated to this change.
+
+The development run script uses Xcode's `netrc` package-authorization provider for the public Sparkle dependency to avoid an interactive keychain lookup during local builds. Package checksum/signature validation remains enabled; this does not change application signing or release distribution.
 
 ## Verification
 

@@ -91,6 +91,7 @@ struct ReadingReliabilityRegression {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockOllamaProtocol.self]
         let client = OllamaClient(session: URLSession(configuration: config))
+        try await verifyNoteAutosaveAndNavigation(root: root, client: client)
         try verifyReadingGuide()
         try await verifyReadingImprovements(root: root, client: client)
         let sampleStore = WorkspaceStore(rootURL: root.appendingPathComponent("first-use"))
@@ -254,6 +255,150 @@ struct ReadingReliabilityRegression {
             try await Task.sleep(for: .milliseconds(10))
         }
         fatalError("Task did not finish")
+    }
+
+    @MainActor
+    static func verifyNoteAutosaveAndNavigation(root: URL, client: OllamaClient) async throws {
+        let store = WorkspaceStore(rootURL: root.appendingPathComponent("note-autosave"))
+        let model = PaperReaderViewModel(workspaceStore: store, ollamaClient: client)
+        let text = ["Abstract", "First evidence and second evidence.", "2 Methods", "Methods retain the original source."]
+        let paper = PaperDocument(name: "Notes", checksum: "notes", cleanedText: text.joined(separator: "\n\n"),
+                                  paragraphs: text, excludedReferenceParagraphs: [], referenceSectionTitle: nil)
+        model.applyLoadedPaper(paper)
+        let first = ReaderTextSelection(paragraphID: 2, side: .original, text: "First evidence", context: text[1],
+                                        rangeLocation: 0, rangeLength: 14)
+        let secondRange = (text[1] as NSString).range(of: "second evidence")
+        let second = ReaderTextSelection(paragraphID: 2, side: .original, text: "second evidence", context: text[1],
+                                         rangeLocation: secondRange.location, rangeLength: secondRange.length)
+        model.captureTextSelection(first)
+        model.updateSelectionNote("Draft line one\n", for: first, paperChecksum: paper.checksum)
+        model.updateSelectionNote("Draft line one\nLine two  ", for: first, paperChecksum: paper.checksum)
+        require(model.isNoteSavePending, "Typing did not mark a pending save")
+        require(model.annotationUndoStack.count == 1, "Typing made an undo snapshot per keystroke")
+        model.captureTextSelection(second)
+        require(!model.isNoteSavePending, "Changing selection did not flush the previous note")
+        require(model.noteText(for: first) == "Draft line one\nLine two  ", "Selection switch lost note whitespace or content")
+        model.updateSelectionNote("Late stale editor callback", for: first, paperChecksum: paper.checksum)
+        require(model.noteText(for: second).isEmpty, "Late editor callback attached a note to a different selection")
+        model.updateSelectionNote("Another passage", for: second, paperChecksum: paper.checksum)
+        model.isInspectorPresented = true
+        model.isInspectorPresented = false
+        model.finishNoteEditing()
+        model.flushPendingSaves()
+        let reopened = PaperReaderViewModel(workspaceStore: store, ollamaClient: client)
+        require(reopened.noteText(for: first) == "Draft line one\nLine two  " && reopened.noteText(for: second) == "Another passage",
+                "Notes did not survive hiding the editor and reopening")
+
+        model.captureTextSelection(first)
+        model.updateSelectionNote("Revised", for: first, paperChecksum: paper.checksum)
+        model.updateSelectionNote("Revised again", for: first, paperChecksum: paper.checksum)
+        model.undoAnnotationChange()
+        require(model.noteText(for: first) == "Draft line one\nLine two  ", "Undo did not restore the note before its edit session")
+        try await Task.sleep(for: .milliseconds(450))
+        model.flushPendingSaves()
+        require(store.loadLastWorkspace()?.annotations.first(where: { $0.quote == first.text })?.note == "Draft line one\nLine two  ",
+                "A delayed autosave overwrote undo")
+
+        model.updateSelectionNote("Debounced save", for: first, paperChecksum: paper.checksum)
+        try await Task.sleep(for: .milliseconds(450))
+        store.flush()
+        require(store.loadLastWorkspace()?.annotations.first(where: { $0.quote == first.text })?.note == "Debounced save",
+                "Typing without Save Now did not reach disk")
+        model.updateSelectionNote("Immediately before switching papers", for: first, paperChecksum: paper.checksum)
+        let other = PaperDocument(name: "Other", checksum: "other-notes", cleanedText: paper.cleanedText,
+                                  paragraphs: text, excludedReferenceParagraphs: [], referenceSectionTitle: nil)
+        model.applyLoadedPaper(other)
+        model.captureTextSelection(first)
+        model.updateSelectionNote("Wrong paper callback", for: first, paperChecksum: paper.checksum)
+        require(model.annotations.isEmpty, "Old editor wrote a note into the next paper")
+        model.applyLoadedPaper(paper)
+        require(model.noteText(for: first) == "Immediately before switching papers", "Paper switch lost the last typed note")
+        model.captureTextSelection(first)
+        model.applyHighlight(.amber)
+        model.updateSelectionNote("", for: first, paperChecksum: paper.checksum)
+        model.flushPendingSaves()
+        require(model.activeSelectionAnnotation?.highlightColor == .amber && model.noteText(for: first).isEmpty,
+                "Clearing a note removed its highlight")
+
+        model.clearTextSelection()
+        model.workspaceMode = .summary
+        model.displayMode = .translationOnly
+        model.readingPositions["summary.source"] = ReadingPosition(y: 280, blockIndex: 3)
+        model.navigateToParagraph(2, revealSource: true)
+        require(model.workspaceMode == .reader && model.displayMode == .bilingual && model.canGoBackInReading,
+                "Source jump did not record its origin")
+        let countBeforeRepeat = model.readingBackHistory.count
+        model.navigateToParagraph(2)
+        require(model.readingBackHistory.count == countBeforeRepeat, "Repeated jump created an empty back-navigation step")
+        model.updateReadingPosition(ReadingPosition(paragraphID: 2, readerItemID: "paragraph-2"), key: "reader", paperChecksum: paper.checksum)
+        model.navigateToParagraph(4)
+        model.goBackInReading()
+        require(model.workspaceMode == .reader && model.readingPositions["reader"]?.readerItemID == "paragraph-2",
+                "Back did not restore the prior paragraph")
+        model.goBackInReading()
+        require(model.workspaceMode == .summary && model.displayMode == .translationOnly &&
+                model.readingPositions["summary.source"]?.y == 280, "Back did not restore source workspace and viewport")
+        model.goForwardInReading()
+        require(model.workspaceMode == .reader && model.readingPositions["reader"]?.paragraphID == 2,
+                "Forward did not restore the destination")
+        model.paragraphSearchText = "evidence"
+        model.readingPositions["reader"] = ReadingPosition(readerItemID: "resource-figure")
+        model.navigateToParagraph(4)
+        require(!model.canGoForwardInReading, "A new jump retained a stale forward branch")
+        model.goBackInReading()
+        require(model.paragraphSearchText == "evidence" && model.readingPositions["reader"]?.readerItemID == "resource-figure",
+                "Back lost the search or a non-paragraph resource position")
+        let historyCount = model.readingBackHistory.count
+        model.navigateToParagraph(999)
+        require(model.readingBackHistory.count == historyCount, "Invalid jump changed history")
+        for index in 0..<60 { model.navigateToParagraph(index.isMultiple(of: 2) ? 2 : 4) }
+        require(model.readingBackHistory.count <= 50, "Reading history is unbounded")
+        model.mergeParagraphWithNext(1)
+        require(!model.canGoBackInReading && !model.canGoForwardInReading, "Paragraph repair retained stale navigation anchors")
+        model.navigateToParagraph(2)
+        model.applyLoadedPaper(other)
+        require(!model.canGoBackInReading && !model.canGoForwardInReading, "Paper switch retained another paper's history")
+
+        require(TextProcessing.standaloneSectionTitle(in: "Abstract") == "Abstract", "Standalone abstract was not compacted")
+        require(TextProcessing.standaloneSectionTitle(in: "2 Methods") == "2 Methods", "Standalone numbered heading was not compacted")
+        require(TextProcessing.standaloneSectionTitle(in: "Abstract. We tested a new approach.") == nil,
+                "Inline abstract body was mistaken for a standalone heading")
+        require(TextProcessing.standaloneSectionTitle(in: "2 Methods\nWe retained all evidence.") == nil,
+                "Heading plus body was mistaken for a standalone heading")
+        require(TextProcessing.standaloneSectionTitle(in: "Section 24", sourceMarkdown: "## Section 24") == "Section 24",
+                "MinerU heading semantics were ignored for a custom section title")
+        require(TextProcessing.standaloneSectionTitle(in: "Study design", sourceMarkdown: "## Study design\n\nEvidence remains.") == nil,
+                "A structured heading and body were compacted together")
+
+        model.applyLoadedPaper(paper)
+        for scope in [TextSelectionScope.paper, .summarySource, .summaryTarget, .fullTranslation] {
+            let selection = ReaderTextSelection(scope: scope, paragraphID: 0, side: .original, text: "Evidence",
+                context: "Evidence stays local.", rangeLocation: 0, rangeLength: 8, locator: "block-\(scope.rawValue)")
+            model.captureTextSelection(selection)
+            model.updateSelectionNote("A note in \(scope.rawValue)", for: selection, paperChecksum: model.loadedPaper?.checksum)
+            model.clearTextSelection()
+            model.flushPendingSaves()
+            require(store.loadLastWorkspace()?.annotations.contains(where: { $0.resolvedScope == scope && $0.note == "A note in \(scope.rawValue)" }) == true,
+                    "Autosave lost a note outside Reader")
+        }
+
+        let blockedRoot = root.appendingPathComponent("note-save-blocked")
+        try Data("not a directory".utf8).write(to: blockedRoot)
+        let failedStore = WorkspaceStore(rootURL: blockedRoot)
+        let failed = PaperReaderViewModel(workspaceStore: failedStore, ollamaClient: client)
+        failed.applyLoadedPaper(paper)
+        failed.captureTextSelection(first)
+        failed.updateSelectionNote("Keep this if saving fails", for: first, paperChecksum: paper.checksum)
+        failed.flushPendingSaves()
+        for _ in 0..<100 where failed.isWorkspaceSaving { try await Task.sleep(for: .milliseconds(10)) }
+        require(failed.workspaceSaveError != nil && failed.noteText(for: first) == "Keep this if saving fails",
+                "Save failure erased the note or falsely reported success")
+        try FileManager.default.removeItem(at: blockedRoot)
+        failed.flushPendingSaves()
+        for _ in 0..<100 where failed.isWorkspaceSaving { try await Task.sleep(for: .milliseconds(10)) }
+        require(failed.workspaceSaveError == nil && failedStore.loadLastWorkspace()?.annotations.first?.note == "Keep this if saving fails",
+                "Retry save did not recover the in-memory note")
+        print("Note autosave, save recovery, compact headings, and reading navigation regressions passed.")
     }
 
     static func verifyReadingGuide() throws {

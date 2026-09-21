@@ -265,6 +265,17 @@ enum TextProcessing {
         return firstLine
     }
 
+    static func standaloneSectionTitle(in paragraph: String, sourceMarkdown: String? = nil) -> String? {
+        let text = paragraph.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let markdown = sourceMarkdown?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !markdown.contains("\n"), !text.contains("\n"), !text.isEmpty, text.count <= 200,
+           markdown.range(of: #"^#{1,6}[ \t]+\S"#, options: .regularExpression) != nil {
+            return text
+        }
+        guard let title = detectedSectionTitle(in: text), text == title else { return nil }
+        return title
+    }
+
     static func excludeReferenceSection(from paragraphs: [String]) -> (
         bodyParagraphs: [String],
         referenceParagraphs: [String],
