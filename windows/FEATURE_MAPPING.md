@@ -41,7 +41,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | --- | --- | --- | --- | --- |
 | B01 | 三栏：文档侧栏、正文、研究检查器 | 三栏布局 | 对齐 | 窄窗口各面板仍能使用。 |
 | B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Overview（阅读地图、质量检查与双语摘要）、Full Translation，另有 Original；内部保留旧 `Summary` 状态值兼容已保存位置 | 对齐 | Original 是 Windows 额外的原生 PDF 工作区。 |
-| B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 共用 Original / Bilingual / Translation 模式渲染完整结构文档；Windows 另以 Original 标签保留精确 PDF 及页码位置 | 部分 | 精确 PDF 仍是独立标签；Paper 与 Original 的位置映射需更多长文验证。 |
+| B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 的 Original 模式直接复用精确 PDF 画布/文字层，Bilingual / Translation 显示完整结构文档；Windows 另保留 Original 标签 | 对齐 | Paper 内即可完成 Mac 对应切换，额外 Original 入口不改变 Paper 行为。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存 | 对齐 | Electron 流程验证三模式切换。 |
 | B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 的 `readingMap` 五类标题匹配并跳转 Reader 原块 | 部分 | 无标题时回退；更多真实论文需验证所有主题与段落链接不串页。 |
 | B06 | 章节大纲跳转 | 侧栏 OUTLINE，跳转前清除 Reader 搜索 | 对齐 | 搜索后目录跳转已回归；复杂 MinerU 标题层级仍需验证。 |
@@ -104,7 +104,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | --- | --- | --- | --- | --- |
 | E01 | Reader 原文/译文选区 | Reader DOM 选区 | 部分 | 译文 Markdown 选区也能正确找回来源。 |
 | E02 | Paper 结构化 Markdown 选区 | Paper 三种显示模式均按块/原译文侧定位选区，重复文字保留精确偏移；笔记/高亮保存 Paper 作用域并只在 Paper 对应侧显示 | 部分 | 跨块选区及格式复杂时的 Markdown 原文偏移仍需补齐。 |
-| E03 | 原 PDF 可选文字按页/偏移锚定 | PDF text layer 按页码、页内偏移与原文保存独立笔记/高亮；导航时校验原文，失效则保留并提示 | 部分 | 双页同词不同色标注、跳转与重启回归通过；真实长 PDF 的跨行选区和扫描件仍需验收。 |
+| E03 | 原 PDF 可选文字按页/偏移锚定 | Paper 精确 PDF 与 Original 标签分别按 scope、页码、页内偏移与原文保存笔记/高亮；导航时回到创建视图并校验原文，失效则保留并提示 | 部分 | 同页同词跨 Paper/Original 隔离、双页同词不同色、跳转与重启回归通过；真实长 PDF 的跨行选区和扫描件仍需验收。 |
 | E04 | 双语摘要两侧选区 | 两侧选区可查词、解释、保存笔记；三色高亮正文可见，列表可跳回选区 | 部分 | 复杂 Markdown 和源文重排时的显示偏移仍需验收。 |
 | E05 | Full Translation 选区 | 全文译稿可查词、解释、保存笔记；三色高亮正文可见，列表可跳回选区 | 部分 | 复杂 Markdown 和译稿重生成后的锚点仍需验收。 |
 | E06 | 选中文字即时翻译 | 检查器 Translate 按原/译文侧决定方向并匹配对应术语 | 部分 | 反向术语保存已回归；复杂上下文、模型过度延伸与 Mac 输出仍需比较。 |
@@ -115,7 +115,7 @@ Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[
 | E11 | 三种颜色高亮 | 三色高亮用偏移区分重复原文；Reader、Paper、PDF、摘要和全文译稿均在正文显示 | 部分 | 真实 MinerU 上标已验证；PDF 多页与 KaTeX 混排仍需验收。 |
 | E12 | 删除高亮保留笔记 | 同色点击移除高亮，笔记单独保存 | 部分 | 高亮与注释关联同一精确选区。 |
 | E13 | 为选区创建、更新、删除笔记 | Reader 同选区笔记可创建、更新、删除 | 对齐 | 标注清单提供删除入口。 |
-| E14 | 标注列表、预览、跨工作区跳转 | 检查器按 Paper/Reader 作用域及原译文侧标记块级记录；两者以及 PDF、摘要和全文译稿均可返回原视图并精确重选，Paper 译文跳转自动恢复 Bilingual 并进入阅读历史 | 部分 | 复杂 Markdown、跨节点与跨块坐标仍需更多真实论文验收。 |
+| E14 | 标注列表、预览、跨工作区跳转 | 检查器区分 Paper/Reader 原译文、Paper exact PDF/Original PDF、摘要与全文译稿；均可返回创建视图并精确重选，Paper 译文恢复 Bilingual | 部分 | 复杂 Markdown、跨节点与跨块坐标仍需更多真实论文验收。 |
 | E15 | 标注位置失效时保留笔记并标明需检查 | Reader 失效选区不跳错文字，保存笔记并标记 needsReview；PDF 与视图锚点也校验 | 部分 | 合成失效笔记回归通过；更多编辑和跨视图路径仍需验证。 |
 | E16 | 高亮/笔记更改撤销 | 最多 20 次变更记录，仅还原相关注释/书签字段 | 部分 | 书签→翻译→撤销不会丢译文，后来便签修改保留；复杂混合操作和重启仍需验收。 |
 | E17 | 精确选区注释跨分段编辑迁移 | 拆分、合并、编辑迁移原文精确锚点 | 部分 | 重排及 Markdown 结构化编辑仍缺。 |
@@ -153,7 +153,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G01 | 导出原文 Markdown | 原文 Markdown 单文件及便携 bundle | 部分 | 复杂 MinerU 资产引用仍需验证。 |
 | G02 | 导出逐段译文 Markdown | 逐段译文 Markdown 单文件及便携 bundle | 部分 | 结构化全文稿和逐段译稿语义仍需比较。 |
 | G03 | 导出双语 Markdown | 双语 Markdown 单文件及 bundle 包含书签、各视图高亮和笔记 | 部分 | 仅高亮加书签的导出 UI 已回归；复杂资产及公式顺序仍需验证。 |
-| G04 | 导出摘要/笔记/证据 Markdown | 摘要、证据、书签、各视图高亮/笔记含 Paper/Reader、原译文侧、PDF 页码及需复核提示 | 部分 | 仅高亮加书签的 Analysis 导出已回归；复杂 Markdown 锚点与证据格式仍需比较。 |
+| G04 | 导出摘要/笔记/证据 Markdown | 摘要、证据、书签、各视图高亮/笔记含 Paper/Reader、原译文侧、Paper exact PDF/Original PDF、页码及需复核提示 | 部分 | 仅高亮加书签及同页双 PDF scope 的 Analysis 导出已回归；复杂 Markdown 锚点与证据格式仍需比较。 |
 | G05 | 资源 bundle、原 PDF、便携页面图片和独立全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与独立全文稿 | 部分 | 复杂 MinerU 资产和长 PDF 仍需真机验收。 |
 | G06 | 首次启动分步引导；可重新打开 | 首次启动六步 Getting Started：Ollama、翻译模型、MinerU、解释模型及就绪检查；Settings 与 Help 可重开，可跳过并记录完成状态 | 部分 | 六步、跨启动页码恢复、跳过/重开、忙时焦点和关闭锁、保存去重、练习文档及 980×620/1320×820 布局已通过 Electron 验证；仍需更多 DPI 和 Mac 实机并排对照。 |
 | G07 | 自动检测/启动/安装 Ollama | SetupPanel 可勾选 Ollama、模型、MinerU；仅选模型时自动补 Ollama 依赖，单选 MinerU 不启动 Ollama | 部分 | AMD 真机已完成签名安装和复用；组件选择及依赖由单元与 Electron mock 回归验证，真实安装取消及其它硬件待验收。 |

@@ -1,6 +1,7 @@
 import { anchorText } from './academicMarkdown.mjs';
 
 const viewScopes = new Set(['summarySource', 'summaryTarget', 'fullTranslation']);
+const pdfScopes = new Set(['pdf', 'paperPdf']);
 
 export function noteSelectionIdentity(paperId, selection) {
   if (!paperId || !selection) return '';
@@ -19,7 +20,7 @@ export function viewText(paper, scope) {
 
 export function validNoteSelection(paper, selection) {
   if (!paper || !selection || !selection.text || !Number.isInteger(selection.offset) || selection.offset < 0) return false;
-  if (selection.scope === 'pdf') {
+  if (pdfScopes.has(selection.scope)) {
     return Number.isInteger(selection.page) && selection.page > 0
       && typeof selection.pageText === 'string'
       && selection.pageText.slice(selection.offset, selection.offset + selection.text.length) === selection.text;
@@ -34,14 +35,14 @@ export function validNoteSelection(paper, selection) {
 
 function matches(selection, item) {
   if (!item || item.needsReview) return false;
-  if (selection.scope === 'pdf') return item.page === selection.page && item.offset === selection.offset && item.text === selection.text;
+  if (pdfScopes.has(selection.scope)) return (item.scope || 'pdf') === selection.scope && item.page === selection.page && item.offset === selection.offset && item.text === selection.text;
   if (viewScopes.has(selection.scope)) return item.scope === selection.scope && item.offset === selection.offset && item.text === selection.text;
   return (item.scope || 'reader') === selection.scope && item.offset === selection.offset && item.text === selection.text && (item.kind || 'source') === (selection.kind || 'source');
 }
 
 export function findSelectionNote(paper, selection) {
   if (!paper || !selection) return null;
-  if (selection.scope === 'pdf') return (paper.pdfNotes || []).find(item => matches(selection, item)) || null;
+  if (pdfScopes.has(selection.scope)) return (paper.pdfNotes || []).find(item => matches(selection, item)) || null;
   if (viewScopes.has(selection.scope)) return (paper.viewNotes || []).find(item => matches(selection, item)) || null;
   const block = paper.blocks?.find(item => item.id === selection.id);
   return block?.notes?.find(item => matches(selection, item)) || null;
@@ -64,8 +65,8 @@ function updateNotes(notes, selection, body, makeId, extra = {}) {
 
 export function applySelectionNote(paper, selection, body, makeId = () => crypto.randomUUID()) {
   if (!validNoteSelection(paper, selection) || typeof body !== 'string') return paper;
-  if (selection.scope === 'pdf') {
-    const pdfNotes = updateNotes(paper.pdfNotes, selection, body, makeId, { page: selection.page });
+  if (pdfScopes.has(selection.scope)) {
+    const pdfNotes = updateNotes(paper.pdfNotes, selection, body, makeId, { page: selection.page, scope: selection.scope });
     return pdfNotes === (paper.pdfNotes || []) ? paper : { ...paper, pdfNotes };
   }
   if (viewScopes.has(selection.scope)) {

@@ -17,7 +17,7 @@ export function annotationsMarkdown(paper) {
     for (const item of block.translationHighlights || []) append(highlights, `${item.scope === 'paper' ? 'Paper' : 'Reader'} · Block ${block.id} · translation`, item, anchorText(block, 'translation'));
   }
   for (const [items, destination] of [[paper.pdfNotes, notes], [paper.pdfHighlights, highlights]]) {
-    for (const item of items || []) append(destination, `Original PDF · page ${item.page}`, item);
+    for (const item of items || []) append(destination, `${item.scope === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · page ${item.page}`, item);
   }
   const scopes = { summarySource: ['Summary · source', paper.summary?.source], summaryTarget: ['Summary · translation', paper.summary?.target], fullTranslation: ['Full Translation', paper.connectedTranslation] };
   for (const [items, destination] of [[paper.viewNotes, notes], [paper.viewHighlights, highlights]]) {

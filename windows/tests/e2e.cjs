@@ -214,9 +214,25 @@ async function run() {
     await page.getByText('Extracted', { exact: false }).first().waitFor({ timeout: 20000 });
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByText('This practice PDF contains selectable academic text', { exact: false }).first().waitFor();
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.getByLabel('Paper display mode').selectOption('source');
+    await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
+    await page.waitForFunction(() => document.querySelectorAll('.textLayer span').length > 0, null, { timeout: 10000 });
+    await page.evaluate(() => {
+      const span = [...document.querySelectorAll('.textLayer span')].find(item => item.textContent.includes('Abstract'));
+      const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 8);
+      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+      span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.getByText('PAPER · EXACT PDF · PAGE 1', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.coral').click();
+    await page.locator('.inspector textarea').fill('This note belongs to the exact PDF inside Paper.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size), 1);
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('.textLayer span').length > 0, null, { timeout: 10000 });
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size || 0), 0);
     await page.screenshot({ path: path.join(artifacts, 'original-pdf.png') });
     await page.evaluate(() => {
       const span = [...document.querySelectorAll('.textLayer span')].find(item => item.textContent.includes('Abstract'));
@@ -232,8 +248,11 @@ async function run() {
     await page.screenshot({ path: path.join(artifacts, 'original-pdf-annotated.png') });
     const pdfRecord = fs.readdirSync(path.join(workspace, 'papers')).map(file => JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'))).find(item => item.type === 'pdf' && item.pdfNotes?.length);
     assert.ok(pdfRecord, 'The PDF note should persist with its paper');
-    assert.deepEqual(pdfRecord.pdfHighlights.map(item => ({ page: item.page, offset: item.offset, text: item.text })), [{ page: 1, offset: 0, text: 'Abstract' }]);
-    assert.equal(pdfRecord.pdfNotes[0].body, 'This note belongs to the original PDF page.');
+    assert.deepEqual(pdfRecord.pdfHighlights.map(item => ({ scope: item.scope, page: item.page, offset: item.offset, text: item.text })), [
+      { scope: 'paperPdf', page: 1, offset: 0, text: 'Abstract' }, { scope: 'pdf', page: 1, offset: 0, text: 'Abstract' }
+    ]);
+    assert.ok(pdfRecord.pdfNotes.some(item => item.scope === 'paperPdf' && item.body === 'This note belongs to the exact PDF inside Paper.'));
+    assert.ok(pdfRecord.pdfNotes.some(item => item.scope === 'pdf' && item.body === 'This note belongs to the original PDF page.'));
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
@@ -241,6 +260,10 @@ async function run() {
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).locator('button').first().click();
     await page.waitForFunction(() => window.getSelection()?.toString() === 'Abstract');
     assert.match(await page.locator('.inspector blockquote').innerText(), /^Abstract$/);
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the exact PDF inside Paper.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && document.querySelector('[aria-label="Paper display mode"]')?.value === 'source' && window.getSelection()?.toString() === 'Abstract');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Original' && window.getSelection()?.toString() === 'Abstract');
     await page.getByRole('button', { name: 'Next page' }).click();
     await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2');
     await page.evaluate(() => {
@@ -277,8 +300,10 @@ async function run() {
     assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Original Pages.md'), 'utf8'), /pages\/page-001\.png/);
     const exportedAnalysis = fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8');
     assert.match(exportedAnalysis, /Original PDF · page 1\n\n> Abstract\n\nThis note belongs to the original PDF page\./);
+    assert.match(exportedAnalysis, /Paper · exact PDF · page 1\n\n> Abstract\n\nThis note belongs to the exact PDF inside Paper\./);
     assert.match(exportedAnalysis, /Original PDF · page 2\n\n> Abstract\n\nThe repeated heading belongs to page two\./);
     assert.match(exportedAnalysis, /Original PDF · page 1 · blue/);
+    assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral/);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);
     const pdfBytes = fs.readFileSync(pdfPath);
     await page.evaluate(bytes => {

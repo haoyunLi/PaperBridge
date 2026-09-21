@@ -54,6 +54,7 @@ test('notes map across reader translation, PDF, summary and full translation sco
     { scope: 'reader', id: 1, kind: 'translation', text: '阿尔法', offset: 0 },
     { scope: 'paper', id: 1, kind: 'source', text: 'Alpha', offset: 0 },
     { scope: 'pdf', page: 2, pageText: 'PDF exact quote', text: 'exact', offset: 4 },
+    { scope: 'paperPdf', page: 2, pageText: 'PDF exact quote', text: 'exact', offset: 4 },
     { scope: 'summarySource', text: 'summary', offset: 7 },
     { scope: 'summaryTarget', text: '摘要', offset: 0 },
     { scope: 'fullTranslation', text: 'translation', offset: 10 }
