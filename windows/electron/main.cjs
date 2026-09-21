@@ -303,6 +303,9 @@ function buildMenu() {
       { type: 'separator' }, { role: 'quit' }
     ] },
     { label: 'Paper', submenu: [
+      action('Back to Previous Reading Location', 'readingBack', 'CmdOrCtrl+['),
+      action('Forward in Reading History', 'readingForward', 'CmdOrCtrl+]'),
+      { type: 'separator' },
       action('Paper Library', 'library', 'CmdOrCtrl+Shift+L'),
       action('Saved Terminology', 'glossary'),
       { type: 'separator' },

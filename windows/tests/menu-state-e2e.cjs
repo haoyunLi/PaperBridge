@@ -45,7 +45,7 @@ async function run() {
     assert.equal(values.onboarding, true);
 
     const available = { ready: true, hasPaper: true, hasSelection: true, canUndo: true, canPrimaryTask: true,
-      canSummarize: true, canFullTranslation: true, canLookupSelection: true, canExport: true };
+      canGoBack: true, canGoForward: true, canSummarize: true, canFullTranslation: true, canLookupSelection: true, canExport: true };
     await update(available);
     values = await native();
     assert.equal(Object.values(values).every(Boolean), true);

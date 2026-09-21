@@ -2,7 +2,7 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Notes update immediately, coalesce disk writes for 350 ms, preserve exact whitespace, flush when editing ends or the app closes, and retain a retryable in-memory snapshot after save failure. Each paper saves its languages, models, parsing choices, explanation language and results, and inspector state; reading appearance stays global. Output caches follow their settings and source, and the last opened paper is recorded separately from library modification order. Task and save state stay above the scrolling document, and cancelled requests that finish late are ignored.
+The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Notes update immediately, coalesce disk writes for 350 ms, preserve exact whitespace, flush when editing ends or the app closes, and retain a retryable in-memory snapshot after save failure. Reading jumps keep up to 50 Back / Forward locations in the current paper session, including tab, display mode, search, block, PDF page and per-view scroll; use the header buttons, Ctrl+[ / Ctrl+], or the Paper menu. Each paper saves its languages, models, parsing choices, explanation language and results, and inspector state; reading appearance stays global. Output caches follow their settings and source, and the last opened paper is recorded separately from library modification order. Task and save state stay above the scrolling document, and cancelled requests that finish late are ignored.
 
 Summary and Full Translation display inline highlights and support saved-note navigation. Annotation undo preserves AI outputs generated afterward. Reader navigation clears search filters, and the current translation section follows scrolling. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Analysis and bilingual exports include bookmarks, highlights, notes, source/translation sides, and review notices for changed anchors. Page images can take time and disk space on long papers. See the mapping for the remaining details.
 
@@ -34,6 +34,7 @@ npm run test:mineru-detect-e2e
 npm run test:update-restart-e2e
 npm run test:official-links-e2e
 npm run test:reader-review-e2e
+npm run test:reading-history-e2e
 npm run test:note-autosave-e2e
 npm run test:task-isolation-e2e
 npm run test:markdown
