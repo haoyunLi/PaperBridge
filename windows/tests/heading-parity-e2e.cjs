@@ -67,7 +67,7 @@ async function run() {
     { id: 2, text: 'Study design', sourceMarkdown: '## Study design', heading: true },
     { id: 3, text: '2 Methods We retained all evidence from both independent reviewers', heading: false },
     { id: 4, text: 'A regular body paragraph remains available for translation.', heading: false },
-    { id: 5, text: 'Fixed figure resource', sourceMarkdown: '```text\nfixed resource\n```', heading: false, resource: true }
+    ...Array.from({ length: 10 }, (_, index) => ({ id: index + 5, text: `Fixed resource ${index + 5}`, heading: false, resource: true }))
   ].map(block => ({ ...block, translation: '', translationMarkdown: null, status: 'pending', error: '', bookmark: false, highlights: [], translationHighlights: [], notes: [] }));
   fs.writeFileSync(paperFile, JSON.stringify({ id, name: 'Heading parity fixture', type: 'text', blocks,
     sourceMode: 'text', extraction: 'Pasted text', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -84,8 +84,17 @@ async function run() {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Heading parity fixture' }).waitFor({ timeout: 20000 });
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    assert.equal(await page.locator('[data-paper-block-id="14"]').count(), 1, 'Paper preview must include blocks beyond the old 12-block cutoff');
+    assert.equal(await page.getByRole('button', { name: 'Continue in Reader →', exact: true }).count(), 0);
+    await selectText(page, '[data-paper-block-id="14"]', 0, 17);
+    await page.getByText('SELECTED TEXT · BLOCK 14', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.blue').click();
+    await page.locator('.inspector textarea').fill('Late Paper block remains annotatable.');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-1.heading-block').waitFor();
+    assert.equal(await page.locator('#block-14 .block-notes').count(), 0, 'Paper notes must not leak into Reader blocks');
     await waitFor(() => tagRequests > 0, 'Ollama model discovery');
 
     assert.equal(await page.locator('.heading-block').count(), 2);
@@ -147,6 +156,8 @@ async function run() {
     await page.locator('#block-1 button[title="Edit or split heading"]').click();
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Split', exact: true }).waitFor();
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Late Paper block remains annotatable.' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && window.getSelection()?.toString() === 'Fixed resource 14');
 
     await app.evaluate(({ ipcMain }) => {
       global.__headingExports = [];
@@ -165,7 +176,7 @@ async function run() {
     assert.match(exports[1].content, /^Abstract\n\n摘要\n\n## Study design\n\n\*Not translated\*/);
     assert.ok(requests.some(payload => /Explain this whole academic paragraph/i.test(payload.system || '')));
     await page.screenshot({ path: path.join(artifacts, 'heading-parity-reader.png') });
-    console.log('Heading parity checks passed: compact rendering, classification, retry, display modes, annotations, actions and translated exports.');
+    console.log('Heading parity checks passed: full Paper preview, late-block annotations, compact rendering, classification, retry, display modes, actions and translated exports.');
   } finally {
     await app?.close();
     ollama.closeAllConnections();

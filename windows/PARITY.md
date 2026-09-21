@@ -4,7 +4,7 @@ The [111-item feature mapping](FEATURE_MAPPING.md) remains the detailed macOS 1.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
-| PDF and text import | First PDF from a multi-file drop, duplicate recovery, independent new copy, automatic extraction modes, cancellation with late-result isolation | Real MinerU and OCR failures, complex two-column papers, cross-page repair. |
+| PDF and text import | First PDF from a multi-file drop, duplicate recovery, independent new copy, automatic extraction modes, full Paper preview for every extracted/text block, cancellation with late-result isolation | Real MinerU and OCR failures, complex two-column papers, cross-page repair. |
 | Original PDF and structured reading | Original PDF, Markdown resources, quality warnings, repeated running-head/footer filter | Complex figure and footnote order, asset recovery. |
 | Reader and navigation | Three saved modes; compact bilingual headings with source/translation annotations and actions; 50-step session Back/Forward with header buttons, native menu and Ctrl+[ / Ctrl+]; per-view scroll, search, display mode, block and PDF page restoration; stale-restoration guards | Complex page reflow and more high-DPI checks. |
 | Paragraph translation | Paragraph and heading queue, heading retry/error/export, exact unfinished counts for every range, chapter selection/priority, reference/resource exclusion, chunk-size slider, source/settings-aware output variants | Real-model terminology, long queues and cancellation checks. |

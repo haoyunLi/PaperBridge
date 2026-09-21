@@ -40,7 +40,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | ID | Mac 1.9 行为 | Windows 0.2 对应 | 状态 | 补齐与验收点 |
 | --- | --- | --- | --- | --- |
 | B01 | 三栏：文档侧栏、正文、研究检查器 | 三栏布局 | 对齐 | 窄窗口各面板仍能使用。 |
-| B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper / Reader / Summary / Full Translation，另有 Original | 部分 | 名称与导航行为统一；Paper 内原文与结构化预览对应。 |
+| B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Summary、Full Translation，另有 Original；非 MinerU 文档不再只截取前 12 块 | 部分 | 名称与导航行为仍需统一；Paper 内原文与结构化预览继续对照。 |
 | B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Windows 用独立 Original 标签；Paper 渲染 Markdown | 部分 | 保持同一纸张上下文和视图切换位置。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存 | 对齐 | Electron 流程验证三模式切换。 |
 | B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | `readingMap` 五类标题匹配并跳转 | 部分 | 无标题时回退；验证所有主题与段落链接不串页。 |
