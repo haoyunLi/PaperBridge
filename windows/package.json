@@ -9,6 +9,7 @@
     "build": "vite build",
     "test": "node --test tests/*.test.cjs",
     "test:e2e": "node tests/e2e.cjs",
+    "test:paper-settings-e2e": "node tests/paper-settings-e2e.cjs",
     "test:markdown": "node tests/markdown-parity.cjs",
     "test:reopen-mineru": "node tests/reopen-mineru.cjs",
     "test:live": "node tests/live-local.cjs",

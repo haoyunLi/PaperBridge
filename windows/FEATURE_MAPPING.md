@@ -1,6 +1,6 @@
 # PaperBridge macOS 1.9 ↔ Windows 0.2 功能逐项映射
 
-基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**42 对齐、69 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式安装包仍需验证。
+基线：macOS `main` 的 1.9 功能和本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式安装包仍需验证。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。
 
@@ -64,8 +64,8 @@ Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480
 | C04 | 单段失败隔离，其他段继续 | 每块 try/catch，状态 failed | 对齐 | 单块失败不阻断队列。 |
 | C05 | 只恢复 pending/failed，不重译 ok | 队列过滤 `status !== ok` | 对齐 | 重启后状态和结果仍在。 |
 | C06 | 单段 Retry | 块级翻译/Retry 按钮 | 对齐 | 成功块保持不变。 |
-| C07 | 停止请求并保留已完成翻译 | `cancelTask` + Ollama Abort | 部分 | 验证旧请求绝不会写入新任务或新论文。 |
-| C08 | 当前任务进度与失败数量 | Windows 显示已处理数、成功数、侧栏总失败数及单块错误；无总量时提示正在处理 | 部分 | 缺 Mac 的可视进度条；长任务的失败数更新需真机回归。 |
+| C07 | 停止请求并保留已完成翻译 | `cancelTask` + Ollama Abort；运行中按 Mac 行为阻止图书馆切换 | 部分 | 取消后旧请求不写入新任务的长队列回归仍需完成。 |
+| C08 | 当前任务进度与失败数量 | Windows 显示线性进度条、已处理数、侧栏总失败数及单块错误；无总量时显示不确定进度 | 部分 | Electron 流程已验证翻译块完成后进度增长；长任务失败数需真机回归。 |
 | C09 | Abstract & Conclusion 范围 | Translation Range 同名选项 | 部分 | 章节误检、缺失时禁用或解释。 |
 | C10 | 当前章节范围 | Translation Range 当前章节 | 部分 | 章节依据应跟随真实阅读位置。 |
 | C11 | 任意检测章节选择翻译 | Translation Range 列出检测章节 | 部分 | 入口与队列过滤已实现，复杂标题检测待验证。 |
@@ -89,7 +89,7 @@ Mac 证据：[段落队列与全文翻译](../PaperBridge/PaperReaderViewModel.s
 | D05 | “Check the Sources” 列出每条验证结果 | 逐条 claim 展示已验证摘录或未验证提示 | 对齐 | 旧摘要也标明无验证证据。 |
 | D06 | 点击有效证据回到确切原文段落 | 只有 quote 匹配后来源链接才可跳到块 | 对齐 | 不接受仅凭模型给出的块 ID。 |
 | D07 | 旧版摘要无证据结构时仍可阅读 | 普通字符串摘要可读取 | 对齐 | 标为未验证，重新生成时升级。 |
-| D08 | 单段解释、可单独选择解释语言 | 选区和整段解释；整段解释有独立语言选择 | 对齐 | Reader 按钮和检查器入口均已实现。 |
+| D08 | 单段解释、可单独选择解释语言 | 选区和整段解释；整段解释有独立语言选择并按论文保存语言及原文未改动的解释结果 | 对齐 | Reader 按钮和检查器入口均已实现；源文修改会使旧解释不再显示。 |
 | D09 | 摘要标明 AI 输出不能证明科学结论 | 摘要显式展示证据验证状态 | 对齐 | 未验证 claim 不产生来源链接。 |
 
 Mac 证据：[摘要生成](../PaperBridge/PaperReaderViewModel.swift#L1040)、[证据校验](../PaperBridge/Services/SummaryEvidence.swift)、[检查来源 UI](../PaperBridge/ContentView.swift#L1460)。Windows 证据：[摘要生成](src/main.jsx#L234)、[摘要 UI](src/main.jsx#L382)。
@@ -134,11 +134,11 @@ Mac 证据：[选区行为](../PaperBridge/PaperReaderViewModel+Selection.swift)
 | F06 | 段落编辑撤销 | 最多 20 次完整论文状态快照撤销 | 部分 | 已覆盖标注和段落内容；跨重启撤销栈未保存。 |
 | F07 | MinerU 结构化段落禁止破坏性编辑 | MinerU 来源禁用编辑、拆分、合并 | 对齐 | 避免 Markdown 资源锚点被直接破坏。 |
 | F08 | 图书馆搜索标题与标签 | 搜索框及 library 弹窗 | 对齐 | 中文/大小写、空结果验收。 |
-| F09 | 打开旧论文恢复结果、标注、阅读位置 | 加载论文恢复结果、标注、模式及各视图位置 | 部分 | 任务专属设置仍缺。 |
+| F09 | 打开旧论文恢复结果、标注、阅读位置 | 加载论文恢复结果、标注、模式、解释缓存、检查器状态及各视图位置，并恢复任务设置 | 部分 | 双论文切换/重启回归已覆盖设置；更长论文与跨版本迁移仍需验证。 |
 | F10 | 编辑图书馆显示标题与标签 | Library 编辑显示标题与标签，不修改源 PDF | 对齐 | Electron 流程验证图书馆标签入口。 |
 | F11 | 自动本地保存、损坏时读 `.backup` | JSON 原子写、备份回退、错误提示 | 对齐 | 故意损坏主文件后恢复最近可读副本。 |
 | F12 | 清除保存的 PaperBridge 数据 | Settings 确认后清除保存数据，保留 PDF 副本 | 对齐 | 单元测试验证 PDF 文件未删。 |
-| F13 | 全局外观与单论文任务设置分开恢复 | Windows 全局 settings + paper 内容 | 部分 | 论文切换需恢复专属任务设置。 |
+| F13 | 全局外观与单论文任务设置分开恢复 | 每篇论文保存语言、四种模型、Ollama 地址、分段与 MinerU/PDF 解析设置；切换/重启恢复，阅读外观与更新偏好保持全局 | 对齐 | Electron 双论文流程验证；旧论文无任务设置时继承当前设置并提示检查。 |
 
 Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[图书馆](../PaperBridge/Views/PaperLibraryView.swift)、[工作区恢复](../PaperBridge/PaperReaderViewModel.swift#L1474)。Windows 证据：[段落编辑和图书馆](src/main.jsx#L337)、[本地存储](electron/storage.cjs)。
 
@@ -159,7 +159,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G11 | 后台下载及进度、取消 | 安装任务由主进程继续；状态可再打开 | 部分 | 最小化、关弹窗、重开与中途退出的状态恢复。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L | 部分 | 快捷键与菜单点击已回归；菜单项按当前任务和选区动态禁用、其它键盘布局仍需补齐。 |
-| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，设置可手动检查，发现新版显示提示并打开官方发布页 | 部分 | 签名后的应用内下载、验证与安装仍待 Windows 发布证书和正式 Release。 |
+| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，设置可手动检查，发现新版显示提示并打开官方发布页；网络失败不占用每日间隔，下次自动重试 | 部分 | 失败后重试已有单元回归；签名后的应用内下载、验证与安装仍待 Windows 发布证书和正式 Release。 |
 | G15 | 发布安装包 | NSIS 与 portable 构建，当前未签名 | 部分 | 真机安装、卸载与签名后发布验证。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出](src/main.jsx#L295)、[安装 UI](src/SetupPanel.jsx)、[安装逻辑](electron/setup.cjs)、[快捷键](src/main.jsx#L159)、[构建](package.json)。

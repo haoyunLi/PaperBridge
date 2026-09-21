@@ -1,6 +1,6 @@
 # macOS 1.9 ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **41 aligned, 70 partial, 0 missing**. The [AMD device report](AMD_DEVICE_TEST.md) records real RX 7800 XT translation, installation, and a 15-page MinerU paper import. These implementation states are not a claim that every complex paper or GPU has passed device testing.
+The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of truth. Current code and automated workflow review: **43 aligned, 68 partial, 0 missing**. The [AMD device report](AMD_DEVICE_TEST.md) records real RX 7800 XT translation, installation, a 15-page MinerU paper import, and OCR of an image-only PDF. These implementation states are not a claim that every complex paper or GPU has passed device testing.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |
@@ -11,10 +11,10 @@ The [111-item feature mapping](FEATURE_MAPPING.md) is the detailed source of tru
 | Full translation | Independent structure-preserving draft and export | Complex Markdown and failure-resume checks. |
 | Summary and evidence | Dual-language claims with exact-quote source validation | Model-output reliability across long papers. |
 | Highlights, notes, terminology | Exact Reader offsets, Paper/summary/full selection, compact toolbar, edit migration | Inline summary/full annotations and cross-view PDF/Markdown anchors. |
-| Library and local recovery | Label/tag editing, new extraction copy, saved positions and data clearing | Per-paper task settings and recovery checks. |
+| Library and local recovery | Label/tag editing, new extraction copy, per-paper task settings, saved positions and data clearing | Cross-version recovery and long-document checks. |
 | Export | Markdown bundle with external assets, original PDF and up to 120 page PNGs | Long bundle and asset portability checks. |
 | One-click local AI setup | Implemented path, device verification pending | Real NVIDIA, AMD, CPU, installation, cancellation and rollback tests. |
-| Windows delivery | Unsigned NSIS and portable builds; opt-in daily release checks and update prompts | Signing and verified in-app installation (G14). |
+| Windows delivery | Unsigned NSIS and portable builds; opt-in daily release checks, failure retry and update prompts | Signing and verified in-app installation (G14). |
 
 ## GPU behavior
 

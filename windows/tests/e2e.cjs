@@ -34,11 +34,15 @@ async function run() {
   const workspace = path.join(artifacts, 'workspace');
   if (!path.resolve(workspace).startsWith(path.resolve(artifacts) + path.sep)) throw new Error('Unexpected workspace path');
   fs.rmSync(workspace, { recursive: true, force: true });
+  let generateDelayMs = 0;
   const ollama = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b' }] }));
     if (request.url === '/api/ps') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b', size_vram: 1_073_741_824, size: 2_000_000_000 }] }));
-    if (request.url === '/api/generate') return response.end(JSON.stringify({ response: '本地测试译文', done: true }));
+    if (request.url === '/api/generate') {
+      const finish = () => response.end(JSON.stringify({ response: '本地测试译文', done: true }));
+      return generateDelayMs ? setTimeout(finish, generateDelayMs) : finish();
+    }
     response.statusCode = 404; response.end('{}');
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
@@ -100,8 +104,16 @@ async function run() {
     await page.getByRole('heading', { name: 'Saved Terminology' }).waitFor();
     await page.locator('.modal-head .icon-button').click();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    generateDelayMs = 300;
     await page.keyboard.press('Control+Enter');
+    const taskProgress = page.locator('.task-progress progress');
+    await taskProgress.waitFor();
+    const taskValues = await taskProgress.evaluate(element => ({ value: element.value, max: element.max }));
+    assert.ok(taskValues.max > 1 && taskValues.value < taskValues.max, 'Translation should show determinate progress while running');
+    await page.waitForFunction(() => document.querySelector('.task-progress progress')?.value > 0);
+    await page.screenshot({ path: path.join(artifacts, 'task-progress.png') });
     await page.getByText('Translation pass finished.', { exact: false }).waitFor({ timeout: 15000 });
+    generateDelayMs = 0;
     await page.evaluate(() => {
       const node = document.querySelector('.document-preview p').firstChild;
       const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, 12);

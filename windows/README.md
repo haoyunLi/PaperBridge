@@ -2,7 +2,7 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS↔Windows feature mapping](FEATURE_MAPPING.md) and [parity summary](PARITY.md) for current differences before treating it as a 1:1 replacement.
 
-The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Summary and Full Translation selections can save notes and highlights in the inspector; inline coloring in those Markdown views remains in progress. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Page images can take time and disk space on long papers. See the mapping for the remaining details.
+The current reader supports PDF drag/drop, automatic MinerU-first extraction with PDF text fallback, a separate new extraction copy, three reading modes, chapter translation, source-checked bilingual summaries, exact Reader notes and highlights, and selection tools in Paper, Summary, and Full Translation. Each paper saves its languages, models, parsing choices, explanation language and results, and inspector state; reading appearance stays global. Long tasks show a progress bar. Summary and Full Translation selections can save notes and highlights in the inspector; inline coloring in those Markdown views remains in progress. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Page images can take time and disk space on long papers. See the mapping for the remaining details.
 
 ## Build and run
 
@@ -19,6 +19,7 @@ To verify and create Windows executables:
 npm test
 npm run build
 npm run test:e2e
+npm run test:paper-settings-e2e
 npm run dist
 ```
 
@@ -28,7 +29,7 @@ For an opt-in device check, `npm run test:live-ocr` generates an image-only PDF,
 
 ## Updates
 
-PaperBridge checks the official GitHub Release API for published `windows-vX.Y.Z` releases at startup and, while open, at most once per day. Settings lets you turn off automatic checks or select **Check now**. When a newer Windows installer is published, the app shows a banner that opens that release page for review and download. The current unsigned preview does not download or run installers automatically. Mac releases use a separate tag and are ignored. The update request contains the app version and standard network metadata; no paper, note, or translation content is sent. A Windows release tag must match the version in `windows/package.json`; the GitHub workflow checks this before publishing its installer.
+PaperBridge checks the official GitHub Release API for published `windows-vX.Y.Z` releases at startup and, while open, at most once per day after a successful check. Failed network requests can retry at the next hourly check. Settings lets you turn off automatic checks or select **Check now**. When a newer Windows installer is published, the app shows a banner that opens that release page for review and download. The current unsigned preview does not download or run installers automatically. Mac releases use a separate tag and are ignored. The update request contains the app version and standard network metadata; no paper, note, or translation content is sent. A Windows release tag must match the version in `windows/package.json`; the GitHub workflow checks this before publishing its installer.
 
 ## Local AI and GPU acceleration
 

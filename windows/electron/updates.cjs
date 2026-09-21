@@ -43,4 +43,25 @@ async function checkWindowsRelease(currentVersion, fetchImpl = fetch) {
   return selectWindowsRelease(await response.json(), currentVersion);
 }
 
-module.exports = { compareVersions, releaseUrl, selectWindowsRelease, checkWindowsRelease };
+function createUpdateChecker({ store, currentVersion, checkRelease = checkWindowsRelease, now = Date.now }) {
+  let activeCheck = null;
+  return function checkUpdates(automatic = false) {
+    const version = currentVersion();
+    if (automatic && (!store.settings().autoCheckUpdates || now() - store.lastUpdateCheckAt() < 24 * 60 * 60 * 1000)) {
+      return Promise.resolve({ status: 'skipped', currentVersion: version });
+    }
+    if (!activeCheck) {
+      activeCheck = Promise.resolve()
+        .then(() => checkRelease(version))
+        .then(result => {
+          // A failed network request must not silence automatic checks for the next day.
+          store.saveUpdateCheckAt(now());
+          return result;
+        })
+        .finally(() => { activeCheck = null; });
+    }
+    return activeCheck;
+  };
+}
+
+module.exports = { compareVersions, releaseUrl, selectWindowsRelease, checkWindowsRelease, createUpdateChecker };

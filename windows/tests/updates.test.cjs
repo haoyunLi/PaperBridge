@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { compareVersions, releaseUrl, selectWindowsRelease, checkWindowsRelease } = require('../electron/updates.cjs');
+const { compareVersions, releaseUrl, selectWindowsRelease, checkWindowsRelease, createUpdateChecker } = require('../electron/updates.cjs');
 
 const release = (tag, options = {}) => ({ tag_name: tag, draft: false, prerelease: false,
   assets: [{ name: `PaperBridge Setup ${tag.replace('windows-v', '')}.exe`, state: 'uploaded' }], ...options });
@@ -31,4 +31,36 @@ test('release fetch uses the official GitHub API and reports errors', async () =
   });
   assert.equal(result.status, 'available');
   await assert.rejects(checkWindowsRelease('0.2.0', async () => ({ ok: false, status: 403 })), /GitHub 403/);
+});
+
+test('failed automatic update check is retried and only a successful check starts the daily interval', async () => {
+  let time = 1_000_000_000;
+  let lastCheckAt = 0;
+  let calls = 0;
+  const store = {
+    settings: () => ({ autoCheckUpdates: true }),
+    lastUpdateCheckAt: () => lastCheckAt,
+    saveUpdateCheckAt: value => { lastCheckAt = value; }
+  };
+  const checkUpdates = createUpdateChecker({
+    store,
+    currentVersion: () => '0.2.0',
+    now: () => time,
+    checkRelease: async () => {
+      calls++;
+      if (calls === 1) throw new Error('Offline');
+      return selectWindowsRelease([release('windows-v0.3.0')], '0.2.0');
+    }
+  });
+
+  await assert.rejects(checkUpdates(true), /Offline/);
+  assert.equal(lastCheckAt, 0);
+  time += 60 * 60 * 1000;
+  const result = await checkUpdates(true);
+  assert.equal(result.status, 'available');
+  assert.equal(result.latestVersion, '0.3.0');
+  assert.equal(lastCheckAt, time);
+  time += 60 * 60 * 1000;
+  assert.equal((await checkUpdates(true)).status, 'skipped');
+  assert.equal(calls, 2);
 });
