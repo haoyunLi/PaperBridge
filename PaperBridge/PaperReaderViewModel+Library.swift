@@ -1,6 +1,62 @@
 import Foundation
 
 extension PaperReaderViewModel {
+    var canGoBackInReading: Bool { !readingBackHistory.isEmpty }
+    var canGoForwardInReading: Bool { !readingForwardHistory.isEmpty }
+
+    private var currentReadingLocation: ReadingLocation {
+        ReadingLocation(workspaceMode: workspaceMode, displayMode: displayMode,
+                        selectedParagraphID: selectedParagraphID, searchText: paragraphSearchText,
+                        positions: readingPositions)
+    }
+
+    func recordReadingJump() {
+        guard loadedPaper != nil else { return }
+        finishNoteEditing()
+        let location = currentReadingLocation
+        if readingBackHistory.last != location { readingBackHistory.append(location) }
+        if readingBackHistory.count > 50 { readingBackHistory.removeFirst() }
+        readingForwardHistory.removeAll()
+    }
+
+    func goBackInReading() {
+        guard let location = readingBackHistory.popLast() else { return }
+        readingForwardHistory.append(currentReadingLocation)
+        restoreReadingLocation(location)
+    }
+
+    func goForwardInReading() {
+        guard let location = readingForwardHistory.popLast() else { return }
+        readingBackHistory.append(currentReadingLocation)
+        restoreReadingLocation(location)
+    }
+
+    private func restoreReadingLocation(_ location: ReadingLocation) {
+        clearTextSelection()
+        annotationNavigationRequest = nil
+        navigationRequest = nil
+        workspaceMode = location.workspaceMode
+        displayMode = location.displayMode
+        selectedParagraphID = location.selectedParagraphID
+        paragraphSearchText = location.searchText
+        readingPositions = location.positions
+        // Recreate only the reading surface so PDF/WebKit restore their saved viewport too.
+        readingRestorationID = UUID()
+        persistWorkspace()
+    }
+
+    func resetReadingHistory() {
+        readingBackHistory.removeAll()
+        readingForwardHistory.removeAll()
+        readingRestorationID = UUID()
+    }
+
+    func showOriginalForComparison() {
+        recordReadingJump()
+        workspaceMode = .preview
+        displayMode = .sourceOnly
+    }
+
     var currentReadingSection: PaperSection? {
         let paragraphID = readingPositions["reader"]?.paragraphID ?? selectedParagraphID ?? 1
         return paperSections.first { $0.paragraphIDs.contains(paragraphID) }

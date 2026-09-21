@@ -105,7 +105,7 @@ final class WorkspaceStore {
         }
     }
 
-    func saveWorkspace(_ workspace: PersistedWorkspace) {
+    func saveWorkspace(_ workspace: PersistedWorkspace, completion: ((String?) -> Void)? = nil) {
         queue.async { [weak self] in
             guard let self else { return }
             do {
@@ -122,8 +122,8 @@ final class WorkspaceStore {
                     entries.append(self.libraryEntry(for: workspace, date: Date()))
                 }
                 try self.encode(entries, to: self.libraryURL)
-                self.onSaveStatus?(nil)
-            } catch { self.onSaveStatus?(error.localizedDescription) }
+                (completion ?? self.onSaveStatus)?(nil)
+            } catch { (completion ?? self.onSaveStatus)?(error.localizedDescription) }
         }
     }
 

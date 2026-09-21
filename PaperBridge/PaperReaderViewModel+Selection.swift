@@ -42,6 +42,7 @@ extension PaperReaderViewModel {
         guard !trimmed.isEmpty else { return }
 
         if activeTextSelection?.identity != selection.identity {
+            finishNoteEditing()
             selectionTask?.cancel()
             isSelectionLookupBusy = false
             selectionLookupError = nil
@@ -59,6 +60,7 @@ extension PaperReaderViewModel {
     }
 
     func clearTextSelection() {
+        finishNoteEditing()
         isQuickLookupPresented = false
         selectionTask?.cancel()
         selectionTask = nil
@@ -147,6 +149,46 @@ extension PaperReaderViewModel {
         persistWorkspace()
     }
 
+    func noteText(for selection: ReaderTextSelection) -> String {
+        guard let index = annotationIndex(for: selection) else { return "" }
+        return annotations[index].note
+    }
+
+    func updateSelectionNote(_ note: String, for selection: ReaderTextSelection, paperChecksum: String?) {
+        // A late editor callback must never attach text to a newly selected passage or paper.
+        guard paperChecksum != nil, loadedPaper?.checksum == paperChecksum,
+              activeTextSelection == selection, noteText(for: selection) != note else { return }
+        if noteEditingIdentity != selection.identity {
+            recordAnnotationUndo()
+            noteEditingIdentity = selection.identity
+        }
+        if let index = annotationIndex(for: selection) {
+            annotations[index].note = note
+            if note.isEmpty && annotations[index].highlightColor == nil { annotations.remove(at: index) }
+        } else if !note.isEmpty {
+            annotations.append(PaperAnnotation(
+                paragraphID: selection.paragraphID, side: selection.side, quote: selection.text,
+                rangeLocation: selection.rangeLocation, rangeLength: selection.rangeLength,
+                scope: selection.scope, context: selection.context, locator: selection.locator,
+                pdfAnchors: selection.pdfAnchors, note: note
+            ))
+        }
+        isNoteSavePending = true
+        noteSaveTask?.cancel()
+        noteSaveTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(350))
+                try Task.checkCancellation()
+                self?.persistWorkspace()
+            } catch {}
+        }
+    }
+
+    func finishNoteEditing() {
+        noteEditingIdentity = nil
+        if isNoteSavePending { persistWorkspace() }
+    }
+
     func removeSelectionHighlight() {
         guard let selection = activeTextSelection,
               let index = annotationIndex(for: selection) else {
@@ -161,11 +203,13 @@ extension PaperReaderViewModel {
     var canUndoAnnotationChange: Bool { !annotationUndoStack.isEmpty }
 
     private func recordAnnotationUndo() {
+        noteEditingIdentity = nil
         annotationUndoStack.append(annotations)
         if annotationUndoStack.count > 20 { annotationUndoStack.removeFirst() }
     }
 
     func undoAnnotationChange() {
+        noteEditingIdentity = nil
         guard let previous = annotationUndoStack.popLast() else { return }
         annotations = previous
         persistWorkspace()
@@ -178,11 +222,6 @@ extension PaperReaderViewModel {
         }
         let scope = annotation.resolvedScope
         if scope == .reader {
-            workspaceMode = .reader
-            if (annotation.side == .original && displayMode == .translationOnly) ||
-                (annotation.side == .translation && displayMode == .sourceOnly) {
-                displayMode = .bilingual
-            }
             guard let paragraph = paragraphResults.first(where: { $0.id == annotation.paragraphID }) else {
                 reportAnnotationNavigationFailure()
                 return
@@ -198,6 +237,10 @@ extension PaperReaderViewModel {
             }
 
             navigateToParagraph(annotation.paragraphID)
+            if (annotation.side == .original && displayMode == .translationOnly) ||
+                (annotation.side == .translation && displayMode == .sourceOnly) {
+                displayMode = .bilingual
+            }
             captureTextSelection(
                 ReaderTextSelection(
                     paragraphID: annotation.paragraphID,
@@ -212,6 +255,7 @@ extension PaperReaderViewModel {
             return
         }
 
+        recordReadingJump()
         workspaceMode = scope.workspaceMode
         if scope == .paper {
             // A web anchor must reopen the structured view, not the source PDF renderer.
@@ -469,7 +513,7 @@ extension PaperReaderViewModel {
 
     private func annotationIndex(for selection: ReaderTextSelection) -> Int? {
         annotations.firstIndex {
-            $0.resolvedScope == selection.scope &&
+            $0.needsReview != true && $0.resolvedScope == selection.scope &&
                 $0.paragraphID == selection.paragraphID &&
                 $0.side == selection.side &&
                 $0.locator == selection.locator &&

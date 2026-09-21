@@ -129,6 +129,14 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var annotationUndoStack: [[PaperAnnotation]] = []
     @Published var searchFocusRequest: UUID?
     @Published var workspaceSaveError: String?
+    @Published var isWorkspaceSaving = false
+    @Published var isNoteSavePending = false
+    var noteSaveTask: Task<Void, Never>?
+    var noteEditingIdentity: String?
+    private var workspaceSaveRequestID = UUID()
+    @Published var readingBackHistory: [ReadingLocation] = []
+    @Published var readingForwardHistory: [ReadingLocation] = []
+    @Published var readingRestorationID = UUID()
     var readingPositions: [String: ReadingPosition] = [:]
     private var positionSaveTask: Task<Void, Never>?
 
@@ -195,6 +203,7 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     deinit {
+        noteSaveTask?.cancel()
         positionSaveTask?.cancel()
         activeTask?.cancel()
         modelRefreshTask?.cancel()
@@ -238,9 +247,7 @@ final class PaperReaderViewModel: ObservableObject {
     func openReadingPassage(_ entry: ReadingGuideEntry) {
         guard let paragraph = paragraphResults.first(where: { $0.id == entry.paragraphID }),
               paragraph.original == entry.excerpt else { return }
-        workspaceMode = .reader
-        if displayMode == .translationOnly { displayMode = .bilingual }
-        navigateToParagraph(entry.paragraphID)
+        navigateToParagraph(entry.paragraphID, revealSource: true)
     }
 
     var canLoadInputText: Bool {
@@ -494,11 +501,20 @@ final class PaperReaderViewModel: ObservableObject {
         }
     }
 
-    func navigateToParagraph(_ paragraphID: Int) {
+    func navigateToParagraph(_ paragraphID: Int, revealSource: Bool = false) {
         guard paragraphResults.contains(where: { $0.id == paragraphID }) else { return }
+        if workspaceMode != .reader || !paragraphSearchText.isEmpty ||
+            readingPositions["reader"]?.readerItemID != "paragraph-\(paragraphID)" ||
+            (revealSource && displayMode == .translationOnly) {
+            recordReadingJump()
+        }
+        workspaceMode = .reader
+        if revealSource && displayMode == .translationOnly { displayMode = .bilingual }
         paragraphSearchText = ""
         selectedParagraphID = paragraphID
+        readingPositions["reader"] = ReadingPosition(paragraphID: paragraphID, readerItemID: "paragraph-\(paragraphID)")
         navigationRequest = ParagraphNavigationRequest(paragraphID: paragraphID)
+        persistWorkspace()
     }
 
     func toggleBookmark(for paragraphID: Int) {
@@ -511,6 +527,13 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func clearSavedData() {
+        noteSaveTask?.cancel()
+        noteSaveTask = nil
+        isNoteSavePending = false
+        noteEditingIdentity = nil
+        resetReadingHistory()
+        workspaceSaveRequestID = UUID()
+        isWorkspaceSaving = false
         activeTask?.cancel()
         activeTaskID = nil
         translationRunID = nil
@@ -1473,6 +1496,8 @@ final class PaperReaderViewModel: ObservableObject {
 
     func applyLoadedPaper(_ incomingPaper: PaperDocument) {
         persistWorkspace()
+        noteEditingIdentity = nil
+        resetReadingHistory()
         // The source checksum is a stable library identity, not permission to
         // overwrite a manually corrected revision when the same PDF is dropped again.
         let saved = workspaceStore.loadWorkspace(checksum: incomingPaper.libraryStorageID)
@@ -2183,6 +2208,7 @@ final class PaperReaderViewModel: ObservableObject {
         bookmarkedParagraphIDs = Set(bookmarkedParagraphIDs.flatMap { mapping.destinations(for: $0 - 1).map { $0 + 1 } })
         loadedPaper = updatedPaper
         // Structural edits invalidate positional navigation and its transient undo history.
+        resetReadingHistory()
         annotationUndoStack = []
         annotationNavigationRequest = nil
         navigationRequest = nil
@@ -2428,6 +2454,9 @@ final class PaperReaderViewModel: ObservableObject {
 
     func persistWorkspace() {
         guard !isRestoringWorkspace, let paper = loadedPaper else { return }
+        noteSaveTask?.cancel()
+        noteSaveTask = nil
+        isNoteSavePending = false
 
         let workspace = PersistedWorkspace(
             settings: settings,
@@ -2445,7 +2474,23 @@ final class PaperReaderViewModel: ObservableObject {
             isInspectorPresented: isInspectorPresented,
             readingPositions: readingPositions
         )
-        workspaceStore.saveWorkspace(workspace)
+        let requestID = UUID()
+        workspaceSaveRequestID = requestID
+        isWorkspaceSaving = true
+        workspaceStore.saveWorkspace(workspace) { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self, self.workspaceSaveRequestID == requestID else { return }
+                self.isWorkspaceSaving = false
+                self.workspaceSaveError = error
+            }
+        }
+    }
+
+    func flushPendingSaves() {
+        positionSaveTask?.cancel()
+        positionSaveTask = nil
+        persistWorkspace()
+        workspaceStore.flush()
     }
 
     func updateReadingPosition(_ position: ReadingPosition, key: String, paperChecksum: String?) {

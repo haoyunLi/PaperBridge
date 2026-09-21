@@ -40,6 +40,17 @@ It can also:
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
 
+## Reading Continuity in 1.9.1
+
+PaperBridge 1.9.1 is a small reading-continuity update to 1.9. [Download the latest Mac app](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), or choose **PaperBridge > Check for Updates** in the app.
+
+- Notes save automatically after a short typing pause, and pending edits are saved when you change selection, close the inspector, switch papers, or quit normally. **Save Now** and session undo remain available. A force quit or power loss during the typing delay can still lose the last keystrokes.
+- **Back / Forward** in the reading header (or `Command-[` / `Command-]`) returns to previous section, source, and annotation jump locations. History is session-only, holds up to 50 locations, and resets when switching papers or repairing paragraph structure. Reader restoration is block-level; PDF restoration remains page-level.
+- Standalone headings use compact bilingual rows, without duplicate title cards. Headings that share a paragraph with body text remain intact.
+- Task progress and local-save status stay above the scrolling document. Save failures keep the in-memory note and offer **Retry Save**; keep the app open or export until saving succeeds.
+
+Try the matching [interactive website examples](https://paperbridges.net/#reading-update). This update does not add library backup/import, per-paper deletion, or background multi-paper tasks. See [release notes](docs/release-1.9.1.md) and [verification notes](docs/reliability-update.md#reading-continuity-in-191).
+
 ## Reading Reliability in 1.9
 
 **New in PaperBridge 1.9.** This release focuses on staying with the paper rather than redoing work. [Try the interactive website examples](https://paperbridges.net/#reading-update) or read the [implementation and verification notes](docs/reliability-update.md).
@@ -598,7 +609,7 @@ This reliability update fixes resuming partially translated papers, restoring ca
 
 Reader search stays above the scrolling paper and opens with `Command-F`. Bookmarks include a text preview, document/import controls collapse during reading, and narrower windows use a bottom inspector instead of squeezing in a third column. Reader block positions, original PDF pages, and Markdown reading positions are saved locally. Setup downloads can continue in the background, and save errors are surfaced instead of silently discarded.
 
-Version 1.9 is distributed as a signed, notarized Universal DMG and through the existing signed automatic-update feed. Existing screenshots show the earlier interface; interactive website examples explain the newer reading tools. See [the reliability update notes](docs/reliability-update.md) for validation coverage and remaining work.
+Version 1.9.1 is distributed as a signed, notarized Universal DMG and through the existing signed automatic-update feed. Existing screenshots show the earlier interface; interactive website examples explain the newer reading tools. See [the reliability update notes](docs/reliability-update.md) for validation coverage and remaining work.
 
 ## Troubleshooting
 

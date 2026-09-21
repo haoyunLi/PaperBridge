@@ -93,8 +93,9 @@ if ! xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>
 fi
 
 printf 'Creating a signed Universal Xcode archive...\n'
-rm -rf "$BUILD_DIR"
-mkdir -p "$DIST_DIR"
+# Keep downloaded packages and preserved release symbols between builds.
+rm -rf "$ARCHIVE_PATH" "$EXPORT_DIR"
+mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
 "$DEVELOPER_DIR/usr/bin/xcodebuild" \
   -project "$PROJECT_PATH" \
@@ -103,6 +104,8 @@ mkdir -p "$DIST_DIR"
   -destination "generic/platform=macOS" \
   -archivePath "$ARCHIVE_PATH" \
   -derivedDataPath "$DERIVED_DATA_PATH" \
+  -packageAuthorizationProvider netrc \
+  -onlyUsePackageVersionsFromResolvedFile \
   ARCHS="arm64 x86_64" \
   ONLY_ACTIVE_ARCH=NO \
   DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM_ID" \

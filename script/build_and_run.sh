@@ -21,7 +21,8 @@ if [[ -d "$ROOT/build-update/SourcePackages/checkouts/Sparkle" ]]; then
 fi
 xcodebuild -quiet -project "$ROOT/PaperBridge.xcodeproj" -scheme PaperBridge \
   -configuration Debug -destination "platform=macOS,arch=$(uname -m)" \
-  -derivedDataPath "$BUILD" "${PACKAGE_FLAGS[@]}" CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath "$BUILD" -packageAuthorizationProvider netrc \
+  "${PACKAGE_FLAGS[@]}" CODE_SIGNING_ALLOWED=NO build
 
 APP_ARGS=()
 if (( ISOLATED )); then
