@@ -1,0 +1,10 @@
+.settings-models{display:grid;gap:22px;margin-top:18px;min-width:0}
+.settings-model-memory{background:#e5edf8;border:1px solid #c5d6ef;border-radius:10px;padding:13px 15px;color:#24456e;display:flex;flex-wrap:wrap;gap:6px 15px}
+.settings-model-memory strong,.settings-model-memory>span{font-size:12px;line-height:1.5}
+.settings-model-memory>span{margin-left:auto}
+.settings-model-memory p{font-size:11px;line-height:1.6;margin:2px 0 0;width:100%;color:#546a86}
+.settings-model-group>header{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:7px}
+.settings-model-group>header h3{font-size:16px;margin:0;color:#122033}
+.settings-model-group>header>span{font-size:10px;color:#53667e;background:#e7edf3;border-radius:4px;padding:3px 6px}
+.settings-model-group>p{font-size:12px;line-height:1.6;margin:0 0 13px;color:#56606c}
+.settings-model-footnote{font-size:11px;line-height:1.6;color:#657080;margin:0}

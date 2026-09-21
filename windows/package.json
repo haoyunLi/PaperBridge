@@ -1,0 +1,83 @@
+{
+  "name": "paperbridge-windows",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Local academic paper reader for Windows",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on tcp:127.0.0.1:5173 && electron .\"",
+    "build": "vite build",
+    "test": "node --test tests/*.test.cjs",
+    "test:e2e": "node tests/e2e.cjs",
+    "test:paper-settings-e2e": "node tests/paper-settings-e2e.cjs",
+    "test:model-pull-e2e": "node tests/model-pull-e2e.cjs",
+    "test:last-opened-e2e": "node tests/last-opened-e2e.cjs",
+    "test:reader-review-e2e": "node tests/reader-review-e2e.cjs",
+    "test:reading-history-e2e": "node tests/reading-history-e2e.cjs",
+    "test:heading-parity-e2e": "node tests/heading-parity-e2e.cjs",
+    "test:note-autosave-e2e": "node tests/note-autosave-e2e.cjs",
+    "test:task-isolation-e2e": "node tests/task-isolation-e2e.cjs",
+    "test:menu-state-e2e": "node tests/menu-state-e2e.cjs",
+    "test:menu-ui-e2e": "node tests/menu-ui-e2e.cjs",
+    "test:setup-components-e2e": "node tests/setup-components-e2e.cjs",
+    "test:onboarding-e2e": "node tests/onboarding-e2e.cjs",
+    "test:onboarding-startup-e2e": "node tests/onboarding-startup-e2e.cjs",
+    "test:settings-models-e2e": "node tests/settings-models-e2e.cjs",
+    "test:mineru-detect-e2e": "node tests/mineru-detect-e2e.cjs",
+    "test:update-restart-e2e": "node tests/update-restart-e2e.cjs",
+    "test:installer-e2e": "node tests/installer-e2e.cjs",
+    "test:official-links-e2e": "node tests/official-links-e2e.cjs",
+    "test:markdown": "node tests/markdown-parity.cjs",
+    "test:reopen-mineru": "node tests/reopen-mineru.cjs",
+    "test:live": "node tests/live-local.cjs",
+    "test:live-mineru": "node tests/live-mineru.cjs",
+    "test:live-ocr": "node tests/live-ocr.cjs",
+    "test:packaged": "node tests/packaged.cjs",
+    "pack": "npm run build && electron-builder --win dir",
+    "dist": "npm run build && electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "katex": "^0.16.22",
+    "lucide-react": "^0.468.0",
+    "pdfjs-dist": "^6.3.289",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "rehype-raw": "^7.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3",
+    "playwright-core": "^1.63.0",
+    "vite": "^8.3.0",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "net.paperbridges.windows",
+    "productName": "PaperBridge",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/paperbridge.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": false
+    }
+  }
+}

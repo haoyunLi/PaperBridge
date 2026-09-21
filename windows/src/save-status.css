@@ -1,0 +1,44 @@
+.workspace-status-rail {
+  flex: none;
+  max-height: min(42vh, 330px);
+  overflow: auto;
+  padding: 10px 20px 0;
+  background: #f3eee4;
+  border-bottom: 1px solid #d8d0c4;
+}
+
+.workspace-status-rail > .notice,
+.workspace-status-rail > .update-banner,
+.workspace-status-rail > .task-progress,
+.workspace-status-rail > .save-status {
+  margin-bottom: 10px;
+}
+
+.save-status {
+  max-width: 1000px;
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid #b8cce7;
+  border-radius: 9px;
+  background: #edf4ff;
+  color: #244568;
+  font-size: 12px;
+}
+
+.save-status.saved {
+  border-color: #b8d8cb;
+  background: #edf7f2;
+  color: #236149;
+}
+
+.save-status.error {
+  border-color: #e5aaa6;
+  background: #fff1ee;
+  color: #8a251d;
+}
+

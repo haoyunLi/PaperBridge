@@ -1,0 +1,63 @@
+name: Windows desktop
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [main, windows/desktop-app]
+    tags: ['windows-v*']
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Verify Windows release version
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "windows-v$packageVersion") {
+            throw "Tag $env:GITHUB_REF_NAME must match Windows package version $packageVersion"
+          }
+      - run: npm run dist
+      - name: Verify onboarding and desktop setup workflows
+        shell: pwsh
+        run: |
+          $desktopSuites = @('test:onboarding-e2e', 'test:onboarding-startup-e2e', 'test:settings-models-e2e', 'test:mineru-detect-e2e', 'test:update-restart-e2e', 'test:setup-components-e2e', 'test:menu-state-e2e', 'test:menu-ui-e2e', 'test:official-links-e2e', 'test:note-autosave-e2e', 'test:reading-history-e2e', 'test:heading-parity-e2e', 'test:markdown', 'test:reader-review-e2e')
+          foreach ($suite in $desktopSuites) {
+            npm run $suite
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PaperBridge-Windows
+          path: |
+            windows/release/*.exe
+            windows/release/*.blockmap
+          if-no-files-found: error
+      - name: Attach Windows binaries to release
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: windows/release/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
