@@ -96,8 +96,8 @@ async function run() {
     app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 900 });
-    await page.getByRole('button', { name: 'Summary', exact: true }).waitFor({ timeout: 20000 });
-    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Summary');
+    await page.getByRole('button', { name: 'Overview', exact: true }).waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
     const back = page.getByRole('button', { name: 'Back to previous reading location', exact: true });
     const forward = page.getByRole('button', { name: 'Forward in reading history', exact: true });
     assert.equal(await back.isDisabled(), true);
@@ -111,7 +111,7 @@ async function run() {
     assert.equal(await back.isEnabled(), true);
     await page.locator('.sidebar .outline-row').filter({ hasText: 'Unique evidence phrase' }).click();
     await back.click();
-    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Summary');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
     assert.ok(Math.abs(await page.locator('.main-scroll').evaluate(element => element.scrollTop) - summaryOffset) < 12, 'Back should restore Summary scroll');
     await forward.click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
@@ -124,7 +124,7 @@ async function run() {
       host.dispatchEvent(new Event('scroll'));
     });
     await back.click();
-    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Summary');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
     await new Promise(resolve => setTimeout(resolve, 500));
     await waitFor(() => readPaper().position?.tab === 'Summary' && readPaper().position?.block === 2, 'restored generation to reject a stale scroll callback');
     await page.locator('.sidebar .outline-row').filter({ hasText: 'Result details remain available' }).click();
@@ -166,7 +166,7 @@ async function run() {
     assert.equal(await back.isDisabled(), true, 'a structure repair must clear Back');
     assert.equal(await forward.isDisabled(), true, 'a structure repair must clear Forward');
 
-    await page.getByRole('button', { name: 'Summary', exact: true }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.locator('.sidebar .outline-row').filter({ hasText: 'Result details remain available' }).click();
     assert.equal(await back.isEnabled(), true);
     await page.locator('.library-row').filter({ hasText: 'Second library paper' }).click();

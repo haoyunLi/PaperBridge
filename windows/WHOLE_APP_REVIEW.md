@@ -4,7 +4,7 @@
 
 继续按 macOS 总映射复查后，修正了两个可直接复现的小功能差距。Translation Range 现在由实际可执行队列统一计算：排除已完成块、资源块和参考文献，包含待译/失败标题；当前章节、Abstract & Conclusion、任意章节与 All unfinished 的数字和禁用状态均与点击后的任务一致。
 
-Paper 预览和 Reader 的块级笔记/高亮现在保存独立 `paper` / `reader` 作用域。同一段同一偏移可在两个视图分别保存；正文只显示本视图记录，列表和 Markdown 导出明确标出来源，点击 Paper 记录会回到 Paper 原块并精确重选文字，同时接入 Back / Forward。旧版没有 scope 的记录继续按 Reader 处理。非 MinerU Paper 预览也改为呈现完整文档，不再在第 12 块截断，因此长文后半部分可直接选择和标注。
+Paper 预览和 Reader 的块级笔记/高亮现在保存独立 `paper` / `reader` 作用域。同一段同一偏移可在两个视图分别保存；正文只显示本视图记录，列表和 Markdown 导出明确标出来源，点击 Paper 记录会回到 Paper 原块并精确重选文字，同时接入 Back / Forward。旧版没有 scope 的记录继续按 Reader 处理。非 MinerU Paper 预览也改为呈现完整文档，不再在第 12 块截断，因此长文后半部分可直接选择和标注。第三个工作区按 macOS 命名为 Overview，并把原先散落在 Paper 的阅读地图、提取质量 Review 与 AI 双语摘要合到同一页；内部仍接受旧 `Summary` 状态，已保存位置无需迁移。
 
 本阶段验证为 **95/95 单元测试**、生产构建，以及 `test:markdown`、`test:reader-review-e2e`、`test:note-autosave-e2e`、`test:heading-parity-e2e`、`test:reading-history-e2e` 和 `test:e2e`。`test:markdown` 还验证了 Paper→Reader 视图隔离、Paper 精确回跳及随后 Back / Forward 往返；`test:heading-parity-e2e` 验证非 MinerU Paper 的第 14 块实际渲染。当前剩余边界是复杂 Markdown 跨节点/跨块坐标和更多真实论文并排验收。
 

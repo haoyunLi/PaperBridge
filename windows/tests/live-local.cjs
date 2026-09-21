@@ -117,7 +117,7 @@ async function run() {
     await page.locator('.paragraph-explanation p').waitFor({ timeout: 60000 });
     uiExplanation = await page.locator('.paragraph-explanation p').innerText();
     assert.ok(uiExplanation.length > 20);
-    await page.getByRole('button', { name: 'Summary', exact: true }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.getByRole('button', { name: 'Generate summary' }).click();
     await page.locator('.summary-card').first().waitFor({ timeout: 60000 });
     uiSummary = await page.locator('.summary-card').first().innerText();
@@ -142,7 +142,7 @@ async function run() {
     const page = await restarted.firstWindow();
     await page.locator('.content-column .document-preview').waitFor({ timeout: 20000 });
     assert.equal(await page.locator('.content-column .document-preview').innerText(), uiFullTranslation);
-    await page.getByRole('button', { name: 'Summary', exact: true }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.locator('.summary-card').first().waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     assert.equal(await page.locator('.block').nth(1).locator('.translation-text.done').innerText(), uiTranslation);

@@ -88,7 +88,7 @@ async function run() {
     const menuLabels = await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map(item => item.label));
     assert.deepEqual(menuLabels, ['File', 'Paper', 'Selection', 'View', 'Help']);
     await page.keyboard.press('Control+1');
-    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Summary');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
     await page.keyboard.press('Control+f');
     await page.locator('.search:focus').waitFor();
     await page.locator('.inspector-title .icon-button').click();
@@ -157,7 +157,9 @@ async function run() {
     await page.getByRole('button', { name: 'Undo last change' }).click();
     assert.equal(await page.locator('.block').nth(1).locator('.block-notes').count(), 0);
     await page.screenshot({ path: path.join(artifacts, 'reader.png') });
-    await page.getByRole('button', { name: 'Summary', exact: true }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('heading', { name: 'Paper overview', exact: true }).waitFor();
+    assert.ok(await page.locator('.reading-map button').count() > 0, 'Overview should contain the source-linked reading map');
     await page.getByRole('button', { name: 'Generate summary' }).click();
     await page.getByText('No source link validated').waitFor({ timeout: 15000 });
     assert.equal(await page.locator('.source-links button').count(), 0);
@@ -320,7 +322,7 @@ async function run() {
     assert.equal(await reopenedPage.getByRole('button', { name: 'Translate Paper' }).isDisabled(), true);
     await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
     await reopenedPage.locator('.scan-notice').getByText('No selectable text in this PDF').waitFor();
-    await reopenedPage.getByRole('button', { name: 'Summary', exact: true }).click();
+    await reopenedPage.getByRole('button', { name: 'Overview', exact: true }).click();
     assert.equal(await reopenedPage.getByRole('button', { name: 'Generate summary' }).isDisabled(), true);
     await reopenedPage.getByRole('button', { name: 'Full Translation', exact: true }).click();
     assert.equal(await reopenedPage.getByRole('button', { name: 'Translate full paper' }).isDisabled(), true);

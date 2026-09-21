@@ -40,10 +40,10 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | ID | Mac 1.9 行为 | Windows 0.2 对应 | 状态 | 补齐与验收点 |
 | --- | --- | --- | --- | --- |
 | B01 | 三栏：文档侧栏、正文、研究检查器 | 三栏布局 | 对齐 | 窄窗口各面板仍能使用。 |
-| B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Summary、Full Translation，另有 Original；非 MinerU 文档不再只截取前 12 块 | 部分 | 名称与导航行为仍需统一；Paper 内原文与结构化预览继续对照。 |
+| B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Overview（阅读地图、质量检查与双语摘要）、Full Translation，另有 Original；内部保留旧 `Summary` 状态值兼容已保存位置 | 对齐 | Original 是 Windows 额外的原生 PDF 工作区。 |
 | B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Windows 用独立 Original 标签；Paper 渲染 Markdown | 部分 | 保持同一纸张上下文和视图切换位置。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存 | 对齐 | Electron 流程验证三模式切换。 |
-| B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | `readingMap` 五类标题匹配并跳转 | 部分 | 无标题时回退；验证所有主题与段落链接不串页。 |
+| B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 的 `readingMap` 五类标题匹配并跳转 Reader 原块 | 部分 | 无标题时回退；更多真实论文需验证所有主题与段落链接不串页。 |
 | B06 | 章节大纲跳转 | 侧栏 OUTLINE，跳转前清除 Reader 搜索 | 对齐 | 搜索后目录跳转已回归；复杂 MinerU 标题层级仍需验证。 |
 | B07 | 段落书签及侧栏文字预览 | 书签按钮与侧栏摘要 | 对齐 | 解析来源切换后位置应保持。 |
 | B08 | Reader 顶部搜索、清除后回到原位置 | 搜索前记录滚动位置并在清空时恢复；目录、书签和来源跳转先清搜索 | 部分 | 搜索后目录跳转已回归；跨标签与复杂重排仍需验证。 |
@@ -53,7 +53,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B12 | Focus Reading 退出后恢复进入前的面板状态 | 焦点阅读进入前保存左右面板状态，退出恢复 | 对齐 | 面板状态切换已实现。 |
 | B13 | 窄窗口检查器改为底部布局 | Windows CSS 响应布局 | 部分 | 在 980px 最小宽度和高 DPI 下真机验收。 |
 | B14 | 字号、行距、阅读宽度调节 | Settings 三项滑块用于 Reader、Paper 和 Full Translation 文字预览 | 对齐 | Electron 检查 21px、1.9 行距、700px 宽度；原 PDF 几何不受文字预览样式影响。 |
-| B15 | 提取段落的质量提示与 Review 链接 | Overview 共用 A18 质量提示和段落 Review | 部分 | 识别率与复杂论文验证待完成。 |
+| B15 | 提取段落的质量提示与 Review 链接 | Overview 与阅读地图、摘要同页展示 A18 质量提示和 Reader Review 跳转 | 部分 | 识别率与复杂论文验证待完成。 |
 | B16 | 结构化 Markdown 公式/表格本地预览 | React Markdown、KaTeX、GFM，加受限 HTML 渲染 | 部分 | 15 页论文的 11 处上标、4 张表、5 张图、5 个独立公式已在 Paper/Reader 验证；更多排版仍待验收。 |
 
 Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480)、[阅读地图](../PaperBridge/Services/ReadingGuideBuilder.swift)、[Markdown 预览](../PaperBridge/Views/MarkdownPreviewView.swift)。Windows 证据：[导航与阅读界面](src/main.jsx#L338)、[阅读地图](src/text.mjs)、[显示状态](src/main.jsx#L94)。
