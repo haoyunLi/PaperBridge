@@ -59,6 +59,10 @@ final class MockOllamaProtocol: URLProtocol {
 struct ReadingReliabilityRegression {
     @MainActor
     static func main() async throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--write-import-fixture" {
+            try writeImportFixture(at: URL(fileURLWithPath: CommandLine.arguments[2]))
+            return
+        }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("paperbridge-reading-tests-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         if CommandLine.arguments.contains("--live-smoke") {
@@ -91,6 +95,7 @@ struct ReadingReliabilityRegression {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockOllamaProtocol.self]
         let client = OllamaClient(session: URLSession(configuration: config))
+        try await verifyPendingImport(root: root, client: client)
         try await verifyNoteAutosaveAndNavigation(root: root, client: client)
         try verifyReadingGuide()
         try await verifyReadingImprovements(root: root, client: client)
@@ -246,6 +251,139 @@ struct ReadingReliabilityRegression {
             output.flush()
         }
         print("Reading reliability regression tests passed (resume, cancellation, caches, notes, anchors, positions, response integrity, legacy data, save errors).")
+    }
+
+    @MainActor
+    static func writeImportFixture(at root: URL) throws {
+        let store = WorkspaceStore(rootURL: root)
+        guard store.loadLastWorkspace() == nil else { fatalError("Import fixture needs a fresh workspace") }
+        let executable = root.appendingPathComponent("slow-mineru-fixture")
+        let script = #"""
+        #!/bin/zsh
+        set -eu
+        output=""
+        while (( $# > 0 )); do
+          case "$1" in
+            -o) output="$2"; shift 2 ;;
+            *) shift ;;
+          esac
+        done
+        printf 'Layout Predict: 50%%|#####| 1/2\r'
+        sleep 15
+        printf 'MFR Predict: 50%%|#####| 2/4\r'
+        sleep 15
+        printf 'OCR-rec Predict: 100%%|#####| 8/8\r'
+        sleep 10
+        mkdir -p "$output/result"
+        printf '# Import Interface Check\n\nThis fixture verifies that the new document replaces the import screen. It is not a real research paper.\n' > "$output/result/paper.md"
+        """#
+        try Data(script.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        let model = PaperReaderViewModel(workspaceStore: store)
+        model.settings.pdfExtractionMode = .minerUOnly
+        model.settings.minerUExecutablePath = executable.path
+        model.loadSamplePaper()
+        model.isInspectorPresented = true
+        model.workspaceMode = .reader
+        model.persistWorkspace()
+        store.flush()
+        let data = NSMutableData()
+        var bounds = CGRect(x: 0, y: 0, width: 500, height: 300)
+        let context = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &bounds, nil)!
+        context.beginPDFPage(nil)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+        ("Import Interface Check. Local test fixture, not a research paper." as NSString)
+            .draw(at: CGPoint(x: 20, y: 180), withAttributes: [.font: NSFont.systemFont(ofSize: 12)])
+        NSGraphicsContext.restoreGraphicsState()
+        context.endPDFPage()
+        context.closePDF()
+        try (data as Data).write(to: root.appendingPathComponent("New Paper - Import UI Check.pdf"))
+        print("Import UI fixture ready at \(root.path)")
+    }
+
+    @MainActor
+    static func verifyPendingImport(root: URL, client: OllamaClient) async throws {
+        let directory = root.appendingPathComponent("import-state")
+        let store = WorkspaceStore(rootURL: directory)
+        let service = MinerUService(workspaceRoot: directory.appendingPathComponent("mineru"))
+        let model = PaperReaderViewModel(workspaceStore: store, ollamaClient: client, minerUService: service)
+        let executable = directory.appendingPathComponent("fake-mineru")
+        let script = #"""
+        #!/bin/zsh
+        set -eu
+        output=""
+        while (( $# > 0 )); do
+          case "$1" in
+            -o) output="$2"; shift 2 ;;
+            *) shift ;;
+          esac
+        done
+        printf 'Layout Predict: 50%%|#####| 1/2\r'
+        sleep 2
+        mkdir -p "$output/result"
+        printf '# New document\n\nThis is a complete new paragraph for the import test.\n' > "$output/result/paper.md"
+        """#
+        try Data(script.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        model.settings.pdfExtractionMode = .minerUOnly
+        model.settings.minerUExecutablePath = executable.path
+        model.loadSamplePaper()
+        let original = model.loadedPaper!
+        model.bookmarkedParagraphIDs = [2]
+        model.readingPositions["reader"] = ReadingPosition(paragraphID: 2)
+        let incoming = directory.appendingPathComponent("Incoming Paper.pdf")
+        try Data("fixture-pdf-for-fake-parser".utf8).write(to: incoming)
+        model.loadPDF(from: incoming)
+        require(model.pendingImport?.filename == incoming.lastPathComponent && model.isBusy,
+                "New document identity must be visible synchronously, before extraction starts")
+        require(model.loadedPaper?.checksum == original.checksum && model.bookmarkedParagraphIDs == [2],
+                "Import discarded the previous paper before a replacement was ready")
+        let importID = model.pendingImport!.id
+        model.loadPDF(from: directory.appendingPathComponent("Ignored while busy.pdf"))
+        require(model.pendingImport?.id == importID, "A second drop replaced an active import's identity")
+        for _ in 0..<180 {
+            if model.statusMessage.contains("Recognizing page layout") { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        require(model.statusMessage.contains("(1/2)"), "Live MinerU stage progress did not reach the view model")
+        model.cancelCurrentTask()
+        require(model.pendingImport == nil && !model.isBusy, "Cancel left the import screen active")
+        require(model.loadedPaper?.checksum == original.checksum && model.readingPositions["reader"]?.paragraphID == 2,
+                "Cancel lost the previous document or reading position")
+
+        let missing = directory.appendingPathComponent("Missing.pdf")
+        model.loadPDF(from: missing)
+        try await waitUntilIdle(model)
+        require(model.pendingImport == nil && model.errorMessage?.contains("Missing.pdf") == true,
+                "Failed import did not identify the attempted file or dismiss its loading state")
+        require(model.loadedPaper?.checksum == original.checksum && model.bookmarkedParagraphIDs == [2],
+                "Failed import replaced previous saved work")
+        let failureStatus = model.statusMessage
+        try await Task.sleep(for: .seconds(1))
+        require(model.statusMessage == failureStatus, "Cancelled parser overwrote the next import status")
+
+        let replacement = directory.appendingPathComponent("Ready.pdf")
+        try Data("different-fixture-pdf".utf8).write(to: replacement)
+        model.loadPDF(from: replacement)
+        try await waitUntilIdle(model)
+        require(model.pendingImport == nil && model.loadedPaper?.name == "Ready.pdf" && model.errorMessage == nil,
+                "Successful import did not switch from the pending screen to the new document")
+        store.flush()
+        require(store.loadWorkspace(checksum: original.checksum)?.bookmarkedParagraphIDs == [2],
+                "Import did not preserve the previous paper in the library")
+        model.loadPDF(from: replacement)
+        try await waitUntilIdle(model)
+        require(model.pendingImport == nil && model.statusMessage.contains("Loaded Ready.pdf"),
+                "Cached import left the loading screen visible")
+
+        let empty = PaperReaderViewModel(workspaceStore: WorkspaceStore(rootURL: directory.appendingPathComponent("empty")),
+                                         ollamaClient: client, minerUService: service)
+        empty.loadPDF(from: missing)
+        require(empty.pendingImport != nil && empty.loadedPaper == nil, "First import did not show a pending document")
+        empty.cancelCurrentTask()
+        try await Task.sleep(for: .milliseconds(50))
+        require(empty.pendingImport == nil && empty.errorMessage == nil, "Immediate cancellation leaked a late import error")
     }
 
     @MainActor

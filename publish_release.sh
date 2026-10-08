@@ -8,7 +8,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PACKAGE_SCRIPT="$PROJECT_DIR/package_release.sh"
 DIST_DIR="$PROJECT_DIR/dist"
-APP_PLIST="$PROJECT_DIR/build-release/export/PaperBridge.app/Contents/Info.plist"
+APP_PLIST="$PROJECT_DIR/build-release.noindex/export/PaperBridge.app/Contents/Info.plist"
 
 fail() {
   printf 'Error: %s\n' "$1" >&2

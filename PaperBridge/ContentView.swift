@@ -105,7 +105,10 @@ struct ContentView: View {
             } else {
                 detail
                     .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
-                    .inspector(isPresented: $viewModel.isInspectorPresented) {
+                    .inspector(isPresented: Binding(
+                        get: { viewModel.pendingImport == nil && viewModel.isInspectorPresented },
+                        set: { if viewModel.pendingImport == nil { viewModel.isInspectorPresented = $0 } }
+                    )) {
                         SelectionInspectorView(viewModel: viewModel)
                             .inspectorColumnWidth(min: 280, ideal: 330, max: 420)
                     }
@@ -118,7 +121,7 @@ struct ContentView: View {
             detail
                 .frame(minHeight: 320, maxHeight: .infinity)
 
-            if viewModel.isInspectorPresented {
+            if viewModel.isInspectorPresented && viewModel.pendingImport == nil {
                 Divider()
 
                 SelectionInspectorView(viewModel: viewModel, placement: .bottomDrawer)
@@ -144,8 +147,17 @@ struct ContentView: View {
                         .padding(.vertical, 5).contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
+                .disabled(viewModel.pendingImport != nil)
 
-                if let paper = viewModel.loadedPaper {
+                if let pending = viewModel.pendingImport {
+                    SidebarCard(title: "Opening Document", icon: "doc.richtext") {
+                        Text(pending.filename)
+                            .font(.callout.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("The outline will appear when parsing is complete.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else if let paper = viewModel.loadedPaper {
                     DisclosureGroup("Document & Import", isExpanded: $isDocumentDetailsExpanded) {
                         sourceCard
                         documentCard(paper)
@@ -438,7 +450,9 @@ struct ContentView: View {
         ZStack {
             PaperBridgeBackground()
 
-            if viewModel.loadedPaper == nil {
+            if let pending = viewModel.pendingImport {
+                importWorkspace(pending)
+            } else if viewModel.loadedPaper == nil {
                 emptyState
             } else {
                 workspace
@@ -490,6 +504,57 @@ struct ContentView: View {
         }
     }
 
+    private func importWorkspace(_ pending: PendingDocumentImport) -> some View {
+        VStack(spacing: 0) {
+            workspaceHeader
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Label("OPENING YOUR PAPER", systemImage: "doc.text.magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PaperBridgeTheme.accent)
+                    Text(pending.filename)
+                        .font(.system(size: 28, weight: .semibold, design: .serif))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SurfaceCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(alignment: .top, spacing: 12) {
+                                ProgressView().controlSize(.small)
+                                Text(viewModel.statusMessage)
+                                    .font(.headline)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("documentImportStage")
+                            }
+                            ProgressView().progressViewStyle(.linear)
+                            TimelineView(.periodic(from: pending.startedAt, by: 1)) { context in
+                                let seconds = max(0, Int(context.date.timeIntervalSince(pending.startedAt)))
+                                Text("Elapsed \(seconds / 60)m \(seconds % 60)s")
+                                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            Text("Layout, formula, and text recognition can take several minutes, especially on the first run. This step prepares the document; translation has not started.")
+                                .font(.callout).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    HStack(alignment: .top, spacing: 16) {
+                        Button("Cancel Import", action: viewModel.cancelCurrentTask)
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                        if let previous = viewModel.loadedPaper {
+                            Text("Your previous paper, \(previous.name), is kept. Cancel to return to it.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .frame(maxWidth: 680, alignment: .leading)
+                .padding(32)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+
     private var workspaceHeader: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .center, spacing: 14) {
@@ -521,13 +586,15 @@ struct ContentView: View {
                             .fill(PaperBridgeTheme.translation)
                             .frame(width: 5, height: 26)
 
-                        Text(viewModel.loadedPaper?.name ?? "Untitled Paper")
+                        Text(viewModel.pendingImport?.filename ?? viewModel.loadedPaper?.name ?? "Untitled Paper")
                             .font(.system(size: 25, weight: .semibold, design: .serif))
                             .foregroundStyle(PaperBridgeTheme.ink)
                             .lineLimit(1)
+                            .help(viewModel.pendingImport?.filename ?? viewModel.loadedPaper?.name ?? "")
                     }
 
                     Text(
+                        viewModel.pendingImport != nil ? "Opening PDF · Local document processing" :
                         "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
                     )
                     .font(.caption)
@@ -568,24 +635,27 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
                 .help("Show or hide Research Inspector")
             }
+            .disabled(viewModel.pendingImport != nil)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    workspaceModePicker
-                    Spacer()
-                    primaryActions
-                }
+            if viewModel.pendingImport == nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        workspaceModePicker
+                        Spacer()
+                        primaryActions
+                    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    workspaceModePicker
-                    primaryActions
+                    VStack(alignment: .leading, spacing: 10) {
+                        workspaceModePicker
+                        primaryActions
+                    }
                 }
-            }
-            if let message = viewModel.primarySetupMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let message = viewModel.primarySetupMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(.horizontal, 20)

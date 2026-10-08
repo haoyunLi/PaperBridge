@@ -80,7 +80,8 @@ final class MinerUService {
         originalFilename: String,
         checksum: String,
         configuredPath: String,
-        backend: MinerUBackend
+        backend: MinerUBackend,
+        onProgress: (@Sendable (String) async -> Void)? = nil
     ) async throws -> MinerUExtraction {
         let executable = try resolveExecutable(configuredPath: configuredPath)
         let workspace = try workspaceURLs(
@@ -131,7 +132,8 @@ final class MinerUService {
         let terminationStatus = try await run(
             executable: executable,
             arguments: arguments,
-            logURL: workspace.log
+            logURL: workspace.log,
+            onProgress: onProgress
         )
         try Task.checkCancellation()
 
@@ -161,7 +163,8 @@ final class MinerUService {
     private func run(
         executable: URL,
         arguments: [String],
-        logURL: URL
+        logURL: URL,
+        onProgress: (@Sendable (String) async -> Void)?
     ) async throws -> Int32 {
         let process = Process()
         process.executableURL = executable
@@ -173,6 +176,21 @@ final class MinerUService {
         process.standardOutput = logHandle
         process.standardError = logHandle
 
+        // Read a bounded tail off the main actor; tqdm uses CRs and some workers leave NUL gaps.
+        let progressTask = Task.detached(priority: .utility) {
+            guard let onProgress else { return }
+            var previous: String?
+            while !Task.isCancelled {
+                if let message = Self.progressMessage(logURL: logURL), message != previous {
+                    previous = message
+                    await onProgress(message)
+                }
+                do { try await Task.sleep(for: .seconds(1)) }
+                catch { return }
+            }
+        }
+        defer { progressTask.cancel() }
+
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 process.terminationHandler = { [weak self] finishedProcess in
@@ -182,8 +200,10 @@ final class MinerUService {
                 }
 
                 do {
+                    try Task.checkCancellation()
                     setActiveProcess(process)
                     try process.run()
+                    if Task.isCancelled { process.terminate() }
                 } catch {
                     clearActiveProcess(process)
                     try? logHandle.close()
@@ -195,6 +215,48 @@ final class MinerUService {
                 process.terminate()
             }
         }
+    }
+
+    private static func progressMessage(logURL: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: logURL) else { return nil }
+        defer { try? handle.close() }
+        do {
+            let end = try handle.seekToEnd()
+            try handle.seek(toOffset: end > 65_536 ? end - 65_536 : 0)
+            let data = try handle.read(upToCount: 65_536) ?? Data()
+            return progressMessage(in: String(decoding: data, as: UTF8.self))
+        } catch { return nil }
+    }
+
+    static func progressMessage(in log: String) -> String? {
+        let cleaned = log.replacingOccurrences(of: "\u{0}", with: "")
+            .replacingOccurrences(of: #"\x1B\[[0-9;?]*[ -/]*[@-~]"#, with: "", options: .regularExpression)
+        for line in cleaned.components(separatedBy: .newlines).reversed() {
+            let stages = [
+                ("Layout Predict", "Recognizing page layout"),
+                ("MFR Predict", "Recognizing formulas"),
+                ("OCR-det", "Locating text"),
+                ("OCR-rec", "Recognizing text"),
+                ("Table Predict", "Recognizing tables"),
+                ("Processing pages", "Assembling pages")
+            ]
+            if let stage = stages.first(where: { line.contains($0.0) }) {
+                // These are stage counts, not an overall document percentage.
+                let counter = line.range(of: #"\b\d+\s*/\s*\d+\b"#, options: .regularExpression)
+                    .map { " (\(line[$0]))" } ?? ""
+                return "MinerU: \(stage.1)\(counter)..."
+            }
+            if line.contains("Completed batch") {
+                return "MinerU: Finishing document reconstruction..."
+            }
+            if line.contains("DocAnalysis init") || line.contains("Loading weights") {
+                return "MinerU: Loading recognition models..."
+            }
+            if line.contains("Submitting batch") || line.contains("Started local mineru-api") {
+                return "MinerU: Preparing pages for recognition..."
+            }
+        }
+        return nil
     }
 
     private func resolveExecutable(configuredPath: String) throws -> URL {

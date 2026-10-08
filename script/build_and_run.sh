@@ -1,8 +1,10 @@
 #!/bin/zsh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD="$ROOT/build-audit-fixes"
-APP="$BUILD/Build/Products/Debug/PaperBridge.app"
+BUILD="$ROOT/build-dev.noindex"
+USER_APPLICATIONS="${PAPERBRIDGE_DEV_APP_DIR:-${HOME}/Applications}"
+APP="$USER_APPLICATIONS/PaperBridge Dev.app"
+EXECUTABLE="$APP/Contents/MacOS/PaperBridge Dev"
 MODE=run
 ISOLATED=0
 for option in "$@"; do
@@ -14,27 +16,31 @@ for option in "$@"; do
 done
 
 # Stop only this development build, never the installed release.
-pkill -f "$APP/Contents/MacOS/PaperBridge" >/dev/null 2>&1 || true
+pkill -f "$EXECUTABLE" >/dev/null 2>&1 || true
+mkdir -p "$BUILD" "$USER_APPLICATIONS"
+touch "$BUILD/.metadata_never_index"
 PACKAGE_FLAGS=()
-if [[ -d "$ROOT/build-update/SourcePackages/checkouts/Sparkle" ]]; then
-  PACKAGE_FLAGS=(-clonedSourcePackagesDirPath "$ROOT/build-update/SourcePackages" -disableAutomaticPackageResolution)
+PACKAGE_CACHE="$ROOT/build-release.noindex/DerivedData/SourcePackages"
+if [[ -d "$PACKAGE_CACHE/checkouts/Sparkle" ]]; then
+  PACKAGE_FLAGS=(-clonedSourcePackagesDirPath "$PACKAGE_CACHE" -disableAutomaticPackageResolution)
 fi
 xcodebuild -quiet -project "$ROOT/PaperBridge.xcodeproj" -scheme PaperBridge \
   -configuration Debug -destination "platform=macOS,arch=$(uname -m)" \
   -derivedDataPath "$BUILD" -packageAuthorizationProvider netrc \
-  "${PACKAGE_FLAGS[@]}" CODE_SIGNING_ALLOWED=NO build
+  "${PACKAGE_FLAGS[@]}" CONFIGURATION_BUILD_DIR="$USER_APPLICATIONS" \
+  CODE_SIGNING_ALLOWED=NO build
 
 APP_ARGS=()
 if (( ISOLATED )); then
   APP_ARGS=(--paperbridge-workspace "$BUILD/QAWorkspace")
 fi
 if [[ "$MODE" == --debug ]]; then
-  exec lldb -- "$APP/Contents/MacOS/PaperBridge" "${APP_ARGS[@]}"
+  exec lldb -- "$EXECUTABLE" "${APP_ARGS[@]}"
 fi
 open -n "$APP" --args "${APP_ARGS[@]}"
 case "$MODE" in
-  --verify) sleep 2; pgrep -f "$APP/Contents/MacOS/PaperBridge" >/dev/null ;;
-  --logs) exec /usr/bin/log stream --info --style compact --predicate 'process == "PaperBridge"' ;;
-  --telemetry) exec /usr/bin/log stream --info --style compact --predicate 'subsystem == "com.haoyunli.PaperBridge"' ;;
+  --verify) sleep 2; pgrep -f "$EXECUTABLE" >/dev/null ;;
+  --logs) exec /usr/bin/log stream --info --style compact --predicate 'process == "PaperBridge Dev"' ;;
+  --telemetry) exec /usr/bin/log stream --info --style compact --predicate 'subsystem == "com.haoyunli.PaperBridge.dev"' ;;
 esac
 printf 'Opened %s\n' "$APP"

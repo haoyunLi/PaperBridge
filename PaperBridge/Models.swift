@@ -1,5 +1,11 @@
 import Foundation
 
+struct PendingDocumentImport: Equatable {
+    let id = UUID()
+    let filename: String
+    let startedAt = Date()
+}
+
 struct AppSettings: Hashable, Codable {
     var ollamaBaseURL = "http://localhost:11434"
     var translationModel = "translategemma:4b"

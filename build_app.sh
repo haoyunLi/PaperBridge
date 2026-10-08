@@ -5,7 +5,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_PATH="$PROJECT_DIR/PaperBridge.xcodeproj"
 SCHEME_NAME="PaperBridge"
-BUILD_DIR="$PROJECT_DIR/build"
+BUILD_DIR="$PROJECT_DIR/build.noindex"
 APP_PATH="$BUILD_DIR/Build/Products/Release/PaperBridge.app"
 DEFAULT_XCODE_DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
 
@@ -51,6 +51,8 @@ if [[ ! -d "$PROJECT_PATH" ]]; then
 fi
 
 echo "Building $SCHEME_NAME..."
+mkdir -p "$BUILD_DIR"
+touch "$BUILD_DIR/.metadata_never_index"
 
 "$DEVELOPER_DIR/usr/bin/xcodebuild" \
   -project "$PROJECT_PATH" \
@@ -66,13 +68,6 @@ if [[ ! -d "$APP_PATH" ]]; then
   exit 1
 fi
 
-# Register this exact build so Finder, the Dock, and Open With refresh bundle metadata.
-LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-touch "$APP_PATH"
-if [[ -x "$LSREGISTER" ]]; then
-  "$LSREGISTER" -f "$APP_PATH" >/dev/null 2>&1 || true
-fi
-
 cat <<EOF
 
 Build finished successfully.
@@ -85,4 +80,7 @@ Open it with:
 
 Open the build folder with:
   open "$(dirname "$APP_PATH")"
+
+This temporary source-build folder is excluded from Spotlight so it does not
+create duplicate PaperBridge entries in Applications or Open With.
 EOF

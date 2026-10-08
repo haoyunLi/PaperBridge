@@ -83,6 +83,7 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var progressValue = 0.0
     @Published var isProgressIndeterminate = false
     @Published var isBusy = false
+    @Published private(set) var pendingImport: PendingDocumentImport?
     @Published var errorMessage: String?
     @Published var isImporterPresented = false
     @Published var isExporterPresented = false
@@ -141,7 +142,7 @@ final class PaperReaderViewModel: ObservableObject {
     private var positionSaveTask: Task<Void, Never>?
 
     let ollamaClient: OllamaClient
-    let minerUService = MinerUService()
+    let minerUService: MinerUService
     let localToolInstaller = LocalToolInstaller()
     let workspaceStore: WorkspaceStore
     private let markdownBundleExporter = MarkdownBundleExporter()
@@ -165,9 +166,11 @@ final class PaperReaderViewModel: ObservableObject {
     var selectionLookupCache: [String: String] = [:]
     private var isRestoringWorkspace = false
 
-    init(workspaceStore: WorkspaceStore = WorkspaceStore(), ollamaClient: OllamaClient = OllamaClient()) {
+    init(workspaceStore: WorkspaceStore = WorkspaceStore(), ollamaClient: OllamaClient = OllamaClient(),
+         minerUService: MinerUService = MinerUService()) {
         self.workspaceStore = workspaceStore
         self.ollamaClient = ollamaClient
+        self.minerUService = minerUService
         workspaceStore.onSaveStatus = { [weak self] error in
             Task { @MainActor [weak self] in self?.workspaceSaveError = error }
         }
@@ -527,6 +530,7 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func clearSavedData() {
+        pendingImport = nil
         noteSaveTask?.cancel()
         noteSaveTask = nil
         isNoteSavePending = false
@@ -687,6 +691,8 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func cancelCurrentTask() {
+        let wasImporting = pendingImport != nil
+        pendingImport = nil
         activeTask?.cancel()
         activeTaskID = nil
         translationRunID = nil
@@ -696,7 +702,7 @@ final class PaperReaderViewModel: ObservableObject {
         activeTask = nil
         isBusy = false
         isProgressIndeterminate = false
-        statusMessage = "The current task was cancelled."
+        statusMessage = wasImporting ? "Import cancelled. No saved documents were changed." : "The current task was cancelled."
         progressValue = 0
         persistWorkspace()
     }
@@ -736,9 +742,14 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func loadPDF(from url: URL, asNewCopy: Bool = false) {
-        startTask(initialStatus: "Loading PDF...") {
-            let paper = try await self.readPaper(from: url, asNewCopy: asNewCopy)
+        guard !isBusy else { return }
+        persistWorkspace()
+        let pending = PendingDocumentImport(filename: url.lastPathComponent)
+        pendingImport = pending
+        startTask(initialStatus: "Reading the selected PDF...") {
+            let paper = try await self.readPaper(from: url, asNewCopy: asNewCopy, importID: pending.id)
             try Task.checkCancellation()
+            guard self.pendingImport?.id == pending.id else { return }
             self.applyLoadedPaper(paper)
         }
     }
@@ -1455,17 +1466,19 @@ final class PaperReaderViewModel: ObservableObject {
     private func startTask(initialStatus: String, operation: @escaping @MainActor () async throws -> Void) {
         guard !isBusy else { return }
         let taskID = UUID()
+        let importingFilename = pendingImport?.filename
         activeTaskID = taskID
         errorMessage = nil
         isBusy = true
         statusMessage = initialStatus
         progressValue = 0
-        isProgressIndeterminate = false
+        isProgressIndeterminate = pendingImport != nil
 
         activeTask = Task { [weak self] in
             guard let self else { return }
             defer {
                 if self.activeTaskID == taskID {
+                    self.pendingImport = nil
                     self.activeTask = nil
                     self.activeTaskID = nil
                 }
@@ -1488,7 +1501,12 @@ final class PaperReaderViewModel: ObservableObject {
                 self.isBusy = false
                 self.progressValue = 0
                 self.isProgressIndeterminate = false
-                self.presentError(error.localizedDescription)
+                if let importingFilename {
+                    self.presentError("Could not open \(importingFilename).\n\n\(error.localizedDescription)")
+                    self.statusMessage = "Could not open \(importingFilename). No saved documents were changed."
+                } else {
+                    self.presentError(error.localizedDescription)
+                }
                 self.persistWorkspace()
             }
         }
@@ -1569,7 +1587,12 @@ final class PaperReaderViewModel: ObservableObject {
         statusMessage = status
     }
 
-    private func readPaper(from url: URL, asNewCopy: Bool = false) async throws -> PaperDocument {
+    private func updateImportStatus(_ message: String, importID: UUID) {
+        guard !Task.isCancelled, pendingImport?.id == importID else { return }
+        statusMessage = message
+    }
+
+    private func readPaper(from url: URL, asNewCopy: Bool = false, importID: UUID) async throws -> PaperDocument {
         let hasAccess = url.startAccessingSecurityScopedResource()
         defer {
             if hasAccess {
@@ -1585,6 +1608,7 @@ final class PaperReaderViewModel: ObservableObject {
         } catch {
             throw ReaderError.failedToReadFile(error.localizedDescription)
         }
+        try Task.checkCancellation()
 
         let checksum = asNewCopy ? Hashing.sha256(Hashing.sha256(data) + UUID().uuidString) : Hashing.sha256(data)
         if let saved = workspaceStore.loadWorkspace(checksum: checksum) {
@@ -1599,8 +1623,7 @@ final class PaperReaderViewModel: ObservableObject {
 
         let fileName = url.lastPathComponent + (asNewCopy ? " (new extraction)" : "")
         if settings.pdfExtractionMode != .pdfKitOnly {
-            statusMessage = "MinerU is reconstructing document layout, formulas, tables, and images..."
-            isProgressIndeterminate = true
+            updateImportStatus("Starting MinerU and loading local recognition models...", importID: importID)
 
             do {
                 let extraction = try await minerUService.extract(
@@ -1608,33 +1631,38 @@ final class PaperReaderViewModel: ObservableObject {
                     originalFilename: fileName,
                     checksum: checksum,
                     configuredPath: settings.minerUExecutablePath,
-                    backend: settings.minerUBackend
+                    backend: settings.minerUBackend,
+                    onProgress: { [weak self] message in
+                        await self?.updateImportStatus(message, importID: importID)
+                    }
                 )
                 try Task.checkCancellation()
-                isProgressIndeterminate = false
-                let paper = try Self.buildPaper(
-                    fromMinerUMarkdown: extraction.markdown,
-                    resourceDirectory: extraction.resourceDirectoryURL,
-                    name: fileName,
-                    checksum: checksum
-                )
+                updateImportStatus("Preparing paragraphs, figures, tables, and formulas for reading...", importID: importID)
+                let paper = try await Task.detached(priority: .userInitiated) {
+                    try Self.buildPaper(
+                        fromMinerUMarkdown: extraction.markdown,
+                        resourceDirectory: extraction.resourceDirectoryURL,
+                        name: fileName,
+                        checksum: checksum
+                    )
+                }.value
+                try Task.checkCancellation()
                 extractedPaperCache[extractionCacheKey] = paper
                 return paper
             } catch is CancellationError {
-                isProgressIndeterminate = false
                 throw CancellationError()
             } catch {
-                isProgressIndeterminate = false
+                try Task.checkCancellation()
                 if settings.pdfExtractionMode == .minerUOnly {
                     throw error
                 }
 
-                statusMessage = "MinerU could not parse this PDF. Using the model-free PDFKit facsimile..."
                 let paper = try await readWithPDFKit(
                     data: data,
                     fileName: fileName,
                     checksum: checksum,
-                    fallbackWarning: error.localizedDescription
+                    fallbackWarning: error.localizedDescription,
+                    importID: importID
                 )
                 extractedPaperCache[extractionCacheKey] = paper
                 return paper
@@ -1645,7 +1673,8 @@ final class PaperReaderViewModel: ObservableObject {
             data: data,
             fileName: fileName,
             checksum: checksum,
-            fallbackWarning: nil
+            fallbackWarning: nil,
+            importID: importID
         )
 
         extractedPaperCache[extractionCacheKey] = paper
@@ -1656,11 +1685,13 @@ final class PaperReaderViewModel: ObservableObject {
         data: Data,
         fileName: String,
         checksum: String,
-        fallbackWarning: String?
+        fallbackWarning: String?,
+        importID: UUID
     ) async throws -> PaperDocument {
-        statusMessage = "PDFKit is preserving the original pages without OCR..."
-        isProgressIndeterminate = true
-        defer { isProgressIndeterminate = false }
+        updateImportStatus(fallbackWarning == nil
+            ? "PDFKit is preserving the original pages without OCR..."
+            : "MinerU was unavailable or could not parse this PDF. PDFKit is preserving the original pages instead...",
+            importID: importID)
 
         var archive: PDFVisualArchive?
         var warnings = [fallbackWarning].compactMap { $0 }
@@ -1690,7 +1721,8 @@ final class PaperReaderViewModel: ObservableObject {
             warnings.append(error.localizedDescription)
         }
 
-        statusMessage = "Extracting the PDF's selectable text layer without OCR..."
+        try Task.checkCancellation()
+        updateImportStatus("Extracting the PDF's selectable text layer without OCR...", importID: importID)
         let extractionWarning = warnings.isEmpty ? nil : warnings.joined(separator: " ")
         return try await Task.detached(priority: .userInitiated) {
             try Self.buildPaper(

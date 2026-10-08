@@ -37,7 +37,9 @@ struct PaperBridgeApp: App {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
         if let index = arguments.firstIndex(of: "--paperbridge-workspace"), index + 1 < arguments.count {
-            return PaperReaderViewModel(workspaceStore: WorkspaceStore(rootURL: URL(fileURLWithPath: arguments[index + 1])))
+            let root = URL(fileURLWithPath: arguments[index + 1])
+            return PaperReaderViewModel(workspaceStore: WorkspaceStore(rootURL: root),
+                                        minerUService: MinerUService(workspaceRoot: root.appendingPathComponent("MinerU")))
         }
         #endif
         return PaperReaderViewModel()

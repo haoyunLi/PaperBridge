@@ -9,7 +9,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_PATH="$PROJECT_DIR/PaperBridge.xcodeproj"
 SCHEME_NAME="PaperBridge"
-BUILD_DIR="$PROJECT_DIR/build-release"
+BUILD_DIR="$PROJECT_DIR/build-release.noindex"
 DERIVED_DATA_PATH="$BUILD_DIR/DerivedData"
 ARCHIVE_PATH="$BUILD_DIR/PaperBridge.xcarchive"
 EXPORT_DIR="$BUILD_DIR/export"
@@ -96,6 +96,7 @@ printf 'Creating a signed Universal Xcode archive...\n'
 # Keep downloaded packages and preserved release symbols between builds.
 rm -rf "$ARCHIVE_PATH" "$EXPORT_DIR"
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
+touch "$BUILD_DIR/.metadata_never_index"
 
 "$DEVELOPER_DIR/usr/bin/xcodebuild" \
   -project "$PROJECT_PATH" \

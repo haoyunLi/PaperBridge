@@ -318,13 +318,13 @@ The script builds relative to the repository folder, so users do not need to edi
 If the build succeeds, the generated app will be here:
 
 ```text
-build/Build/Products/Release/PaperBridge.app
+build.noindex/Build/Products/Release/PaperBridge.app
 ```
 
 Open it with:
 
 ```bash
-open "build/Build/Products/Release/PaperBridge.app"
+open "build.noindex/Build/Products/Release/PaperBridge.app"
 ```
 
 ### 5. Complete local AI setup inside PaperBridge
@@ -425,7 +425,7 @@ ollama pull translategemma:4b
 ollama serve
 
 ./build_app.sh
-open "build/Build/Products/Release/PaperBridge.app"
+open "build.noindex/Build/Products/Release/PaperBridge.app"
 ```
 
 This manual flow builds and runs PaperBridge without MinerU or any OCR model. The in-app setup page is the recommended path for normal users.
@@ -493,6 +493,8 @@ A practical setup for most Macs is `translategemma:4b` plus optional `qwen3:4b-i
 1. Launch `PaperBridge.app`.
 2. Follow the automatic Getting Started guide to start Ollama, choose a TranslateGemma size, install the recommended MinerU parser, and optionally choose an explanation model.
 3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; MinerU may take several minutes on its first document.
+
+   When opening a PDF, its filename appears immediately in a dedicated import screen, with elapsed time and recognized MinerU stages (layout, formulas, and OCR). Stage counts are not an overall completion percentage. The previous paper's content is hidden until the new one is ready; **Cancel Import** or a failed import returns you to the previous paper without replacing its translations, notes, or reading position.
 4. Choose the `FROM` and `TO` languages in the left sidebar.
 5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
 6. Start in the `Paper` workspace. For any PDF, `Original` uses Apple's native PDF viewer with the unchanged source file. For MinerU papers, `Bilingual` renders the reflowed structured Markdown, formulas, figures, tables, and section hierarchy.
@@ -594,14 +596,22 @@ To build and open a separate Debug app without changing the installed release or
 ./script/build_and_run.sh --isolated --verify
 ```
 
-Its workspace is stored in `build-audit-fixes/QAWorkspace`. To add a clearly labeled sample document for UI checks, first close this development app, then run:
+Its workspace is stored in `build-dev.noindex/QAWorkspace`. The development app is installed separately as `~/Applications/PaperBridge Dev.app`, with its own Bundle ID, so it cannot be confused with the signed download in `/Applications`. The Run script and Xcode Debug builds both update this same development app instead of registering extra copies. To add a clearly labeled sample document for UI checks, first close this development app, then run:
 
 ```bash
-./test_reading_reliability.sh --write-fixture ./build-audit-fixes/QAWorkspace
+./test_reading_reliability.sh --write-fixture ./build-dev.noindex/QAWorkspace
 ./script/build_and_run.sh --isolated --verify
 ```
 
 The fixture command replaces only the named test workspace; do not point it at a real workspace. Its translations are demonstration text, not actual model output. These development steps are not needed by people installing the DMG.
+
+Release packaging uses `build-release.noindex/` for archives, exported apps, and staging copies. Keep temporary builds inside `.noindex` folders so Spotlight does not list them as additional installed apps. The downloadable DMGs remain in `dist/`.
+
+### Import feedback in 1.9.2
+
+Opening a PDF immediately replaces the old paper's visible title, outline, and content with a dedicated import screen for the selected file. Elapsed time and recognized MinerU stages explain what is happening while layout, formulas, and text are reconstructed. Stage counts are not an overall percentage; backends with different logs may retain a general processing message. Cancel or a failed import returns to the previous paper without replacing its saved work. This improves import feedback, not OCR or translation speed.
+
+Source builds also distinguish `PaperBridge Dev` from the downloaded release and keep temporary bundles in `.noindex` folders. Existing manually installed app copies are not removed automatically. See [the 1.9.2 release notes](docs/release-1.9.2.md).
 
 ### Reliability in 1.9
 
@@ -675,12 +685,12 @@ Try a smaller local model, such as:
 Try launching it from Terminal:
 
 ```bash
-open "build/Build/Products/Release/PaperBridge.app"
+open "build.noindex/Build/Products/Release/PaperBridge.app"
 ```
 
 ### Finder or the Dock still shows an old or generic icon
 
-Quit any older copy of PaperBridge, rebuild with `./build_app.sh`, and open the app from `build/Build/Products/Release`. The build script registers that exact app path with LaunchServices, and PaperBridge also refreshes its running icon from the bundled `AppIcon.icns`.
+Quit any older copy of PaperBridge, rebuild with `./build_app.sh`, and open the app from `build.noindex/Build/Products/Release`. The `.noindex` build folder prevents temporary source builds from accumulating in the macOS application library. PaperBridge also refreshes its running icon from the bundled `AppIcon.icns`.
 
 If the Dock still keeps an older cached image, restart only the Dock once:
 
@@ -691,7 +701,7 @@ killall Dock
 Then reopen:
 
 ```bash
-open "build/Build/Products/Release/PaperBridge.app"
+open "build.noindex/Build/Products/Release/PaperBridge.app"
 ```
 
 ## Sources
