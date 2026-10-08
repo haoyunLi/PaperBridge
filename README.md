@@ -5,7 +5,7 @@
 <h1 align="center">PaperBridge</h1>
 
 <p align="center">
-  <strong>A local-first academic paper reader for macOS.</strong><br>
+  <strong>A local-first academic paper reader for macOS, with a Windows development preview.</strong><br>
   Preserve the original PDF, read a structured paper, and translate or analyze it with local Ollama models.
 </p>
 
@@ -13,6 +13,8 @@
   <a href="https://paperbridges.net"><strong>Official Website</strong></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg"><strong>Download for macOS</strong></a>
+  &nbsp;·&nbsp;
+  <a href="windows/README.md"><strong>Windows development preview</strong></a>
   &nbsp;·&nbsp;
   <a href="#build-from-source"><strong>Build from Source</strong></a>
 </p>
@@ -39,6 +41,8 @@ It can also:
 - export original, translated, bilingual, and analysis Markdown with referenced assets
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
+
+The same repository contains the active [Windows development preview](windows/README.md), including six-section Settings, local Ollama/MinerU setup with AMD/NVIDIA-aware detection, MinerU Auto-Detect, restart-persistent update prompts, NSIS/portable packaging, and the 1.9.1 note reliability path: 350 ms autosave, edit-end/quit flush, session undo, fixed save status and retry. Its macOS 1.9 baseline and the remaining 1.9.1 gaps are tracked separately in the [feature mapping](windows/FEATURE_MAPPING.md) and [1.9.1 incremental report](windows/MAC_1_9_1_GAPS.md).
 
 ## Reading Continuity in 1.9.1
 
@@ -100,7 +104,7 @@ Each changed local JSON save retains one readable `.backup` beside it and automa
 ### Install the ready-made Mac app
 
 1. [Download PaperBridge.dmg](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), open it, and drag PaperBridge into Applications.
-2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required; Windows is not yet available.
+2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. A separate [Windows development preview](windows/README.md) is available from source.
 3. Choose your route below. The setup guide can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
 | What you want to do | What to install |
