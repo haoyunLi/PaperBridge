@@ -10,6 +10,7 @@ struct ContentView: View {
     @ObservedObject var viewModel: PaperReaderViewModel
     var onShowGettingStarted: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openSettings) private var openSettings
     @State private var isDropTargeted = false
     @State private var isPasteTextExpanded = false
     @State private var hasAppeared = false
@@ -378,7 +379,21 @@ struct ContentView: View {
     }
 
     private var localStatusCard: some View {
-        SidebarCard(title: "Local Engine", icon: "cpu") {
+        SidebarCard(title: viewModel.aiProviderLabel, icon: viewModel.settings.aiProvider == .ollama ? "cpu" : "cloud") {
+            if viewModel.settings.aiProvider == .openAI {
+                Text(viewModel.isOpenAIOptInConfirmed ? "Text analysis uses OpenAI. API usage is billed to your account." : "Online analysis is paused. Enable it in Settings > Models.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(viewModel.settings.activeTranslationModel.isEmpty ? "No translation model selected" : viewModel.settings.activeTranslationModel)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                Button("Open AI Settings") {
+                    viewModel.isAISettingsRequested = true
+                    openSettings()
+                }
+                    .buttonStyle(.borderless)
+            } else {
             HStack {
                 OllamaStatusBadge(
                     isRefreshing: viewModel.isRefreshingModels,
@@ -400,6 +415,7 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
             }
 
             Divider()
@@ -595,7 +611,7 @@ struct ContentView: View {
 
                     Text(
                         viewModel.pendingImport != nil ? "Opening PDF · Local document processing" :
-                        "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
+                        "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.aiProviderLabel) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -710,15 +726,23 @@ struct ContentView: View {
         .frame(maxWidth: 540)
     }
 
+    private func showAISetup() {
+        if viewModel.settings.aiProvider == .openAI {
+            viewModel.isAISettingsRequested = true
+            openSettings()
+        }
+        else { onShowGettingStarted() }
+    }
+
     @ViewBuilder
     private var primaryActions: some View {
         HStack(spacing: 8) {
             Button {
-                if viewModel.primarySetupMessage != nil { onShowGettingStarted() }
+                if viewModel.primarySetupMessage != nil { showAISetup() }
                 else { viewModel.performPrimaryWorkspaceAction() }
             } label: {
                 Label(
-                    viewModel.primarySetupMessage == nil ? primaryWorkspaceActionTitle : "Set Up Local AI",
+                    viewModel.primarySetupMessage == nil ? primaryWorkspaceActionTitle : (viewModel.settings.aiProvider == .ollama ? "Set Up Local AI" : "Set Up OpenAI"),
                     systemImage: primaryWorkspaceActionIcon
                 )
             }
@@ -1215,12 +1239,12 @@ struct ContentView: View {
                 } else {
                     generationEmptyState(
                         title: "AI Summary (Optional)",
-                        description: "Use a local summary model for a shorter source/target-language overview. Model output can be wrong; use the source map above to verify it.",
+                        description: "Use your selected AI provider for a shorter source/target-language overview. Model output can be wrong; use the source map above to verify it.",
                         icon: "list.bullet.rectangle",
                         buttonTitle: viewModel.primarySetupMessage == nil ? "Generate Summary" : "Set Up Summary",
                         isEnabled: viewModel.canSummarize,
                         action: {
-                            if viewModel.primarySetupMessage != nil { onShowGettingStarted() }
+                            if viewModel.primarySetupMessage != nil { showAISetup() }
                             else { viewModel.generateSummaries() }
                         }
                     )
@@ -1939,7 +1963,7 @@ struct ContentView: View {
                 color: PaperBridgeTheme.warning
             )
 
-            Text("Paper analysis stays on this Mac")
+            Text("Local by default · Optional OpenAI analysis in Settings")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PaperBridgeTheme.accentDark)
                 .padding(.horizontal, 20)

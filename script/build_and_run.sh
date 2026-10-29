@@ -28,7 +28,10 @@ xcodebuild -quiet -project "$ROOT/PaperBridge.xcodeproj" -scheme PaperBridge \
   -configuration Debug -destination "platform=macOS,arch=$(uname -m)" \
   -derivedDataPath "$BUILD" -packageAuthorizationProvider netrc \
   "${PACKAGE_FLAGS[@]}" CONFIGURATION_BUILD_DIR="$USER_APPLICATIONS" \
-  CODE_SIGNING_ALLOWED=NO build
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" build
+
+# Xcode signs nested frameworks as well; no Apple account is required for ad-hoc signing.
+/usr/bin/codesign --verify --deep --strict "$APP"
 
 APP_ARGS=()
 if (( ISOLATED )); then

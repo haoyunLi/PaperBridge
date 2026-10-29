@@ -95,6 +95,7 @@ struct ReadingReliabilityRegression {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockOllamaProtocol.self]
         let client = OllamaClient(session: URLSession(configuration: config))
+        try await verifyOpenAIIntegration(root: root, client: client)
         try await verifyPendingImport(root: root, client: client)
         try await verifyNoteAutosaveAndNavigation(root: root, client: client)
         try verifyReadingGuide()

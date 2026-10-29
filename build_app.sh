@@ -59,7 +59,7 @@ touch "$BUILD_DIR/.metadata_never_index"
   -scheme "$SCHEME_NAME" \
   -configuration Release \
   -derivedDataPath "$BUILD_DIR" \
-  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" \
   build
 
 if [[ ! -d "$APP_PATH" ]]; then
@@ -67,6 +67,9 @@ if [[ ! -d "$APP_PATH" ]]; then
   echo "  $APP_PATH"
   exit 1
 fi
+
+# Source builds use an ad-hoc identity; public releases still require Developer ID signing.
+/usr/bin/codesign --verify --deep --strict "$APP_PATH"
 
 cat <<EOF
 

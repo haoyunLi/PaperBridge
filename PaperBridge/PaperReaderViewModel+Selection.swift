@@ -44,6 +44,7 @@ extension PaperReaderViewModel {
         if activeTextSelection?.identity != selection.identity {
             finishNoteEditing()
             selectionTask?.cancel()
+            selectionRunID = nil
             isSelectionLookupBusy = false
             selectionLookupError = nil
             selectionLookupStatus = ""
@@ -64,6 +65,7 @@ extension PaperReaderViewModel {
         isQuickLookupPresented = false
         selectionTask?.cancel()
         selectionTask = nil
+        selectionRunID = nil
         activeTextSelection = nil
         selectionTranslation = ""
         selectionExplanation = ""
@@ -91,6 +93,7 @@ extension PaperReaderViewModel {
     func cancelSelectionLookup() {
         selectionTask?.cancel()
         selectionTask = nil
+        selectionRunID = nil
         isSelectionLookupBusy = false
         selectionLookupStatus = "Quick lookup cancelled."
     }
@@ -308,6 +311,8 @@ extension PaperReaderViewModel {
         }
 
         selectionTask?.cancel()
+        let runID = UUID()
+        selectionRunID = runID
         selectionLookupError = nil
         isSelectionLookupBusy = true
 
@@ -329,6 +334,8 @@ extension PaperReaderViewModel {
             }
             selectionLookupStatus = "Using cached quick lookup."
             isSelectionLookupBusy = false
+            selectionTask = nil
+            selectionRunID = nil
             return
         }
 
@@ -357,40 +364,38 @@ extension PaperReaderViewModel {
                         result = selection.text
                     } else {
                         self.selectionLookupStatus = "Translating selection..."
-                        try await self.ollamaClient.ensureModelAvailable(
-                            baseURL: settings.ollamaBaseURL,
-                            model: settings.quickLookupModel
+                        try await self.ensureAIModelAvailable(
+                            settings: settings,
+                            model: settings.activeQuickLookupModel
                         )
-                        let firstPass = try await self.ollamaClient.generate(
-                            baseURL: settings.ollamaBaseURL,
-                            model: settings.quickLookupModel,
+                        let firstPass = try await self.generateAI(
+                            settings: settings,
+                            model: settings.activeQuickLookupModel,
                             prompt: PromptLibrary.selectionTranslationPrompt(
                                 selection: selection.text,
                                 context: context,
                                 from: sourceLanguage,
                                 to: targetLanguage
                             ),
-                            systemPrompt: PromptLibrary.selectionTranslationSystemPrompt(
-                                targetLanguage: targetLanguage
-                            ) + terms
+                            systemPrompt: self.translationInstructions(settings: settings, targetLanguage: targetLanguage, selection: true) + terms
                         )
 
                         if SelectionTranslationPolicy.isLikelyOverexpanded(
                             output: firstPass,
                             comparedTo: selection.text
                         ) {
+                            // Never issue an extra billable request without a new user action.
+                            if settings.aiProvider == .openAI { throw AISetupError.selectionTooLong }
                             self.selectionLookupStatus = "Refining exact selection..."
-                            result = try await self.ollamaClient.generate(
-                                baseURL: settings.ollamaBaseURL,
-                                model: settings.quickLookupModel,
+                            result = try await self.generateAI(
+                                settings: settings,
+                                model: settings.activeQuickLookupModel,
                                 prompt: PromptLibrary.strictSelectionTranslationPrompt(
                                     selection: selection.text,
                                     from: sourceLanguage,
                                     to: targetLanguage
                                 ),
-                                systemPrompt: PromptLibrary.selectionTranslationSystemPrompt(
-                                    targetLanguage: targetLanguage
-                                ) + terms
+                                systemPrompt: self.translationInstructions(settings: settings, targetLanguage: targetLanguage, selection: true) + terms
                             )
                         } else {
                             result = firstPass
@@ -399,13 +404,13 @@ extension PaperReaderViewModel {
 
                 case .explanation:
                     self.selectionLookupStatus = "Explaining selection..."
-                    try await self.ollamaClient.ensureModelAvailable(
-                        baseURL: settings.ollamaBaseURL,
-                        model: settings.quickLookupModel
+                    try await self.ensureAIModelAvailable(
+                        settings: settings,
+                        model: settings.activeQuickLookupModel
                     )
-                    result = try await self.ollamaClient.generate(
-                        baseURL: settings.ollamaBaseURL,
-                        model: settings.quickLookupModel,
+                    result = try await self.generateAI(
+                        settings: settings,
+                        model: settings.activeQuickLookupModel,
                         prompt: PromptLibrary.selectionExplanationPrompt(
                             selection: selection.text,
                             context: context,
@@ -416,7 +421,7 @@ extension PaperReaderViewModel {
                 }
 
                 try Task.checkCancellation()
-                guard self.activeTextSelection == selection else { return }
+                guard self.activeTextSelection == selection, self.selectionRunID == runID else { return }
 
                 self.selectionLookupCache[cacheKey] = result
                 if action == .translation {
@@ -428,16 +433,19 @@ extension PaperReaderViewModel {
                 }
                 self.isSelectionLookupBusy = false
                 self.selectionTask = nil
+                self.selectionRunID = nil
             } catch is CancellationError {
-                guard self.activeTextSelection == selection else { return }
+                guard self.activeTextSelection == selection, self.selectionRunID == runID else { return }
                 self.isSelectionLookupBusy = false
                 self.selectionTask = nil
+                self.selectionRunID = nil
             } catch {
-                guard self.activeTextSelection == selection else { return }
+                guard self.activeTextSelection == selection, self.selectionRunID == runID else { return }
                 self.selectionLookupError = error.localizedDescription
                 self.selectionLookupStatus = ""
                 self.isSelectionLookupBusy = false
                 self.selectionTask = nil
+                self.selectionRunID = nil
             }
         }
     }
@@ -475,8 +483,8 @@ extension PaperReaderViewModel {
             [
                 paperChecksum,
                 action.rawValue,
-                settings.ollamaBaseURL,
-                settings.quickLookupModel,
+                settings.aiCacheNamespace,
+                settings.activeQuickLookupModel,
                 settings.sourceLanguage.rawValue,
                 settings.targetLanguage.rawValue,
                 explanationLanguage.rawValue,

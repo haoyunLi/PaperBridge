@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>A local-first academic paper reader for macOS.</strong><br>
-  Preserve the original PDF, read a structured paper, and translate or analyze it with local Ollama models.
+  Preserve the original PDF, read a structured paper, and translate or analyze it with local Ollama models or opt-in OpenAI.
 </p>
 
 <p align="center">
@@ -18,10 +18,12 @@
 </p>
 
 <p align="center">
-  <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-only</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU recommended</code> &nbsp; <code>Ollama</code>
+  <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-first</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU recommended</code> &nbsp; <code>Ollama</code> &nbsp; <code>OpenAI optional</code>
 </p>
 
-`PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. Analysis prompts are sent only to your local Ollama server.
+> **OpenAI support requires PaperBridge 1.10.0 or later.** Ollama stays the default. Online text processing requires your own API key, selected models, and explicit permission for the current session.
+
+`PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. **Local Ollama remains the default.** You can explicitly choose OpenAI for online text processing with your own API key, task models, and session consent. PaperBridge never switches providers automatically.
 The bilingual reader remains available in aligned source/target order:
 
 - original paragraph
@@ -39,6 +41,16 @@ It can also:
 - export original, translated, bilingual, and analysis Markdown with referenced assets
 - accept pasted text directly when you do not want to load a PDF
 - restore the most recent paper, translations, reading position, bookmarks, and annotations
+
+## New in 1.10.0
+
+- **Choose local or online AI:** keep Ollama, or use your own OpenAI API key with separate translation, summary, explanation, and selected-text models. Model discovery is explicit; no model is chosen automatically.
+- **Keep control of online requests:** review the data boundary, allow the current session, and revoke permission at any time. The key lives in macOS Keychain, not workspace JSON or exports. OpenAI API usage is billed separately from ChatGPT.
+- **Translate complete items:** improved prompts handle individual words, phrases, headings, and paragraphs without asking for extra context, while protecting scientific identifiers, formulas, images, and meaningful Markdown structure. A matching glossary and optional style guide help keep terminology consistent.
+- **Keep earlier results:** switching providers or models saves output variants locally so you can return to them after restarting. Online consent is never restored from saved papers.
+- **See which PDF is opening:** the selected filename and import progress replace stale content immediately; cancelling or failing an import preserves the previous paper and its notes.
+
+See the [1.10.0 release notes](docs/release-1.10.0.md) and [OpenAI setup guide](#optional-openai-setup). Install the latest signed DMG or choose **PaperBridge > Check for Updates**. No Xcode or Homebrew is needed to use the downloaded app.
 
 ## Reading Continuity in 1.9.1
 
@@ -106,9 +118,10 @@ Each changed local JSON save retains one readable `.backup` beside it and automa
 | What you want to do | What to install |
 | --- | --- |
 | Read the original PDF, highlight selectable text, and take notes | PaperBridge alone. PDFKit is built in; an image-only scan requires OCR for selectable text. |
-| Translate paragraphs or a whole paper | Ollama plus a translation model. Setup offers TranslateGemma 4B, 12B, and 27B; choose a size appropriate for your Mac. |
+| Translate paragraphs or a whole paper locally | Ollama plus a translation model. Setup offers TranslateGemma 4B, 12B, and 27B; choose a size appropriate for your Mac. |
 | Improve reading order and preserve structured figures, tables, and formulas | MinerU is a separate recommended setup step. Without it, PDFKit retains exact pages but cannot reconstruct their semantic structure. |
-| Explain a phrase or summarize the paper | An optional explanation/summary model in Ollama, such as one of the Gemma or Qwen choices in setup. Translation settings can also be needed for bilingual outputs. |
+| Explain a phrase or summarize the paper locally | An optional explanation/summary model in Ollama, such as one of the Gemma or Qwen choices in setup. Translation settings can also be needed for bilingual outputs. |
+| Use OpenAI instead of local inference (1.10.0+) | No Ollama model download is needed. Configure your API key and accessible task models under `Settings > Models > OpenAI`, then explicitly consent to online text processing for the session. API usage is paid separately from ChatGPT. |
 
 Initial downloads require internet, disk space, and time. Model size on disk does not guarantee that it will fit in runtime memory; MinerU recommends at least 16 GB RAM. The smaller translation model is a useful starting point when resources are limited.
 
@@ -123,6 +136,31 @@ Initial downloads require internet, disk space, and time. Model size on disk doe
 Figures are not repainted or translated internally. Captions can be translated; formulas and supported resource blocks remain protected. MinerU Markdown preserves semantic reading order, not PDF page coordinates. Always use Original for a precise visual check.
 
 [Explore the website feature guide](https://paperbridges.net/#capabilities) for task-by-task explanations and [choose a setup route](https://paperbridges.net/#getting-started). Website updates do not themselves publish app updates; use `Check for Updates` after a signed release becomes available.
+
+## Optional OpenAI Setup
+
+Available in **PaperBridge 1.10.0 and later**. Older versions continue to use local Ollama.
+
+The default remains **Ollama (Local)**, including for older saved settings. OpenAI is optional, and its four model fields start empty. Changing providers preserves your local model choices; no model or cloud fallback is chosen for you.
+
+Outputs for each provider/model/language are retained locally in `~/Library/Application Support/PaperBridge/AIVariants` across settings changes and app restarts without restoring cloud consent; clearing data under `Settings > Local Data` removes these variants too.
+
+1. Open `PaperBridge > Settings > Models > OpenAI (Online)`.
+2. Create a key in your own [OpenAI API project](https://platform.openai.com/api-keys), enter it in the secure field, and click **Save Key**. PaperBridge stores it in the local macOS Keychain (iCloud synchronization disabled), never in settings, workspace JSON, or exports. The input clears after saving or leaving the OpenAI view. Use **Replace Saved Key** or **Remove Key** explicitly to manage it. Never put an API key in Git, source files, screenshots, or diagnostic logs.
+3. Optionally click **Refresh Available Models**. This makes an authenticated `GET /v1/models` request, not an inference request, and sends no paper text. Merely opening settings checks local key status; it does not fetch models, validate the key online, or make paid test calls.
+4. Choose a model your API project can access for **Translation**, **Summary**, **Paragraph explanation**, and **Quick lookup**, or type each model ID manually. The model list is not capability or pricing data: a listed model is not necessarily suitable for text generation through the Responses API. Check the model's support and cost before use. **Use Translation Model for All Tasks** explicitly copies your translation choice to the other three tasks; otherwise they remain independent. Empty fields are unconfigured, not hidden defaults.
+5. Read the data boundary below and enable **I allow this text to be sent to OpenAI for this session**. Consent is session-only and must be renewed after relaunch. Enabling it does not itself send a request. Start translation, summary, explanation, or lookup explicitly in the reader. You can revoke consent in the settings header, including during an active task; this stops active OpenAI requests but cannot recall text already sent.
+6. Optionally add a **Translation Style Guide** under `Settings > Reading` (up to 2,000 characters). It is sent with translation instructions to the selected provider. Do not put secrets in it.
+
+PaperBridge uses your default macOS Keychain, normally the login Keychain; normal Mac backup or migration can include it. Local source builds use ad-hoc code signing without requiring an Apple account, and macOS may prompt for Keychain access again after rebuilding. Published releases retain their existing signing.
+
+### Cloud Data Boundary and Costs
+
+- PDF parsing and local recovery remain on the Mac. PaperBridge sends text to OpenAI, **not PDF files or image bytes**.
+- Selection requests include selected text, nearby context, the paper title, and matching saved terminology. Paragraph tasks send the requested text and relevant context. Full translation and summary send the **full extracted paper text in batches**, not just the currently visible selection. Translation instructions can include your optional style guide.
+- Text generation uses the **Responses API** with `store: false`. That setting does **not** promise zero retention; abuse-monitoring logs and other applicable retention policies may still apply. Review [OpenAI's data controls](https://developers.openai.com/api/docs/guides/your-data) before sending sensitive, unpublished, or restricted material.
+- OpenAI API usage is paid separately from ChatGPT. Cost depends on your chosen model and the text processed; whole-paper workflows can make multiple paid requests. Review your [API usage and costs](https://platform.openai.com/usage). PaperBridge does not choose an expensive default model or run automatic paid test calls.
+- Missing keys, missing models, errors, or denied consent do not trigger an automatic provider fallback. Choose **Ollama (Local)** yourself to return to local inference. Removing local workspace data does not recall text already sent to OpenAI; manage the API key separately under `Settings > Models > OpenAI`.
 
 ## App Preview
 
@@ -173,16 +211,19 @@ flowchart LR
     A --> C{"Choose a local parser"}
     C -->|"MinerU, optional"| D["Structured Markdown, images, tables, LaTeX"]
     C -->|"No OCR models"| E["PDFKit text layer and page facsimiles"]
-    D --> F["Local Ollama models"]
-    E --> F
+    D --> P{"Choose AI provider"}
+    E --> P
+    P -->|"Default"| F["Local Ollama models"]
+    P -->|"Explicit consent; text only"| O["OpenAI Responses API"]
     F --> G["Bilingual reader, summary, explanation"]
+    O --> G
     B --> H["Exact original preview"]
     D --> I["Markdown bundle with assets"]
     E --> I
     B --> I
 ```
 
-PDF parsing, translation, summary, explanation, preview generation, and caching happen on the Mac. PaperBridge does not require a cloud API.
+PDF parsing, preview generation, and caching happen on the Mac. With the default Ollama provider, translation, summary, and explanation also run locally. If you choose OpenAI and consent, those text requests go to OpenAI. A cloud API is not required for the local workflow.
 
 ## Features
 
@@ -192,10 +233,11 @@ PDF parsing, translation, summary, explanation, preview generation, and caching 
 - Exact native PDF preview plus high-resolution page images for portable Markdown export
 - Offline WebKit + bundled MathJax preview for formulas, images, and tables
 - Local Ollama inference with `URLSession`
+- Optional OpenAI Responses API with explicit session consent, local macOS Keychain storage (iCloud synchronization disabled), and independently chosen task models
 - First-launch setup guide with separate pages for Ollama, TranslateGemma 4B/12B/27B, recommended MinerU, and optional explanation models
 - In-app update checks and installation from signed, notarized GitHub Releases
 - Selectable translation direction
-- PDF upload and pasted-text input
+- Local PDF import and pasted-text input
 - Automatic detection of installed Ollama models
 - Dedicated model settings for translation, summary, paragraph explanation, and quick lookup
 - Progress bar during translation
@@ -332,7 +374,7 @@ open "build.noindex/Build/Products/Release/PaperBridge.app"
 The Getting Started guide opens automatically on the first launch:
 
 1. Click `Install Ollama`, or `Start Ollama` when it is already installed.
-2. Choose TranslateGemma 4B, 12B, or 27B. This is the only required model download for translation.
+2. Choose TranslateGemma 4B, 12B, or 27B. This is the only required model download for the local translation route. The optional OpenAI route needs no Ollama download; see [Optional OpenAI Setup](#optional-openai-setup).
 3. Install MinerU for semantic Markdown, formulas, tables, images, and reading-order reconstruction. MinerU is optional, but strongly recommended for the best PaperBridge experience.
 4. Optionally choose a compact explanation model for summaries, paragraph explanations, and selected-text lookup.
 
@@ -432,7 +474,7 @@ This manual flow builds and runs PaperBridge without MinerU or any OCR model. Th
 
 ## How the App Uses Models
 
-When the app starts, it queries your local Ollama installation and automatically lists the models you already pulled.
+Ollama model discovery queries your local installation and lists the models you already pulled. OpenAI model discovery is separate and runs only when you click **Refresh Available Models** under `Settings > Models > OpenAI`. It sends no paper text and does not choose a task model.
 
 Inside the app, you can choose:
 
@@ -459,13 +501,13 @@ The current UI includes common language options such as:
 - Portuguese
 - Russian
 
-The app does not require one fixed model family. It will show whatever Ollama reports locally.
+The app does not require one fixed model family. For Ollama, it shows what the local server reports. For OpenAI, choose accessible text-generation models compatible with the Responses API; model listing alone does not establish capability or price. Local and OpenAI task selections are stored separately.
 
-## Recommended Model Choices
+## Recommended Local Model Choices
 
 The exact best choice depends on your Mac's memory and speed.
 
-### Translation models (required)
+### Translation models (required for local translation)
 
 | Model | Download | Suggested Mac | Use case |
 | --- | ---: | --- | --- |
@@ -491,7 +533,7 @@ A practical setup for most Macs is `translategemma:4b` plus optional `qwen3:4b-i
 ## How to Use the App
 
 1. Launch `PaperBridge.app`.
-2. Follow the automatic Getting Started guide to start Ollama, choose a TranslateGemma size, install the recommended MinerU parser, and optionally choose an explanation model.
+2. For the default local route, follow the automatic Getting Started guide to start Ollama, choose a TranslateGemma size, install the recommended MinerU parser, and optionally choose an explanation model. Alternatively, explicitly configure the [OpenAI route](#optional-openai-setup); PDF parsing remains local.
 3. Open a PDF, drag one into the window, or paste text into the sidebar. PDFKit facsimile needs no model; MinerU may take several minutes on its first document.
 
    When opening a PDF, its filename appears immediately in a dedicated import screen, with elapsed time and recognized MinerU stages (layout, formulas, and OCR). Stage counts are not an overall completion percentage. The previous paper's content is hidden until the new one is ready; **Cancel Import** or a failed import returns you to the previous paper without replacing its translations, notes, or reading position.
@@ -499,7 +541,7 @@ A practical setup for most Macs is `translategemma:4b` plus optional `qwen3:4b-i
 5. Open `Parser, Models & Settings` to choose the PDF parser, four task models, and translation chunk limit.
 6. Start in the `Paper` workspace. For any PDF, `Original` uses Apple's native PDF viewer with the unchanged source file. For MinerU papers, `Bilingual` renders the reflowed structured Markdown, formulas, figures, tables, and section hierarchy.
 7. Open `Reader` for clean analysis blocks and the aligned bilingual reading workflow. Manual paragraph repair is available only for PDFKit or pasted-text documents because MinerU controls structured Markdown layout.
-8. Click `Translate` for aligned block-by-block translation. Formula, image, URL, code, and HTML tokens are protected before requests are sent to Ollama.
+8. Click `Translate` for aligned block-by-block translation. Formula, image, URL, code, and HTML tokens are protected before text requests are sent to your selected AI provider. In OpenAI mode, this is an online API operation requiring session consent.
 9. Select text in `Paper`, `Reader`, either `Summary` panel, or `Full Translation` to open the Research Inspector. From there you can translate, explain, highlight, or attach a note to the exact selection.
 10. Use the bookmark button on a paragraph to add it to the sidebar's bookmark list.
 11. Open the `Summary` workspace for source- and target-language summaries.
@@ -550,14 +592,16 @@ PaperBridge stores recovery data only on the current Mac:
 
 This includes app settings, MinerU Markdown/assets, the most recent workspace, translated blocks, summaries, bookmarks, highlights, and notes. Use `Parser, Models & Settings > Local Data` to clear this recovery data.
 
+Local recovery does not mean all inference is local: the optional OpenAI provider sends the text described in [Cloud Data Boundary and Costs](#cloud-data-boundary-and-costs). The API key is stored separately in the local macOS Keychain (iCloud synchronization disabled), never in these workspace files or exported bundles; normal Mac backup or migration can include the Keychain. Manage or remove the key under `Settings > Models > OpenAI`. Clearing local data cannot retract requests already sent to OpenAI.
+
 ## Behavior Notes
 
-- MinerU and PDFKit process PDFs locally. Internet access is used only when downloading optional tools/models or retrieving the signed update feed from the official GitHub Releases; paper content is never sent with update checks.
+- MinerU and PDFKit process PDFs locally. Internet access is used for optional tools/model downloads, signed updates from official GitHub Releases, and explicitly requested OpenAI model discovery or text processing. Paper content is never sent with update checks; OpenAI text requests follow the consent and data boundary above.
 - MinerU Markdown follows the paper's detected semantic structure and reading order, not its exact page geometry. The unchanged `original.pdf` remains the source of truth for visual comparison.
 - PDFKit facsimile uses only Apple frameworks already included with macOS. It saves an unchanged original PDF plus page images, so equations and figures remain visually exact even when semantic extraction is imperfect.
 - To prevent very long papers from consuming excessive disk space, portable PNG previews are capped at the first 120 pages. The unchanged `original.pdf` and native PDF viewer still contain every page.
-- Without OCR, an image-only scanned PDF has no text to send to Ollama. PaperBridge still enables exact preview and Markdown bundle export, but disables translation, summary, and explanation.
-- The app can also process pasted text locally without needing a PDF file.
+- Without OCR, an image-only scanned PDF has no extracted text to send to either AI provider. PaperBridge still enables exact preview and Markdown bundle export, but disables translation, summary, and explanation.
+- The app can also process pasted text without a PDF file, using the selected local or explicitly enabled online provider.
 - Ollama calls are restricted to `localhost`, `127.0.0.1`, or `::1` on your Mac.
 - Building under `~/Projects` is recommended to avoid macOS protected-folder issues.
 - The translation direction is configurable. English to Simplified Chinese is only the default, not the only option.
@@ -565,7 +609,7 @@ This includes app settings, MinerU Markdown/assets, the most recent workspace, t
 - Translation chunks are split at sentence or clause boundaries whenever possible, then reassembled into one translated paragraph.
 - PDF line-wrap fragments such as `mea- sure` and `out- perform` are repaired while established compounds such as `model-based` remain hyphenated.
 - MinerU headings remain independent Markdown heading blocks and drive the document outline.
-- If one paragraph translation fails, the rest continue.
+- Recoverable paragraph translation failures allow the remaining paragraphs to continue. In OpenAI mode, missing consent/setup, invalid credentials, access/model errors, and rate/quota limits stop the run instead of repeating the same failing request for every paragraph. Resolve the error before explicitly resuming.
 - Failed paragraphs have an individual `Retry` button.
 - Full-paper translation is optional and is not run automatically with the reader translation.
 - If the app confidently detects a `References` or `Bibliography` section, it excludes those blocks from translation, summary, and explanation while retaining the original references in preview and exported Markdown.
@@ -584,11 +628,12 @@ The tests cover cross-page words, spaced PDF word fragments, incomplete phrases,
 Run the reading reliability checks as well:
 
 ```bash
+./test_openai_client.sh
 ./test_reading_reliability.sh
 ./test_markdown_interaction.sh
 ```
 
-These use temporary fixtures and a simulated Ollama response, not your papers or downloaded models. The WebKit test needs a logged-in macOS graphical session. The scripts use Xcode's Swift tools; there are no additional testing dependencies.
+These use temporary fixtures and simulated model responses, not your papers, downloaded models, or a live OpenAI API. OpenAI tests use a fake key store or inspect Keychain error types without reading or writing your Keychain. The reading reliability script includes OpenAI integration checks for consent, per-task routing, cancellation, and quota-stop behavior. The WebKit test needs a logged-in macOS graphical session. The scripts use Xcode's Swift tools; there are no additional testing dependencies.
 
 To build and open a separate Debug app without changing the installed release or your saved papers:
 
@@ -607,11 +652,11 @@ The fixture command replaces only the named test workspace; do not point it at a
 
 Release packaging uses `build-release.noindex/` for archives, exported apps, and staging copies. Keep temporary builds inside `.noindex` folders so Spotlight does not list them as additional installed apps. The downloadable DMGs remain in `dist/`.
 
-### Import feedback in 1.9.2
+### Import feedback included in 1.10.0
 
 Opening a PDF immediately replaces the old paper's visible title, outline, and content with a dedicated import screen for the selected file. Elapsed time and recognized MinerU stages explain what is happening while layout, formulas, and text are reconstructed. Stage counts are not an overall percentage; backends with different logs may retain a general processing message. Cancel or a failed import returns to the previous paper without replacing its saved work. This improves import feedback, not OCR or translation speed.
 
-Source builds also distinguish `PaperBridge Dev` from the downloaded release and keep temporary bundles in `.noindex` folders. Existing manually installed app copies are not removed automatically. See [the 1.9.2 release notes](docs/release-1.9.2.md).
+Source builds also distinguish `PaperBridge Dev` from the downloaded release and keep temporary bundles in `.noindex` folders. Existing manually installed app copies are not removed automatically. These changes were prepared for 1.9.2 and ship with 1.10.0; see [release notes](docs/release-1.10.0.md).
 
 ### Reliability in 1.9
 
@@ -619,7 +664,7 @@ This reliability update fixes resuming partially translated papers, restoring ca
 
 Reader search stays above the scrolling paper and opens with `Command-F`. Bookmarks include a text preview, document/import controls collapse during reading, and narrower windows use a bottom inspector instead of squeezing in a third column. Reader block positions, original PDF pages, and Markdown reading positions are saved locally. Setup downloads can continue in the background, and save errors are surfaced instead of silently discarded.
 
-Version 1.9.1 is distributed as a signed, notarized Universal DMG and through the existing signed automatic-update feed. Existing screenshots show the earlier interface; interactive website examples explain the newer reading tools. See [the reliability update notes](docs/reliability-update.md) for validation coverage and remaining work.
+Releases are distributed as signed, notarized Universal DMGs and through the signed automatic-update feed. Existing screenshots show the earlier interface; interactive website examples explain newer reading tools. See [the reliability update notes](docs/reliability-update.md) for earlier validation coverage and [the 1.10.0 notes](docs/release-1.10.0.md) for online-provider validation limits.
 
 ## Troubleshooting
 
@@ -633,7 +678,7 @@ sudo xcodebuild -license accept
 sudo xcodebuild -runFirstLaunch
 ```
 
-### The app opens but no models appear
+### No local Ollama models appear
 
 Open `Settings > Local AI`. Start or install Ollama, then download or select one of the TranslateGemma cards. The equivalent manual commands are:
 
@@ -648,6 +693,12 @@ ollama pull translategemma:4b
 ```
 
 Then relaunch the app or click `Refresh Models`.
+
+### OpenAI has no models or a request is rejected
+
+Open `Settings > Models > OpenAI`, save a key from the intended API project, and explicitly refresh available models or enter a known model ID. Choose models accessible to that project and compatible with text generation through the Responses API; the model list is not a capability check. Configure every task you intend to use, review API billing/usage, and confirm consent for the current session. PaperBridge does not switch to another model or provider automatically after an error. Do not share your key in a bug report.
+
+Key and model-discovery errors appear in a single banner above the OpenAI settings form, including while the form is scrolled. Provider, key, model, and style edits are locked during active main or selection-lookup tasks. Consent can still be revoked in the Models tab or settings header. Rate/quota failures stop further batches; resolve billing or access issues before explicitly resuming.
 
 ### PaperBridge says MinerU is unavailable
 
