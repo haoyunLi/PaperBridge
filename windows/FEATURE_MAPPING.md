@@ -165,8 +165,8 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G11 | 后台下载及进度、取消 | 引导与 SetupPanel 显示进度及取消。验证阶段退出或中断可恢复旧版；已验证的新版可保留。检测会避开其他实例正在修复的环境。 | 部分 | AMD 真机验证正常退出、预下载取消及验证前后强制终止，随后用 DirectML 解析双页扫描。整机断电和其他设备仍待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L；菜单项随论文、任务、选区和更新检查状态动态启停 | 部分 | 状态转换有单元覆盖，空白页、论文、选区、忙碌任务、撤销及重开引导有 Electron 菜单回归；其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
-| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 公开安装版 0.2.8 检测到 0.2.9，安装新版后显示已是当前版本。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 两个 0.2.9 下载均通过 SHA-256 核对。0.2.8 检测到更新并升级，保留论文和标注。0.2.9 便携版通过 AMD 译文保存和重启恢复。发布包当前未签名。 |
+| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 公开安装版 0.2.9 检测到 0.2.10，安装新版后显示已是当前版本。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 两个 0.2.10 下载均通过 SHA-256 核对。0.2.9 检测到更新并升级，保留论文和标注。0.2.10 便携版通过 AMD 译文、外观重置和重启恢复。发布包当前未签名。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 
