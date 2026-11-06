@@ -64,9 +64,11 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'papers', `${id}.json`), JSON.stringify({
     id, name: 'Markdown parity fixture', type: 'text', blocks,
     mineruMarkdown: parts.join('\n\n'), sourceMode: 'mineru', extraction: 'MinerU',
-    summary: { source: formula, target: formula, sourceLanguage: 'English', targetLanguage: 'Chinese' },
+    summary: { source: formula + '\n\nSecond stack.', target: formula, sourceLanguage: 'English', targetLanguage: 'Chinese' },
     viewNotes: [{ id: 'shifted-summary', scope: 'summarySource', text: 'stack', offset: null,
-      renderedAnchor: { offset: 2, before: 'A ', after: ' was here' }, body: 'A changed summary annotation' }],
+      renderedAnchor: { offset: 2, before: 'A ', after: ' was here' }, body: 'A changed summary annotation' },
+    { id: 'moved-summary', scope: 'summarySource', text: 'identical layers', offset: null,
+      renderedAnchor: { offset: 0, before: '', after: ' was here' }, body: 'A moved summary phrase' }],
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     position: { tab: 'Paper', block: 1, displayMode: 'bilingual' }
   }));
@@ -98,9 +100,10 @@ async function run() {
     fontSize: 21, lineHeight: 1.9, readingWidth: 700, autoCheckUpdates: false, onboardingCompletedVersion: 1,
     ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
+  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app;
   try {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launch();
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Markdown parity fixture' }).waitFor();
@@ -254,7 +257,7 @@ async function run() {
       await page.evaluate(() => window.getSelection().removeAllRanges());
       await page.keyboard.press('Control+Shift+ArrowRight');
       assert.equal(await page.locator('.inspector blockquote').textContent(), 'A');
-      assert.equal(await selectFormula(card.locator('p')), formulaQuote);
+      assert.equal(await selectFormula(card.locator('p').first()), formulaQuote);
       await page.locator('.inspector .highlight.coral').click();
       await page.locator('.inspector textarea').fill(`Formula in ${side}`);
       await page.getByRole('button', { name: 'Save note' }).click();
@@ -288,6 +291,17 @@ async function run() {
         return fragment.textContent === quote && document.querySelector('.inspector textarea')?.value === note;
       }, { quote: formulaQuote, note });
     }
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'A moved summary phrase' }).locator('button').first().click();
+    await page.waitForFunction(() => window.getSelection()?.toString() === 'identical layers');
+    assert.equal(await page.locator('.inspector textarea').inputValue(), 'A moved summary phrase');
+    await page.locator('.inspector textarea').fill('Edited the moved summary phrase.');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    await page.waitForFunction(async paperId => {
+      const saved = await window.paperBridge.loadPaper(paperId);
+      const notes = saved?.viewNotes.filter(item => item.scope === 'summarySource' && item.text === 'identical layers');
+      return notes?.length === 1 && notes[0].id === 'moved-summary' && notes[0].body === 'Edited the moved summary phrase.' &&
+        notes[0].offset === saved.summary.source.indexOf(notes[0].text) && !notes[0].renderedAnchor;
+    }, id);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'A changed summary annotation' }).locator('button').first().click();
     await page.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
     await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.viewNotes.find(item => item.id === 'shifted-summary')?.needsReview, id);
@@ -364,10 +378,37 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
     await app.close();
     const savedPath = path.join(workspace, 'papers', `${id}.json`);
+    const moved = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+    moved.blocks[0].sourceMarkdown = '# Reframed research title';
+    moved.blocks[0].text = moved.blocks[0].sourceMarkdown;
+    moved.connectedTranslation = 'Revised introduction.\n\n' + moved.connectedTranslation;
+    const crossRecord = moved.viewNotes.find(item => item.body === crossNote);
+    fs.writeFileSync(savedPath, JSON.stringify(moved));
+    app = await launch();
+    const relocated = await app.firstWindow();
+    await waitForNoteUnderline(relocated, '[data-view-scope="paperArticle"]', crossQuote);
+    await relocated.locator('.saved-annotations .annotation-row').filter({ hasText: 'Full translation formula selection' }).locator('button').first().click();
+    await waitForNoteUnderline(relocated, '[data-view-scope="fullTranslation"]', formulaQuote);
+    assert.equal(await relocated.locator('.inspector textarea').inputValue(), 'Full translation formula selection');
+    await relocated.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
+    await waitForNoteUnderline(relocated, '[data-view-scope="paperArticle"]', crossQuote);
+    assert.equal(await relocated.locator('.inspector textarea').inputValue(), crossNote);
+    const relocatedBody = crossNote + ' Edited after the source moved.';
+    await relocated.locator('.inspector textarea').fill(relocatedBody);
+    await relocated.getByRole('button', { name: 'Save note' }).click();
+    await relocated.waitForFunction(async ({ id, old, relocatedBody }) => {
+      const paper = await window.paperBridge.loadPaper(id);
+      const notes = paper?.viewNotes.filter(item => item.scope === 'paperArticle');
+      return notes?.length === 1 && notes[0].id === old.id && notes[0].body === relocatedBody &&
+        notes[0].renderedAnchor.offset > old.renderedAnchor.offset;
+    }, { id, old: crossRecord, relocatedBody });
+    await app.close();
+
     const changed = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
     changed.blocks[1].sourceMarkdown = changed.blocks[1].sourceMarkdown.replace('Ashish', 'Changed');
+    changed.blocks[1].text = changed.blocks[1].text.replace('Ashish', 'Changed');
     fs.writeFileSync(savedPath, JSON.stringify(changed));
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launch();
     const reopened = await app.firstWindow();
     await reopened.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
     await reopened.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
@@ -375,11 +416,21 @@ async function run() {
     assert.equal(await reopened.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])]
       .some(range => range.startContainer.parentElement.closest('[data-paper-block-id="1"]') &&
         range.endContainer.parentElement.closest('[data-paper-block-id="2"]'))), false);
-    await reopened.waitForFunction(async ({ id, crossNote, crossQuote }) => {
-      const record = (await window.paperBridge.loadPaper(id))?.viewNotes.find(item => item.body === crossNote);
+    await reopened.waitForFunction(async ({ id, relocatedBody, crossQuote }) => {
+      const record = (await window.paperBridge.loadPaper(id))?.viewNotes.find(item => item.body === relocatedBody);
       return record?.needsReview && record.text === crossQuote;
-    }, { id, crossNote, crossQuote });
-    console.log('Markdown rendering, cross-section Paper annotations, and shared full translation, retry, and export verified.');
+    }, { id, relocatedBody, crossQuote });
+    await reopened.locator('.saved-annotations .annotation-row').filter({ hasText: 'Author marker is preserved.' }).locator('button').first().click();
+    await reopened.waitForFunction(() => window.getSelection()?.toString() === 'Vaswani∗');
+    assert.equal(await reopened.locator('.inspector textarea').inputValue(), 'Author marker is preserved.');
+    await waitForNoteUnderline(reopened, '#block-2 .source-text', 'Vaswani∗');
+    await reopened.locator('.inspector .highlight.teal').click();
+    await reopened.waitForFunction(async paperId => {
+      const block = (await window.paperBridge.loadPaper(paperId))?.blocks[1];
+      const highlights = block?.highlights.filter(item => item.scope === 'reader' && item.text === 'Vaswani∗');
+      return highlights?.length === 1 && highlights[0].color === 'teal' && highlights[0].offset === 'Changed '.length;
+    }, id);
+    console.log('Markdown rendering, displaced and ambiguous annotations, and shared full translation, retry, and export verified.');
   } finally {
     await app?.close();
     await new Promise(resolve => ollama.close(resolve));

@@ -50,16 +50,18 @@ function updateNotes(notes, selection, body, makeId, extra = {}) {
   const existing = current.find(item => matches(selection, item));
   if (body === '') return existing ? current.filter(item => item !== existing) : current;
   const display = {
+    offset: selection.offset,
     ...(selection.displayOffset == null ? {} : { displayOffset: selection.displayOffset }),
-    ...(selection.renderedAnchor && { renderedAnchor: selection.renderedAnchor }),
+    ...((selection.renderedAnchor || existing?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
     ...(isPdfScope(selection.scope) && selection.quote != null ? { quote: selection.quote } : {})
   };
   if (existing) {
-    if (existing.body === body && Object.entries(display).every(([key, value]) => key === 'renderedAnchor' || existing[key] === value)) return current;
+    if (existing.body === body && sameTextAnchor(existing, { text: selection.text, ...display }) &&
+        Object.entries(display).every(([key, value]) => key === 'renderedAnchor' || existing[key] === value)) return current;
     return current.map(item => item === existing ? { ...item, body, ...display } : item);
   }
   return [...current, {
-    id: makeId(), text: selection.text, offset: selection.offset, body,
+    id: makeId(), text: selection.text, body,
     ...display,
     ...extra
   }];

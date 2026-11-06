@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
-import { blockMarkdown, isMarkdownView, paperArticleAnchorAvailable, paperArticleSource, renderedAnchorOffset, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
+import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
@@ -125,7 +125,7 @@ function domText(root, visibleOnly) {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node.textContent;
   return text;
 }
-function annotationRanges(root, annotations) {
+function annotationRanges(root, annotations, source) {
   const walker = textWalker(root, true);
   const nodes = [];
   let node;
@@ -137,11 +137,8 @@ function annotationRanges(root, annotations) {
   const result = Object.fromEntries(annotationStyles.map(style => [style, []]));
   for (const item of annotations) {
     const style = item.color || (typeof item.body === 'string' && item.body.trim() ? 'note' : null);
-    if (!Object.hasOwn(result, style) || !item.text || item.needsReview) continue;
-    const first = text.indexOf(item.text);
-    const displayAt = Number.isInteger(item.displayOffset) && text.slice(item.displayOffset, item.displayOffset + item.text.length) === item.text ? item.displayOffset : -1;
-    const at = item.renderedAnchor ? renderedAnchorOffset(text, item)
-      : displayAt >= 0 ? displayAt : text.slice(item.offset, item.offset + item.text.length) === item.text ? item.offset : first >= 0 && first === text.lastIndexOf(item.text) ? first : null;
+    if (!Object.hasOwn(result, style)) continue;
+    const at = markdownAnnotationOffset(text, item, source);
     if (at === null) continue;
     const start = nodes.find(item => item.end > at);
     const end = nodes.find(node => node.end >= at + item.text.length);
@@ -153,18 +150,18 @@ function annotationRanges(root, annotations) {
   }
   return result;
 }
-function useRichAnnotations(host, content, annotations) {
+function useRichAnnotations(host, content, annotations, source) {
   const highlightKey = useRef({});
   useEffect(() => {
     if (!annotations?.length || !host.current || !CSS.highlights) return;
-    richHighlights.set(highlightKey.current, annotationRanges(host.current, annotations));
+    richHighlights.set(highlightKey.current, annotationRanges(host.current, annotations, source));
     refreshRichHighlights();
     return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
-  }, [host, content, annotations]);
+  }, [host, content, annotations, source]);
 }
-function Markdown({ children, annotations }) {
+function Markdown({ children, annotations, annotationSource = children }) {
   const host = useRef(null);
-  useRichAnnotations(host, children, annotations);
+  useRichAnnotations(host, children, annotations, annotationSource);
   return <div ref={host} data-markdown-host><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
 }
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
@@ -181,19 +178,8 @@ function domRangeIn(root, range, visibleOnly = false) {
   const rect = range.getBoundingClientRect();
   return { text, offset, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
 }
-function exactAnchorOffset(context, selection) {
-  if (context === selection.context) return selection.offset;
-  const { text } = selection;
-  let sourceAt = context.indexOf(text);
-  let displayAt = selection.context.indexOf(text);
-  let match = null;
-  // Rendered formatting can hide raw occurrences or create new ones.
-  while (sourceAt >= 0 && displayAt >= 0) {
-    if (displayAt === selection.offset) match = sourceAt;
-    sourceAt = context.indexOf(text, sourceAt + text.length);
-    displayAt = selection.context.indexOf(text, displayAt + text.length);
-  }
-  return sourceAt < 0 && displayAt < 0 ? match : null;
+function textSelectionOffsets(captured, source, markdown) {
+  return selectionOffsets(captured, matchingTextOffset(captured.context, source, captured.text, captured.offset), markdown, source);
 }
 function textRangeAt(root, offset, length, visibleOnly = false) {
   if (!root || !Number.isInteger(offset) || offset < 0 || !Number.isInteger(length) || length <= 0) return null;
@@ -236,7 +222,9 @@ function markdownViewTab(scope) {
 function markdownViewLabel(scope) {
   return scope === 'paperArticle' ? 'Paper · document preview' : scope;
 }
-function validBlockAnchor(block, item, kind) { return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), blockMarkdown(block, kind)); }
+function validBlockAnchor(block, item, kind, markdown = blockMarkdown(block, kind)) {
+  return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), markdown);
+}
 function blockAnnotationScope(item) { return item?.scope === 'paper' ? 'paper' : 'reader'; }
 function blockAnnotationsFor(items, scope) { return (items || []).filter(item => blockAnnotationScope(item) === scope); }
 function viewAnnotations(paper, scope) {
@@ -310,7 +298,7 @@ function withHighlight(text, highlights = []) {
 function PlainText({ as: Element = 'div', children, highlights, notes, ...attributes }) {
   const host = useRef(null);
   const content = withHighlight(children, highlights);
-  useRichAnnotations(host, content, notes);
+  useRichAnnotations(host, content, notes, children);
   return <Element ref={host} {...attributes}>{content}</Element>;
 }
 function BlockPassage({ block, kind, scope, structured = true, ...attributes }) {
@@ -319,8 +307,8 @@ function BlockPassage({ block, kind, scope, structured = true, ...attributes }) 
   const markdown = structured && blockMarkdown(block, kind);
   const highlights = blockAnnotationsFor(translation ? block.translationHighlights : block.highlights, scope);
   const notes = blockAnnotationsFor(block.notes, scope)
-    .filter(item => (item.kind || 'source') === kind && validBlockAnchor(block, item, kind));
-  if (markdown) return <div {...attributes}><Markdown annotations={[...highlights, ...notes]}>{markdown}</Markdown></div>;
+    .filter(item => (item.kind || 'source') === kind && validBlockAnchor(block, item, kind, markdown || false));
+  if (markdown) return <div {...attributes}><Markdown annotations={[...highlights, ...notes]} annotationSource={anchorText(block, kind)}>{markdown}</Markdown></div>;
   if (scope === 'paper') return <div {...attributes}>
     <PlainText as={block.heading ? 'h3' : 'p'} highlights={highlights} notes={notes}>{text}</PlainText>
   </div>;
@@ -1366,20 +1354,21 @@ function App() {
     if (article && (displayMode !== viewNavigation.displayMode || paperArticleSource(paper).mode !== viewNavigation.sourceMode)) return;
     const surface = document.querySelector(`[data-view-scope="${viewNavigation.scope}"]`);
     const host = article ? surface : surface?.querySelector('[data-markdown-host]');
-    const source = domText(host, true);
-    const savedOffset = viewNavigation.displayOffset;
-    const exact = Number.isInteger(savedOffset) && source.slice(savedOffset, savedOffset + viewNavigation.text.length) === viewNavigation.text ? savedOffset : null;
-    const first = source.indexOf(viewNavigation.text);
-    const offset = viewNavigation.renderedAnchor ? renderedAnchorOffset(source, viewNavigation)
-      : exact ?? (first >= 0 && first === source.lastIndexOf(viewNavigation.text) ? first : null);
-    const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, viewNavigation.text.length, true);
+    const rendered = domText(host, true);
+    const source = viewText(paper, viewNavigation.scope);
+    const { text, scope } = viewNavigation;
+    const offset = markdownAnnotationOffset(rendered, viewNavigation, source);
+    const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, text.length, true);
     if (!range) { markViewAnchorForReview(viewNavigation); setViewNavigation(null); return; }
     const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
     range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-    setSelection({ ...viewNavigation, id: null, kind: article ? viewNavigation.kind || 'source' : viewNavigation.scope === 'summarySource' ? 'source' : 'translation', displayOffset: offset, rect: null,
-      context: source.slice(Math.max(0, offset - 300), offset + viewNavigation.text.length + 300),
-      ...(viewNavigation.renderedAnchor && { renderedSource: article ? paperArticleSource(paper) : viewText(paper, viewNavigation.scope), renderedText: source }) });
-    setSelectionResults({}); setNoteDraft(findSelectionNote(paper, viewNavigation)?.body || ''); setInspector(true); setViewNavigation(null);
+    const captured = { text, offset, context: rendered };
+    const position = article ? {
+      ...selectionOffsets(captured, null, paperArticleSource(paper)), displayMode: viewNavigation.displayMode, sourceMode: viewNavigation.sourceMode
+    } : textSelectionOffsets(captured, source, source);
+    applyReadingSelection({ id: null, kind: article ? viewNavigation.kind || 'source' : scope === 'summarySource' ? 'source' : 'translation',
+      text, scope, ...position, rect: null, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
+    setInspector(true); setViewNavigation(null);
   }, [viewNavigation?.requestId, tab, displayMode, paper?.id]);
   const command = name => {
     if (name === 'dismiss') { dismissModal(); setSelection(null); return; }
@@ -1450,12 +1439,10 @@ function App() {
         : document.querySelector(`[data-block-id="${request.blockId}"][data-kind="${request.kind}"]`);
       const rich = Boolean(root?.querySelector('[data-markdown-host]'));
       const rendered = domText(root, rich);
-      const displayAt = Number.isInteger(request.displayOffset) && rendered.slice(request.displayOffset, request.displayOffset + request.text.length) === request.text ? request.displayOffset : null;
-      const sourceAt = Number.isInteger(request.offset) && rendered.slice(request.offset, request.offset + request.text.length) === request.text ? request.offset : null;
-      const first = rendered.indexOf(request.text);
-      const at = request.renderedAnchor ? renderedAnchorOffset(rendered, request)
-        : displayAt ?? sourceAt ?? (first >= 0 && first === rendered.lastIndexOf(request.text) ? first : null);
-      const range = block && validBlockAnchor(block, request, request.kind) && at !== null ? textRangeAt(root, at, request.text.length, rich) : null;
+      const source = anchorText(block, request.kind);
+      const markdown = rich && blockMarkdown(block, request.kind);
+      const at = markdownAnnotationOffset(rendered, request, source);
+      const range = block && validBlockAnchor(block, request, request.kind, markdown) && at !== null ? textRangeAt(root, at, request.text.length, rich) : null;
       if (!range) {
         commitPaper(current => ({ ...current, blocks: current.blocks.map(item => item.id !== request.blockId ? item : request.recordType === 'note'
           ? { ...item, notes: (item.notes || []).map(note => note.id === request.id ? { ...note, needsReview: true } : note) }
@@ -1466,10 +1453,10 @@ function App() {
       }
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-      const nextSelection = { id: block.id, kind: request.kind, text: request.text, offset: request.offset, displayOffset: at, scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300),
-        ...(request.renderedAnchor && { renderedAnchor: request.renderedAnchor, renderedSource: blockMarkdown(block, request.kind), renderedText: rendered }) };
-      setSelection(nextSelection);
-      setSelectionResults({}); setNoteDraft(findSelectionNote(paperRef.current, nextSelection)?.body || ''); setInspector(true); setBlockNavigation(null);
+      const captured = { text: request.text, offset: at, context: rendered };
+      applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, ...textSelectionOffsets(captured, source, markdown),
+        scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
+      setInspector(true); setBlockNavigation(null);
     }));
     return () => { cancelled = true; };
   }, [blockNavigation?.requestId, tab, displayMode, paper?.id]);
@@ -2050,8 +2037,7 @@ function App() {
     const kind = element.dataset.kind || 'source';
     const source = anchorText(block, kind);
     const { text, rect } = captured;
-    const offset = exactAnchorOffset(source, captured);
-    const nextSelection = { id: block?.id ?? null, kind, text, ...selectionOffsets(captured, offset, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
+    const nextSelection = { id: block?.id ?? null, kind, text, ...textSelectionOffsets(captured, source, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
       context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     return applyReadingSelection(nextSelection);
   }
@@ -2078,7 +2064,7 @@ function App() {
       if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
       const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
-        ...(selection.renderedAnchor && { renderedAnchor: selection.renderedAnchor }),
+        ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
         ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind }), color };
       commitPaper(current => ({ ...current, viewHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
       setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved in the annotation list.');
@@ -2093,7 +2079,7 @@ function App() {
     if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
     rememberUndo();
     const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
-      ...(selection.renderedAnchor && { renderedAnchor: selection.renderedAnchor }), color };
+      ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), color };
     updateBlock(block.id, { [key]: [...highlights.filter(entry => !highlightMatchesSelection(entry, selection)), item] });
     setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
   }
@@ -2200,8 +2186,8 @@ function App() {
     recordReadingJump(location => location.tab === targetTab && (scope === 'paper' || !location.search) && location.block === blockId && location.displayMode === mode
       && selectionRef.current?.scope === scope && selectionRef.current?.id === blockId && selectionRef.current?.kind === kind
       && sameTextAnchor(selectionRef.current, item));
-    window.getSelection()?.removeAllRanges();
-    setInspector(true); setSelection(null); setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab(targetTab);
+    if (tab !== targetTab || displayMode !== mode || search) setSelection(null);
+    setInspector(true); setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab(targetTab);
     setBlockNavigation({ ...item, scope, blockId, kind, recordType, requestId: crypto.randomUUID() });
     commitPaper(current => ({ ...current, position: { ...current.position, tab: targetTab, block: blockId, displayMode: mode } }));
   }
@@ -2227,7 +2213,6 @@ function App() {
         && selectionRef.current && sameViewAnchor(selectionRef.current, item));
     }
     if (article) changeDisplayMode(item.displayMode);
-    window.getSelection()?.removeAllRanges();
     setInspector(true);
     setTab(targetTab);
     setViewNavigation({ ...item, requestId: crypto.randomUUID() });
@@ -2304,7 +2289,7 @@ function App() {
       if (block && within) {
         captured = within;
         id = block.id;
-        offsets = selectionOffsets(within, exactAnchorOffset(anchorText(block, kind), within), rich && blockMarkdown(block, kind));
+        offsets = textSelectionOffsets(within, anchorText(block, kind), rich && blockMarkdown(block, kind));
       } else {
         captured = domRangeIn(host, range, true);
         if (captured) {
@@ -2316,7 +2301,7 @@ function App() {
     } else {
       captured = domRangeIn(host, range, true);
       const source = viewText(paperRef.current, scope);
-      if (captured) offsets = selectionOffsets(captured, exactAnchorOffset(source, captured), source);
+      if (captured) offsets = textSelectionOffsets(captured, source, source);
     }
     if (!captured) return;
     const { text, rect } = captured;

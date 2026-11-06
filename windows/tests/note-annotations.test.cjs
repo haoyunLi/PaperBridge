@@ -115,3 +115,21 @@ test('Paper article notes keep their reading source and reject edits through a s
   const edited = { ...saved, blocks: [blocks[0], { ...blocks[1], text: 'Edited while selected' }] };
   assert.equal(applySelectionNote(edited, selection, 'Do not overwrite'), edited);
 });
+
+test('Markdown recovery preserves verified coordinates and rejects ambiguous displaced quotes', async () => {
+  const { markdownAnnotationOffset, renderedAnchorOffset } = await import('../src/markdownAnchors.mjs');
+  const saved = { text: 'N=6', offset: null, renderedAnchor: { offset: 2, before: 'A ', after: ' layers.' } };
+  const original = 'A N=6 layers.';
+  assert.equal(markdownAnnotationOffset(original, saved), 2);
+  const moved = 'Revision. Now N=6 layers.';
+  assert.equal(markdownAnnotationOffset(moved, saved), moved.indexOf(saved.text));
+  assert.equal(renderedAnchorOffset(moved, saved), null, 'a pending edit still requires current exact coordinates');
+  assert.equal(markdownAnnotationOffset(moved + ' Another N=6.', saved), null);
+  assert.equal(markdownAnnotationOffset(moved, { ...saved, needsReview: true }), null);
+  assert.equal(markdownAnnotationOffset('A N=8 layers.', saved), null);
+
+  const legacy = { text: 'repeat', offset: 11, displayOffset: 0 };
+  assert.equal(markdownAnnotationOffset('repeat and repeat', legacy, 'repeat and repeat'), 11);
+  assert.equal(markdownAnnotationOffset('Now repeat and repeat', legacy, 'Now repeat and repeat'), null);
+  assert.equal(markdownAnnotationOffset('Only repeat remains.', legacy, 'Only **repeat** remains.'), 5);
+});
