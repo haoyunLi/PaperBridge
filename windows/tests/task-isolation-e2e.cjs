@@ -105,8 +105,15 @@ async function verifyManualMineruPreservesDocumentOutputs(root, artifacts, pdfBy
     await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).sourceMode === 'mineru', 'manual MinerU source switch');
     const afterSwitch = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
     assert.match(afterSwitch.blocks.map(block => block.text).join(' '), /Reconstructed MinerU reader text/);
-    assert.equal(afterSwitch.summary.stale, true);
-    assert.equal(afterSwitch.connectedStale, true);
+    assert.equal(afterSwitch.summary, null);
+    assert.equal(afterSwitch.connectedTranslation, '');
+    await page.getByRole('button', { name: 'Switch to PDF text' }).click();
+    await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).sourceMode === 'pdf', 'return to the original PDF source');
+    const returned = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    assert.deepEqual(returned.summary, afterParse.summary);
+    assert.equal(returned.connectedTranslation, afterParse.connectedTranslation);
+    assert.deepEqual(returned.connectedBlocks, afterParse.connectedBlocks);
+    assert.equal(returned.connectedStale, false);
   } finally { await app.close(); }
 }
 

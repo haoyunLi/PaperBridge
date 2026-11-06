@@ -60,6 +60,26 @@ async function selectPdfText(page, quote) {
   await page.waitForFunction(text => document.querySelector('.inspector blockquote')?.textContent === text, quote);
 }
 
+async function saveViewNote(page, scope, quote, body) {
+  await page.locator(`[data-view-scope="${scope}"]`).evaluate((host, quote) => {
+    const walker = document.createTreeWalker(host.querySelector('[data-markdown-host]'), NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const offset = node.textContent.indexOf(quote);
+      if (offset < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + quote.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      host.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return;
+    }
+    throw new Error(`Missing view quote ${quote}`);
+  }, quote);
+  await page.getByPlaceholder('What should you remember?').fill(body);
+  await page.getByRole('button', { name: 'Save note', exact: true }).click();
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
@@ -70,23 +90,34 @@ async function run() {
   const id = crypto.createHash('sha256').update('PaperBridge reading history fixture').digest('hex');
   const otherId = crypto.createHash('sha256').update('PaperBridge second history fixture').digest('hex');
   let finishTranslation;
-  const ollama = http.createServer((request, response) => {
+  let holdTranslation = false;
+  const ollama = http.createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b' }] }));
     if (request.url === '/api/generate') {
-      request.resume();
-      request.on('end', () => {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const { prompt } = JSON.parse(body);
+      if (prompt.startsWith('Summarize this academic paper excerpt')) {
+        const summary = { claims: [{ text: 'Distinct MinerU summary', sources: [{ paragraphID: 8, quote: 'Structured passage 8. Supporting detail' }] }] };
+        return response.end(JSON.stringify({ response: JSON.stringify(summary), done: true }));
+      }
+      const output = JSON.stringify({ response: '结构化来源译文。', done: true });
+      if (holdTranslation) {
         finishTranslation = () => {
           finishTranslation = null;
-          response.end(JSON.stringify({ response: '结构化来源译文。', done: true }));
+          holdTranslation = false;
+          response.end(output);
         };
-      });
-      return;
+        return;
+      }
+      return response.end(output);
     }
     response.end('{}');
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
-  const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', autoCheckUpdates: false, onboardingCompletedVersion: 1 };
+  const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
+    summaryModel: 'translategemma:4b', autoCheckUpdates: false, onboardingCompletedVersion: 1 };
   const filler = ' Supporting detail keeps this reading surface tall enough to exercise exact scroll restoration.'.repeat(10);
   const texts = ['Abstract', `Opening context.${filler}`, 'Methods', `Unique evidence phrase supports the history target.${filler}`, 'Results', `Result details remain available.${filler}`, 'Discussion', `Discussion details remain available.${filler}`, 'Conclusion', `Closing context remains available.${filler}`];
   const blocks = texts.map((text, index) => ({ id: index + 1, text, heading: index % 2 === 0, translation: '', status: 'pending', bookmark: [4, 6].includes(index + 1), notes: [], highlights: [] }));
@@ -102,7 +133,8 @@ async function run() {
     position: { block: 2, page: 1, tab: 'Summary', displayMode: 'translation', scrollByTab: { Summary: 0, Reader: 0, 'Original:1': 0, 'Original:2': 0 } },
     summary: { source: `${'Summary context. '.repeat(120)}\n\n${quote}`, target: `摘要内容。${'更多摘要。'.repeat(120)}`,
       sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', claims: [{ text: 'The paper includes a history target.', sources: [{ paragraphID: 4, quote }] }] },
-    connectedTranslation: ''
+    connectedTranslation: 'Saved PDF draft.',
+    viewNotes: [{ id: 'pdf-draft-note', scope: 'fullTranslation', text: 'Saved PDF draft', offset: 0, body: 'PDF full draft note' }]
   };
   const other = { ...paper, id: otherId, name: 'Second library paper', type: 'text', blocks: [{ id: 1, text: 'Second paper body.', heading: false, translation: '', status: 'pending' }], pdfBlocks: undefined, summary: null, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' } };
   const paperPath = path.join(workspace, 'papers', `${id}.json`);
@@ -191,6 +223,13 @@ async function run() {
     await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
     await forward.click();
     await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('heading', { name: 'No summary yet', exact: true }).waitFor();
+    assert.equal(await page.getByText('PDF full draft note', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Generate summary', exact: true }).click();
+    await page.locator('[data-view-scope="summarySource"]').getByText('Distinct MinerU summary', { exact: true }).waitFor();
+    await saveViewNote(page, 'summarySource', 'Distinct MinerU summary', 'MinerU summary note');
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const structuredQuote = 'MinerU section 7\nStructured passage 8.';
     await page.evaluate(() => {
       const article = document.querySelector('[data-view-scope="paperArticle"]');
@@ -247,6 +286,7 @@ async function run() {
 
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const translated = page.locator('#block-8');
+    holdTranslation = true;
     await translated.locator('button[title="Translate or retry block"]').click();
     await waitFor(() => typeof finishTranslation === 'function', 'translation request to start');
     await back.click();
@@ -263,8 +303,25 @@ async function run() {
     await waitFor(() => readPaper().sourceMode === 'pdf', 'Back restored the PDF text source');
     await forward.click();
     await translated.locator('.translation-text.done').getByText('结构化来源译文。', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.getByText('Structure-preserving full translation saved. Reader and the full draft share the same translations.', { exact: true }).waitFor();
+    await saveViewNote(page, 'fullTranslation', '结构化来源译文。', 'MinerU full draft note');
     await back.click();
     await waitFor(() => readPaper().sourceMode === 'pdf', 'PDF source before structure repair');
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('button', { name: 'Read original block 4 →', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.locator('[data-view-scope="fullTranslation"]').getByText('Saved PDF draft.', { exact: true }).waitFor();
+    await page.getByText('PDF full draft note', { exact: true }).waitFor();
+    assert.equal(await page.getByText('MinerU summary note', { exact: true }).count(), 0);
+    await forward.click();
+    await page.getByText('MinerU full draft note', { exact: true }).waitFor();
+    await page.getByText('MinerU summary note', { exact: true }).waitFor();
+    assert.equal(await page.getByText('PDF full draft note', { exact: true }).count(), 0);
+    await back.click();
+    await waitFor(() => readPaper().sourceMode === 'pdf', 'restored PDF variant before structure repair');
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-4 button[title="Edit source"]').click();
     await page.locator('#block-4 .edit-area textarea').fill(`${blocks[3].text} Revised.`);
     await page.getByRole('button', { name: 'Save edit', exact: true }).click();

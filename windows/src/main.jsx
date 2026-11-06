@@ -15,7 +15,7 @@ import { translationSystem, selectionTranslationSystem, translationPrompt, selec
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
-import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
+import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
 import { annotationsMarkdown } from './annotationsMarkdown.mjs';
 import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
@@ -987,7 +987,7 @@ function App() {
     const sourceChanged = location.sourceMode && location.sourceMode !== paperArticleSource(paperRef.current).mode;
     if (sourceChanged) { setUndo([]); setEdit(null); setError(''); }
     commitPaper(current => ({
-      ...(sourceChanged ? paperWithReadingSource(current, location.sourceMode) : current),
+      ...(sourceChanged ? switchReadingSource(current, location.sourceMode, settingsRef.current) : current),
       position: { ...current.position, tab: location.tab, displayMode: location.displayMode, block: location.block,
         page: location.page, scrollByTab: { ...location.scrollByTab } }
     }));
@@ -1959,19 +1959,12 @@ function App() {
     setError('The requested reading source is no longer available for this paper.');
     return false;
   }
-  function paperWithReadingSource(current, mode) {
-    const switched = mode === 'mineru'
-      ? { ...current, pdfBlocks: current.blocks, blocks: current.mineruBlocks, extraction: 'MinerU', sourceMode: 'mineru' }
-      : { ...current, mineruBlocks: current.blocks, blocks: current.pdfBlocks, extraction: 'PDF.js', sourceMode: 'pdf' };
-    const restored = switchOutputSettings(switched, current.sourceSettings?.[mode] || settingsRef.current, settingsRef.current, { paragraphsOnly: true });
-    return { ...restored, summary: restored.summary ? { ...restored.summary, stale: true } : null, connectedStale: Boolean(restored.connectedTranslation) };
-  }
   function switchSourceMode(mode) {
     const current = paperRef.current;
     if (!current || paperArticleSource(current).mode === mode || !canSwitchReadingSource(current, mode)) return false;
     recordReadingJump();
     invalidateReadingScroll();
-    commitPaper(current => ({ ...paperWithReadingSource(current, mode), position: { ...current.position, block: 1 } }));
+    commitPaper(current => ({ ...switchReadingSource(current, mode, settingsRef.current), position: { ...current.position, block: 1 } }));
     searchOrigin.current = null;
     window.getSelection()?.removeAllRanges();
     setUndo([]); setEdit(null); setSelection(null); setSelectionResults({}); setSearch('');

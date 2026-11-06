@@ -189,18 +189,13 @@ test('paragraph explanations remain separate by model, endpoint, language and ma
 });
 
 test('PDF and MinerU reader translations keep independent language variants including the initially hidden source', async () => {
-  const { switchOutputSettings } = await outputCache;
+  const { switchOutputSettings, switchReadingSource: activate } = await outputCache;
   const next = { ...settings, targetLanguage: 'German' };
   // Both parsers intentionally produce identical source IDs/text here: their saved
   // translations and annotations must remain separate even when source matching succeeds.
   const blocks = label => paperWithOutputs(label).blocks;
   let paper = { id: 'two-reader-versions', sourceMode: 'pdf', blocks: blocks('PDF A'),
     pdfBlocks: blocks('PDF A'), mineruBlocks: blocks('MinerU A'), summary: null, connectedTranslation: '' };
-  const activate = (current, mode, activeSettings) => {
-    const switched = { ...current, [`${current.sourceMode}Blocks`]: current.blocks, blocks: current[`${mode}Blocks`], sourceMode: mode };
-    return switchOutputSettings(switched, current.sourceSettings?.[mode] || activeSettings, activeSettings, { paragraphsOnly: true });
-  };
-
   paper = switchOutputSettings(paper, settings, next);
   assert.equal(paper.blocks[1].translation, '');
   assert.equal(paper.sourceSettings.pdf.targetLanguage, 'German');
@@ -231,23 +226,70 @@ test('PDF and MinerU reader translations keep independent language variants incl
   assert.deepEqual(paper.blocks, blocks('MinerU B'));
 });
 
-test('switching to a hidden parser with old settings cannot file current document outputs under those old settings', async () => {
-  const { switchOutputSettings } = await outputCache;
+test('switching to a hidden parser with old settings files the outgoing draft and summary under their actual source and settings', async () => {
+  const { switchOutputSettings, switchReadingSource, connectedKey, summaryKey } = await outputCache;
   const next = { ...settings, targetLanguage: 'German' };
   const original = paperWithOutputs('PDF A');
   let paper = { ...original, sourceMode: 'pdf', pdfBlocks: original.blocks, mineruBlocks: paperWithOutputs('MinerU A').blocks };
   paper = switchOutputSettings(paper, settings, next);
   paper = applyOutputs(paper, 'PDF B');
-  const savedDocuments = structuredClone({ connected: paper.outputVariants.connected, summaries: paper.outputVariants.summaries });
-  const switched = { ...paper, pdfBlocks: paper.blocks, blocks: paper.mineruBlocks, sourceMode: 'mineru' };
-  const result = switchOutputSettings(switched, paper.sourceSettings.mineru, next, { paragraphsOnly: true });
+  const result = switchReadingSource(paper, 'mineru', next);
   assert.equal(result.blocks[1].translation, '');
-  assert.equal(result.connectedTranslation, 'PDF B full translation');
-  assert.deepEqual(result.summary, paper.summary);
-  assert.deepEqual(result.viewNotes, paper.viewNotes);
-  assert.deepEqual(result.viewHighlights, paper.viewHighlights);
-  assert.deepEqual(result.outputVariants.connected, savedDocuments.connected);
-  assert.deepEqual(result.outputVariants.summaries, savedDocuments.summaries);
+  assert.equal(result.connectedTranslation, '');
+  assert.equal(result.summary, null);
+  assert.deepEqual(result.viewNotes, []);
+  assert.deepEqual(result.viewHighlights, []);
+  assert.equal(result.outputVariants.connected[JSON.stringify(['pdf', connectedKey(settings)])].text, 'PDF A full translation');
+  assert.equal(result.outputVariants.connected[JSON.stringify(['pdf', connectedKey(next)])].text, 'PDF B full translation');
+  assert.equal(result.outputVariants.summaries[JSON.stringify(['pdf', summaryKey(next)])].summary.source, 'PDF B source summary');
+  assertGeneratedOutputs(switchReadingSource(result, 'pdf', next), 'PDF B');
+});
+
+test('source switches preserve independent summaries, resumable drafts and annotations across a serialized workspace', async () => {
+  const { switchReadingSource } = await outputCache;
+  const original = paperWithOutputs('PDF');
+  const paperNote = { id: 'article', scope: 'paperArticle', body: 'Keep this Paper preview note' };
+  const initial = { ...original, type: 'pdf', sourceMode: 'pdf', pdfBlocks: original.blocks, mineruBlocks: paperWithOutputs('MinerU').blocks,
+    connectedBatchVersion: 3, viewNotes: [...original.viewNotes, paperNote] };
+  const empty = switchReadingSource(initial, 'mineru', settings);
+  assert.equal(empty.summary, null);
+  assert.equal(empty.connectedTranslation, '');
+  assert.deepEqual(empty.viewNotes, [paperNote]);
+  const generated = applyOutputs(empty, 'MinerU');
+  generated.viewNotes.push(paperNote);
+  const saved = JSON.parse(JSON.stringify(switchReadingSource(generated, 'pdf', settings)));
+  assert.equal(saved.summary.source, 'PDF source summary');
+  assert.deepEqual(saved.connectedBlocks, initial.connectedBlocks);
+  assert.equal(saved.connectedBatchVersion, 3);
+  assert.equal(saved.connectedStale, false);
+  assert.deepEqual(saved.viewNotes.filter(item => item.scope !== 'paperArticle'), original.viewNotes);
+  assert.deepEqual(saved.viewHighlights, original.viewHighlights);
+  assert.equal(saved.viewNotes.filter(item => item.id === paperNote.id).length, 1);
+  assert.deepEqual(saved.pdfNotes, original.pdfNotes);
+  const restoredMineru = switchReadingSource(saved, 'mineru', settings);
+  assert.equal(restoredMineru.summary.source, 'MinerU source summary');
+  assert.equal(restoredMineru.connectedTranslation, 'MinerU full translation');
+  assert.deepEqual(restoredMineru.viewNotes.filter(item => item.scope !== 'paperArticle'), generated.viewNotes.filter(item => item.scope !== 'paperArticle'));
+});
+
+test('a re-extracted source keeps an older draft for review and old PDF cache keys remain readable', async () => {
+  const { switchOutputSettings, switchReadingSource } = await outputCache;
+  const next = { ...settings, targetLanguage: 'German' };
+  const original = paperWithOutputs('Legacy');
+  const oldCache = switchOutputSettings(original, settings, next);
+  const legacyPdf = { ...oldCache, type: 'pdf', pdfBlocks: oldCache.blocks, mineruBlocks: paperWithOutputs('MinerU').blocks };
+  const mineru = switchReadingSource(legacyPdf, 'mineru', next);
+  const back = switchReadingSource(mineru, 'pdf', next);
+  const restored = switchOutputSettings(back, next, settings);
+  assertGeneratedOutputs(restored, 'Legacy');
+  const hidden = switchReadingSource(restored, 'mineru', settings);
+  hidden.pdfBlocks = hidden.pdfBlocks.map(block => block.id === 2 ? { ...block, text: 'Edited after archiving the output.' } : block);
+  const stale = switchReadingSource(hidden, 'pdf', settings);
+  assert.equal(stale.summary.stale, true);
+  assert.equal(stale.summary.source, 'Legacy source summary');
+  assert.equal(stale.connectedStale, true);
+  assert.equal(stale.connectedTranslation, 'Legacy full translation');
+  assert.deepEqual(stale.viewNotes, original.viewNotes);
 });
 
 test('legacy explanations without saved task settings remain retained but never inherit a later model identity', async () => {
