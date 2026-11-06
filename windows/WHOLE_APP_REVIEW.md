@@ -4,7 +4,7 @@
 
 Paper、Reader、两侧摘要、全文译稿及两个精确 PDF 视图可通过 Tab 进入阅读区域，也可点击正文定位。Shift 加方向键扩展选区，Ctrl+Shift 加左右方向键按词选取，Shift+Home/End 选择到行首或行尾。检查器和现有选择快捷键使用同一选区。收起选区后检查器清除已选文字，输入框保留自身键盘行为。
 
-130 项单元测试及桌面回归覆盖真实按键、两侧摘要、重复词定位、输入框隔离、快捷翻译与笔记。在 RX 7800 XT 的 Windows 机器上，从 Attention Is All You Need 的第 31 块标题用键盘选到第 32 块 `N=6 identical layers.`，保存高亮与笔记后重启回跳。Original 视图的标题 `Attention` 也可用 Ctrl+Shift+Right 准确选取。
+130 项单元测试及桌面回归覆盖真实按键、两侧摘要、重复词定位、输入框隔离、快捷翻译与笔记。在 RX 7800 XT 的 Windows 机器上，从 Attention Is All You Need 的第 31 块标题用键盘选到第 32 块 `N=6 identical layers.`，保存高亮与笔记后重启回跳。Original 视图验证了按词选取、用 Shift+Right 跨第 1–2 页、保存和重启复选。跨页选区遵循原 PDF 的文字层顺序。
 
 ## 第三十阶段：笔记下划线与 Windows 0.2.2（2026-11-06 UTC）
 
