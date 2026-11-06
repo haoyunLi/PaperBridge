@@ -1,6 +1,31 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
+const yauzl = require('yauzl');
 const { rewriteAssetUrls, localAssetReference, assetFile } = require('./markdown-assets.cjs');
+
+const structuredOutput = 'structured_content.json';
+const maxMetadataBytes = 64 * 1024 * 1024;
+const maxImageBytes = 8_000_000;
+
+async function unpackMineruArchive(archive, folder, checkActive) {
+  const zip = await yauzl.openPromise(archive, { strictFileNames: true });
+  let imageBytes = 0;
+  try {
+    for await (const entry of zip.eachEntry()) {
+      checkActive();
+      const name = entry.fileName;
+      const image = /^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/i.test(name);
+      if (image) {
+        if (entry.uncompressedSize > maxImageBytes || imageBytes + entry.uncompressedSize > 256 * 1024 * 1024) continue;
+        imageBytes += entry.uncompressedSize;
+      } else if (!['markdown.md', structuredOutput].includes(name) || entry.uncompressedSize > maxMetadataBytes) continue;
+      const destination = path.join(folder, name === 'markdown.md' ? 'paper.md' : name);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      await pipeline(await zip.openReadStreamPromise(entry), fs.createWriteStream(destination, { flags: 'wx' }));
+    }
+  } finally { zip.close(); }
+}
 
 function findMineruMarkdown(folder, preferredStem) {
   if (!fs.existsSync(folder)) return null;
@@ -36,10 +61,60 @@ function readMineruMarkdown(file) {
     if (!mime) return url;
     const asset = assetFile(directory, reference.relative);
     try {
-      if (asset && asset.size <= 8_000_000) return `data:${mime};base64,${fs.readFileSync(asset.file).toString('base64')}`;
+      if (asset && asset.size <= maxImageBytes) return `data:${mime};base64,${fs.readFileSync(asset.file).toString('base64')}`;
     } catch { /* An unavailable figure must not prevent reading the extracted text. */ }
     return url;
   });
 }
 
-module.exports = { findMineruMarkdown, readMineruMarkdown };
+function readMineruPageHints(markdownFile) {
+  const directory = fs.realpathSync(path.dirname(markdownFile));
+  const stem = path.basename(markdownFile, path.extname(markdownFile));
+  const validIndex = index => Number.isSafeInteger(index) && index >= 0 && index < 100_000;
+  for (const name of [structuredOutput, `${stem}_content_list.json`]) {
+    const asset = assetFile(directory, name);
+    if (!asset || asset.size > maxMetadataBytes) continue;
+    try {
+      const data = JSON.parse(fs.readFileSync(asset.file, 'utf8'));
+      const hints = [];
+      const add = (index, values) => {
+        if (!validIndex(index)) return;
+        for (const text of values) if (typeof text === 'string' && text.trim()) hints.push({ page: index + 1, text });
+      };
+      const list = value => Array.isArray(value) ? value : [];
+      if (Array.isArray(data)) {
+        for (const entry of data) {
+          if (!entry) continue;
+          add(entry.page_idx, [entry.text, ...list(entry.img_caption), ...list(entry.table_caption), ...list(entry.list_items)]);
+        }
+      } else {
+        let continued = null;
+        const addContinued = () => {
+          if (continued?.parts.length > 1) add(continued.index, [continued.parts.join(' ')]);
+        };
+        for (const page of list(data?.pages)) {
+          if (!validIndex(page?.page_idx)) continue;
+          for (const block of list(page?.blocks)) {
+            if (!block) continue;
+            add(page.page_idx, [block.content, ...list(block.captions).map(caption => caption?.content), ...list(block.footnotes).map(note => note?.content)]);
+            if (block.type === 'text' && typeof block.content === 'string') {
+              if (continued && block.continues_prev === true && !block.anchor) continued.parts.push(block.content);
+              else {
+                addContinued();
+                continued = { index: page.page_idx, parts: [block.content] };
+              }
+            } else if (block.type === 'list') {
+              addContinued();
+              continued = null;
+            }
+          }
+        }
+        addContinued();
+      }
+      if (hints.length) return hints;
+    } catch { /* An unreadable sidecar does not affect the Markdown. */ }
+  }
+  return [];
+}
+
+module.exports = { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive };

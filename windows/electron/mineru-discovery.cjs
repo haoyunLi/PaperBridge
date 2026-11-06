@@ -53,10 +53,10 @@ function mineru4Environment(toolsRoot, backend) {
 
 function mineruInvocation(detected, pdf, output, backend, toolsRoot) {
   if (detected.kitExecutable) {
-    const markdown = path.join(output, 'paper.md');
+    const archive = path.join(output, 'paper.zip');
     return {
       command: detected.kitExecutable,
-      args: ['parse', pdf, '-o', markdown, '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
+      args: ['parse', pdf, '-o', archive, '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
       env: mineru4Environment(toolsRoot, backend)
     };
   }

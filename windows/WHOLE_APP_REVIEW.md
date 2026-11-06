@@ -1,5 +1,13 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第四十四阶段：MinerU 原页定位（2026-11-06 UTC）
+
+MinerU 4.x 在同一次本地解析中输出 Markdown、图像及结构化页码。Windows 从 ZIP 读取这些文件，保持已有段落 ID 和内容。识别 4.x 的正文续接标记，跨页段落定位到起始页。旧论文若保留匹配的 3.x 或 4.x 结构文件，重开时可恢复页码。缺少结构文件时，在已保存 PDF 文字层中确认长段落的唯一页码。原页仍不确定时，Compare Original 沿用当前页。
+
+153 项单元测试、生产构建、导入进度、任务隔离、阅读历史、Markdown 和主桌面流程通过。RX 7800 XT 使用 DirectML 实际重新解析两页 ResNet 扫描，29 块中 26 个文字块全部带原页，另 3 块图像正常内嵌。跨页第 16 段指向第 1 页，第 29 段警告打开原 PDF 第 2 页。模拟旧记录后重开，从同次解析文件恢复页码并保留译文和书签。《Attention Is All You Need》旧存档另从保存的 PDF 文字层找回 88 个 MinerU 段落页码。 [MinerU 输出格式](https://opendatalab.github.io/MinerU/reference/output_files/)
+
+同一份扫描的第 23 段通过本机 Ollama 实际英译中，译文保留 CIFAR-10 和引文编号。服务日志显示 ROCm，`translategemma:4b` 的 `size_vram` 与模型大小同为 2,881,948,220 字节。重开后第 2 页页码和译文一起恢复。另核对已有 MinerU 3.x 工作区的伴随列表与保存的 Markdown 完全对应，仅用列表即可匹配 143 个段落。
+
 ## 第四十三阶段：提取问题复核与 Windows 0.2.7（2026-11-06 UTC）
 
 Overview 可展开查看前 40 条提取建议、段号及最后 160 个字符。Review 打开双语 Reader，原段显示警告和编辑、原文比对操作。已知 PDF 页码时直接打开对应原页。MinerU 结构仍受保护，原段无页码时沿用当前 PDF 页。

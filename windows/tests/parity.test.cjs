@@ -317,6 +317,25 @@ test('summary evidence follows structural edits only within the original passage
     { ...summary, claims: [{ ...summary.claims[0], sources: [sources(2), sources(3)] }] }).claims[0].sources, [sources(2)]);
 });
 
+test('MinerU paragraph pages follow unique source text without changing saved work', async () => {
+  const { locateMineruPages, readableMineruBlocks } = await import('../src/academicMarkdown.mjs');
+  const longText = 'A distinct passage verified against the selectable text layer.';
+  const crossPage = 'A PDF block stitched across two pages has no reliable single-page location.';
+  const ambiguous = 'A recurring passage appears in both portions of the document.';
+  const parts = 'Two OCR fragments together describe the same exact result.';
+  const blocks = readableMineruBlocks(['# Section on the second page', parts, ambiguous, longText, crossPage, '![Image](photo.png)'].join('\n\n'));
+  blocks[3].translation = 'Existing translation';
+  blocks[3].notes = [{ body: 'Existing note' }];
+  const hints = [{ page: 2, text: 'Section on the second page' }, { page: 2, text: 'Two OCR fragments together' },
+    { page: 2, text: 'describe the same exact result.' }, { page: 2, text: ambiguous }, { page: 3, text: ambiguous },
+    { page: 99, text: longText }];
+  const pdf = [{ page: 4, text: longText }, { page: 2, text: ambiguous }, { page: 4, endPage: 5, text: crossPage }];
+  const located = locateMineruPages(blocks, hints, pdf, 5);
+  assert.deepEqual(located.map(block => block.page), [2, 2, null, 4, null, null]);
+  assert.deepEqual(located[3], { ...blocks[3], page: 4 });
+  assert.equal(locateMineruPages(located, hints, pdf, 5), located);
+});
+
 test('sentence reflow keeps the annotated phrase in its new block', async () => {
   const { reflowBlock } = await import('../src/paper.mjs');
   const original = { id: 1, text: 'First complete sentence. Second complete sentence. Third complete sentence.',

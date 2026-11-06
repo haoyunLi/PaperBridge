@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { findMineruMarkdown, readMineruMarkdown } = require('../electron/mineru-output.cjs');
+const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints } = require('../electron/mineru-output.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-output-'));
@@ -72,4 +72,22 @@ test('MinerU figure loading tolerates literal percent signs and keeps unavailabl
   assert.ok(content.includes('![Unavailable](images/not-found.jpg)'));
   assert.ok(content.includes('![Outside](../elsewhere.png)'));
   assert.ok(content.startsWith('Readable extracted body text.'));
+});
+
+test('page hints accept the companion 4.x structure or 3.x content list and keep the original page index', t => {
+  const file = fixture(t);
+  const markdown = file('paper.md', '# Document');
+  file('structured_content.json', JSON.stringify({ pages: [
+    { page_idx: 4, blocks: [{ content: 'Title', captions: [{ content: 'Figure caption' }] }, null, { type: 'text', content: 'A passage' }] },
+    { page_idx: 5, blocks: [{ type: 'text', content: 'continues here.', continues_prev: true }] },
+    { page_idx: -1, blocks: [{ content: 'Invalid page' }] },
+    { page_idx: '5', blocks: [{ content: 'Invalid type' }] }
+  ] }));
+  assert.deepEqual(readMineruPageHints(markdown), [{ page: 5, text: 'Title' }, { page: 5, text: 'Figure caption' },
+    { page: 5, text: 'A passage' }, { page: 6, text: 'continues here.' }, { page: 5, text: 'A passage continues here.' }]);
+  file('structured_content.json', '{invalid');
+  file('other_content_list.json', JSON.stringify([{ page_idx: 1, text: 'A different extraction.' }]));
+  assert.deepEqual(readMineruPageHints(markdown), []);
+  file('paper_content_list.json', JSON.stringify([{ page_idx: 7, text: 'Legacy source.', list_items: ['A list item'] }]));
+  assert.deepEqual(readMineruPageHints(markdown), [{ page: 8, text: 'Legacy source.' }, { page: 8, text: 'A list item' }]);
 });

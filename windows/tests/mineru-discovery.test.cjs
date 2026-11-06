@@ -135,7 +135,7 @@ test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with a
   const output = path.join(paths.root, 'output');
   const automatic = mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot);
   assert.equal(automatic.command, kit);
-  assert.deepEqual(automatic.args, ['parse', pdf, '-o', path.join(output, 'paper.md'), '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
+  assert.deepEqual(automatic.args, ['parse', pdf, '-o', path.join(output, 'paper.zip'), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
   assert.equal(automatic.env.MINERU_MODEL_ONNX_DEVICE, 'auto');
   assert.equal(automatic.env.MINERU_TELEMETRY_DISABLED, '1');
   assert.equal(automatic.env.MINERU_HOME, path.join(paths.toolsRoot, 'mineru4-data'));

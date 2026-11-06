@@ -8,7 +8,7 @@ const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
-const { findMineruMarkdown, readMineruMarkdown } = require('./mineru-output.cjs');
+const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
@@ -287,6 +287,15 @@ function registerHandlers() {
   });
   ipcMain.handle('ollama:cancel', (_event, requestId) => { requests.get(requestId)?.abort(); });
   ipcMain.handle('mineru:cancel', () => mineruJobs.cancel());
+  ipcMain.handle('mineru:cached-pages', (_event, id) => {
+    const paper = store.paper(safeId(id));
+    if (!paper?.mineruMarkdown) return [];
+    try {
+      const file = findMineruMarkdown(path.join(store.root, 'mineru', id), 'paper');
+      const hints = file ? readMineruPageHints(file) : [];
+      return hints.length && readMineruMarkdown(file) === paper.mineruMarkdown ? hints : [];
+    } catch { return []; }
+  });
   ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
   ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
   ipcMain.handle('mineru:extract', async (_event, { id, executable, backend, requestId }) => {
@@ -324,18 +333,23 @@ function registerHandlers() {
         child.on('close', code => { mineruJobs.detach(job, child); code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
       });
       mineruJobs.check(job);
-      const file = findMineruMarkdown(output, path.parse(stagedPdf).name);
+      const resultFolder = detected.kitExecutable ? path.join(staging, 'result') : output;
+      if (detected.kitExecutable) {
+        await unpackMineruArchive(path.join(output, 'paper.zip'), resultFolder, () => mineruJobs.check(job));
+      }
+      const file = findMineruMarkdown(resultFolder, path.parse(stagedPdf).name);
       mineruJobs.check(job);
       if (!file) throw new Error('MinerU finished without a Markdown file.');
       const markdown = readMineruMarkdown(file);
+      const pageHints = readMineruPageHints(file);
       mineruJobs.check(job);
       try {
         fs.mkdirSync(savedOutput, { recursive: true });
-        fs.cpSync(output, savedOutput, { recursive: true, force: true });
+        fs.cpSync(resultFolder, savedOutput, { recursive: true, force: true });
       } catch (error) {
         reportProgress(`Parsed text is ready, but the auxiliary MinerU files could not be kept: ${error.message.slice(0, 140)}`);
       }
-      return markdown;
+      return { markdown, pageHints };
     } finally {
       mineruJobs.finish(job);
       if (staging) {

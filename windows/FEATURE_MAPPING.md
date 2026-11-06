@@ -31,9 +31,9 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 | A15 | PDFKit 便携页面图片（最多前 120 页） | 导出 bundle 时逐页渲染 PNG，最大边 1,800 像素，最多 120 页；页面索引链接到完整原 PDF | 部分 | 真机用 15 页论文验证 PNG，用 121 页测试 PDF 验证只写 120 张、显示上限提示并保留完整 PDF。Mac 在打开时生成持久页面缓存，Windows 在查看时按页渲染并在便携导出时写 PNG。 |
 | A16 | 跨页断词、断句修复 | 页内和跨页共用断词规则，保留复合词连字符与 PDF 文字层明确给出的空格。跨页拼接记录终止页，并保留下一独立段。 | 部分 | 15 页论文复核了复合词。12 页双栏论文复核了因字体切换被拆开的 `ImageNet test set`。同行断词和公式仍需验收。 |
 | A17 | 重复页眉、页脚、图表标签过滤 | 过滤重复页眉、页脚、页码及页边旋转 arXiv 标识。图表标题从上一段分开，其他旋转文字保留为独立行。 | 部分 | 双栏真文验证了侧边标识不混入正文、图注与轴标签分开。复杂图表标签的归属仍需验证。 |
-| A18 | 提取质量警告定位到 Reader 段落 | Overview 可展开前 40 条建议和末尾摘录。Reader 原段显示警告、编辑/拆分和原 PDF 比对 | 部分 | 真实论文核对 PDF 第 3 页定位、编辑撤销与 MinerU 保护。缺少页码的结构块沿用当前 PDF 页。 |
+| A18 | 提取质量警告定位到 Reader 段落 | Overview 可展开前 40 条建议和末尾摘录。Reader 原段显示警告、编辑/拆分和原 PDF 比对，MinerU 文字也能定位到有依据的原页 | 部分 | AMD 双页扫描的 26 个文字块均带页码，跨页文字从起始页定位。已保存论文可从伴随文件或存档文字层恢复；无法确认时沿用当前 PDF 页。 |
 | A19 | 尾部参考文献或中途参考文献智能排除 | 段落翻译、全文翻译和摘要共用参考文献范围，识别无标题列表、同块标题和引文，并恢复后续附录和方法。阅读预览和 Markdown 导出保留引文原文。 | 部分 | 桌面测试验证附录恢复及导出。15 页样例的 MinerU 与 PDF 文字层均识别参考文献并保留后续图注，更多引文格式和跨页混排仍需验收。 |
-| A20 | MinerU 资源目录与原 PDF 持久化 | 多输出目录优先选择非空主稿。普通与 HTML 图像可随文保存，便携包收录保留目录内可读取的图像和附件。 | 部分 | 单元覆盖百分号、缺失资源、越界路径与目录联接。真机用扫描衍生夹具验证迁移目录后的图像和 CSV。 |
+| A20 | MinerU 资源目录与原 PDF 持久化 | 多输出目录优先选择非空主稿。MinerU 4.x 保留同次解析的 Markdown、图像和页码元数据。便携包收录保留目录内可读取的图像和附件。 | 部分 | 单元覆盖伴随文件、缺失资源和越界路径。真机验证 4.1 ZIP 的 3 张图像和重开页码恢复。 |
 
 Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[PDF 文本修复](../PaperBridge/Services/PDFTextExtractor.swift)、[Markdown 结构](../PaperBridge/Services/AcademicMarkdownProcessor.swift)、[原页归档](../PaperBridge/Services/PDFVisualArchiveService.swift)。Windows 证据：[导入与手动 MinerU](src/main.jsx)、[PDF.js 提取](src/pdf.mjs)、[Markdown 按行分段](src/academicMarkdown.mjs)、[原 PDF 复制](electron/main.cjs#L105)。
 

@@ -123,3 +123,53 @@ export function readableMineruBlocks(markdown) {
   }
   return blocks;
 }
+
+function pageText(text) {
+  return plainText(text || '').normalize('NFKC').replace(/[\s\u00ad]+/g, '');
+}
+
+export const mineruPageMapVersion = 1;
+
+function pageMatcher(hints) {
+  const exact = new Map();
+  const byPage = new Map();
+  for (const { page, text } of hints) {
+    if (!Number.isSafeInteger(page) || page < 1) continue;
+    const key = pageText(text);
+    if (!key) continue;
+    exact.set(key, exact.has(key) && exact.get(key) !== page ? null : page);
+    if (!byPage.has(page)) byPage.set(page, []);
+    byPage.get(page).push(key);
+  }
+  const pages = [...byPage].map(([page, pieces]) => [page, pieces.join('')]);
+  return (key, allowShort) => {
+    if (!key || (!allowShort && key.length < 32)) return undefined;
+    if (exact.has(key)) return exact.get(key);
+    if (key.length < 32) return undefined;
+    let found;
+    for (const [page, text] of pages) {
+      if (!text.includes(key)) continue;
+      if (found !== undefined) return null;
+      found = page;
+    }
+    return found;
+  };
+}
+
+export function locateMineruPages(blocks, pageHints = [], pdfBlocks = [], pageCount = 0) {
+  if (!blocks?.some(block => !block.page && !block.resource)) return blocks;
+  const validPage = ({ page }) => !pageCount || page <= pageCount;
+  const structured = pageMatcher(pageHints.filter(validPage));
+  const selectable = pageMatcher(pdfBlocks.filter(block => (!block.endPage || block.endPage === block.page) && validPage(block)));
+  let changed = false;
+  const located = blocks.map(block => {
+    if (block.page || block.resource) return block;
+    const key = pageText(block.sourceMarkdown || block.text);
+    const known = structured(key, true);
+    const page = known === undefined ? selectable(key, false) : known;
+    if (!page) return block;
+    changed = true;
+    return { ...block, page };
+  });
+  return changed ? located : blocks;
+}

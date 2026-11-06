@@ -13,7 +13,7 @@ import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOf
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, splitBlockNearMiddle, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
-import { anchorText, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
@@ -844,6 +844,7 @@ function App() {
   const [paper, setPaper] = useState(null);
   const expandedOverview = useMemo(() => new Set(), [paper?.id]);
   const paperRef = useRef(null);
+  const paperLoadRequest = useRef(0);
   const [tab, setTab] = useState('Paper');
   const [displayMode, setDisplayMode] = useState('bilingual');
   const [modal, setModal] = useState('');
@@ -1081,11 +1082,23 @@ function App() {
   }
   const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
     if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
+    const request = ++paperLoadRequest.current;
     if (!await finishNoteEditing()) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
     if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained.');
-    if (taskRef.current && !fromImport) return false;
+    if (request !== paperLoadRequest.current || (taskRef.current && !fromImport)) return false;
+    let pagesMigrated = false;
+    if (loaded.mineruMarkdown && loaded.mineruPageMapVersion !== mineruPageMapVersion) {
+      const pageHints = await api.cachedMineruPages(loaded.id).catch(() => []);
+      if (token) requireActiveTask(token);
+      if (request !== paperLoadRequest.current || (taskRef.current && !fromImport)) return false;
+      const pdfBlocks = loaded.pdfBlocks || (loaded.sourceMode === 'pdf' ? loaded.blocks : []);
+      const mineruBlocks = locateMineruPages(loaded.mineruBlocks, pageHints, pdfBlocks);
+      const blocks = loaded.sourceMode === 'mineru' ? locateMineruPages(loaded.blocks, pageHints, pdfBlocks) : loaded.blocks;
+      pagesMigrated = mineruBlocks !== loaded.mineruBlocks || blocks !== loaded.blocks;
+      if (pagesMigrated) loaded = { ...loaded, mineruBlocks, blocks, mineruPageMapVersion };
+    }
     const previous = settingsRef.current;
     const hasTaskSettings = Boolean(loaded.taskSettings);
     // Workspaces saved before provider support contain local results.
@@ -1101,6 +1114,7 @@ function App() {
     }
     resetReadingHistory();
     paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1);
+    if (pagesMigrated) saveQueue.current.schedule(loaded);
     setStatus(loaded.extractionWarning || (hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`));
     return true;
   };
@@ -1592,9 +1606,9 @@ function App() {
     const requestId = crypto.randomUUID();
     token.mineruRequest = requestId;
     try {
-      const markdown = await api.extractMineru({ id, executable, backend, requestId });
+      const result = await api.extractMineru({ id, executable, backend, requestId });
       requireActiveTask(token);
-      return markdown;
+      return typeof result === 'string' ? { markdown: result, pageHints: [] } : result;
     } finally { token.mineruRequest = null; }
   }
   async function ingestPdf(imported, token) {
@@ -1604,6 +1618,7 @@ function App() {
     const mode = config.pdfExtractionMode || 'mineruPreferred';
     let mineruMarkdown = '';
     let mineruBlocks = null;
+    let pageHints = [];
     const warnings = [];
     if (mode !== 'pdfOnly') {
       try {
@@ -1613,7 +1628,7 @@ function App() {
         if (!mineru.compatible) throw new Error(mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
         setBusy({ label: 'MinerU is reconstructing the paper…' });
         setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
-        mineruMarkdown = await extractMineruForTask(imported.id, mineru.executable, config.mineruBackend, token);
+        ({ markdown: mineruMarkdown, pageHints } = await extractMineruForTask(imported.id, mineru.executable, config.mineruBackend, token));
         mineruBlocks = readableMineruBlocks(mineruMarkdown);
       } catch (cause) {
         requireActiveTask(token);
@@ -1640,6 +1655,7 @@ function App() {
       if (!pdf && !mineruBlocks) throw cause;
       warnings.push(`The selectable PDF text could not be read: ${cause.message} The original file is preserved.`);
     } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
+    mineruBlocks = locateMineruPages(mineruBlocks, pageHints, pdfBlocks, pageCount);
     const blocks = mineruBlocks || pdfBlocks;
     const extractionWarning = warnings.join(' ');
     if (!await finishNoteEditing()) throw new Error('Retry the current paper save before opening another paper.');
@@ -1647,6 +1663,7 @@ function App() {
     const document = {
       id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(),
       blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
+      ...(mineruBlocks && { mineruPageMapVersion }),
       extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning,
       tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(config), explanationLanguage: 'English',
       paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
@@ -1994,15 +2011,17 @@ function App() {
     if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); setModal('setup'); return; }
     const token = startTask('MinerU is extracting structure…');
     try {
-      const markdown = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
-      const blocks = readableMineruBlocks(markdown);
+      const { markdown, pageHints } = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
+      const parsed = readableMineruBlocks(markdown);
       resetReadingHistory();
       commitPaper(current => {
         const hasUserWork = current.summary || current.connectedTranslation || hasMineruWork(current.blocks) ||
           hasArticleWork(current, paperArticleSource(current).mode);
-        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, pdfBlocks: current.pdfBlocks || current.blocks, blocks: hasUserWork ? current.blocks : blocks, extractionWarning: '', extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
+        const pdfBlocks = current.pdfBlocks || (current.sourceMode !== 'mineru' ? current.blocks : []);
+        const blocks = locateMineruPages(parsed, pageHints, pdfBlocks);
+        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, mineruPageMapVersion, pdfBlocks, blocks: hasUserWork ? current.blocks : blocks, extractionWarning: '', extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
       });
-      setStatus(`MinerU structure ready: ${blocks.length} blocks. You can switch Reader source without discarding either version.`);
+      setStatus(`MinerU structure ready: ${parsed.length} blocks. You can switch Reader source without discarding either version.`);
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   function canSwitchReadingSource(current, mode) {

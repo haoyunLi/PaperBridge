@@ -115,6 +115,17 @@ async function run() {
     await drop('probe-fallback.pdf', 'The selectable text survives a failed MinerU probe.');
     await page.getByText(/MinerU failed:.*Fixture MinerU detection failed/).waitFor();
 
+    await app.evaluate(() => { globalThis.__mineruScenario = 'hold'; });
+    await drop('structured-with-pages.pdf', 'The source page is the original first page.');
+    await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
+    await app.evaluate(() => globalThis.__mineruImports.at(-1).resolve({
+      markdown: '# A parsed title\n\nA MinerU passage with independent page metadata.',
+      pageHints: [{ page: 1, text: 'A parsed title' }, { page: 1, text: 'A MinerU passage with independent page metadata.' }]
+    }));
+    await page.getByText(/Extracted 2 blocks from 1 pages/).waitFor();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.locator('#block-2').getByText('PAGE 1 · BLOCK 2', { exact: true }).waitFor();
+
     await chooseMode('pdfOnly');
     const probes = await app.evaluate(() => globalThis.__mineruStatusCalls);
     await drop('pdf-only.pdf', 'The PDF only mode reads the selectable text layer.');
