@@ -1,4 +1,4 @@
-import { isHeading } from './text.mjs';
+import { isHeading, joinPdfText } from './text.mjs';
 import { referenceBlockIds } from './references.mjs';
 
 export { referenceBlockIds };
@@ -139,69 +139,111 @@ export function revalidateSummaryClaims(claims, blocks) {
   return claims.map(claim => ({ ...claim, sources: (claim.sources || []).filter(source => byId.get(source.paragraphID)?.text.includes(source.quote)) }));
 }
 
+const forReview = item => item.needsReview ? item : { ...item, needsReview: true };
+const matchesQuote = (text, quote, offset) => Number.isInteger(offset) && offset >= 0 && Boolean(quote) && text.startsWith(quote, offset);
+
+function uniqueOffset(text, quote) {
+  if (!quote) return null;
+  const offset = text.indexOf(quote);
+  return offset >= 0 && offset === text.lastIndexOf(quote) ? offset : null;
+}
+
+function moveSourceAnnotation(item, text, offset) {
+  if (item.needsReview || !matchesQuote(text, item.text, offset)) return forReview(item);
+  const { renderedAnchor, displayOffset, ...saved } = item;
+  return { ...saved, offset, ...(Number.isInteger(displayOffset) && { displayOffset: offset }), needsReview: false };
+}
+
 export function splitBlockAt(block, cut) {
   const leftText = block.text.slice(0, cut).trimEnd();
   const rightText = block.text.slice(cut).trimStart();
-  const rightStart = block.text.length - block.text.slice(cut).trimStart().length;
+  const rightStart = block.text.length - rightText.length;
   function divide(items) {
     const left = []; const right = [];
     for (const item of items || []) {
-      const offset = item.offset;
-      const destination = Number.isInteger(offset) && offset >= rightStart ? right : left;
-      const mapped = { ...item, offset: destination === right && Number.isInteger(offset) ? offset - rightStart : offset };
-      if (!Number.isInteger(offset) || (offset < rightStart && offset + String(item.text || '').length > cut)) mapped.needsReview = true;
-      destination.push(mapped);
+      if (!item.needsReview && Number.isInteger(item.offset) && item.offset >= rightStart) {
+        right.push(moveSourceAnnotation(item, rightText, item.offset - rightStart));
+      } else left.push(moveSourceAnnotation(item, leftText, item.offset));
     }
     return [left, right];
   }
   const [leftHighlights, rightHighlights] = divide(block.highlights);
   const [leftNotes, rightNotes] = divide((block.notes || []).filter(item => item.kind !== 'translation'));
-  const translationNotes = (block.notes || []).filter(item => item.kind === 'translation').map(item => ({ ...item, needsReview: true }));
+  const translationNotes = (block.notes || []).filter(item => item.kind === 'translation').map(forReview);
   return [
-    { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
-    { ...block, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', bookmark: false, highlights: rightHighlights, notes: rightNotes }
+    { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationHighlights: (block.translationHighlights || []).map(forReview), status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
+    { ...block, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
   ];
 }
 
+const sentenceSegmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+const sentenceEnding = /[.!?。！？…]["'”’»）)\]】]*$/u;
+const academicAbbreviation = /\b(?:figs?|eqs?|secs?|chaps?|refs?|nos?|vols?|vs|cf|approx|dept|univ|dr|prof|e\.g|i\.e|et al)\.$/i;
+
+function sentenceBoundaries(text) {
+  const end = text.trimEnd().length;
+  const boundaries = [];
+  for (const { index, segment } of sentenceSegmenter.segment(text)) {
+    const sentence = segment.trimEnd();
+    const cut = index + sentence.length;
+    if (cut < end && sentenceEnding.test(sentence) && !academicAbbreviation.test(sentence)) boundaries.push(cut);
+  }
+  return boundaries;
+}
+
+export function splitBlockNearMiddle(block) {
+  const center = block.text.length / 2;
+  let best = null;
+  for (const cut of sentenceBoundaries(block.text)) {
+    if (best === null || Math.abs(cut - center) < Math.abs(best - center)) best = cut;
+  }
+  return best === null ? [block] : splitBlockAt(block, best);
+}
+
 export function reflowBlock(block, targetChars = 900) {
+  if (block.text.length <= targetChars) return [block];
+  const boundaries = sentenceBoundaries(block.text);
   const pieces = [];
   let remaining = block;
-  while (remaining.text.length > targetChars) {
-    const boundaries = [...remaining.text.matchAll(/[.!?。！？](?=\s|$)/g)].map(match => match.index + 1).filter(at => at < remaining.text.length);
-    const cut = boundaries.filter(at => at <= targetChars).at(-1) || boundaries[0];
-    if (!cut) break;
-    const [left, right] = splitBlockAt(remaining, cut);
-    if (!left.text || !right.text) break;
-    pieces.push(left);
-    remaining = right;
+  let start = 0;
+  let previous = 0;
+  for (const end of [...boundaries, block.text.length]) {
+    if (end - start > targetChars && previous > start) {
+      const [left, right] = splitBlockAt(remaining, previous - start);
+      pieces.push(left);
+      remaining = right;
+      start = block.text.length - remaining.text.length;
+    }
+    previous = end;
   }
   return [...pieces, remaining];
 }
 
 export function mergeBlocks(left, right) {
-  const offset = left.text.length + 1;
-  const text = `${left.text} ${right.text}`;
+  const text = joinPdfText(left.text, right.text);
+  const rightStart = text.length - right.text.length;
+  const move = (item, source, start) => matchesQuote(source, item.text, item.offset) ? moveSourceAnnotation(item, text, start + item.offset) : forReview(item);
+  const moveNote = (item, source, start) => item.kind === 'translation' ? forReview(item) : move(item, source, start);
   return { ...left, text, heading: isHeading(text), translation: '', translationMarkdown: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
-    highlights: [...(left.highlights || []), ...(right.highlights || []).map(item => ({ ...item, offset: Number.isInteger(item.offset) ? item.offset + offset : item.offset }))],
-    translationHighlights: [],
-    notes: [...(left.notes || []).map(item => item.kind === 'translation' ? { ...item, needsReview: true } : item), ...(right.notes || []).map(item => ({ ...item, offset: Number.isInteger(item.offset) && item.kind !== 'translation' ? item.offset + offset : item.offset, needsReview: item.kind === 'translation' ? true : item.needsReview }))]
+    highlights: [...(left.highlights || []).map(item => move(item, left.text, 0)), ...(right.highlights || []).map(item => move(item, right.text, rightStart))],
+    translationHighlights: [...(left.translationHighlights || []), ...(right.translationHighlights || [])].map(forReview),
+    notes: [...(left.notes || []).map(item => moveNote(item, left.text, 0)), ...(right.notes || []).map(item => moveNote(item, right.text, rightStart))]
   };
 }
 
 export function editedBlock(block, newText) {
   const text = String(newText).trim();
-  function position(item) {
-    if (Number.isInteger(item.offset) && text.slice(item.offset, item.offset + item.text.length) === item.text) return item.offset;
-    const first = text.indexOf(item.text);
-    return first >= 0 && first === text.lastIndexOf(item.text) ? first : null;
+  const retained = uniqueOffset(text, block.text);
+  function relocate(item) {
+    const original = matchesQuote(block.text, item.text, item.offset) ? item.offset : uniqueOffset(block.text, item.text);
+    if (original === null) return forReview(item);
+    const offset = retained === null ? uniqueOffset(text, item.text) : retained + original;
+    return moveSourceAnnotation(item, text, offset);
   }
-  return { ...block, text, heading: isHeading(text), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending',
-    highlights: (block.highlights || []).flatMap(item => { const offset = position(item); return offset === null ? [] : [{ ...item, offset }]; }),
-    notes: (block.notes || []).map(item => {
-      if (item.kind === 'translation') return { ...item, needsReview: true };
-      const offset = position(item);
-      return offset === null ? { ...item, needsReview: true } : { ...item, offset, needsReview: false };
-    })
+  return { ...block, text, heading: isHeading(text), translation: '', translationMarkdown: null, status: 'pending',
+    translationHighlights: (block.translationHighlights || []).map(forReview),
+    highlights: (block.highlights || []).map(relocate),
+    notes: (block.notes || []).map(item => item.kind === 'translation' ? forReview(item) : relocate(item))
   };
 }
 
@@ -219,7 +261,7 @@ export function editedParagraphs(block, draft) {
   for (const paragraph of paragraphs.slice(0, -1)) {
     const [first, rest] = splitBlockAt(remaining, paragraph.length);
     blocks.push(first);
-    remaining = { ...rest, bookmark: block.bookmark };
+    remaining = rest;
   }
   return [...blocks, remaining];
 }

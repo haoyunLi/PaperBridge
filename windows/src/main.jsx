@@ -12,7 +12,7 @@ import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnc
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockNearMiddle, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { anchorText, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -1148,7 +1148,10 @@ function App() {
     if (entry.type === 'structure' && taskRef.current) { setError('Finish or stop the current task before undoing a source edit.'); return; }
     noteEditingIdentity.current = '';
     const restored = commitPaper(current => applyUndoEntry(current, entry));
-    setNoteDraft(findSelectionNote(restored, selectionRef.current)?.body || '');
+    if (entry.type === 'structure') {
+      resetStructureNavigation();
+      setActiveBlock(restored.position?.block || 1);
+    } else setNoteDraft(findSelectionNote(restored, selectionRef.current)?.body || '');
     setUndo(previous => previous.slice(0, -1));
   }
   const restoreMainScroll = () => {
@@ -2297,10 +2300,16 @@ function App() {
     setPdfNavigation(null);
     setError('The saved PDF text no longer matches its page ranges. The annotation was kept for review.');
   }
+  function resetStructureNavigation() {
+    resetReadingHistory();
+    window.getSelection()?.removeAllRanges();
+    setEdit(null); setSelection(null); setSelectionResults({}); setNoteDraft('');
+    setBlockNavigation(null); setViewNavigation(null);
+  }
   function modifyBlocks(start, count, replacements) {
     if (taskRef.current) { setError('Finish or stop the current task before editing the source.'); return; }
     if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
-    resetReadingHistory();
+    resetStructureNavigation();
     rememberUndo();
     commitPaper(current => ({ ...current,
       blocks: current.blocks.slice(0, start).concat(replacements, current.blocks.slice(start + count))
@@ -2310,7 +2319,6 @@ function App() {
       connectedStale: Boolean(current.connectedTranslation)
     }), { undoRange: { start, beforeEnd: start + count, afterEnd: start + replacements.length } });
     setActiveBlock(start + 1);
-    setEdit(null); setSelection(null);
   }
   function saveEdit() {
     const block = paper.blocks[edit.id - 1];
@@ -2319,7 +2327,11 @@ function App() {
     if (replacements[0] === block) { setEdit(null); return; }
     modifyBlocks(edit.id - 1, 1, replacements);
   }
-  function splitBlock(id) { const block = paper.blocks.find(item => item.id === id); const at = Math.max(block.text.lastIndexOf('. ', Math.floor(block.text.length / 2)), block.text.lastIndexOf('。', Math.floor(block.text.length / 2))); if (at < 10) { setError('No safe sentence boundary found. Edit this block manually.'); return; } modifyBlocks(id - 1, 1, splitBlockAt(block, at + 1)); }
+  function splitBlock(id) {
+    const pieces = splitBlockNearMiddle(paper.blocks[id - 1]);
+    if (pieces.length === 1) { setError('No safe sentence boundary found. Edit this block manually.'); return; }
+    modifyBlocks(id - 1, 1, pieces);
+  }
   function reflowParagraph(id) {
     const block = paper.blocks.find(item => item.id === id);
     const pieces = reflowBlock(block);

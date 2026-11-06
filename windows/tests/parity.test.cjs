@@ -229,13 +229,14 @@ test('split and merge retain exact note and highlight anchors', async () => {
   assert.equal(merged.notes[0].offset, 16);
 });
 
-test('edited source preserves notes but invalidates ambiguous highlights and source links', async () => {
+test('edited source retains unresolved notes and both highlight sides for review', async () => {
   const { editedBlock, revalidateSummaryClaims } = await import('../src/paper.mjs');
   const before = { id: 1, text: 'A unique phrase explains the result.', translation: 'old', status: 'ok',
-    highlights: [{ text: 'unique phrase', offset: 2, color: 'amber' }],
+    highlights: [{ text: 'unique phrase', offset: 2, color: 'amber' }], translationHighlights: [{ text: 'old', offset: 0, color: 'teal' }],
     notes: [{ id: 'note', text: 'unique phrase', offset: 2, kind: 'source', body: 'Saved idea' }] };
   const changed = editedBlock(before, 'A different result appears here.');
-  assert.deepEqual(changed.highlights, []);
+  assert.deepEqual(changed.highlights, [{ ...before.highlights[0], needsReview: true }]);
+  assert.deepEqual(changed.translationHighlights, [{ ...before.translationHighlights[0], needsReview: true }]);
   assert.equal(changed.notes[0].needsReview, true);
   assert.equal(changed.notes[0].body, 'Saved idea');
   assert.equal(changed.status, 'pending');
@@ -254,6 +255,37 @@ test('sentence reflow keeps the annotated phrase in its new block', async () => 
   assert.equal(pieces[2].notes[0].offset, 0);
   assert.equal(pieces[2].highlights[0].offset, 0);
   assert.equal(reflowBlock({ text: 'One very long sentence without a safe boundary.' }, 10).length, 1);
+});
+
+test('safe splitting and reflow recognize closing quotes and CJK sentences while keeping abbreviations intact', async () => {
+  const { reflowBlock, splitBlockNearMiddle } = await import('../src/paper.mjs');
+  const english = { text: 'Dr. Smith described Fig. 2. They wrote “The result is stable.” The later trial confirmed it.' };
+  assert.deepEqual(reflowBlock(english, 40).map(block => block.text), [
+    'Dr. Smith described Fig. 2.', 'They wrote “The result is stable.”', 'The later trial confirmed it.'
+  ]);
+  const chinese = { text: '作者解释机制。研究结果一致！后续仍需验证。', bookmark: true,
+    translationHighlights: [{ id: 'translated', text: 'mechanism', offset: 4, color: 'amber' }] };
+  const pieces = reflowBlock(chinese, 8);
+  assert.deepEqual(pieces.map(block => block.text), ['作者解释机制。', '研究结果一致！', '后续仍需验证。']);
+  assert.ok(pieces.every(block => block.bookmark));
+  assert.deepEqual(pieces.flatMap(block => block.translationHighlights), [{ ...chinese.translationHighlights[0], needsReview: true }]);
+  assert.deepEqual(splitBlockNearMiddle({ text: '作者解释机制。研究结果一致！' }).map(block => block.text), ['作者解释机制。', '研究结果一致！']);
+  assert.equal(splitBlockNearMiddle({ text: 'Dr. Smith measured the outcome.' }).length, 1);
+});
+
+test('merging repairs a hyphenated word and preserves annotations with verified positions', async () => {
+  const { mergeBlocks } = await import('../src/paper.mjs');
+  const left = { text: 'Our trans-', highlights: [{ text: 'trans-', offset: 4, color: 'amber' }],
+    translationHighlights: [{ id: 'left', text: 'a', offset: 0, color: 'amber' }] };
+  const right = { text: 'lation succeeds.', notes: [{ id: 'note', text: 'succeeds', offset: 7, displayOffset: 7, body: 'Keep' }],
+    translationHighlights: [{ id: 'right', text: 'b', offset: 0, color: 'teal' }] };
+  const merged = mergeBlocks(left, right);
+  assert.equal(merged.text, 'Our translation succeeds.');
+  assert.equal(merged.highlights[0].needsReview, true);
+  assert.equal(merged.notes[0].offset, merged.text.indexOf('succeeds'));
+  assert.equal(merged.notes[0].displayOffset, merged.notes[0].offset);
+  assert.equal(merged.notes[0].needsReview, false);
+  assert.deepEqual(merged.translationHighlights.map(item => [item.id, item.needsReview]), [['left', true], ['right', true]]);
 });
 
 test('saving a manual edit splits at blank lines and moves exact annotations into their new blocks', async () => {

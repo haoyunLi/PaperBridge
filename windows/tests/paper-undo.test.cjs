@@ -66,12 +66,13 @@ test('undoing a split restores old anchors and translations while retaining late
   assert.equal(restored.position.block, 2);
 });
 
-test('undoing an edit restores removed source highlights but respects later explicit deletion of retained notes', async () => {
+test('undoing an edit restores reviewed highlights and respects later explicit deletion of retained notes', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const { editedBlock } = await paperHelpers;
   const before = paper([{ text: 'Old passage and shared word.', highlights: [{ id: 'highlight', text: 'Old passage', offset: 0, color: 'amber' }], notes: [{ id: 'note', text: 'shared', offset: 16, body: 'Old note' }] }]);
   const after = paper([editedBlock(before.blocks[0], 'New passage and shared word.')]);
   const current = paper([{ ...after.blocks[0], notes: [] }]);
+  assert.equal(current.blocks[0].highlights[0].needsReview, true);
   const restored = applyUndoEntry(current, createUndoEntry(before, after));
   assert.deepEqual(restored.blocks[0].highlights, before.blocks[0].highlights);
   assert.deepEqual(restored.blocks[0].notes, []);

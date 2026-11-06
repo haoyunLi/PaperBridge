@@ -228,9 +228,41 @@ async function run() {
       assert.match(exported.content, /## Highlights\n\n### Reader · Block 4 · source · amber\n\n> Beta control/);
       assert.match(exported.content, /## Notes\n\nNone saved\./);
     }
+
+    const sourceQuote = 'Alpha mechanism';
+    const translationQuote = '原位机制';
+    await selectText(page, '#block-2 .source-text', sourceQuote);
+    await page.locator('.inspector button[title="Amber highlight"]').click();
+    await selectText(page, '#block-2 .translation-text.done', translationQuote);
+    await page.locator('.inspector button[title="Cobalt highlight"]').click();
+    await waitFor(() => readPaper().blocks[1].translationHighlights?.some(item => item.text === translationQuote), 'saved translated highlight');
+    const beforeEdit = readPaper().blocks[1];
+    await page.locator('#block-2 button[title="Edit source"]').click();
+    await page.getByRole('button', { name: 'Reflow at full sentences', exact: true }).click();
+    const sourceHighlight = page.locator('.annotation-row').filter({ hasText: sourceQuote });
+    const translatedHighlight = page.locator('.annotation-row').filter({ hasText: translationQuote });
+    await translatedHighlight.getByText(/source changed, review needed/).waitFor();
+    assert.doesNotMatch(await sourceHighlight.innerText(), /review needed/);
+    await waitFor(() => {
+      const blocks = readPaper().blocks;
+      return blocks.length > document.blocks.length && blocks[1].translationHighlights?.[0]?.needsReview &&
+        blocks[1].translationHighlights[0].id === beforeEdit.translationHighlights[0].id;
+    }, 'reflow retains the translated highlight with its original ID');
+    await page.locator('.undo-button').click();
+    await page.locator('#block-2 .translation-text.done').waitFor();
+    assert.doesNotMatch(await translatedHighlight.innerText(), /review needed/);
+    await waitFor(() => readPaper().blocks.length === document.blocks.length && !readPaper().blocks[1].translationHighlights?.[0]?.needsReview, 'undo restores the translated anchor');
+
+    await page.locator('#block-2 button[title="Edit source"]').click();
+    await page.getByLabel('Paragraph source').fill('The passage was rewritten to describe a different research mechanism.');
+    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await sourceHighlight.getByText(/source changed, review needed/).waitFor();
+    await translatedHighlight.getByText(/source changed, review needed/).waitFor();
+    await waitFor(() => readPaper().blocks[1].highlights?.[0]?.id === beforeEdit.highlights[0].id && readPaper().blocks[1].highlights[0].needsReview, 'edit retains the original highlight with its original ID');
+
     fs.writeFileSync(path.join(artifacts, 'reader-review-exports.json'), JSON.stringify(exports, null, 2));
     await page.screenshot({ path: path.join(artifacts, 'reader-review.png') });
-    console.log('Reader regression checks passed: undo retains AI output; outline clears search; selection results stay with their source and use French; translated-side terminology reverses direction and replaces duplicates; current section follows scrolling; Analysis and bilingual exports include highlight-only records and bookmarks.');
+    console.log('Reader regression checks passed for navigation, selection lookup, terminology, exports, and retention of source and translation highlights through reflow, editing, and undo.');
   } catch (error) {
     await page?.screenshot({ path: path.join(artifacts, 'reader-review-failure.png') }).catch(() => {});
     throw error;
