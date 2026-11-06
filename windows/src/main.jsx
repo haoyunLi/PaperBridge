@@ -25,7 +25,7 @@ import SetupPanel from './SetupPanel.jsx';
 import Onboarding from './Onboarding.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import { modelSettingsPatch } from './modelCatalog.mjs';
-import { activeAIModel, aiCacheNamespace, translationInstructions, openAISetupMessage, isGlobalOpenAIError } from './aiSettings.mjs';
+import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
 import { connectedBatchVersion, pendingConnectedBatches, planConnectedBatches, restoreConnectedExcerpt } from './connectedTranslation.mjs';
 import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
@@ -659,11 +659,11 @@ function ScanNotice({ page = false, ocrReady = false, onParse, onSetup, onReader
   return <div className="scan-notice" role="status"><AlertCircle size={20} /><div><strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{ocrReady ? 'MinerU OCR text is ready in Reader. The original PDF remains unchanged.' : 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.'}</p><div className="row">{ocrReady ? <button className="button blue" onClick={onReader}>Open OCR Reader</button> : <><button className="button blue" onClick={onParse}>Parse with MinerU</button><button className="button outline" onClick={onSetup}>Set up local AI</button>{onReader && <button className="button ghost" onClick={onReader}>Open Reader</button>}</>}</div></div></div>;
 }
 
-function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence }) {
+function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence, setupSummary }) {
   const claims = revalidateSummaryClaims(paper.summary?.claims, paper.blocks);
   const { mode: sourceMode } = paperArticleSource(paper);
   return <div className="summary-view">
-    <div className="section-heading"><div><h2>Paper summary</h2><p>Verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !canSummarize} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
+    <div className="section-heading"><div><h2>Paper summary</h2><p>Verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !canSummarize} onClick={setupSummary || summarize}><Sparkles size={16} /> {setupSummary ? 'Set up summary' : paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
       {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
       <p className="summary-evidence-note">AI-generated summary. Source links show where quotations appear. Verify research findings and the model’s interpretation against the original paper.</p>
@@ -698,7 +698,7 @@ function ReaderQualityWarning({ issue, structured, busy, onEdit, onCompare }) {
   </div>;
 }
 
-function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedOverview, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
+function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedOverview, issues, onOriginal, onReader, translatedCount, paragraphCount, setupSummary }) {
   const entries = readingMap(paper.blocks);
   const qualityKey = JSON.stringify([paperArticleSource(paper).mode, 'quality']);
   return <div className="content-column">
@@ -719,7 +719,7 @@ function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect
       <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID)}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
       <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
     </section>
-    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedOverview} />
+    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedOverview} setupSummary={setupSummary} />
   </div>;
 }
 
@@ -849,6 +849,7 @@ function App() {
   const [tab, setTab] = useState('Paper');
   const [displayMode, setDisplayMode] = useState('bilingual');
   const [modal, setModal] = useState('');
+  const [taskSetup, setTaskSetup] = useState(null);
   const modalRef = useRef(null);
   const finishingOnboarding = useRef(false);
   const [onboardingFinishing, setOnboardingFinishing] = useState(false);
@@ -867,7 +868,8 @@ function App() {
   const [modelDownloadMessage, setModelDownloadMessage] = useState('');
   const [modelDownloadError, setModelDownloadError] = useState('');
   const [ollamaError, setOllamaError] = useState('');
-  const [openAIState, setOpenAIState] = useState({ hasKey: false, consent: false, models: [], refreshing: false, saving: false, status: '', error: '' });
+  const [ollamaStatus, setOllamaStatus] = useState('unchecked');
+  const [openAIState, setOpenAIState] = useState({ hasKey: null, consent: false, models: [], refreshing: false, saving: false, status: '', error: '' });
   const openAIStateRef = useRef(openAIState);
   openAIStateRef.current = openAIState;
   const openAIRefreshId = useRef(null);
@@ -1111,7 +1113,7 @@ function App() {
         openAIExplainModel: previous.openAIExplainModel, openAIQuickLookupModel: previous.openAIQuickLookupModel };
       loaded = { ...switchOutputSettings(loaded, restoredFromPaper, restored), taskSettings: snapshotPaperSettings(restored) };
       settingsRef.current = restored; setSettings(restored);
-      if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
+      if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaStatus('unchecked'); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
     }
     resetReadingHistory();
     paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1);
@@ -1130,7 +1132,8 @@ function App() {
       setOpenAIState(current => ({ ...current, consent: false, status: change.aiProvider === 'openai' ? 'OpenAI is selected but paused until you allow this session.' : 'Using local Ollama.', error: '' }));
     }
     if (change.ollamaBaseURL !== undefined && change.ollamaBaseURL !== previous.ollamaBaseURL) {
-      setModels([]); setRunningModels([]); setOllamaError('Refresh models to check this local endpoint.');
+      modelRefreshId.current++;
+      setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError('Refresh models to check this local endpoint.');
     }
     if (change.mineruExecutable !== undefined && change.mineruExecutable !== previous.mineruExecutable) setMineruRuntime(null);
     settingsRef.current = next; setSettings(next);
@@ -1150,6 +1153,14 @@ function App() {
     if (taskRef.current || pulling) { setError('Finish or cancel the current task before starting the setup guide.'); return; }
     setOnboardingSaveError(''); updateSettings({ onboardingPage: 0 }); setModal('onboarding');
   }
+  function openSetup(request = null) { setTaskSetup(request); setModal('setup'); }
+  function openSettings(request = null) { setTaskSetup(request); setModal('settings'); }
+  function openTaskSetup(issue, checked = false) {
+    if (taskRef.current) return;
+    if (!checked && settingsRef.current.aiProvider !== 'openai') void refreshModels(settingsRef.current);
+    if (issue.destination === 'setup' && !pullRef.current) openSetup(issue);
+    else openSettings(issue);
+  }
   async function finishOnboarding(action = 'done') {
     if (onboardingBusyRef.current || finishingOnboarding.current) return;
     finishingOnboarding.current = true; setOnboardingFinishing(true); setOnboardingSaveError('');
@@ -1158,7 +1169,8 @@ function App() {
       const saved = settingsRef.current;
       settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(saved));
       await settingsSaveChain.current;
-      setModal(action === 'setup' ? 'setup' : '');
+      if (action === 'setup') openSetup();
+      else setModal('');
       if (action === 'openPdf') openFile();
       if (action === 'practice') loadPractice();
     } catch (cause) { setOnboardingSaveError(`Could not save setup progress: ${cause.message}`); }
@@ -1266,14 +1278,21 @@ function App() {
   const refreshModels = async config => {
     const requestId = ++modelRefreshId.current;
     const isCurrent = () => requestId === modelRefreshId.current && settingsRef.current?.ollamaBaseURL === config.ollamaBaseURL;
-    try { const values = await api.listModels(config.ollamaBaseURL); if (isCurrent()) { setModels(values); setOllamaError(''); } return values; }
-    catch (err) { if (isCurrent()) { setModels([]); setOllamaError(err.message); } return []; }
+    try {
+      const values = await api.listModels(config.ollamaBaseURL);
+      if (isCurrent()) { setModels(values); setOllamaStatus('ready'); setOllamaError(''); }
+      return { models: values, ollamaStatus: 'ready' };
+    } catch (err) {
+      if (isCurrent()) { setModels([]); setOllamaStatus('unavailable'); setOllamaError(err.message); }
+      return { models: [], ollamaStatus: 'unavailable' };
+    }
   };
   async function refreshOpenAIKeyStatus() {
     try {
       const result = await api.openAIKeyStatus();
       setOpenAIState(current => ({ ...current, hasKey: result.hasKey, error: '' }));
-    } catch (cause) { setOpenAIState(current => ({ ...current, hasKey: false, error: cause.message })); }
+      return result.hasKey;
+    } catch (cause) { setOpenAIState(current => ({ ...current, hasKey: false, error: cause.message })); return false; }
   }
   async function saveOpenAIKey(value) {
     setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
@@ -1324,7 +1343,7 @@ function App() {
     const paperId = paperRef.current?.id;
     try {
       await api.pullModel({ baseURL: config.ollamaBaseURL, model: requestedModel });
-      const available = await refreshModels(config);
+      const { models: available } = await refreshModels(config);
       let message = 'Model downloaded. Choose its task in Settings.';
       if (recommendation && settingsRef.current.ollamaBaseURL === config.ollamaBaseURL && paperRef.current?.id === paperId) {
         updateSettings(modelSettingsPatch(settingsRef.current, recommendation, available));
@@ -1489,8 +1508,8 @@ function App() {
     else if (name === 'undo') { if (paper && undo.length) undoLastChange(); }
     else if (name === 'readingBack') goBackInReading();
     else if (name === 'readingForward') goForwardInReading();
-    else if (name === 'settings') setModal('settings');
-    else if (name === 'setup') setModal('setup');
+    else if (name === 'settings') openSettings();
+    else if (name === 'setup') openSetup();
     else if (name === 'onboarding') openOnboarding();
     else if (name === 'checkUpdates') checkForUpdates(false);
   };
@@ -1698,6 +1717,19 @@ function App() {
     setBusy(null);
     setProgress(null);
   }
+  async function prepareTaskAI(config, roles, token) {
+    if (!roles.length) return true;
+    const local = config.aiProvider === 'openai' ? {} : await refreshModels(config);
+    let hasKey = openAIStateRef.current.hasKey;
+    if (config.aiProvider === 'openai' && hasKey == null) hasKey = await refreshOpenAIKeyStatus();
+    requireActiveTask(token);
+    const { consent } = openAIStateRef.current;
+    const issue = aiTaskSetupIssue(config, roles, { ...local, consent, hasKey });
+    if (!issue) return true;
+    endTask(token);
+    openTaskSetup(issue, true);
+    return false;
+  }
   async function generate(model, prompt, system, token, format) {
     requireActiveTask(token);
     const requestId = crypto.randomUUID(); token.ids.add(requestId);
@@ -1758,9 +1790,7 @@ function App() {
     try {
       const config = settingsRef.current;
       const translationModel = activeAIModel(config, 'translation');
-      const setupMessage = config.sourceLanguage === config.targetLanguage ? '' : openAISetupMessage(config, openAIStateRef.current.consent, openAIStateRef.current.hasKey, 'translation');
-      if (setupMessage) throw new Error(setupMessage);
-      if (config.aiProvider !== 'openai' && config.sourceLanguage !== config.targetLanguage && !models.includes(translationModel)) throw new Error(`Install ${translationModel} in Ollama first.`);
+      if (!await prepareTaskAI(config, config.sourceLanguage === config.targetLanguage ? [] : ['translation'], token)) return;
       for (let index = 0; index < total; index++) {
         if (token.cancelled) break;
         const block = active.queue[index];
@@ -1832,6 +1862,7 @@ function App() {
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
     token.kind = 'selection'; token.selectionKey = selectedKey;
     try {
+      if (!await prepareTaskAI(config, kind === 'explain' || from !== to ? ['quickLookup'] : [], token)) return;
       let output = quote;
       if (kind === 'translate' && from !== to) {
         const withContext = context.includes(quote) && spansCompleteSentences(quote, sourceContext);
@@ -1864,7 +1895,9 @@ function App() {
     if (!block || busy || taskRef.current) return;
     const token = startTask(`Explaining block ${id}…`);
     try {
-      const output = await generate(activeAIModel(settingsRef.current, 'explanation'), explainPrompt(block.text, block.text, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
+      const config = settingsRef.current;
+      if (!await prepareTaskAI(config, ['explanation'], token)) return;
+      const output = await generate(activeAIModel(config, 'explanation'), explainPrompt(block.text, block.text, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
       if (!token.cancelled) {
         const settingsKey = explanationKey(id, explanationLanguage, settings);
         const result = { id, language: explanationLanguage, source: block.text, output, settingsKey };
@@ -1885,19 +1918,7 @@ function App() {
       const translationModel = activeAIModel(config, 'translation');
       const sameLanguage = config.sourceLanguage === config.targetLanguage;
       const roles = sameLanguage ? ['summary'] : ['summary', 'translation'];
-      if (config.aiProvider === 'openai') {
-        for (const role of roles) {
-          const setupMessage = openAISetupMessage(config, openAIStateRef.current.consent, openAIStateRef.current.hasKey, role);
-          if (setupMessage) throw new Error(setupMessage);
-        }
-      } else {
-        const available = await api.listModels(config.ollamaBaseURL);
-        requireActiveTask(token);
-        for (const role of roles) {
-          const model = activeAIModel(config, role);
-          if (!available.includes(model)) throw new Error(`Install ${model || `a ${role} model`} in Ollama first.`);
-        }
-      }
+      if (!await prepareTaskAI(config, roles, token)) return;
 
       const batches = summarySourceBatches(source);
       const system = 'You are a careful academic paper assistant. Return only the requested JSON.';
@@ -1988,9 +2009,7 @@ function App() {
         setStatus('Connected full-paper translation saved.');
         return;
       }
-      const setupMessage = openAISetupMessage(config, openAIStateRef.current.consent, openAIStateRef.current.hasKey, 'translation');
-      if (setupMessage) throw new Error(setupMessage);
-      if (config.aiProvider !== 'openai' && !models.includes(translationModel)) throw new Error(`Install ${translationModel} in Ollama first.`);
+      if (!await prepareTaskAI(config, ['translation'], token)) return;
       setProgress({ done, total: translationCount });
       for (const [index, batch] of batches.entries()) {
         if (batch.status === 'ok') continue;
@@ -2031,7 +2050,7 @@ function App() {
     catch (cause) { setError(`MinerU detection failed: ${cause.message}`); return; }
     finally { mineruPreflight.current = false; }
     if (paperRef.current?.id !== paper.id || taskRef.current) return;
-    if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); setModal('setup'); return; }
+    if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); openSetup(); return; }
     const token = startTask('MinerU is extracting structure…');
     try {
       const { markdown, pageHints } = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
@@ -2575,6 +2594,13 @@ function App() {
   const abstractConclusionIds = translationRangeIds(paper?.blocks || [], sections.filter(section => /abstract|conclusion|摘要|结论/i.test(section.title)).flatMap(section => section.ids), referenceIDs);
   const unfinishedTranslationIds = translationRangeIds(paper?.blocks || [], null, referenceIDs);
   const structuredFull = usesSharedMarkdown(paper);
+  const fullHasSource = paper?.blocks.some(block => !block.heading && !block.resource);
+  const translationRoles = settings?.sourceLanguage === settings?.targetLanguage ? [] : ['translation'];
+  const aiReadiness = { models, ollamaStatus, consent: openAIState.consent, hasKey: openAIState.hasKey };
+  const translationSetup = settings && translatedCount < translatableCount ? aiTaskSetupIssue(settings, translationRoles, aiReadiness) : null;
+  const summarySetup = settings && canSummarize ? aiTaskSetupIssue(settings, ['summary', ...translationRoles], aiReadiness) : null;
+  const fullSetup = settings && fullHasSource && (!structuredFull || unfinishedTranslationIds.length)
+    ? aiTaskSetupIssue(settings, translationRoles, aiReadiness) : null;
   const pdfFacsimile = paper?.type === 'pdf' && paper.sourceMode !== 'mineru';
   const plainUnfinished = structuredFull ? [] : pendingConnectedBatches(paper);
   const fullTranslationNeedsWork = paper && (!paper.connectedTranslation || paper.connectedStale
@@ -2602,11 +2628,11 @@ function App() {
         <div className="side-group"><div className="side-label">LIBRARY <button title="Open library" onClick={() => setModal('library')}><Library size={15} /></button></div><input className="side-search" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.blockCount} blocks</small></button>)}</div>
         {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <><div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Blocks</span><b>{paper.blocks.length}</b></div><div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div><div className="side-group"><div className="side-label">OUTLINE</div>{outline.slice(0, 60).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}><span>{short(block.text, 48)}</span><small>{block.page || block.id}</small></button>)}{!outline.length && <p className="side-hint">No headings detected.</p>}</div><div className="side-group"><div className="side-label">BOOKMARKS</div>{paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}>{short(block.text, 52)}</button>)}</div></>}
       </div>
-      <div className="sidebar-footer"><button onClick={() => setModal('setup')}><Download size={16} /> Local AI setup</button><button onClick={() => setModal('settings')}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
+      <div className="sidebar-footer"><button onClick={() => openSetup()}><Download size={16} /> Local AI setup</button><button onClick={() => openSettings()}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
     </aside>
     <main className="workspace" inert={Boolean(modal)}>
-      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" onClick={() => setSidebar(!sidebar)}>{sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsed}s elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaError ? 'Ollama unavailable' : 'Ollama Ready'}</div><button className="icon-button" title="Toggle inspector" disabled={Boolean(pendingImport)} onClick={() => { if (inspector) void finishNoteEditing(); setInspector(!inspector); }}>{inspector ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
-      {paper && !pendingImport && <div className="header-tools"><nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item => <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav><div className="toolbar-actions">{busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : <button className="button coral" disabled={!translatableCount || translatedCount === translatableCount} onClick={() => translateBlocks(paper.blocks.map(block => block.id))}><Languages size={16} /> {translatedCount ? 'Resume Translation' : 'Translate Paper'}</button>}<button className="button ghost" onClick={() => setModal('more')}>More ···</button></div></div>}
+      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" onClick={() => setSidebar(!sidebar)}>{sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsed}s elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaStatus === 'ready' ? 'Ollama Ready' : ollamaStatus === 'unavailable' ? 'Ollama unavailable' : 'Check Ollama'}</div><button className="icon-button" title="Toggle inspector" disabled={Boolean(pendingImport)} onClick={() => { if (inspector) void finishNoteEditing(); setInspector(!inspector); }}>{inspector ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
+      {paper && !pendingImport && <div className="header-tools"><nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item => <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav><div className="toolbar-actions">{busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : <button className="button coral" disabled={!translatableCount || translatedCount === translatableCount} onClick={() => translationSetup ? openTaskSetup(translationSetup) : translateBlocks(paper.blocks.map(block => block.id))}><Languages size={16} /> {translationSetup ? 'Set up translation' : translatedCount ? 'Resume Translation' : 'Translate Paper'}</button>}<button className="button ghost" onClick={() => setModal('more')}>More ···</button></div></div>}
       </header>
       {(error || updateInfo?.status === 'available' || busy || paper && workspaceSave.status !== 'idle') && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
@@ -2621,7 +2647,7 @@ function App() {
       <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll} onKeyDown={handleReadingKey}>
         {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
         {paper && status && <Notice>{status}</Notice>}
-        {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
+        {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className={pdfFacsimile && displayMode !== 'source' ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.type === 'pdf' && displayMode === 'source' ? 'Exact native PDF rendering with selectable text and original page layout' : paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Reflowed selectable PDF text · exact pages remain available in Original mode' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
           {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
@@ -2641,10 +2667,10 @@ function App() {
             onNavigate={pdfNavigationReady}
             onNavigationFailure={pdfNavigationFailed}
             onOcr={runMineru}
-            onSetup={() => setModal('setup')}
+            onSetup={() => openSetup()}
             onReader={openPdfReader}
           /> : <>
-            {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} />}
+            {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => openSetup()} />}
             <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
               {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
               <PaperPreview paper={paper} displayMode={displayMode} referenceIDs={referenceIDs} onSelect={captureViewSelection} />
@@ -2656,7 +2682,7 @@ function App() {
           return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>
           {issue && edit?.id !== block.id && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => setEdit({ id: block.id, text: block.text })} onCompare={() => compareOriginal(block.page)} />}
           {edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
-        })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
+        })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView
           key={paper.id}
           paper={paper}
@@ -2673,17 +2699,17 @@ function App() {
           onNavigate={pdfNavigationReady}
           onNavigationFailure={pdfNavigationFailed}
           onOcr={runMineru}
-          onSetup={() => setModal('setup')}
+          onSetup={() => openSetup()}
           onReader={openPdfReader}
         />}
-        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} setupSummary={summarySetup ? () => openTaskSetup(summarySetup) : null} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading">
             <div><h2>Connected full translation</h2><p>{structuredFull
               ? 'Shares Reader translations and preserves Markdown structure'
               : 'A separate document-wide pass for consistent terminology'}</p></div>
-            <button className="button coral" disabled={!!busy || !paper.blocks.some(block => !block.heading && !block.resource) || (structuredFull && !fullTranslationNeedsWork)}
-              onClick={() => fullTranslation(fullTranslationAction === 'Regenerate')}><Languages size={16} /> {fullTranslationAction}</button>
+            <button className="button coral" disabled={!!busy || !fullHasSource || (structuredFull && !fullTranslationNeedsWork)}
+              onClick={() => fullSetup ? openTaskSetup(fullSetup) : fullTranslation(fullTranslationAction === 'Regenerate')}><Languages size={16} /> {fullSetup ? 'Set up full translation' : fullTranslationAction}</button>
           </div>
           {paper.connectedStale && <Notice tone="error">The source changed after this translation. Update it to match the current source.</Notice>}
           {structuredFull && paper.connectedShared && !paper.connectedStale && unfinishedTranslationIds.length > 0 &&
@@ -2703,14 +2729,15 @@ function App() {
         </>}
       </div>
     </main>
-    <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={selection.scope === 'paperArticle' ? 'paper-article-quote' : undefined}>{short(selection.quote ?? selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
+    <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={selection.scope === 'paperArticle' ? 'paper-article-quote' : undefined}>{short(selection.quote ?? selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={() => { void finishNoteEditing(); setSelection(null); setSelectionResults({}); }} />}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}
-      {modal === 'setup' && <SetupPanel settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => refreshModels(settings)} />}
-      {modal === 'settings' && <SettingsPanel settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)}
-        onOnboarding={openOnboarding} onOpenSetup={() => setModal('setup')} onClearData={() => setModal('clearData')}
+      {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => refreshModels(settingsRef.current)}
+        taskSetup={taskSetup} onChooseModels={() => openSettings(taskSetup)} />}
+      {modal === 'settings' && <SettingsPanel key={taskSetup ? 'task' : 'manual'} settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)} taskSetup={taskSetup}
+        onOnboarding={openOnboarding} onOpenSetup={() => openSetup()} onClearData={() => setModal('clearData')}
         modelTools={{ models, ollamaError, pulling, cancelling: cancellingPull, progress: pullProgress, message: modelDownloadMessage, error: modelDownloadError,
           name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
@@ -2720,7 +2747,7 @@ function App() {
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} />}
       {modal === 'libraryLabel' && libraryEdit && <><p>Only the library label changes; the original PDF stays unchanged.</p><label>Title<input value={libraryEdit.name} onChange={event => setLibraryEdit({ ...libraryEdit, name: event.target.value })} /></label><label>Tags, separated by commas<input value={libraryEdit.tags} onChange={event => setLibraryEdit({ ...libraryEdit, tags: event.target.value })} /></label><div className="row"><button className="button blue" disabled={!libraryEdit.name.trim()} onClick={saveLibraryLabel}>Save label</button><button className="button outline" onClick={() => setModal('library')}>Cancel</button></div></>}
-      {modal === 'more' && <div className="menu-list"><button onClick={openTranslationRange}><Languages size={17} /> Translation Range</button><button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf'}><FileText size={17} /> Parse with MinerU</button><button onClick={reextractAsNew} disabled={paper?.type !== 'pdf' || !!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button><button onClick={() => setModal('export')}><Download size={17} /> Export Markdown</button><button onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button><button onClick={() => setModal('settings')}><Settings2 size={17} /> Settings</button></div>}
+      {modal === 'more' && <div className="menu-list"><button onClick={openTranslationRange}><Languages size={17} /> Translation Range</button><button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf'}><FileText size={17} /> Parse with MinerU</button><button onClick={reextractAsNew} disabled={paper?.type !== 'pdf' || !!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button><button onClick={() => setModal('export')}><Download size={17} /> Export Markdown</button><button onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button><button onClick={() => openSettings()}><Settings2 size={17} /> Settings</button></div>}
       {modal === 'range' && <div className="menu-list">
         <button disabled={!!busy || !abstractConclusionIds.length} onClick={() => { setModal(''); translateBlocks(abstractConclusionIds); }}>Abstract & Conclusion <small>{abstractConclusionIds.length} blocks</small></button>
         <button disabled={!!busy || !currentSectionIds.length} onClick={() => { setModal(''); translateBlocks(currentSectionIds); }}>Current section: {currentSection?.title || 'Opening material'} <small>{currentSectionIds.length} blocks</small></button>
@@ -2729,7 +2756,7 @@ function App() {
         <button disabled={!!busy || !unfinishedTranslationIds.length} onClick={() => { setModal(''); translateBlocks(unfinishedTranslationIds); }}>All unfinished blocks <small>{unfinishedTranslationIds.length} blocks</small></button>
       </div>}
 
-      {modal === 'clearData' && <><p>This removes saved papers, translations, bookmarks, notes, terminology, and settings. Original PDF copies and the separately encrypted OpenAI API key remain; remove the key under Models. Text already sent online cannot be recalled.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => setModal('settings')}>Cancel</button></div></>}
+      {modal === 'clearData' && <><p>This removes saved papers, translations, bookmarks, notes, terminology, and settings. Original PDF copies and the separately encrypted OpenAI API key remain; remove the key under Models. Text already sent online cannot be recalled.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => openSettings()}>Cancel</button></div></>}
       {modal === 'export' && <div className="menu-list"><button onClick={exportBundle}><Download size={17} /> Export portable Markdown bundle</button>{[['original', 'Original Markdown'], ['translated', 'Translated Markdown'], ['bilingual', 'Bilingual Markdown'], ['analysis', 'Summary, sources and notes'], ...(paper.connectedTranslation ? [['full', 'Full Translation Markdown']] : [])].map(([kind, label]) => <button key={kind} onClick={() => exportMarkdown(kind)}><Download size={17} /> {label}</button>)}</div>}
     </div></div></div>}
   </div>;

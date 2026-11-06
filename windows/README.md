@@ -2,13 +2,15 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-Download the Windows x64 development preview from the [Windows 0.2.8 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.8). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
+Download the Windows x64 development preview from the [Windows 0.2.9 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.9). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
 
-Version 0.2.8 preserves original PDF page numbers for MinerU paragraphs. From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
+Version 0.2.9 adds direct links from AI tasks to the required settings and prioritizes the current chapter's waiting blocks during translation. From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
 
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.
 
 During paragraph translation, **More > Translation Range > Prioritize current section in queue** moves the current section’s waiting blocks after the block in progress. The menu shows how many queued blocks can move. **Stop** keeps completed blocks, and **Resume Translation** retries unfinished blocks, including failures. The progress bar counts failures from the current pass. The sidebar shows the paper’s total.
+
+AI tasks open the setup they need when the runtime, task models, or session permission are missing. Local task setup selects Ollama and the required models by default. **Choose task models** opens Models to select an installed alternative. OpenAI tasks open Models for key, model and session permission setup. Run the task after closing settings.
 
 **Saved Terminology** prioritizes longer matching phrases in the selected language direction. Up to 24 matches guide paragraph, selection, and full translations as a dictionary. A term saved from translated text uses the reverse direction. A write failure keeps the draft or existing entry available for retry, and changing terminology leaves completed translations intact.
 

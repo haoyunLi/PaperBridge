@@ -27,7 +27,8 @@ async function run() {
   const originalMineru = 'C:\\original\\mineru.exe';
   const repairedMineru = 'C:\\managed\\mineru.exe';
   fs.writeFileSync(settingsFile, JSON.stringify({ onboardingCompletedVersion: 1, autoCheckUpdates: false,
-    ollamaBaseURL: 'http://127.0.0.1:9', mineruExecutable: originalMineru, mineruBackend: 'pipeline' }));
+    ollamaBaseURL: 'http://127.0.0.1:9', mineruExecutable: originalMineru, mineruBackend: 'pipeline',
+    summaryModel: 'summary-fixture:1b', explainModel: 'explain-fixture:1b', quickLookupModel: 'lookup-fixture:1b' }));
 
   const status = {
     hardware: { adapters: [{ name: 'AMD Radeon', vendor: 'AMD' }], cudaDriver: null, cudaVersion: null },
@@ -114,7 +115,93 @@ async function run() {
       const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
       return saved.mineruExecutable === repairedMineru && saved.mineruBackend === 'auto';
     }, 'managed MinerU configuration after repair retry');
-    console.log('Setup component selection kept MinerU settings during model-only install; managed repair cancellation, reopen, and retry succeeded in mocks.');
+    const button = name => page.getByRole('button', { name, exact: true });
+    await button('Close dialog').click();
+    await button('Try a Practice Paper').first().click();
+    await button('Set up translation').click();
+    const modelsTab = page.getByRole('tab', { name: 'Models', exact: true });
+    await modelsTab.waitFor();
+    assert.equal(await modelsTab.getAttribute('aria-selected'), 'true');
+    await page.getByText('The configured Ollama endpoint is unavailable. Check the Ollama URL and refresh models.').waitFor();
+
+    await app.evaluate(({ ipcMain }, fixture) => {
+      global.__taskOllamaReady = false;
+      global.__taskSetupChecks = [];
+      global.__taskSetupInstalls = [];
+      global.__taskGenerations = [];
+      ipcMain.removeHandler('ollama:models');
+      ipcMain.handle('ollama:models', () => {
+        if (!global.__taskOllamaReady) throw new Error('Fixture Ollama is unavailable.');
+        return ['translategemma:4b'];
+      });
+      ipcMain.removeHandler('setup:status');
+      ipcMain.handle('setup:status', (_event, config) => {
+        global.__taskSetupChecks.push(config);
+        return { ...fixture.status, busy: false,
+          ollama: { installed: true, running: global.__taskOllamaReady, models: global.__taskOllamaReady ? ['translategemma:4b'] : [] },
+          plan: { ...fixture.plan, ollama: !global.__taskOllamaReady, models: config.models.filter(model => !global.__taskOllamaReady || model !== 'translategemma:4b') } };
+      });
+      ipcMain.removeHandler('setup:install');
+      ipcMain.handle('setup:install', (_event, config) => {
+        global.__taskSetupInstalls.push(config);
+        global.__taskOllamaReady = true;
+        return { warning: 'Task setup finished in the fixture.' };
+      });
+      ipcMain.removeHandler('ollama:generate');
+      ipcMain.handle('ollama:generate', (_event, request) => {
+        global.__taskGenerations.push(request);
+        return '本地任务译文';
+      });
+    }, { status, plan: plans['110'] });
+    await page.getByLabel('Ollama URL').fill('http://localhost:11434');
+    await button('Refresh models').click();
+    await page.getByText(/Fixture Ollama is unavailable/).waitFor();
+    await button('Close dialog').click();
+    await button('Full Translation').click();
+    await button('Set up full translation').click();
+    await page.getByRole('heading', { name: 'Local AI setup', exact: true }).waitFor();
+    assert.equal(await page.getByLabel('MinerU PDF parser (optional)').isChecked(), false);
+    assert.equal(await page.getByLabel('Ollama runtime').isChecked(), true);
+    assert.equal(await page.getByLabel('Selected AI models').isChecked(), true);
+    assert.equal(await app.evaluate(() => global.__taskSetupInstalls.length), 0);
+    await button('Install missing components').click();
+    await page.getByText('Task setup finished in the fixture.').waitFor();
+    const taskInstall = await app.evaluate(() => global.__taskSetupInstalls[0]);
+    assert.deepEqual(taskInstall.components, { ollama: true, models: true, mineru: false });
+    assert.deepEqual(taskInstall.models, ['translategemma:4b']);
+    await button('Close dialog').click();
+    await button('Translate full paper').waitFor();
+    assert.equal(await app.evaluate(() => global.__taskGenerations.length), 0, 'installation must not start translation automatically');
+
+    await button('Overview').click();
+    await button('Set up summary').click();
+    await page.getByText(/To download: summary-fixture:1b/).waitFor();
+    assert.deepEqual(await app.evaluate(() => global.__taskSetupChecks.at(-1).models), ['summary-fixture:1b', 'translategemma:4b']);
+    await button('Choose task models').click();
+    assert.equal(await modelsTab.getAttribute('aria-selected'), 'true');
+    await button('Close dialog').click();
+    await button('Reader').click();
+    await page.locator('#block-2').getByTitle('Explain full paragraph').click();
+    await page.getByText(/To download: explain-fixture:1b/).waitFor();
+    assert.deepEqual(await app.evaluate(() => global.__taskSetupChecks.at(-1).models), ['explain-fixture:1b']);
+    await button('Close dialog').click();
+    await page.locator('#block-2 .source-text').evaluate(element => {
+      const range = document.createRange();
+      range.setStart(element.firstChild, 0);
+      range.setEnd(element.firstChild, 14);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.locator('.inspector').getByRole('button', { name: 'Translate', exact: true }).click();
+    await page.getByText(/To download: lookup-fixture:1b/).waitFor();
+    assert.deepEqual(await app.evaluate(() => global.__taskSetupChecks.at(-1).models), ['lookup-fixture:1b']);
+    assert.equal(await app.evaluate(() => global.__taskGenerations.length), 0);
+    await button('Close dialog').click();
+    await page.locator('#block-1').getByTitle('Translate heading').click();
+    await page.locator('#block-1').getByText('本地任务译文', { exact: true }).waitFor();
+    console.log('Setup verified: component selection, MinerU repair, task-specific model setup, custom endpoint guidance, and explicit translation.');
   } finally { await app?.close(); }
 }
 

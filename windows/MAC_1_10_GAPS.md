@@ -8,7 +8,7 @@
 | --- | --- | --- | --- | --- |
 | M110-01 | Ollama 默认，可显式选择 OpenAI Online | Models 中提供 Ollama / OpenAI provider；从不自动切换或云端降级 | 对齐 | `ai-settings.test.cjs`、`openai-settings-e2e.cjs`。 |
 | M110-02 | API key 不进入 workspace/settings/export | key 由 Electron `safeStorage` 使用 Windows DPAPI 加密到独立文件；设置保存显式剔除 key/consent 字段 | 对齐 | `openai.test.cjs`检查加密、删除与明文隔离；Electron 真机检查密文文件。 |
-| M110-03 | 每个 app session 单独同意在线发送 | 首次启动与重启均为 Paused；有 key 后才能启用，切换 provider、替换/删除 key 会撤销 | 对齐 | Electron 验证启用、重启关闭和 header 状态。 |
+| M110-03 | 每个 app session 单独同意在线发送 | 首次启动与重启均为 Paused；有 key 后才能启用，切换 provider、替换/删除 key 会撤销。任务可直接打开 Models | 对齐 | Electron 验证启用、重启关闭及从暂停任务进入 Models，授权仍待手动选择。 |
 | M110-04 | 撤销授权停止当前请求和后续批次 | 主进程 revision + AbortController 取消所有在线请求；renderer 同时取消当前任务 | 对齐 | 延迟多批次 Electron 回归在首个请求等待时撤销授权，验证仅发送 1 次、后续批次不启动、迟到结果不保存。已发送文本不能撤回。 |
 | M110-05 | 显式 GET `/v1/models`，不自动选付费模型 | Refresh Available Models 只取 ID，也允许手输；四个字段默认空 | 对齐 | 单元验证 GET 无 body/论文文本；UI 不自动选择模型。模型列表不代表能力或价格。 |
 | M110-06 | 翻译/摘要/解释/Quick Lookup 四套在线模型 | OpenAI 与 Ollama 各自保存四套独立角色；空字段报错、不回退本地模型 | 对齐 | 单元与 Electron 验证 Translation Model for All Tasks 和无 fallback。 |

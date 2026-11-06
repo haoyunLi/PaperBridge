@@ -336,6 +336,7 @@ async function run() {
     queuePhase = 'priority';
     await button('Resume Translation').click();
     await waitFor(() => queueRequests[1]?.id === 2, 'the first request in the full pass');
+    await queueProgress().getByText('0 of 5 processed', { exact: true }).waitFor();
     assert.match(await queueProgress().innerText(), /0 of 5 processed/);
     assert.doesNotMatch(await queueProgress().innerText(), /failed/, 'historical failures are outside the current pass');
     await scrollToResultsAndOpen();
@@ -345,6 +346,7 @@ async function run() {
     queueRequests[1].release();
     await waitFor(() => queueRequests[3]?.id === 6, 'prioritized Results to run after the held block');
     assert.deepEqual(queueRequests.map(item => item.id), [2, 2, 5, 6]);
+    await queueProgress().getByText('2 of 5 processed · 1 failed', { exact: true }).waitFor();
     assert.match(await queueProgress().innerText(), /2 of 5 processed · 1 failed/);
     await range();
     assert.equal(await prioritize().isDisabled(), true, 'the in-flight block and an earlier failure are outside the remaining queue');

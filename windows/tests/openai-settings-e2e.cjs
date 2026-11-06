@@ -124,7 +124,7 @@ async function run() {
     await page.getByText('OpenAI text access is paused.', { exact: true }).waitFor();
     await app.evaluate(() => globalThis.__paperBridgeReleaseDelayedRequest());
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
-    await page.getByRole('button', { name: 'Resume Translation', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Set up translation', exact: true }).waitFor();
     assert.equal(await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests.length), 1, 'Consent revocation must stop the remaining queue');
     assert.equal(await page.getByText('不得保存的迟到译文', { exact: true }).count(), 0, 'A cancelled late response must be discarded');
 
@@ -167,7 +167,11 @@ async function run() {
     await launch();
     const legacyBlock = page.locator('#block-1');
     assert.equal(await page.locator('.service').textContent(), '● OpenAI Paused');
-    await openModels();
+    await page.getByRole('button', { name: 'Set up translation', exact: true }).click();
+    const modelsTab = page.getByRole('tab', { name: 'Models', exact: true });
+    await modelsTab.waitFor();
+    assert.equal(await modelsTab.getAttribute('aria-selected'), 'true');
+    await page.getByText('Allow sending text to OpenAI for this session in Settings > Models.').waitFor();
     await page.getByText('Key saved for this Windows account', { exact: true }).waitFor();
     assert.equal(await page.getByLabel('I allow this text to be sent to OpenAI for this session').isChecked(), false, 'Online consent must not survive restart');
     assert.equal(await page.getByLabel('Translation model ID').inputValue(), 'gpt-translation-fixture');

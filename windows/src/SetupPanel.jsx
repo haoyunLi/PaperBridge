@@ -5,20 +5,21 @@ const api = window.paperBridge;
 const allComponents = { ollama: true, models: true, mineru: true };
 const formatBytes = value => value ? `${(value / 1024 ** 2).toFixed(0)} MB` : '';
 
-export default function SetupPanel({ settings, progress, onSettings, onInstalled }) {
+export default function SetupPanel({ settings, progress, onSettings, onInstalled, taskSetup, onChooseModels }) {
   const [diagnosis, setDiagnosis] = useState(null);
   const [checking, setChecking] = useState(false);
   const [working, setWorking] = useState(false);
   const [resumed, setResumed] = useState(false);
   const [error, setError] = useState('');
   const [warning, setWarning] = useState('');
-  const [components, setComponents] = useState({ ...allComponents, ...settings.setupComponents });
+  const [components, setComponents] = useState(taskSetup
+    ? { ollama: true, models: true, mineru: false } : { ...allComponents, ...settings.setupComponents });
   const request = useRef(0);
   const action = useRef(false);
   const mounted = useRef(true);
   const config = (selected = components) => ({
     baseURL: settings.ollamaBaseURL, mineruExecutable: settings.mineruExecutable, components: selected,
-    models: [...new Set([settings.translationModel, settings.summaryModel, settings.explainModel, settings.quickLookupModel || settings.translationModel])]
+    models: taskSetup?.models || [...new Set([settings.translationModel, settings.summaryModel, settings.explainModel, settings.quickLookupModel || settings.translationModel])]
   });
 
   async function refresh(selected = components) {
@@ -40,7 +41,9 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
 
   function chooseComponent(key, checked) {
     const selected = { ...components, [key]: checked };
-    setComponents(selected); onSettings({ setupComponents: selected }); refresh(selected);
+    setComponents(selected);
+    if (!taskSetup) onSettings({ setupComponents: selected });
+    refresh(selected);
   }
 
   async function install(repairMineru = false) {
@@ -72,7 +75,9 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
   const mineruReadiness = mineru?.runtime?.description || (mineru?.runtime?.cuda ? 'PyTorch CUDA ready' : mineru?.runtime?.reason || 'CPU pipeline available');
   const activeProgress = progress || diagnosis?.progress;
   const ollamaSelected = components.ollama || components.models;
+  const taskReady = taskSetup && diagnosis?.ollama.running && taskSetup.models.every(model => diagnosis.ollama.models?.includes(model));
   return <div className="setup-panel">
+    {taskSetup && <p role="status">{taskReady ? 'Ollama and the required models are ready. Close setup to run the task.' : taskSetup.message}</p>}
     <p>Choose the local tools you need. PaperBridge checks this PC and installs missing components in your Windows account. MinerU is optional and can require several gigabytes.</p>
     <fieldset className="setup-components" disabled={working}>
       <legend>Components to install</legend>
@@ -92,6 +97,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
     {working && activeProgress && <div className="setup-progress"><strong>{activeProgress.message}</strong>{activeProgress.received > 0 && <small>{formatBytes(activeProgress.received)}{activeProgress.total ? ` / ${formatBytes(activeProgress.total)}` : ''}</small>}{activeProgress.total > 0 && <progress value={activeProgress.received} max={activeProgress.total} />}</div>}
     {error && <p className="setup-error" role="alert">{error}</p>}
     {warning && <p className="setup-success" role="status">{warning}</p>}
+    {taskSetup && <button className="button outline" disabled={working} onClick={onChooseModels}>Choose task models</button>}
     <div className="setup-actions">{working ? <button className="button danger" onClick={() => api.setupCancel().catch(cause => setError(cause.message))}><Square size={14} /> Cancel setup</button> : <><button className="button blue" disabled={checking || !missing} onClick={() => install()}><Download size={16} /> {!selected ? 'Select components' : missing ? 'Install missing components' : 'Selected components are ready'}</button>{mineru?.installed && <button className="button outline" disabled={checking} onClick={() => install(true)}><RefreshCw size={14} /> Repair / update MinerU</button>}</>}</div>
     {mineru?.installed && <p className="setup-footnote">Repair installs the MinerU version supported by this app into its private environment. It can download several gigabytes; the previous managed version is restored if activation fails.</p>}
     <p className="setup-footnote">Working components are retained. GPU drivers are managed by Windows and your graphics vendor.</p>

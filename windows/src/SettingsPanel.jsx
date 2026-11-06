@@ -14,9 +14,9 @@ function Group({ title, children }) {
   return <section className="settings-section"><h3>{title}</h3>{children}</section>;
 }
 
-export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData,
+export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, taskSetup,
   modelTools, openAITools, hardwareTools, updates }) {
-  const [section, setSection] = useState('setup');
+  const [section, setSection] = useState(taskSetup ? 'models' : 'setup');
   const [parserCheck, setParserCheck] = useState(0);
   const [parser, setParser] = useState(null);
   const [checkingParser, setCheckingParser] = useState(false);
@@ -106,10 +106,18 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <Group title="What MinerU adds"><p>Structured reading order, headings, images, captions, tables and LaTeX formulas. MinerU is optional; its output and the original PDF remain stored locally.</p></Group>
       </>}
       {section === 'models' && <>
+        {taskSetup && <p className="settings-download-status" role="status">{taskSetup.message}</p>}
         <Group title="AI provider"><label>AI provider<select value={settings.aiProvider || 'ollama'} disabled={locked} onChange={event => onSettings({ aiProvider: event.target.value })}><option value="ollama">Ollama (Local)</option><option value="openai">OpenAI (Online)</option></select></label><p>Ollama is the default. OpenAI requires your own API key, explicit task models, and permission for each session. PaperBridge never switches providers automatically.</p></Group>
         {settings.aiProvider === 'openai' ? <OpenAISettings settings={settings} onSettings={onSettings} locked={locked} tools={openAITools} /> : <>
         <Group title="Ollama"><fieldset disabled={locked}><label>Ollama URL<input value={settings.ollamaBaseURL} onChange={event => onSettings({ ollamaBaseURL: event.target.value })} /></label><button className="button outline" onClick={onRefresh}><RefreshCw size={15} />Refresh models</button></fieldset>{ollamaError && <p className="settings-error" role="alert">{ollamaError}</p>}</Group>
-        <Group title="Task models"><fieldset disabled={locked}><div className="settings-grid">{[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model'], ['quickLookupModel', 'Quick lookup model']].map(([key, label]) => <label key={key}>{label}<select value={settings[key] || settings.translationModel} onChange={event => onSettings({ [key]: event.target.value })}>{[...new Set([settings[key] || settings.translationModel, ...models])].map(value => <option key={value}>{value}</option>)}</select></label>)}</div></fieldset><p>Quick lookup handles selected-text translation and explanation. A smaller model can respond sooner.</p></Group>
+        <Group title="Task models"><fieldset disabled={locked}><div className="settings-grid">
+          {[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model'], ['quickLookupModel', 'Quick lookup model']].map(([key, label]) => <label key={key}>{label}
+            <select aria-label={label} value={settings[key] || ''} onChange={event => onSettings({ [key]: event.target.value })}>
+              {!settings[key] && <option value="" disabled>Choose an installed model</option>}
+              {[...new Set([settings[key], ...models].filter(Boolean))].map(value => <option key={value}>{value}</option>)}
+            </select>
+          </label>)}
+        </div></fieldset><p>Quick lookup handles selected-text translation and explanation. A smaller model can respond sooner.</p></Group>
         <Group title="Download another model"><p>Enter an Ollama model name, or browse the recommendations in Local AI.</p><div className="row"><input aria-label="Model to download" value={name} disabled={locked} placeholder="translategemma:4b" onChange={event => onName(event.target.value)} /><button className="button blue" disabled={locked} onClick={() => onDownload()}>Download model</button></div></Group>
         <Group title="Graphics acceleration"><div className="settings-status-row"><p>{hardware?.adapters?.length ? hardware.adapters.map(adapter => `${adapter.name} (${adapter.vendor})`).join(' · ') : 'No graphics adapter reported by Windows.'}</p><button className="button outline" disabled={checking} onClick={onCheck}><RefreshCw size={14} />{checking ? 'Checking…' : 'Check'}</button></div>
           <p>{hardware?.cudaDriver?.length ? `NVIDIA driver detected: ${hardware.cudaDriver.map(device => `${device.name}, ${device.memoryMiB || '?'} MiB`).join('; ')}.` : hardware?.adapters?.some(adapter => adapter.vendor === 'AMD') ? 'AMD detected. Ollama may use supported ROCm or Vulkan hardware.' : 'Ollama chooses its available CPU or GPU backend automatically.'}</p>
