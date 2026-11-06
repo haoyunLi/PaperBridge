@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
+const { clickTextOffset } = require('./reading-caret.cjs');
 
 function samplePdf(blank = false, variant = '', firstPage = '') {
   const stream = blank ? '' : firstPage || 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj 1 0 0 1 72 52 Tm (Page one trailing sentence.) Tj ET';
@@ -205,12 +206,16 @@ async function run() {
     await page.getByLabel('Reading mode').selectOption('bilingual');
     await page.locator('.block').nth(1).locator('button[title="Explain full paragraph"]').click();
     await page.getByText('FULL PARAGRAPH EXPLANATION', { exact: false }).waitFor();
-    await page.evaluate(() => {
-      const node = document.querySelectorAll('.source-text')[1].firstChild;
-      const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, 10);
-      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
-      node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    });
+    const readerPassage = page.locator('.source-text').nth(1);
+    await clickTextOffset(page, readerPassage, 0);
+    await page.keyboard.press('Control+Shift+ArrowRight');
+    await page.locator('.inspector blockquote').waitFor();
+    await page.keyboard.press('ArrowRight');
+    await page.locator('.inspector blockquote').waitFor({ state: 'detached' });
+    await clickTextOffset(page, readerPassage, 0);
+    for (let index = 0; index < 10; index++) await page.keyboard.press('Shift+ArrowRight');
+    const keyboardQuote = (await readerPassage.textContent()).slice(0, 10).trim();
+    assert.equal(await page.locator('.inspector blockquote').textContent(), keyboardQuote);
     await page.locator('.selection-meta').getByText('ORIGINAL', { exact: true }).waitFor();
     generateDelayMs = 500;
     await page.keyboard.press('Control+Shift+t');
@@ -231,7 +236,11 @@ async function run() {
     assert.equal(await page.locator('.inspector-result.translate').count(), 1, 'Translation should remain visible after explaining the same selection');
     await page.keyboard.press('Control+Shift+h');
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 1);
-    await page.locator('.inspector textarea').fill('Keep this source passage.');
+    const noteInput = page.locator('.inspector textarea');
+    await noteInput.fill('Keep this source passage.');
+    await noteInput.press('Shift+Home');
+    assert.ok(await noteInput.evaluate(input => input.selectionEnd > input.selectionStart));
+    assert.equal(await page.locator('.inspector blockquote').textContent(), keyboardQuote);
     await page.getByRole('button', { name: 'Save note' }).click();
     const readerNoteQuote = await page.locator('.inspector blockquote').textContent();
     await page.waitForFunction(quote => [...(CSS.highlights.get('paperbridge-note') || [])]
@@ -340,12 +349,9 @@ async function run() {
     await page.getByLabel('Paper display mode').selectOption('source');
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('.textLayer[data-page="1"] span').length > 0, null, { timeout: 10000 });
-    await page.evaluate(() => {
-      const span = [...document.querySelectorAll('.textLayer[data-page="1"] span')].find(item => item.textContent.includes('Abstract'));
-      const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 8);
-      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
-      span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    });
+    await clickTextOffset(page, page.locator('.textLayer[data-page="1"] span').filter({ hasText: 'Abstract' }), 0);
+    await page.keyboard.press('Shift+End');
+    assert.equal(await page.locator('.inspector blockquote').textContent(), 'Abstract');
     await page.getByText('PAPER · EXACT PDF · PAGE 1', { exact: true }).waitFor();
     await page.locator('.inspector .highlight.coral').click();
     await page.locator('.inspector textarea').fill('This note belongs to the exact PDF inside Paper.');

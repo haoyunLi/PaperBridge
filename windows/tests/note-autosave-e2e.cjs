@@ -73,6 +73,13 @@ async function run() {
     ({ app, page } = await launch(root, workspace));
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
+    await page.locator('.reader-top [title="Focus reading"]').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Reader text');
+    await page.keyboard.press('Shift+ArrowRight');
+    assert.equal(await page.locator('.inspector blockquote').textContent(), 'A');
+    await page.keyboard.press('ArrowLeft');
+    await page.locator('.inspector blockquote').waitFor({ state: 'detached' });
     await selectText(page, '#block-1 .source-text', 'Alpha passage');
     const textarea = page.getByPlaceholder('What should you remember?');
     assert.equal(await textarea.inputValue(), '', 'review-needed note must not populate a new editing session');

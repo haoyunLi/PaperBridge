@@ -72,6 +72,52 @@ function textWalker(root, visibleOnly) {
     acceptNode: node => hiddenSelectionText(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
   } : null);
 }
+const readingKeys = {
+  ArrowLeft: ['left', 'character', 'word'],
+  ArrowRight: ['right', 'character', 'word'],
+  ArrowUp: ['backward', 'line', 'paragraph'],
+  ArrowDown: ['forward', 'line', 'paragraph'],
+  Home: ['backward', 'lineboundary'],
+  End: ['forward', 'lineboundary']
+};
+function readingBoundary(root, end) {
+  if (!root) return null;
+  const walker = textWalker(root, true);
+  let boundary;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    boundary = node;
+    if (!end) break;
+  }
+  return boundary;
+}
+function moveReadingSelection(event, region, initialRegion, pdf) {
+  const key = readingKeys[event.key];
+  if (!Array.isArray(key) || event.defaultPrevented || event.altKey || event.metaKey || event.isComposing || !region) return false;
+  const selected = window.getSelection();
+  if (!selected) return false;
+  const inside = node => region.contains(node) && !hiddenSelectionText(node) && (!pdf || Number.isInteger(pdfRangeEndpoint(node)));
+  const hasCaret = inside(selected.anchorNode) && inside(selected.focusNode);
+  // Keep ordinary vertical navigation and Home/End scrolling outside a selection.
+  if (!event.shiftKey && (!hasCaret || (selected.isCollapsed && key[1] !== 'character'))) return false;
+  if (!hasCaret) {
+    const start = initialRegion && readingBoundary(initialRegion, false);
+    if (!start) return false;
+    selected.collapse(start, 0);
+  }
+  event.preventDefault();
+  const previous = [selected.anchorNode, selected.anchorOffset, selected.focusNode, selected.focusOffset];
+  if (event.ctrlKey && !key[2]) {
+    const end = event.key === 'End';
+    const edge = readingBoundary(pdf ? initialRegion : region, end);
+    if (edge) selected[event.shiftKey ? 'extend' : 'collapse'](edge, end ? edge.length : 0);
+  } else {
+    // Use Chromium's character, word and visual line boundaries.
+    selected.modify(event.shiftKey ? 'extend' : 'move', key[0], event.ctrlKey ? key[2] : key[1]);
+  }
+  if (!inside(selected.anchorNode) || !inside(selected.focusNode)) selected.setBaseAndExtent(...previous);
+  return true;
+}
 function domText(root, visibleOnly) {
   if (!root || !visibleOnly) return root?.textContent || '';
   const walker = textWalker(root, true);
@@ -560,7 +606,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       onScroll={handleScroll} onMouseDown={event => {
         const number = pdfRangeEndpoint(event.target);
         if (event.button === 0 && Number.isInteger(number)) setDragPage(number);
-      }} onMouseUp={capture} onKeyUp={event => { if (event.shiftKey) capture(); }}>
+      }} onMouseUp={capture}>
       {width > 0 && Array.from({ length: pdf.numPages }, (_, index) => {
         const number = index + 1;
         const mounted = number >= start - 1 && number <= end + 1 ||
@@ -621,8 +667,8 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect 
     <div className="section-heading"><div><h2>Paper summary</h2><p>Verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !canSummarize} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
       {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
-      <article className="summary-card" data-view-scope="summarySource" onMouseUp={event => onSelect(event, 'summarySource', 'source')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
-      <article className="summary-card translated" data-view-scope="summaryTarget" onMouseUp={event => onSelect(event, 'summaryTarget', 'translation')}><small>{paper.summary.targetLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summaryTarget')}>{paper.summary.target}</Markdown></article>
+      <article className="summary-card" data-view-scope="summarySource" tabIndex={0} aria-label="Source summary text" onMouseUp={event => onSelect(event.currentTarget, 'summarySource')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
+      <article className="summary-card translated" data-view-scope="summaryTarget" tabIndex={0} aria-label="Translated summary text" onMouseUp={event => onSelect(event.currentTarget, 'summaryTarget')}><small>{paper.summary.targetLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summaryTarget')}>{paper.summary.target}</Markdown></article>
       <div className="source-links"><h3>Check the Sources</h3>
         {claims ? claims.map((claim, index) => <div className="evidence-claim" key={index}>
           <strong>Claim {index + 1}: {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</strong>
@@ -657,27 +703,24 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
     item.scope === 'paperArticle' && item.displayMode === displayMode && item.sourceMode === sourceMode && !item.needsReview),
   [paper.viewHighlights, paper.viewNotes, displayMode, sourceMode]);
   useRichAnnotations(host, blocks, articleAnnotations);
-  const select = event => {
-    const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
-    const start = range?.startContainer?.nodeType === Node.ELEMENT_NODE ? range.startContainer : range?.startContainer?.parentElement;
-    onSelect(event, 'paper', start?.closest('[data-paper-kind]')?.dataset.paperKind || 'source');
-  };
-  return <article ref={host} data-view-scope="paperArticle" className={`document-preview paper-mode-${displayMode}`} onMouseUp={select}>
-    {blocks.map(block => {
-      const sourceOnly = block.resource || referenceIDs.has(block.id);
-      const translated = block.status === 'ok' && Boolean(block.translation || block.translationMarkdown);
-      const unavailable = displayMode === 'translation' && !translated && !sourceOnly;
-      return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
-        {(displayMode !== 'translation' || sourceOnly || unavailable) && <>
-          <BlockPassage block={block} kind="source" scope="paper" structured={structured}
-            className={unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
-        </>}
-        {displayMode !== 'source' && !sourceOnly && (translated
-          ? <><BlockPassage block={block} kind="translation" scope="paper" structured={structured}
-            className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>
-          : displayMode === 'bilingual' && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>)}
-      </section>;
-    })}
+  const passages = useMemo(() => blocks.map(block => {
+    const sourceOnly = block.resource || referenceIDs.has(block.id);
+    const translated = block.status === 'ok' && Boolean(block.translation || block.translationMarkdown);
+    const unavailable = displayMode === 'translation' && !translated && !sourceOnly;
+    return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
+      {(displayMode !== 'translation' || sourceOnly || unavailable) && <>
+        <BlockPassage block={block} kind="source" scope="paper" structured={structured}
+          className={unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
+      </>}
+      {displayMode !== 'source' && !sourceOnly && (translated
+        ? <><BlockPassage block={block} kind="translation" scope="paper" structured={structured}
+          className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>
+        : displayMode === 'bilingual' && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>)}
+    </section>;
+  }), [blocks, displayMode, referenceIDs, structured]);
+  return <article ref={host} data-view-scope="paperArticle" className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"
+    onMouseUp={event => onSelect(event.currentTarget, 'paper')}>
+    {passages}
   </article>;
 }
 
@@ -979,9 +1022,7 @@ function App() {
     }, { delay: manual ? 0 : 250, deferUndo: !manual });
   }
   function selectPdf(anchor, scope) {
-    const next = { ...anchor, id: null, kind: 'source', scope };
-    if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(next)) void finishNoteEditing();
-    setSelection(next); setSelectionResults({}); setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
+    return applyReadingSelection({ ...anchor, id: null, kind: 'source', scope });
   }
   function hideQuickSelectionOnScroll() {
     setSelection(current => current?.rect ? { ...current, rect: null } : current);
@@ -2012,10 +2053,7 @@ function App() {
     const offset = exactAnchorOffset(source, captured);
     const nextSelection = { id: block?.id ?? null, kind, text, ...selectionOffsets(captured, offset, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
       context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
-    if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing();
-    setSelection(nextSelection);
-    const saved = findSelectionNote(paperRef.current, nextSelection);
-    setSelectionResults({}); setNoteDraft(saved?.body || '');
+    return applyReadingSelection(nextSelection);
   }
   function addHighlight(color) {
     if (!selection) return;
@@ -2247,16 +2285,18 @@ function App() {
     modifyBlocks(blocks => blocks.flatMap(item => item.id === id ? pieces : [item]));
     setStatus(`Reflowed block ${id} into ${pieces.length} complete-sentence blocks.`);
   }
-  function captureViewSelection(event, scope, kind) {
-    const host = scope === 'paper' ? event.currentTarget : event.currentTarget.querySelector('[data-markdown-host]');
+  function captureViewSelection(surface, scope) {
+    const host = scope === 'paper' ? surface : surface.querySelector('[data-markdown-host]');
     const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
     if (!range) return;
+    let kind = scope === 'summarySource' ? 'source' : 'translation';
     let id = null;
     let captured;
     let offsets = { offset: null };
     if (scope === 'paper') {
       const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
       const side = start?.closest('[data-paper-kind]');
+      kind = side?.dataset.paperKind || 'source';
       const element = side?.closest('[data-paper-block-id]');
       const block = paperRef.current?.blocks.find(item => item.id === Number(element?.dataset.paperBlockId));
       const rich = Boolean(side?.querySelector('[data-markdown-host]'));
@@ -2281,15 +2321,59 @@ function App() {
     if (!captured) return;
     const { text, rect } = captured;
     const nextSelection = { id, kind, text, ...offsets, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
-    if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing();
-    const saved = findSelectionNote(paperRef.current, nextSelection);
-    setSelection(nextSelection); setSelectionResults({}); setNoteDraft(saved?.body || '');
+    return applyReadingSelection(nextSelection);
+  }
+  function applyReadingSelection(next) {
+    const previous = selectionRef.current;
+    if (selectionIdentity(previous) !== selectionIdentity(next)) {
+      if (previous) void finishNoteEditing();
+      setSelectionResults({});
+      setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
+    }
+    setSelection(next);
+    return true;
+  }
+  function handleReadingKey(event) {
+    if (modal || pendingImport || !Object.hasOwn(readingKeys, event.key) ||
+        event.target.closest('a, button, input, textarea, select, [contenteditable]')) return;
+    const host = event.target.closest('[data-reading-list], [data-view-scope], [data-pdf-scope]');
+    if (!host) return;
+    const scope = host.dataset.viewScope;
+    const pdf = host.dataset.pdfScope;
+    const reader = host.hasAttribute('data-reading-list');
+    const selected = window.getSelection();
+    let region = host;
+    let initial = host;
+    if (reader) {
+      const anchor = selected?.anchorNode;
+      const passage = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+      const selector = '.source-text, .translation-text.done';
+      const active = passage?.closest(selector);
+      region = initial = active && host.contains(active) ? active
+        : host.querySelector(`#block-${activeBlock}`)?.querySelector(selector) || host.querySelector(selector);
+    } else if (pdf) {
+      initial = pdfLayerFor(host, pageNumber);
+    } else if (scope !== 'paperArticle') {
+      region = initial = host.querySelector('[data-markdown-host]');
+    }
+    if (!moveReadingSelection(event, region, initial, pdf)) return;
+    if (!selected.isCollapsed) {
+      if (reader && captureSelection()) return;
+      if (pdf) {
+        const captured = capturePdfRange(host, selected.getRangeAt(0));
+        if (captured && selectPdf(captured, pdf)) return;
+      } else if (!reader && captureViewSelection(host, scope === 'paperArticle' ? 'paper' : scope)) return;
+    }
+    if (selectionRef.current) {
+      void finishNoteEditing();
+      setSelection(null); setSelectionResults({}); setNoteDraft('');
+    }
   }
   function mergeBlock(id) { if (id <= 1) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id).map(item => item.id === id - 1 ? mergeBlocks(item, blocks.find(block => block.id === id)) : item)); }
   function mergeNextBlock(id) { if (id >= paper.blocks.length) return; modifyBlocks(blocks => blocks.filter(item => item.id !== id + 1).map(item => item.id === id ? mergeBlocks(item, blocks.find(block => block.id === id + 1)) : item)); }
   const outline = useMemo(() => paper?.blocks.filter(block => block.heading) || [], [paper]);
   const sections = useMemo(() => sectionRanges(paper?.blocks || []), [paper]);
-  const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper]);
+  const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
   const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper, referenceIDs]);
   const filteredLibrary = library.filter(item => `${item.name} ${(item.tags || []).join(' ')}`.toLowerCase().includes(librarySearch.toLowerCase()));
   const visibleBlocks = paper?.blocks.filter(block => !search || `${block.text} ${block.translation}`.toLowerCase().includes(search.toLowerCase())) || [];
@@ -2349,7 +2433,7 @@ function App() {
           {workspaceSave.status === 'error' && <button className="button outline" onClick={retryPaperSave}>Retry save</button>}
         </div>}
       </div>}
-      <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll}>
+      <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll} onKeyDown={handleReadingKey}>
         {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
@@ -2382,7 +2466,7 @@ function App() {
             </div>
           </>}
         </div>}
-        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView
           key={paper.id}
           paper={paper}
@@ -2417,8 +2501,8 @@ function App() {
           {plainUnfinished.length > 0 && <Notice>{plainUnfinished.length} unfinished batch(es) shown in the original language. Completed batches are saved.</Notice>}
           <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
             {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
-            {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation"
-              onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}>
+            {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" tabIndex={0} aria-label="Full translation text"
+              onMouseUp={event => captureViewSelection(event.currentTarget, 'fullTranslation')}>
               <Markdown annotations={viewAnnotations(paper, 'fullTranslation')}>{paper.connectedTranslation}</Markdown>
             </article> : <Empty title={paper.blocks.length ? 'No full translation yet' : 'No readable text yet'} body={!paper.blocks.length
               ? 'Use MinerU OCR from Paper or Original before translating this PDF.'

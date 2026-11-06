@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
+const { clickTextOffset } = require('./reading-caret.cjs');
 
 async function selectFormula(paragraph) {
   await paragraph.locator('.katex-html').waitFor();
@@ -115,7 +116,13 @@ async function run() {
     assert.equal(paperStyle.size, '21px');
     assert.ok(paperStyle.width <= 701);
     assert.ok(Number.parseFloat(paperStyle.line) > 35);
-    const formulaQuote = await selectFormula(page.locator('[data-paper-block-id="2"] [data-paper-kind="source"] p'));
+    const paperFormula = page.locator('[data-paper-block-id="2"] [data-paper-kind="source"] p');
+    const formulaQuote = 'stack of ' + await paperFormula.locator('.katex-html').textContent() + ' identical layers';
+    await clickTextOffset(page, paperFormula, (await paperFormula.textContent()).indexOf('stack of '));
+    for (let index = 0; index < formulaQuote.length + 2; index++) {
+      await page.keyboard.press('Shift+ArrowRight');
+      if (await page.locator('.inspector blockquote').textContent() === formulaQuote) break;
+    }
     assert.match(formulaQuote, /^stack of N\s*=\s*6 identical layers$/);
     assert.equal(await page.locator('.inspector blockquote').innerText(), formulaQuote);
     await page.locator('.inspector .highlight.coral').click();
@@ -132,14 +139,8 @@ async function run() {
       assert.equal(item.renderedSource, undefined);
       assert.equal(item.renderedText, undefined);
     }
-    await page.evaluate(() => {
-      const paragraph = document.querySelector('[data-paper-block-id="7"] p');
-      const range = document.createRange();
-      range.setStart(paragraph.firstChild, 14);
-      range.setEnd(paragraph.firstChild, 20);
-      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
-      paragraph.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    });
+    await clickTextOffset(page, page.locator('[data-paper-block-id="7"] [data-paper-kind="source"] p'), 14);
+    for (let index = 0; index < 6; index++) await page.keyboard.press('Shift+ArrowRight');
     await page.getByText('SELECTED TEXT · BLOCK 7', { exact: true }).waitFor();
     await page.locator('.inspector .highlight.teal').click();
     await page.locator('.inspector textarea').fill('The third occurrence belongs to block seven.');
@@ -237,6 +238,10 @@ async function run() {
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
     assert.equal(requests.length, 5, 'A Reader retry should update the full draft without regenerating other blocks');
+    await draft.focus();
+    await page.evaluate(() => window.getSelection().removeAllRanges());
+    await page.keyboard.press('Shift+ArrowRight');
+    assert.equal(await page.locator('.inspector blockquote').textContent(), '研');
     assert.equal(await selectFormula(draft.locator('p').filter({ has: page.locator('.katex') })), formulaQuote);
     await page.locator('.inspector .highlight.coral').click();
     await page.locator('.inspector textarea').fill('Full translation formula selection');
@@ -244,7 +249,12 @@ async function run() {
     await waitForNoteUnderline(page, '[data-view-scope="fullTranslation"]', formulaQuote);
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     for (const side of ['summarySource', 'summaryTarget']) {
-      assert.equal(await selectFormula(page.locator(`[data-view-scope="${side}"] p`)), formulaQuote);
+      const card = page.locator(`[data-view-scope="${side}"]`);
+      await card.focus();
+      await page.evaluate(() => window.getSelection().removeAllRanges());
+      await page.keyboard.press('Control+Shift+ArrowRight');
+      assert.equal(await page.locator('.inspector blockquote').textContent(), 'A');
+      assert.equal(await selectFormula(card.locator('p')), formulaQuote);
       await page.locator('.inspector .highlight.coral').click();
       await page.locator('.inspector textarea').fill(`Formula in ${side}`);
       await page.getByRole('button', { name: 'Save note' }).click();

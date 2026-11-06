@@ -33,8 +33,9 @@
 .paper-preview-translation{margin:4px 0 20px;padding:12px 16px;border-left:3px solid #e8493e;background:#fff5f1;color:#3e2927}
 .paper-preview-translation.unavailable{font:12px "Segoe UI",sans-serif;color:#777;background:#f4f0e9;border-left-color:#cfc6b8}
 .paper-preview-translation>:last-child,.paper-preview-source>:last-child{margin-bottom:0}
-.paper-preview-translation[data-selection-ignore]{user-select:none}
+.paper-preview-translation[data-selection-ignore],.katex-mathml{user-select:none}
 .paper-article-quote{white-space:pre-line}
+.main-scroll :is([data-reading-list], [data-view-scope], [data-pdf-scope]):focus-visible{outline:2px solid #0a59d6;outline-offset:2px}
 .pdf-comparison-column{container-type:inline-size}
 .pdf-comparison{display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:14px}
 .pdf-facsimile{background:#f5f1e9;border:1px solid #cfc6b8;border-radius:13px;padding:10px}
