@@ -1,3 +1,21 @@
+import { referenceBlockIds } from './paper.mjs';
+
+export function usesSharedMarkdown(paper) {
+  return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
+}
+
+export function withSharedMarkdownTranslation(paper) {
+  const references = referenceBlockIds(paper.blocks);
+  const markdown = paper.blocks.map(block => {
+    if (!block.resource && !references.has(block.id) && block.status === 'ok') {
+      const translation = block.translationMarkdown || block.translation;
+      if (translation) return translation;
+    }
+    return block.sourceMarkdown || block.text;
+  }).join('\n\n');
+  return { ...paper, connectedTranslation: markdown, connectedBlocks: [], connectedShared: true, connectedStale: false };
+}
+
 export function readableHtml(text) {
   return text.replace(/<\/?[a-z][a-z0-9-]*(?:\s+[^<>]*?)?\s*\/?>/gi, '')
     .replace(/&(?:amp|lt|gt|quot|apos|nbsp|#(?:x[0-9a-f]+|\d+));/gi, entity => {

@@ -6,6 +6,8 @@ The current reader supports PDF drag/drop, automatic MinerU-first extraction wit
 
 Overview summaries and Full Translation display inline highlights and support saved-note navigation. Annotation undo preserves AI outputs generated afterward. Reader navigation clears search filters, and the current translation section follows scrolling. **Export portable Markdown bundle** writes Markdown files, image assets, the unchanged original PDF, and PNG reading copies for up to the first 120 PDF pages. Analysis and bilingual exports include bookmarks, highlights, notes, source/translation sides, and review notices for changed anchors. Page images can take time and disk space on long papers. See the mapping for the remaining details.
 
+For MinerU documents, **Full Translation** builds a continuous draft from the Reader's translated blocks. It only sends unfinished text to the selected model. Formulas, images, tables and references keep their original content, and a failed block keeps its original text until a retry succeeds. Retrying in Reader updates the full draft and its Markdown export.
+
 PDF import now follows macOS 1.9.2/1.10 feedback: the selected filename replaces stale content, elapsed time and recognized MinerU layout/formula/text stages are shown, and Cancel Import returns to the previous paper. A failed or late import cannot replace the previous translations, notes, bookmarks, or reading position.
 
 ## Build and run

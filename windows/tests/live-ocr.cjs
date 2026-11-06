@@ -71,15 +71,28 @@ async function run() {
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.locator('.scan-notice').getByRole('button', { name: 'Open OCR Reader' }).click();
     await page.getByText('Researchers measured how a ceramic sample reacted', { exact: false }).first().waitFor();
+    const fullStarted = performance.now();
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.getByText('Structure-preserving full translation saved.', { exact: false }).waitFor({ timeout: 180000 });
+    const fullSeconds = Number(((performance.now() - fullStarted) / 1000).toFixed(1));
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    assert.equal(await translated.innerText(), translation, 'Full translation must keep the existing Reader wording');
     const paperFile = fs.readdirSync(path.join(workspace, 'papers')).find(name => name.endsWith('.json'));
+    await page.waitForFunction(async id => {
+      const saved = await window.paperBridge.loadPaper(id);
+      return saved?.connectedShared && saved.blocks.filter(block => !block.resource).every(block => block.status === 'ok');
+    }, path.basename(paperFile, '.json'));
     const paper = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', paperFile), 'utf8'));
+    assert.ok(paper.connectedTranslation.includes(translation), 'Saved full draft must include the existing Reader translation');
     const report = {
       at: new Date().toISOString(), source, seconds: Number(((performance.now() - started) / 1000).toFixed(1)),
       extraction: paper.extraction, sourceMode: paper.sourceMode,
       pdfBlocks: paper.pdfBlocks?.length || 0, mineruBlocks: paper.mineruBlocks?.length || 0,
       readerCharacters: readerText.length, readerExcerpt: readerText.slice(0, 1200), translation,
       model, modelBytes: active.size, modelVramBytes: active.size_vram,
-      autoDetectedMineru: !configured, setupSeconds, mineruVersion: detected.version, mineruRuntime: detected.runtime
+      autoDetectedMineru: !configured, setupSeconds, mineruVersion: detected.version, mineruRuntime: detected.runtime,
+      sharedFullTranslation: paper.connectedShared, fullSeconds
     };
     fs.writeFileSync(path.join(artifacts, 'live-ocr-report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));

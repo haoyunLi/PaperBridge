@@ -150,16 +150,18 @@ async function run() {
     }, [...pdfBytes]);
     await page.getByText('Finish or stop the current task before opening another paper.', { exact: false }).waitFor();
     assert.equal(await app.evaluate(() => global.__dropImports), 0);
-    assert.match(await page.locator('.document-preview').innerText(), /Paper A must remain visible/);
+    await page.locator('.import-progress-screen').getByText('Delayed PDF.pdf', { exact: true }).waitFor();
+    assert.equal(await page.locator('.document-preview').count(), 0, 'Import progress temporarily replaces the previous preview');
 
-    await page.getByRole('button', { name: 'Stop' }).click();
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await page.locator('.document-preview').getByText(/Paper A must remain visible/).waitFor();
     await paste(page, textB, 'Paper B is the active workspace');
     await app.evaluate(() => global.__delayedMineru[0].resolve('# Delayed PDF\n\nLate MinerU result.'));
     await page.waitForTimeout(250);
     await assertPaperB(page);
 
     await startDelayedPdf(page, app, 2);
-    await page.getByRole('button', { name: 'Stop' }).click();
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
     await paste(page, textB, 'Paper B is the active workspace');
     await app.evaluate(() => global.__delayedMineru[1].reject(new Error('Late MinerU failure')));
     await page.waitForTimeout(250);

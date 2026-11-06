@@ -77,3 +77,9 @@ Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报
 同一安装在界面导入 15 页 Attention Is All You Need，38.8 秒内完成提取及原 PDF 页渲染检查。工作区保存 167 个 MinerU 阅读块，含 5 张图片、4 张表格（2 张 HTML、2 张 Markdown）和 5 个独立公式。另用相同本地 CLI 强制 ONNX CPU 解析扫描件，日志确认版面分析、检测和文字识别均使用 CPU，输出包含预期的实验段落。
 
 复跑时将 `PAPERBRIDGE_TOOLS_ROOT` 指向一个新绝对路径，设置 `PAPERBRIDGE_LIVE_INSTALL_MINERU=1` 和 `PAPERBRIDGE_LIVE_DIRECTML=1`，启动本地 Ollama 后执行 `npm run test:live-ocr`。
+
+## 结构化全文与便携导出（2026-11-06 UTC）
+
+再次用空 MinerU 路径导入同一合成扫描件，自动发现 4.1.7 并提取 5 个块。用 `translategemma:4b` 先译 Reader 的实验段落，再生成全文，原有译文逐字保留在保存的全文稿中。其余 4 个块约 1.4 秒完成，含 OCR、翻译和视图导航的流程共 21.9 秒。Ollama 再次确认 RX 7800 XT 的 ROCm 路径和 2.68 GiB 显存驻留。
+
+在独立工作区重开已解析的 15 页论文，通过 Electron 界面导出便携包。核对了 15 张可识别的 PNG（宽、高均大于 500 像素）、5 个带相对路径的图片资产、Markdown 中的表格与公式，以及导出 PDF 和工作区原 PDF 的 SHA-256 一致。

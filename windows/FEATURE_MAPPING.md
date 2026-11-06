@@ -78,7 +78,7 @@ Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480
 | C12 | 所有未完成块 | All unfinished blocks | 对齐 | 包含可翻译标题，排除资源块与参考文献区。 |
 | C13 | 正在翻译时将当前章节插队 | 运行时可把当前章节插入剩余队列前端 | 部分 | 异步取消及真实 Ollama 长队列待验证。 |
 | C14 | 连贯全文翻译是独立可选任务 | Full Translation 单独按钮与保存 | 对齐 | 不自动替代段落翻译。 |
-| C15 | 全文翻译保留原 Markdown 非语言块与共享译稿 | 独立 connectedBlocks 译稿保留 Markdown 资源，并供导出 | 部分 | 结构化 Markdown 全文与 Paper 同步仍需复杂论文验证。 |
+| C15 | 全文翻译保留原 Markdown 非语言块与共享译稿 | MinerU 全文与 Reader 共用翻译结果，保留原结构及未完成原文；重试结果同步到全文和导出 | 部分 | Electron 验证共享、失败回退、参考文献和资源保护；RX 7800 XT 扫描件验证已有 Reader 译文原样进入全文。复杂论文全文结果仍需与 macOS 并排验收。 |
 | C16 | 上下文分批与失败块保留原文 | 逐块上下文翻译、进度保存与失败原文保留；全文输出和标注按设置/来源版本保存 | 部分 | 设置切换与原文失效已有单元回归；真实长文恢复及失败重试仍待验证。 |
 | C17 | 按方向匹配保存术语注入提示 | `matchingTerms` 限 24 条 | 对齐 | 已完成译文不被术语更新静默覆盖。 |
 
@@ -156,7 +156,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G02 | 导出逐段译文 Markdown | 逐段译文 Markdown 单文件及便携 bundle | 部分 | 结构化全文稿和逐段译稿语义仍需比较。 |
 | G03 | 导出双语 Markdown | 双语 Markdown 单文件及 bundle 包含书签、各视图高亮和笔记 | 部分 | 仅高亮加书签的导出 UI 已回归；复杂资产及公式顺序仍需验证。 |
 | G04 | 导出摘要/笔记/证据 Markdown | 摘要、证据、书签、各视图高亮/笔记含 Paper/Reader、原译文侧、Paper exact PDF/Original PDF、页码及需复核提示 | 部分 | 仅高亮加书签及同页双 PDF scope 的 Analysis 导出已回归；复杂 Markdown 锚点与证据格式仍需比较。 |
-| G05 | 资源 bundle、原 PDF、便携页面图片和独立全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与独立全文稿 | 部分 | 复杂 MinerU 资产和长 PDF 仍需真机验收。 |
+| G05 | 资源 bundle、原 PDF、便携页面图片和全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与已生成的全文稿 | 部分 | 真机导出 15 页 MinerU 论文，核对 15 张 PNG、5 个本地图片及原 PDF 哈希。超过 120 页的提示和取消仍待实测。 |
 | G06 | 首次启动分步引导；可重新打开 | 首次启动六步 Getting Started：Ollama、翻译模型、MinerU、解释模型及就绪检查；Settings 与 Help 可重开，可跳过并记录完成状态 | 部分 | 六步、跨启动页码恢复、跳过/重开、忙时焦点和关闭锁、保存去重、练习文档及 980×620/1320×820 布局已通过 Electron 验证；仍需更多 DPI 和 Mac 实机并排对照。 |
 | G07 | 自动检测/启动/安装 Ollama | SetupPanel 可勾选 Ollama、模型、MinerU；仅选模型时自动补 Ollama 依赖，单选 MinerU 不启动 Ollama | 部分 | AMD 真机已完成签名安装和复用；组件选择及依赖由单元与 Electron mock 回归验证，真实安装取消及其它硬件待验收。 |
 | G08 | 自动发现、下载并选择模型 | 六步引导及 Settings > Local AI 都提供 TranslateGemma 4B/12B/27B 和六个可选助手模型卡片、内存建议、下载/选择/取消；下载状态跨设置分页保持可见 | 部分 | 九张卡、角色继承、四任务模型、下载取消/重试、跨论文/端点迟到结果隔离及重启恢复已通过 Electron 回归；12B/27B 等大模型仍需实际下载及更多内存配置验证。 |

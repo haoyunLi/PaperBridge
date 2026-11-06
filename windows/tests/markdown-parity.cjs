@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
 async function run() {
@@ -19,7 +20,9 @@ async function run() {
     `![Figure](${figure})`,
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
     'A paragraph whose previous translation failed.',
-    'Repeat repeat repeat.'
+    'Repeat repeat repeat.',
+    '## References',
+    '[1] Reference entry remains in the original language.'
   ];
   const blocks = parts.map((sourceMarkdown, index) => ({
     id: index + 1, sourceMarkdown, text: sourceMarkdown, heading: index === 0,
@@ -35,11 +38,37 @@ async function run() {
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     position: { tab: 'Paper', block: 1, displayMode: 'bilingual' }
   }));
+  const requests = [];
+  let failOnce = true;
+  const model = 'translategemma:4b';
+  const ollama = http.createServer(async (request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model }] }));
+    if (request.url === '/api/ps') return response.end(JSON.stringify({ models: [] }));
+    if (request.url !== '/api/generate') { response.statusCode = 404; return response.end('{}'); }
+    const input = JSON.parse(await new Promise(resolve => {
+      let body = '';
+      request.on('data', chunk => { body += chunk; });
+      request.on('end', () => resolve(body));
+    })).prompt;
+    requests.push(input);
+    if (failOnce && input.includes('previous translation failed')) {
+      failOnce = false;
+      response.statusCode = 503;
+      return response.end('{}');
+    }
+    const markdown = input.split('Markdown block:\n').at(-1)
+      .replace('Research title', '研究标题').replace('A paragraph whose previous translation failed.', '已恢复的段落译文。');
+    response.end(JSON.stringify({ response: markdown, done: true }));
+  });
+  await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
-    fontSize: 21, lineHeight: 1.9, readingWidth: 700, autoCheckUpdates: false, onboardingCompletedVersion: 1
+    fontSize: 21, lineHeight: 1.9, readingWidth: 700, autoCheckUpdates: false, onboardingCompletedVersion: 1,
+    ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  let app;
   try {
+    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Markdown parity fixture' }).waitFor();
@@ -131,9 +160,49 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.screenshot({ path: path.join(artifacts, 'markdown-parity-reader.png') });
-    console.log('Markdown HTML, image, table, typography, scoped Paper/Reader anchors, source and translation note navigation, and rich highlights verified.');
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.getByText('1 unfinished block(s) shown in the original language.', { exact: true }).waitFor();
+    await page.getByText('Full translation saved with 1 unfinished block(s).', { exact: false }).waitFor();
+    const draft = page.locator('[data-view-scope="fullTranslation"]');
+    assert.match(await draft.innerText(), /阿什什∗报告了一个测量结果/);
+    assert.match(await draft.innerText(), /A paragraph whose previous translation failed/);
+    assert.match(await draft.innerText(), /Reference entry remains in the original language/);
+    assert.equal(await draft.locator('table td').count(), 2);
+    assert.equal(await draft.locator('img[src^="data:image/png"]').count(), 1);
+    assert.equal(requests.length, 4, 'Only unfinished text blocks should be submitted');
+    for (const input of requests) {
+      assert.doesNotMatch(input, /Ashish Vaswani|data:image|iVBORw0K|Reference entry|<table>/);
+    }
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.locator('#block-1 .translation-text').getByText('研究标题', { exact: true }).waitFor();
+    await page.locator('#block-6 .failure').getByRole('button', { name: 'Retry', exact: true }).click();
+    await page.locator('#block-6 .translation-text').getByText('已恢复的段落译文。', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
+    assert.equal(requests.length, 5, 'A Reader retry should update the full draft without regenerating other blocks');
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('markdown:export');
+      ipcMain.handle('markdown:export', (_event, document) => { globalThis.__sharedMarkdownExport = document.content; return 'fixture.md'; });
+    });
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.getByRole('button', { name: 'Full Translation Markdown', exact: true }).click();
+    await page.getByText('Exported fixture.md', { exact: true }).waitFor();
+    const exported = await app.evaluate(() => globalThis.__sharedMarkdownExport);
+    assert.match(exported, /已恢复的段落译文/);
+    assert.ok(exported.includes(figure), 'Export keeps the image with the shared draft');
+    await page.waitForFunction(async paperId => {
+      const saved = await window.paperBridge.loadPaper(paperId);
+      return saved?.connectedShared && saved.position?.tab === 'Full Translation' && saved.connectedTranslation.includes('已恢复的段落译文');
+    }, id);
+    await page.reload();
+    await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
+    assert.equal(requests.length, 5, 'Reopening a completed draft should not issue model requests');
+    console.log('Markdown rendering, exact annotations, and shared full translation, retry, and export verified.');
   } finally {
-    await app.close();
+    await app?.close();
+    await new Promise(resolve => ollama.close(resolve));
     fs.rmSync(workspace, { recursive: true, force: true });
   }
 }

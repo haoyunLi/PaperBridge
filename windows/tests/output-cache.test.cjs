@@ -108,6 +108,28 @@ test('structured Markdown edits also invalidate restored translations even when 
   assert.equal(restored.summary, null);
 });
 
+test('a shared structured draft follows the active Reader cache and restores the old draft and its annotations', async () => {
+  const { switchOutputSettings } = await outputCache;
+  const { withSharedMarkdownTranslation } = await import('../src/academicMarkdown.mjs');
+  const structured = paperWithOutputs();
+  structured.sourceMode = 'mineru';
+  structured.blocks[1].sourceMarkdown = '**A reproducible method.**';
+  const original = withSharedMarkdownTranslation(structured);
+  const alternateChunks = { ...settings, maxParagraphChars: settings.maxParagraphChars + 100 };
+  const alternateModel = { ...settings, translationModel: 'translate:b' };
+  const differentChunks = switchOutputSettings(original, settings, alternateChunks);
+  assert.match(differentChunks.connectedTranslation, /\*\*A reproducible method\.\*\*/);
+  assert.doesNotMatch(differentChunks.connectedTranslation, /A paragraph/);
+  assert.equal(switchOutputSettings(differentChunks, alternateChunks, settings).connectedTranslation, original.connectedTranslation);
+  const differentModel = switchOutputSettings(original, settings, alternateModel);
+  assert.equal(differentModel.connectedTranslation, '');
+  assert.equal(differentModel.connectedShared, false);
+  const restored = switchOutputSettings(differentModel, alternateModel, settings);
+  assert.equal(restored.connectedShared, true);
+  assert.equal(restored.connectedTranslation, original.connectedTranslation);
+  assert.deepEqual(restored.viewNotes, original.viewNotes);
+});
+
 test('parser, appearance, quick lookup and explanation model changes retain translation and summary outputs', async () => {
   const { switchOutputSettings } = await outputCache;
   const changed = { ...settings, pdfExtractionMode: 'pdfOnly', mineruExecutable: 'C:\\tools\\other-mineru.exe', mineruBackend: 'pipeline',

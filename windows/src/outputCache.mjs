@@ -1,5 +1,6 @@
 // Keep results under the settings that produced them, as macOS workspaces do.
 import { activeAIModel, aiCacheNamespace } from './aiSettings.mjs';
+import { usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const sourceOf = block => [block.id, block.text, block.sourceMarkdown || ''];
@@ -56,13 +57,13 @@ export function switchOutputSettings(paper, previous, next, { paragraphsOnly = f
   }
   if (!paragraphsOnly && connectedKey(previous) !== connectedKey(next)) {
     variants.connected = { ...variants.connected, [scoped(connectedKey(previous))]: {
-      source: paperSource(paper), text: paper.connectedTranslation, blocks: paper.connectedBlocks, stale: paper.connectedStale,
+      source: paperSource(paper), text: paper.connectedTranslation, blocks: paper.connectedBlocks, stale: paper.connectedStale, shared: paper.connectedShared,
       notes: (paper.viewNotes || []).filter(item => item.scope === 'fullTranslation'),
       highlights: (paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation')
     } };
     const saved = variants.connected[scoped(connectedKey(next))];
     const match = saved && same(saved.source, paperSource(paper)) ? saved : null;
-    Object.assign(result, { connectedTranslation: match?.text || '', connectedBlocks: match?.blocks || [], connectedStale: match?.stale || false,
+    Object.assign(result, { connectedTranslation: match?.text || '', connectedBlocks: match?.blocks || [], connectedStale: match?.stale || false, connectedShared: match?.shared || false,
       viewNotes: [...(result.viewNotes || []).filter(item => item.scope !== 'fullTranslation'), ...(match?.notes || [])],
       viewHighlights: [...(result.viewHighlights || []).filter(item => item.scope !== 'fullTranslation'), ...(match?.highlights || [])] });
   }
@@ -76,5 +77,7 @@ export function switchOutputSettings(paper, previous, next, { paragraphsOnly = f
       viewNotes: [...(result.viewNotes || []).filter(item => !isSummary(item)), ...(match?.notes || [])],
       viewHighlights: [...(result.viewHighlights || []).filter(item => !isSummary(item)), ...(match?.highlights || [])] });
   }
+  if (!paragraphsOnly && result.connectedShared && !result.connectedStale && usesSharedMarkdown(result)
+    && translationKey(previous) !== translationKey(next)) result = withSharedMarkdownTranslation(result);
   return { ...result, outputVariants: variants };
 }
