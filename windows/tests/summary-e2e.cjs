@@ -65,10 +65,26 @@ async function run() {
     onboardingCompletedVersion: 1, autoCheckUpdates: false, summaryModel, translationModel,
     ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
+  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app;
   try {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
-    const page = await app.firstWindow();
+    app = await launch();
+    let page = await app.firstWindow();
+    const readTail = async block => {
+      await page.getByRole('button', { name: `Read original block ${block} →`, exact: true }).click();
+      await page.waitForFunction(({ block, tail }) => {
+        const selection = window.getSelection();
+        if (selection?.toString() !== tail || !document.querySelector(`#block-${block} .source-text`)?.contains(selection.anchorNode)) return false;
+        const range = selection.getRangeAt(0).getBoundingClientRect();
+        const viewport = document.querySelector('.main-scroll').getBoundingClientRect();
+        return range.top >= viewport.top && range.bottom <= viewport.bottom;
+      }, { block, tail });
+    };
+    const splitOpening = async () => {
+      await page.locator('#block-1 button[title="Edit source"]').click();
+      await page.getByRole('textbox', { name: 'Paragraph source' }).fill(`${opening}\n\nAn additional introductory paragraph.`);
+      await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    };
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
     await page.getByRole('button', { name: 'Open text', exact: true }).click();
@@ -95,9 +111,8 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByLabel('Reading mode').selectOption('translation');
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
-    await page.getByRole('button', { name: 'Read original block 2 →', exact: true }).click();
+    await readTail(2);
     assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
-    assert.match(await page.locator('#block-2.current .source-text').innerText(), /low visibility conditions/);
 
     regenerate = 'cutoff';
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
@@ -112,12 +127,31 @@ async function run() {
     held.end('{"response":"Discard late replacement","done":true}');
     await page.getByText('Task cancelled. Completed work was saved.').waitFor();
     assert.match(await summaries.first().innerText(), /Final limitation/);
+
+    const staleNotice = /The source text changed after this summary was generated/;
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await splitOpening();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByText(staleNotice).waitFor();
+    await readTail(3);
+    await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    assert.equal(await page.getByText(staleNotice).count(), 0);
+    await readTail(2);
+    await splitOpening();
+    await app.close();
+    app = null;
+    app = await launch();
+    page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByText(staleNotice).waitFor();
+    await readTail(3);
     await app.close(); app = null;
     const paperDir = path.join(workspace, 'papers');
     const file = fs.readdirSync(paperDir).find(name => /^[a-f\d]{64}\.json$/.test(name));
     const saved = JSON.parse(fs.readFileSync(path.join(paperDir, file), 'utf8'));
-    assert.deepEqual(saved.summary.claims.flatMap(item => item.sources), [{ paragraphID: 1, quote: opening }, { paragraphID: 2, quote: tail }]);
-    console.log('Summary verified: bounded excerpts, early merges, batch-specific citations, one translation per claim, source navigation, and cancelled regeneration.');
+    assert.deepEqual(saved.summary.claims.flatMap(item => item.sources), [{ paragraphID: 1, quote: opening }, { paragraphID: 3, quote: tail }]);
+    console.log('Summary verified: bounded excerpts, early merges, batch-specific citations, cancelled regeneration, and exact source navigation after split, undo, and restart.');
   } finally {
     held?.destroy();
     await app?.close();

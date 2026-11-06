@@ -1,4 +1,5 @@
 import { anchorText } from './academicMarkdown.mjs';
+import { remapSummaryEvidence } from './paper.mjs';
 
 const blockFields = ['bookmark', 'notes', 'highlights', 'translationHighlights'];
 const documentFields = ['pdfNotes', 'pdfHighlights', 'viewNotes', 'viewHighlights'];
@@ -13,13 +14,14 @@ function changedFields(before, after, fields) {
     .map(field => ({ field, before: clone(before[field]), after: clone(after[field]) }));
 }
 
-// Only user-editable fields enter the undo history. AI results and settings are
-// intentionally read from the live paper when an entry is applied.
+// Structural edits also remember their original summary so undo can restore
+// citations, provided the user has not replaced the summary since the edit.
 export function createUndoEntry(before, after, range) {
   if (!before || !after || before.id !== after.id || before.sourceMode !== after.sourceMode) return null;
   const base = { paperId: before.id, sourceMode: before.sourceMode };
   if (!sameSources(before.blocks, after.blocks)) {
-    return { ...base, type: 'structure', beforeBlocks: clone(before.blocks), afterBlocks: clone(after.blocks), range };
+    return { ...base, type: 'structure', beforeBlocks: clone(before.blocks), afterBlocks: clone(after.blocks), range,
+      beforeSummary: clone(before.summary), afterSummary: clone(after.summary) };
   }
   const blocks = before.blocks.flatMap((block, index) => {
     const changes = changedFields(block, after.blocks[index], blockFields);
@@ -144,8 +146,10 @@ export function applyUndoEntry(current, entry) {
     .map((block, index) => ({ ...block, id: entry.beforeBlocks[index].id }));
   const currentIndex = current.blocks.findIndex(block => block.id === current.position?.block);
   const targetIndex = currentIndex < start ? currentIndex : currentIndex < afterEnd ? start : currentIndex + beforeEnd - afterEnd;
+  const summary = equal(current.summary, entry.afterSummary) ? entry.beforeSummary
+    : remapSummaryEvidence(current.summary, current.blocks, blocks, { start, beforeEnd: afterEnd, afterEnd: beforeEnd });
   return { ...current, blocks,
-    ...(current.summary ? { summary: { ...current.summary, stale: true } } : {}),
+    ...(summary !== undefined && { summary }),
     ...(current.connectedTranslation ? { connectedStale: true } : {}),
     ...(currentIndex >= 0 && blocks[targetIndex] ? { position: { ...current.position, block: blocks[targetIndex].id } } : {}) };
 }

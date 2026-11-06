@@ -78,6 +78,25 @@ test('undoing an edit restores reviewed highlights and respects later explicit d
   assert.deepEqual(restored.blocks[0].notes, []);
 });
 
+test('undo restores the original summary or keeps a replacement with remapped citations', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { remapSummaryEvidence } = await paperHelpers;
+  const quote = 'A distinct finding.';
+  const summary = { source: 'Original summary', claims: [{ text: 'Finding', sources: [{ paragraphID: 2, quote }] }] };
+  const before = paper([{ text: 'Introduction.' }, { text: quote }], { summary });
+  const after = paper([{ text: 'Introduction.' }, { text: 'New paragraph.' }, { text: quote }]);
+  const range = { start: 0, beforeEnd: 1, afterEnd: 2 };
+  after.summary = remapSummaryEvidence(before.summary, before.blocks, after.blocks, range);
+  const entry = createUndoEntry(before, after, range);
+  assert.deepEqual(applyUndoEntry(after, entry).summary, summary);
+
+  const newer = { source: 'New summary', claims: [{ text: 'Reworded finding', sources: [{ paragraphID: 3, quote }] }] };
+  const restored = applyUndoEntry({ ...after, summary: newer }, entry);
+  assert.deepEqual(restored.summary, {
+    source: newer.source, stale: true, claims: [{ ...newer.claims[0], sources: [{ paragraphID: 2, quote }] }]
+  });
+});
+
 test('an exact edit range restores results when one replacement matches an old paragraph', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const { editedParagraphs } = await paperHelpers;

@@ -295,6 +295,28 @@ test('edited source retains unresolved notes and both highlight sides for review
   assert.deepEqual(revalidateSummaryClaims(claims, [changed])[0].sources, []);
 });
 
+test('summary evidence follows structural edits only within the original passage or its replacements', async () => {
+  const { remapSummaryEvidence } = await import('../src/paper.mjs');
+  const quote = 'The same exact evidence words were printed.';
+  const blocks = (...texts) => texts.map((text, index) => ({ id: index + 1, text }));
+  const before = blocks('Introductory paragraph.', quote, `The final finding. ${quote}`);
+  const sources = id => ({ paragraphID: id, quote });
+  const summary = { source: 'A finding.', claims: [{ text: 'A finding.', sources: [sources(3)] }] };
+  const remapped = (after, range, current = summary) => remapSummaryEvidence(current, before, after, range);
+
+  const shifted = remapped(blocks('Introductory paragraph.', 'New paragraph.', quote, before[2].text),
+    { start: 0, beforeEnd: 1, afterEnd: 2 });
+  assert.equal(shifted.stale, true);
+  assert.deepEqual(shifted.claims[0].sources, [sources(4)]);
+  assert.deepEqual(remapped(blocks(before[0].text, quote, 'Revised final finding.'),
+    { start: 2, beforeEnd: 3, afterEnd: 3 }).claims[0].sources, []);
+  assert.deepEqual(remapped(blocks(before[0].text, quote, quote, quote),
+    { start: 2, beforeEnd: 3, afterEnd: 4 }).claims[0].sources, []);
+  assert.deepEqual(remapped(blocks(before[0].text, `${quote} ${before[2].text}`),
+    { start: 1, beforeEnd: 3, afterEnd: 2 },
+    { ...summary, claims: [{ ...summary.claims[0], sources: [sources(2), sources(3)] }] }).claims[0].sources, [sources(2)]);
+});
+
 test('sentence reflow keeps the annotated phrase in its new block', async () => {
   const { reflowBlock } = await import('../src/paper.mjs');
   const original = { id: 1, text: 'First complete sentence. Second complete sentence. Third complete sentence.',

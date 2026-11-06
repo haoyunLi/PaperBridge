@@ -12,7 +12,7 @@ import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnc
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockNearMiddle, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, splitBlockNearMiddle, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { anchorText, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -670,7 +670,7 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect 
         {claims ? claims.map((claim, index) => <div className="evidence-claim" key={index}>
           <strong>Claim {index + 1}: {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</strong>
           <p>{claim.text}</p>
-          {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID, { revealSource: true })}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
+          {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID, { revealSource: true, quote: source.quote })}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
         </div>) : <p>This saved summary predates exact source links. Its claims have not been validated.</p>}
       </div>
     </> : <Empty title={paper.blocks.length ? 'No summary yet' : 'No readable text yet'} body={paper.blocks.length ? 'Generate a source and target language summary using your local model. Exact source quotations are linked only after validation.' : 'Use MinerU OCR from Paper or Original before summarizing this PDF.'} />}
@@ -1467,12 +1467,12 @@ function App() {
       api.closeCancelled();
     }
   }), []);
-  useEffect(() => paper && !viewNavigation ? restoreMainScroll() : undefined, [tab, paper?.id]);
+  useEffect(() => paper && !viewNavigation && !blockNavigation ? restoreMainScroll() : undefined, [tab, paper?.id]);
   useEffect(() => {
     const targetTab = blockNavigation?.scope === 'paper' ? 'Paper' : 'Reader';
     if (!blockNavigation || !paper || tab !== targetTab) return;
     let cancelled = false;
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    afterReadingLayout(mainScrollRef.current, () => {
       if (cancelled || paperRef.current?.id !== paper.id) return;
       const request = blockNavigation;
       const block = paperRef.current.blocks.find(item => item.id === request.blockId);
@@ -1486,6 +1486,11 @@ function App() {
       const at = markdownAnnotationOffset(rendered, request, source);
       const range = block && validBlockAnchor(block, request, request.kind, markdown) && at !== null ? textRangeAt(root, at, request.text.length, rich) : null;
       if (!range) {
+        if (request.recordType === 'evidence') {
+          root?.scrollIntoView({ block: 'start' });
+          setBlockNavigation(null);
+          return;
+        }
         commitPaper(current => ({ ...current, blocks: current.blocks.map(item => item.id !== request.blockId ? item : request.recordType === 'note'
           ? { ...item, notes: (item.notes || []).map(note => note.id === request.id ? { ...note, needsReview: true } : note) }
           : { ...item, [request.kind === 'translation' ? 'translationHighlights' : 'highlights']: (item[request.kind === 'translation' ? 'translationHighlights' : 'highlights'] || []).map(highlight => (request.id ? highlight.id === request.id : highlight.text === request.text && highlight.offset === request.offset && highlight.color === request.color && blockAnnotationScope(highlight) === request.scope) ? { ...highlight, needsReview: true } : highlight) }) }));
@@ -1494,12 +1499,19 @@ function App() {
         return;
       }
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
-      range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
+      const host = mainScrollRef.current;
+      if (host && request.recordType === 'evidence') {
+        const quote = range.getBoundingClientRect();
+        const viewport = host.getBoundingClientRect();
+        const top = root.closest('.block')?.getBoundingClientRect().top ?? quote.top;
+        host.scrollTop += Math.max(top, quote.top - Math.max(0, (host.clientHeight - quote.height) / 2)) - viewport.top;
+      } else range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
       const captured = { text: request.text, offset: at, context: rendered };
       applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, ...textSelectionOffsets(captured, source, markdown),
         scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
-      setInspector(true); setBlockNavigation(null);
-    }));
+      if (request.recordType !== 'evidence') setInspector(true);
+      setBlockNavigation(null);
+    });
     return () => { cancelled = true; };
   }, [blockNavigation?.requestId, tab, displayMode, paper?.id]);
   useEffect(() => () => clearTimeout(scrollSaveTimer.current), []);
@@ -2218,10 +2230,21 @@ function App() {
     catch (cause) { setGlossaryError(`Could not remove the term: ${cause.message}`); }
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
-  function navigate(id, { revealSource = false } = {}) {
-    if (!paperRef.current?.blocks.some(block => block.id === id)) return;
+  function navigate(id, { revealSource = false, quote } = {}) {
+    const block = paperRef.current?.blocks.find(block => block.id === id);
+    if (!block || (quote && !block.text.includes(quote))) return;
+    if (!quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
+    if (quote) {
+      const text = anchorText(block, 'source');
+      const offset = text.indexOf(quote);
+      if (offset >= 0 && offset === text.lastIndexOf(quote)) {
+        navigateBlockAnnotation(id, { text: quote, offset, scope: 'reader' }, 'source', 'evidence');
+        return;
+      }
+    }
     const mode = revealSource && displayMode === 'translation' ? 'bilingual' : displayMode;
     recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.displayMode === mode);
+    setBlockNavigation(null);
     searchOrigin.current = null; setSearch(''); setActiveBlock(id); setDisplayMode(mode); setTab('Reader');
     commitPaper(current => ({ ...current, position: { ...current.position, block: id, displayMode: mode } }));
     setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -2241,8 +2264,10 @@ function App() {
     recordReadingJump(location => location.tab === targetTab && (scope === 'paper' || !location.search) && location.block === blockId && location.displayMode === mode
       && selectionRef.current?.scope === scope && selectionRef.current?.id === blockId && selectionRef.current?.kind === kind
       && sameTextAnchor(selectionRef.current, item));
+    invalidateReadingScroll();
     if (tab !== targetTab || displayMode !== mode || search) setSelection(null);
-    setInspector(true); setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab(targetTab);
+    if (recordType !== 'evidence') setInspector(true);
+    setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab(targetTab);
     setBlockNavigation({ ...item, scope, blockId, kind, recordType, requestId: crypto.randomUUID() });
     commitPaper(current => ({ ...current, position: { ...current.position, tab: targetTab, block: blockId, displayMode: mode } }));
   }
@@ -2319,13 +2344,14 @@ function App() {
     if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
     resetStructureNavigation();
     rememberUndo();
-    commitPaper(current => ({ ...current,
-      blocks: current.blocks.slice(0, start).concat(replacements, current.blocks.slice(start + count))
-        .map((block, index) => ({ ...block, id: index + 1 })),
-      position: { ...current.position, block: start + 1 },
-      summary: current.summary ? { ...current.summary, stale: true } : null,
-      connectedStale: Boolean(current.connectedTranslation)
-    }), { undoRange: { start, beforeEnd: start + count, afterEnd: start + replacements.length } });
+    const range = { start, beforeEnd: start + count, afterEnd: start + replacements.length };
+    commitPaper(current => {
+      const blocks = current.blocks.slice(0, start).concat(replacements, current.blocks.slice(range.beforeEnd))
+        .map((block, index) => ({ ...block, id: index + 1 }));
+      return { ...current, blocks, position: { ...current.position, block: start + 1 },
+        summary: remapSummaryEvidence(current.summary, current.blocks, blocks, range),
+        connectedStale: Boolean(current.connectedTranslation) };
+    }, { undoRange: range });
     setActiveBlock(start + 1);
   }
   function saveEdit() {

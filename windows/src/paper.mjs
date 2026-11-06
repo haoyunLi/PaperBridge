@@ -136,7 +136,35 @@ export function claimsMarkdown(claims) {
 export function revalidateSummaryClaims(claims, blocks) {
   if (!Array.isArray(claims)) return null;
   const byId = new Map(blocks.map(block => [block.id, block]));
-  return claims.map(claim => ({ ...claim, sources: (claim.sources || []).filter(source => byId.get(source.paragraphID)?.text.includes(source.quote)) }));
+  return claims.map(claim => ({ ...claim, sources: (Array.isArray(claim?.sources) ? claim.sources : []).filter(source =>
+    typeof source?.quote === 'string' && source.quote.length && byId.get(source.paragraphID)?.text.includes(source.quote)) }));
+}
+
+export function remapSummaryEvidence(summary, before, after, { start, beforeEnd, afterEnd }) {
+  if (!summary) return summary;
+  const claims = revalidateSummaryClaims(summary.claims, before);
+  if (!claims) return { ...summary, stale: true };
+  const indices = new Map(before.map((block, index) => [block.id, index]));
+  const replacement = after.slice(start, afterEnd);
+  return { ...summary, stale: true, claims: claims.map(claim => {
+    const seen = new Set();
+    const sources = claim.sources.flatMap(source => {
+      const index = indices.get(source.paragraphID);
+      let target;
+      if (index < start) target = after[index];
+      else if (index >= beforeEnd) target = after[index + afterEnd - beforeEnd];
+      else {
+        const candidates = replacement.filter(block => block.text.includes(source.quote));
+        if (candidates.length === 1) target = candidates[0];
+      }
+      if (!target?.text.includes(source.quote)) return [];
+      const key = `${target.id}|${source.quote}`;
+      if (seen.has(key)) return [];
+      seen.add(key);
+      return [{ ...source, paragraphID: target.id }];
+    });
+    return { ...claim, sources };
+  }) };
 }
 
 const forReview = item => item.needsReview ? item : { ...item, needsReview: true };
