@@ -5,7 +5,7 @@ const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
 function samplePdf(blank = false, variant = '', firstPage = '') {
-  const stream = blank ? '' : firstPage || 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj ET';
+  const stream = blank ? '' : firstPage || 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj 1 0 0 1 72 52 Tm (Page one trailing sentence.) Tj ET';
   const secondStream = blank ? '' : `BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page${variant}.) Tj ET`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -334,9 +334,9 @@ async function run() {
     await reference.getByRole('button', { name: 'Previous page' }).click();
     await page.getByLabel('Paper display mode').selectOption('source');
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
-    await page.waitForFunction(() => document.querySelectorAll('.textLayer span').length > 0, null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelectorAll('.textLayer[data-page="1"] span').length > 0, null, { timeout: 10000 });
     await page.evaluate(() => {
-      const span = [...document.querySelectorAll('.textLayer span')].find(item => item.textContent.includes('Abstract'));
+      const span = [...document.querySelectorAll('.textLayer[data-page="1"] span')].find(item => item.textContent.includes('Abstract'));
       const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 8);
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -348,11 +348,11 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size), 1);
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
-    await page.waitForFunction(() => document.querySelectorAll('.textLayer span').length > 0, null, { timeout: 10000 });
+    await page.waitForFunction(() => document.querySelectorAll('.textLayer[data-page="1"] span').length > 0, null, { timeout: 10000 });
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size || 0), 0);
     await page.screenshot({ path: path.join(artifacts, 'original-pdf.png') });
     await page.evaluate(() => {
-      const span = [...document.querySelectorAll('.textLayer span')].find(item => item.textContent.includes('Abstract'));
+      const span = [...document.querySelectorAll('.textLayer[data-page="1"] span')].find(item => item.textContent.includes('Abstract'));
       const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 8);
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -372,7 +372,7 @@ async function run() {
     assert.ok(pdfRecord.pdfNotes.some(item => item.scope === 'pdf' && item.body === 'This note belongs to the original PDF page.'));
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Original', exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     await page.waitForFunction(() => CSS.highlights.get('paperbridge-teal')?.size === 1);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).locator('button').first().click();
     await page.waitForFunction(() => window.getSelection()?.toString() === 'Abstract');
@@ -382,9 +382,9 @@ async function run() {
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Original' && window.getSelection()?.toString() === 'Abstract');
     await page.getByRole('button', { name: 'Next page' }).click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of ') && document.querySelector('.textLayer[data-page="2"]'));
     await page.evaluate(() => {
-      const span = [...document.querySelectorAll('.textLayer span')].find(item => item.textContent.includes('Abstract'));
+      const span = [...document.querySelectorAll('.textLayer[data-page="2"] span')].find(item => item.textContent.includes('Abstract'));
       const range = document.createRange(); range.setStart(span.firstChild, 0); range.setEnd(span.firstChild, 8);
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       span.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
@@ -394,19 +394,19 @@ async function run() {
     await page.locator('.inspector textarea').fill('The repeated heading belongs to page two.');
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
-    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size || 0), 0);
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-teal') || [])].some(range => range.startContainer.parentElement.closest('.textLayer')?.dataset.page === '2')), false);
     await page.getByRole('button', { name: 'Previous page' }).click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     await page.waitForFunction(() => CSS.highlights.get('paperbridge-teal')?.size === 1);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'The repeated heading belongs to page two.' }).locator('button').first().click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2' && window.getSelection()?.toString() === 'Abstract');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of ') && document.querySelector('.textLayer[data-page="2"]') && window.getSelection()?.toString() === 'Abstract');
     assert.match(await page.locator('.inspector blockquote').innerText(), /^Abstract$/);
     await page.getByRole('button', { name: 'Previous page' }).click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     const multilineQuote = 'PaperBridge extraction. It uses';
     const multilineNote = 'This note spans two original PDF lines.';
     const multilineAnchor = await page.evaluate(() => {
-      const spans = [...document.querySelectorAll('.textLayer span')];
+      const spans = [...document.querySelectorAll('.textLayer[data-page="1"] span')];
       const start = spans.find(item => item.textContent.includes('PaperBridge extraction.'));
       const end = spans.find(item => item.textContent.startsWith('It uses attention-'));
       const range = document.createRange();
@@ -442,6 +442,32 @@ async function run() {
       const saved = await window.paperBridge.loadPaper(id);
       return saved?.pdfNotes?.some(note => note.quote === quote) && saved.pdfHighlights?.some(highlight => highlight.quote === quote);
     }, { id: pdfRecord.id, quote: multilineQuote });
+
+    const crossPageQuote = 'Page one trailing sentence. Abstract';
+    const crossPageNote = 'A single annotation crosses the PDF page break.';
+    await page.waitForFunction(() => document.querySelector('.textLayer[data-page="2"] span'));
+    await page.locator('.pdf-continuous').scrollIntoViewIfNeeded();
+    const boundary = await page.locator('.pdf-continuous').evaluate(host => {
+      host.scrollTop = host.children[1].offsetTop - 180;
+      const span = (number, text) => [...host.querySelectorAll('.textLayer[data-page="' + number + '"] span')].find(item => item.textContent === text);
+      const first = span(1, 'Page one trailing sentence.').getBoundingClientRect();
+      const last = span(2, 'Abstract').getBoundingClientRect();
+      return { from: { x: first.left + 0.5, y: first.top + first.height / 2 }, to: { x: last.right - 0.5, y: last.top + last.height / 2 } };
+    });
+    await page.mouse.move(boundary.from.x, boundary.from.y);
+    await page.mouse.down();
+    await page.mouse.move(boundary.to.x, boundary.to.y, { steps: 20 });
+    await page.mouse.up();
+    await page.locator('.inspector blockquote').getByText(crossPageQuote, { exact: true }).waitFor();
+    await page.getByText('ORIGINAL PDF · PAGES 1–2', { exact: true }).waitFor();
+    await page.locator('.inspector .highlight.amber').click();
+    await page.getByLabel('Note for selected passage').fill(crossPageNote);
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await page.waitForFunction(async ({ id, quote }) => {
+      const saved = await window.paperBridge.loadPaper(id);
+      return saved?.pdfNotes?.some(note => note.quote === quote && note.anchors?.length === 2)
+        && saved.pdfHighlights?.some(highlight => highlight.quote === quote && highlight.anchors?.length === 2);
+    }, { id: pdfRecord.id, quote: crossPageQuote });
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await page.getByRole('button', { name: 'Translate full paper' }).click();
     await page.getByText('Connected full-paper translation saved.', { exact: true }).waitFor();
@@ -467,9 +493,9 @@ async function run() {
     assert.ok(stacked, 'Narrow views stack the original and translation without horizontal scrolling');
     await page.setViewportSize({ width: 1320, height: 820 });
     await reference.getByRole('button', { name: 'Open original PDF' }).click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of ') && document.querySelector('.textLayer[data-page="2"]'));
     await page.getByRole('button', { name: 'Previous page' }).click();
-    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
     const exportBundle = async () => {
       await page.getByRole('button', { name: 'More' }).click();
@@ -496,6 +522,8 @@ async function run() {
     assert.match(exportedAnalysis, /Original PDF · page 2\n\n> Abstract\n\nThe repeated heading belongs to page two\./);
     assert.ok(exportedAnalysis.includes('Original PDF · page 1\n\n> ' + multilineQuote + '\n\n' + multilineNote));
     assert.ok(exportedAnalysis.includes('Original PDF · page 1 · coral\n\n> ' + multilineQuote));
+    assert.ok(exportedAnalysis.includes('Original PDF · pages 1–2\n\n> ' + crossPageQuote + '\n\n' + crossPageNote));
+    assert.ok(exportedAnalysis.includes('Original PDF · pages 1–2 · amber\n\n> ' + crossPageQuote));
     assert.match(exportedAnalysis, /Original PDF · page 1 · teal/);
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral/);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);
@@ -551,6 +579,11 @@ async function run() {
     const legacyPdf = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
     const legacyNote = legacyPdf.pdfNotes.find(note => note.body === multilineNote);
     const legacyHighlight = legacyPdf.pdfHighlights.find(highlight => highlight.quote === multilineQuote);
+    const crossAnchors = legacyPdf.pdfNotes.find(note => note.body === crossPageNote).anchors;
+    assert.deepEqual(crossAnchors.map(({ page, text }) => ({ page, text })), [
+      { page: 1, text: 'Page one trailing sentence.' }, { page: 2, text: 'Abstract' }
+    ]);
+    assert.ok(crossAnchors.every(anchor => !Object.hasOwn(anchor, 'pageText')));
     assert.equal(legacyNote.text, multilineAnchor);
     assert.equal(legacyHighlight.text, multilineAnchor);
     assert.equal(legacyNote.offset, legacyHighlight.offset);
@@ -561,7 +594,7 @@ async function run() {
     const reopenedPage = await app.firstWindow();
     await reopenedPage.getByRole('heading', { name: 'practice.pdf' }).waitFor();
     assert.match(await reopenedPage.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./);
-    await reopenedPage.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await reopenedPage.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     await reopenedPage.waitForFunction(() => CSS.highlights.get('paperbridge-teal')?.size === 1);
     await reopenedPage.waitForFunction(anchor => {
       const highlight = CSS.highlights.get('paperbridge-coral');
@@ -575,6 +608,14 @@ async function run() {
       return saved?.pdfNotes?.some(note => note.quote === quote && note.offset === offset)
         && saved.pdfHighlights?.some(highlight => highlight.quote === quote && highlight.offset === offset);
     }, { id: pdfRecord.id, quote: multilineQuote, offset: legacyNote.offset });
+    await reopenedPage.locator('.saved-annotations .annotation-row').filter({ hasText: crossPageNote }).locator('button').first().click();
+    await reopenedPage.locator('.inspector blockquote').getByText(crossPageQuote, { exact: true }).waitFor();
+    assert.equal(await reopenedPage.getByLabel('Note for selected passage').inputValue(), crossPageNote);
+    await reopenedPage.waitForFunction(anchors => {
+      const highlight = [...(CSS.highlights.get('paperbridge-amber') || [])];
+      return anchors.every(anchor => highlight.some(range => range.toString() === anchor.text
+        && range.startContainer.parentElement.closest('.textLayer')?.dataset.page === String(anchor.page)));
+    }, crossAnchors);
     const blankPath = path.join(artifacts, 'scan-no-text.pdf');
     fs.writeFileSync(blankPath, samplePdf(true));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, blankPath);

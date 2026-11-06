@@ -40,6 +40,9 @@
 .pdf-facsimile .pdf-toolbar{margin-bottom:6px}
 .pdf-facsimile .pdf-scroll{max-height:28vh}
 .pdf-facsimile .pdf-sheet,.pdf-facsimile canvas{max-width:100%}
+.pdf-continuous{position:relative;height:clamp(280px,calc(100vh - 225px),1000px);padding:8px 0;scrollbar-gutter:stable}
+.pdf-page-slot{position:relative;margin:0 auto 18px}
+.pdf-page-slot .pdf-sheet{display:block}
 .pdf-facsimile canvas{height:auto!important}
 @container (min-width:650px){
   .pdf-comparison{grid-template-columns:minmax(0,2fr) minmax(0,3fr)}

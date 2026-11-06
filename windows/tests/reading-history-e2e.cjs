@@ -37,9 +37,9 @@ async function waitFor(predicate, label, timeout = 10000) {
 }
 
 async function selectPdfText(page, quote) {
-  await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2');
+  await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of ') && document.querySelector('.textLayer[data-page="2"]'));
   await page.evaluate(quote => {
-    const host = document.querySelector('.textLayer');
+    const host = document.querySelector('.textLayer[data-page="2"]');
     const source = host.textContent || '';
     const offset = source.indexOf(quote);
     if (offset < 0 || offset !== source.lastIndexOf(quote)) throw new Error(`Expected one PDF quote: ${quote}`);

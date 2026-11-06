@@ -1,5 +1,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+
+test('cross-page notes retain exact ranges and validate every selected page', async () => {
+  const { applySelectionNote, findSelectionNote, noteSelectionIdentity, validNoteSelection } = await import('../src/noteAnnotations.mjs');
+  const paper = { id: 'pdf', blocks: [] };
+  const selection = {
+    scope: 'pdf', page: 1, offset: 5, text: 'end\nstart', quote: 'end start',
+    anchors: [
+      { page: 1, offset: 5, text: 'end', pageText: 'page end' },
+      { page: 2, offset: 0, text: 'start', pageText: 'start of page two' }
+    ]
+  };
+  assert.equal(validNoteSelection(paper, selection), true);
+  const saved = applySelectionNote(paper, selection, 'two pages', () => 'note');
+  assert.deepEqual(saved.pdfNotes[0].anchors, [
+    { page: 1, offset: 5, text: 'end' },
+    { page: 2, offset: 0, text: 'start' }
+  ]);
+  assert.equal(findSelectionNote(saved, selection).body, 'two pages');
+  assert.equal(findSelectionNote(saved, { ...selection, scope: 'paperPdf' }), null);
+  const mismatch = { ...selection, anchors: [selection.anchors[0], { ...selection.anchors[1], offset: 1 }] };
+  assert.notEqual(noteSelectionIdentity(paper.id, selection), noteSelectionIdentity(paper.id, mismatch));
+  assert.equal(validNoteSelection(paper, mismatch), false);
+  assert.equal(applySelectionNote(saved, mismatch, 'must not replace'), saved);
+});
 const annotations = import('../src/noteAnnotations.mjs');
 
 const basePaper = () => ({

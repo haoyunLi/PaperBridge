@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -8,6 +8,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
+import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
@@ -36,7 +37,8 @@ import './save-status.css';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
-const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text]) : '';
+const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text, value.anchors && pdfAnchorKey(value)]) : '';
+const pdfScrollKey = (scope, page) => `Pdf:${scope}:${page}`;
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
 const sample = ['Abstract', 'This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.', '1 Introduction', 'Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.', '2 Methods', 'Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.', '3 Results', 'Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.', '4 Limitations', 'A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.', '5 Conclusion', 'Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action.'];
 const markdownPlugins = [remarkGfm, remarkMath];
@@ -99,7 +101,9 @@ function Markdown({ children, highlights }) {
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
 function domSelectionIn(root) {
   const selection = window.getSelection();
-  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  return domRangeIn(root, selection?.rangeCount ? selection.getRangeAt(0) : null);
+}
+function domRangeIn(root, range) {
   if (!root || !range || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
   const raw = range.cloneContents().textContent || '';
   const text = raw.trim();
@@ -149,9 +153,6 @@ function viewText(paper, scope) {
   return scope === 'summarySource' ? paper.summary?.source || '' : scope === 'summaryTarget' ? paper.summary?.target || '' : scope === 'fullTranslation' ? paper.connectedTranslation || '' : '';
 }
 function validViewAnchor(paper, item) { return Number.isInteger(item.offset) && viewText(paper, item.scope).slice(item.offset, item.offset + item.text.length) === item.text; }
-function isPdfScope(scope) { return scope === 'pdf' || scope === 'paperPdf'; }
-function pdfAnnotationScope(item) { return item?.scope === 'paperPdf' ? 'paperPdf' : 'pdf'; }
-function validPdfSelection(selection) { return isPdfScope(selection?.scope) && Number.isInteger(selection.page) && selection.page > 0 && Number.isInteger(selection.offset) && selection.pageText?.slice(selection.offset, selection.offset + selection.text.length) === selection.text; }
 function validBlockAnchor(block, item, kind) { return Number.isInteger(item?.offset) && anchorText(block, kind).slice(item.offset, item.offset + item.text.length) === item.text; }
 function blockAnnotationScope(item) { return item?.scope === 'paper' ? 'paper' : 'reader'; }
 function blockAnnotationsFor(items, scope) { return (items || []).filter(item => blockAnnotationScope(item) === scope); }
@@ -159,7 +160,7 @@ function displayHighlightColor(color) { return color === 'blue' ? 'teal' : color
 function highlightColorName(color) { return color === 'teal' ? 'Cobalt' : `${color[0].toUpperCase()}${color.slice(1)}`; }
 function highlightMatchesSelection(item, selection) {
   if (!item || item.needsReview || !selection) return false;
-  if (isPdfScope(selection.scope)) return pdfAnnotationScope(item) === selection.scope && item.page === selection.page && item.offset === selection.offset && item.text === selection.text;
+  if (isPdfScope(selection.scope)) return samePdfSelection(item, selection);
   if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) return item.scope === selection.scope && item.offset === selection.offset && item.text === selection.text;
   return blockAnnotationScope(item) === selection.scope && item.offset === selection.offset && item.text === selection.text;
 }
@@ -217,91 +218,299 @@ function withHighlight(text, highlights = []) {
 }
 async function sha256(value) { const bytes = new TextEncoder().encode(value); return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join(''); }
 
-function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, onNavigate, onNavigationFailure, onRendered, onOcr, onSetup, onReader, facsimile = false }) {
+function usePdfDocument(paper) {
+  const [loaded, setLoaded] = useState(null);
+  const id = paper?.id;
+  useEffect(() => {
+    if (paper?.type !== 'pdf') return;
+    let live = true;
+    let opened;
+    api.readPdf(id).then(bytes => live ? openPdf(bytes) : null).then(pdf => {
+      opened = pdf;
+      if (live) setLoaded({ id, pdf, error: '' });
+      else return pdf?.loadingTask.destroy();
+    }).catch(cause => { if (live) setLoaded({ id, pdf: null, error: cause.message }); });
+    return () => { live = false; opened?.loadingTask.destroy().catch(() => {}); };
+  }, [id, paper?.type]);
+  return loaded?.id === id ? loaded : { pdf: null, error: '' };
+}
+
+function PdfSheet({ pdf, number, width, facsimile, highlights, onSize, onReady }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const highlightKey = useRef({});
-  const [pdf, setPdf] = useState(null);
-  const [error, setError] = useState('');
-  const [layerRevision, setLayerRevision] = useState(0);
-  const [pageHasText, setPageHasText] = useState(null);
+  const [rendered, setRendered] = useState(false);
   useEffect(() => {
-    let live = true;
-    let opened;
-    setPdf(null); setError('');
-    if (paper?.type !== 'pdf') return;
-    api.readPdf(paper.id).then(bytes => live ? openPdf(bytes) : null).then(value => {
-      opened = value;
-      if (live) setPdf(value);
-      else return value?.loadingTask.destroy();
-    }).catch(err => { if (live) setError(err.message); });
-    return () => { live = false; opened?.loadingTask.destroy().catch(() => {}); };
-  }, [paper?.id, paper?.type]);
-  useEffect(() => {
-    if (!pdf || !canvas.current) return;
+    if (!pdf) return;
     let cancelled = false;
     let task;
     let textLayer;
+    const surface = canvas.current;
+    const root = layer.current;
+    setRendered(false);
+    if (root) { delete root.dataset.page; root.replaceChildren(); }
     (async () => {
-      setError('');
-      setPageHasText(null);
-      const page = await pdf.getPage(Math.max(1, Math.min(pageNumber, pdf.numPages)));
+      const page = await pdf.getPage(number);
       if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
-      const width = facsimile ? Math.min(850, 1600 * base.width / base.height) : Math.min(850, Math.max(520, canvas.current.parentElement.clientWidth - 48));
-      const viewport = page.getViewport({ scale: width / base.width });
-      const surface = canvas.current;
+      const targetWidth = facsimile ? Math.min(850, 1600 * base.width / base.height) : width;
+      const viewport = page.getViewport({ scale: targetWidth / base.width });
+      onSize?.(number, base.height / base.width);
       const ratio = window.devicePixelRatio || 1;
       surface.width = Math.round(viewport.width * ratio);
       surface.height = Math.round(viewport.height * ratio);
-      surface.style.width = `${viewport.width}px`;
-      surface.style.height = `${viewport.height}px`;
-      if (layer.current) { layer.current.dataset.page = ''; layer.current.innerHTML = ''; layer.current.style.width = `${viewport.width}px`; layer.current.style.height = `${viewport.height}px`; }
+      surface.style.width = viewport.width + 'px';
+      surface.style.height = viewport.height + 'px';
       task = page.render({ canvasContext: surface.getContext('2d'), canvas: surface, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
       await task.promise;
-      if (cancelled || !layer.current) return;
-      onRendered?.();
-      try {
-        const pdfjs = await import('pdfjs-dist');
-        const textContentSource = await page.getTextContent();
-        if (cancelled || !layer.current) return;
-        textLayer = new pdfjs.TextLayer({ textContentSource, container: layer.current, viewport });
-        await textLayer.render();
-        if (cancelled) return;
-        layer.current.dataset.page = String(pageNumber);
-        setPageHasText(Boolean(layer.current.textContent.trim()));
-        setLayerRevision(previous => previous + 1);
-      } catch { if (!cancelled) setPageHasText(false); /* canvas remains a faithful page preview */ }
-    })().catch(err => { if (!cancelled) setError(err.message); });
+      if (cancelled) return;
+      if (!root) { onReady?.(number, null); return; }
+      root.style.width = viewport.width + 'px';
+      root.style.height = viewport.height + 'px';
+      const pdfjs = await import('pdfjs-dist');
+      const textContentSource = await page.getTextContent();
+      if (cancelled) return;
+      textLayer = new pdfjs.TextLayer({ textContentSource, container: root, viewport });
+      await textLayer.render();
+      if (cancelled) return;
+      root.dataset.page = String(number);
+      setRendered(true);
+      onReady?.(number, Boolean(root.textContent.trim()));
+    })().catch(cause => { if (!cancelled) onReady?.(number, cause.message); });
     return () => { cancelled = true; task?.cancel(); textLayer?.cancel(); };
-  }, [pdf, pageNumber, facsimile]);
+  }, [pdf, number, width, facsimile, onSize, onReady]);
   useEffect(() => {
     const root = layer.current;
-    if (!root || root.dataset.page !== String(pageNumber) || !CSS.highlights) return;
-    const valid = (highlights || []).filter(item => item.page === pageNumber && root.textContent.slice(item.offset, item.offset + item.text.length) === item.text);
-    richHighlights.set(highlightKey.current, markdownHighlightRanges(root, valid));
+    if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights) return;
+    const valid = (highlights || []).flatMap(item => item.needsReview ? [] : pdfAnchors(item).flatMap(anchor =>
+      anchor.page === number && root.textContent.slice(anchor.offset, anchor.offset + anchor.text.length) === anchor.text
+        ? [{ ...anchor, color: item.color }]
+        : []
+    ));
+    const key = highlightKey.current;
+    richHighlights.set(key, markdownHighlightRanges(root, valid));
     refreshRichHighlights();
-    return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
-  }, [highlights, pageNumber, layerRevision]);
+    return () => { richHighlights.delete(key); refreshRichHighlights(); };
+  }, [highlights, number, rendered]);
+  return <div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? 'Original PDF page ' + number : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}</div>;
+}
+
+function pdfPageElement(host, page) {
+  return host?.children[page - 1];
+}
+
+function pdfPageAt(host, position) {
+  let low = 0;
+  let high = host.children.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (host.children[mid].offsetTop <= position) low = mid;
+    else high = mid - 1;
+  }
+  return low + 1;
+}
+
+function pdfLayerFor(host, page) {
+  return pdfPageElement(host, page)?.querySelector('.textLayer[data-page]');
+}
+
+function pdfRangeEndpoint(node) {
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  return Number(element?.closest('.textLayer[data-page]')?.dataset.page);
+}
+
+function capturePdfRange(host, range) {
+  if (!host || !range || !host.contains(range.startContainer) || !host.contains(range.endContainer)) return null;
+  const first = pdfRangeEndpoint(range.startContainer);
+  const last = pdfRangeEndpoint(range.endContainer);
+  if (!Number.isInteger(first) || !Number.isInteger(last) || first > last) return null;
+  const parts = [];
+  for (let page = first; page <= last; page++) {
+    const root = pdfLayerFor(host, page);
+    if (!root) return null;
+    const fragment = document.createRange();
+    fragment.selectNodeContents(root);
+    if (page === first) fragment.setStart(range.startContainer, range.startOffset);
+    if (page === last) fragment.setEnd(range.endContainer, range.endOffset);
+    if (!fragment.toString().trim()) continue;
+    const captured = domRangeIn(root, fragment);
+    if (!captured || captured.context.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return null;
+    parts.push({ ...pdfSelectionContent(root, fragment, captured.text, captured.offset, captured.context), page });
+  }
+  if (!parts.length || parts.reduce((length, item) => length + (item.quote ?? item.text).length + 1, -1) > 3000) return null;
+  const rect = range.getBoundingClientRect();
+  const position = { x: rect.left, y: rect.top };
+  if (parts.length === 1) return { ...parts[0], rect: position };
+  const quote = parts.map(part => part.quote ?? part.text).join(' ');
+  return { page: parts[0].page, offset: parts[0].offset, text: parts.map(part => part.text).join('\n'), quote, context: quote,
+    anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
+}
+
+function PdfView({ paper, scope, pageNumber, position, restoreToken, highlights, selected, navigation, onPage, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader }) {
+  const { pdf, error } = usePdfDocument(paper);
+  const scroller = useRef(null);
+  const activePage = useRef(0);
+  const activeOffset = useRef(0);
+  const activePageTop = useRef(0);
+  const layoutWidth = useRef(0);
+  const scrollFrame = useRef(0);
+  const scrollTimer = useRef(0);
+  const lastJump = useRef(null);
+  const lastRestore = useRef(null);
+  const [width, setWidth] = useState(0);
+  const [sizes, setSizes] = useState({});
+  const [statuses, setStatuses] = useState({});
+  const [visible, setVisible] = useState([1, 1]);
+  const [dragPage, setDragPage] = useState(null);
+  const currentPage = Math.max(1, Math.min(pageNumber, pdf?.numPages ?? pageNumber));
+  const pinned = navigation ?? selected;
+  const selectFirst = pinned?.page;
+  const selectLast = pdfAnchors(pinned).at(-1)?.page ?? selectFirst;
+  const onSize = useCallback((number, ratio) => setSizes(current => current[number] === ratio ? current : { ...current, [number]: ratio }), []);
+  const onReady = useCallback((number, status) => setStatuses(current => ({ ...current, [number]: status })), []);
+
+  useLayoutEffect(() => {
+    const host = scroller.current;
+    if (!host || !pdf) return;
+    const resize = () => setWidth(Math.min(850, Math.max(280, host.clientWidth - 28)));
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [pdf]);
+
+  useLayoutEffect(() => {
+    const host = scroller.current;
+    const page = pdfPageElement(host, currentPage);
+    if (!page) return;
+    const navigationId = navigation?.id;
+    const jump = activePage.current !== currentPage || lastRestore.current !== restoreToken ||
+      (navigationId && lastJump.current !== navigationId);
+    if (!jump && activePageTop.current === page.offsetTop && layoutWidth.current === width) return;
+    clearTimeout(scrollTimer.current);
+    cancelAnimationFrame(scrollFrame.current);
+    activePage.current = currentPage;
+    activePageTop.current = page.offsetTop;
+    layoutWidth.current = width;
+    if (jump) activeOffset.current = navigationId ? 0 : position;
+    lastJump.current = navigationId;
+    lastRestore.current = restoreToken;
+    host.scrollTop = page.offsetTop + activeOffset.current;
+    setVisible([currentPage, pdfPageAt(host, host.scrollTop + host.clientHeight)]);
+  }, [pdf, currentPage, position, restoreToken, navigation?.id, width, sizes]);
+
+  useLayoutEffect(() => () => {
+    cancelAnimationFrame(scrollFrame.current);
+    clearTimeout(scrollTimer.current);
+  }, []);
+
   useEffect(() => {
-    const root = layer.current;
-    if (!navigation || navigation.page !== pageNumber || root?.dataset.page !== String(pageNumber)) return;
-    const pageText = root.textContent || '';
-    if (pageText.slice(navigation.offset, navigation.offset + navigation.text.length) !== navigation.text) { onNavigationFailure?.(); return; }
-    const range = textRangeAt(root, navigation.offset, navigation.text.length);
-    if (!range) { onNavigationFailure?.(); return; }
-    const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
-    range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-    onNavigate?.({ ...pdfSelectionContent(root, range, navigation.text, navigation.offset, pageText), page: navigation.page });
-  }, [navigation?.id, pageNumber, layerRevision]);
+    if (dragPage == null) return;
+    const stopDragging = () => setDragPage(null);
+    window.addEventListener('mouseup', stopDragging);
+    window.addEventListener('blur', stopDragging);
+    return () => {
+      window.removeEventListener('mouseup', stopDragging);
+      window.removeEventListener('blur', stopDragging);
+    };
+  }, [dragPage]);
+
+  useEffect(() => {
+    if (!navigation || !pdf) return;
+    const host = scroller.current;
+    const anchors = pdfAnchors(navigation);
+    const ranges = [];
+    for (const anchor of anchors) {
+      if (!Number.isInteger(anchor.page) || anchor.page < 1 || typeof anchor.text !== 'string') { onNavigationFailure(); return; }
+      const root = pdfLayerFor(host, anchor.page);
+      if (!root) {
+        if (anchor.page > pdf.numPages || typeof statuses[anchor.page] === 'string') onNavigationFailure();
+        return;
+      }
+      const range = textRangeAt(root, anchor.offset, anchor.text.length);
+      if (!range || range.toString() !== anchor.text) { onNavigationFailure(); return; }
+      ranges.push(range);
+    }
+    if (!ranges.length) { onNavigationFailure(); return; }
+    const first = ranges[0];
+    const last = ranges.at(-1);
+    const range = document.createRange();
+    range.setStart(first.startContainer, first.startOffset);
+    range.setEnd(last.endContainer, last.endOffset);
+    const captured = capturePdfRange(host, range);
+    if (!captured || !samePdfSelection({ ...captured, scope }, navigation)) { onNavigationFailure(); return; }
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const page = pdfPageElement(host, captured.page);
+    const withinPage = first.getBoundingClientRect().top - page.getBoundingClientRect().top - 18;
+    host.scrollTop = page.offsetTop + Math.max(0, withinPage);
+    onNavigate(captured);
+  }, [pdf, navigation?.id, statuses]);
+
+  function handleScroll() {
+    onScrollSelection();
+    cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = requestAnimationFrame(() => {
+      const host = scroller.current;
+      if (!host?.children.length) return;
+      const top = host.scrollTop;
+      const end = pdfPageAt(host, top + host.clientHeight);
+      const page = top > 0 && host.scrollHeight - top - host.clientHeight < 2
+        ? host.children.length
+        : pdfPageAt(host, top + Math.min(36, host.clientHeight / 4));
+      activePageTop.current = pdfPageElement(host, page).offsetTop;
+      const offset = Math.max(0, top - activePageTop.current);
+      activeOffset.current = offset;
+      setVisible(current => current[0] === page && current[1] === end ? current : [page, end]);
+      clearTimeout(scrollTimer.current);
+      if (activePage.current !== page) {
+        activePage.current = page;
+        onPage(page, offset);
+      } else scrollTimer.current = setTimeout(() => onPage(page, offset), 160);
+    });
+  }
+  function capture() {
+    const selection = window.getSelection();
+    const captured = capturePdfRange(scroller.current, selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (captured) onSelect(captured);
+  }
+  function jump(number) {
+    clearTimeout(scrollTimer.current);
+    cancelAnimationFrame(scrollFrame.current);
+    window.getSelection()?.removeAllRanges();
+    onPage(number, 0, true);
+  }
+  const pageStatus = statuses[currentPage];
+  const [start, end] = visible[0] === currentPage ? visible : [currentPage, currentPage];
+  const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
+  const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
-  return <div className="pdf-panel"><div className="pdf-toolbar"><span>Exact original PDF · page {pageNumber} of {pdf?.numPages || '…'}</span><div className="row"><button className="icon-button" aria-label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}><ChevronLeft size={17} /></button><button className="icon-button" aria-label="Next page" disabled={!pdf || pageNumber >= pdf.numPages} onClick={() => onPage(pageNumber + 1)}><ChevronRight size={17} /></button></div></div>{pageHasText === false && <ScanNotice page ocrReady={paper.sourceMode === 'mineru' && paper.blocks.length > 0} onParse={onOcr} onSetup={onSetup} onReader={paper.blocks.length ? onReader : null} />}{error && <Notice tone="error">{error}</Notice>}<div className="pdf-scroll" hidden={Boolean(error)} onMouseUp={event => {
-    if (!event.target.closest('.textLayer')) return;
-    const captured = domSelectionIn(layer.current);
-    if (!captured || captured.context.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return;
-    const range = window.getSelection().getRangeAt(0);
-    onSelect?.({ ...pdfSelectionContent(layer.current, range, captured.text, captured.offset, captured.context), page: pageNumber, rect: captured.rect });
-  }}><div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? `Original PDF page ${pageNumber}` : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}</div></div></div>;
+  return <div className="pdf-panel">
+    <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} />
+    {pageStatus === false && <ScanNotice page ocrReady={paper.sourceMode === 'mineru' && paper.blocks.length > 0} onParse={onOcr} onSetup={onSetup} onReader={paper.blocks.length ? onReader : null} />}
+    {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
+    {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} tabIndex={0} aria-label="Continuous original PDF"
+      onScroll={handleScroll} onMouseDown={event => {
+        const number = pdfRangeEndpoint(event.target);
+        if (event.button === 0 && Number.isInteger(number)) setDragPage(number);
+      }} onMouseUp={capture} onKeyUp={event => { if (event.shiftKey) capture(); }}>
+      {width > 0 && Array.from({ length: pdf.numPages }, (_, index) => {
+        const number = index + 1;
+        const mounted = number >= start - 1 && number <= end + 1 ||
+          number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
+        return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
+          {mounted && <PdfSheet pdf={pdf} number={number} width={width} highlights={highlights} onSize={onSize} onReady={onReady} />}
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+function PdfToolbar({ page, count, onPage }) {
+  return <div className="pdf-toolbar"><span>Exact original PDF · page {page} of {count || '…'}</span><div className="row">
+    <button className="icon-button" aria-label="Previous page" disabled={!count || page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft size={17} /></button>
+    <button className="icon-button" aria-label="Next page" disabled={!count || page >= count} onClick={() => onPage(page + 1)}><ChevronRight size={17} /></button>
+  </div></div>;
 }
 function PdfFacsimile({ paper, pageNumber, onPage, onOriginal }) {
   const [expanded, setExpanded] = useState(true);
@@ -310,9 +519,21 @@ function PdfFacsimile({ paper, pageNumber, onPage, onOriginal }) {
       <button className="button ghost" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Hide original page' : 'Show original page'}</button>
       <button className="button outline" onClick={onOriginal}>Open original PDF</button>
     </div>
-    {expanded && <PdfView facsimile paper={paper} pageNumber={pageNumber} onPage={onPage} />}
+    {expanded && <PdfReference paper={paper} pageNumber={pageNumber} onPage={onPage} />}
   </section>;
 }
+function PdfReference({ paper, pageNumber, onPage }) {
+  const { pdf, error } = usePdfDocument(paper);
+  const [renderError, setRenderError] = useState('');
+  const onReady = useCallback((_number, cause) => setRenderError(cause), []);
+  const page = Math.max(1, Math.min(pageNumber, pdf?.numPages ?? pageNumber));
+  return <div className="pdf-panel">
+    <PdfToolbar page={page} count={pdf?.numPages} onPage={onPage} />
+    {(error || renderError) && <Notice tone="error">{error || renderError}</Notice>}
+    {pdf && <div className="pdf-scroll"><PdfSheet key={page} pdf={pdf} number={page} facsimile onReady={onReady} /></div>}
+  </div>;
+}
+
 function Empty({ title, body, children }) { return <div className="empty"><BookOpen size={36} strokeWidth={1.5} /><h2>{title}</h2><p>{body}</p>{children}</div>; }
 function Notice({ children, tone = 'info', onClose }) { return <div className={`notice ${tone}`}><span>{children}</span>{onClose && <button className="icon-button" aria-label="Dismiss" onClick={onClose}><X size={15} /></button>}</div>; }
 function TaskProgress({ busy, progress, failedCount }) {
@@ -434,8 +655,8 @@ function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, naviga
     {highlights.map(({ block, highlight, kind }, index) => <div className="annotation-row" key={`${block.id}-${highlight.offset}-${index}`}><button onClick={() => navigateBlockAnnotation(block.id, highlight, kind, 'highlight')}><b>{blockAnnotationScope(highlight) === 'paper' ? 'Paper' : 'Reader'} · Block {block.id} · {kind} · {highlight.color} highlight{highlight.needsReview || !validBlockAnchor(block, highlight, kind) ? ' · source changed, review needed' : ''}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove highlight ${block.id} ${index}`} onClick={() => removeHighlight(block.id, highlight, kind)}><Trash2 size={14} /></button></div>)}
     {viewNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigateView(note)}><b>{note.scope}{validViewAnchor(paper, note) ? '' : ' · source changed, review needed'}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete view note ${note.id}`} onClick={() => removeViewNote(note.id)}><Trash2 size={14} /></button></div>)}
     {viewHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigateView(highlight)}><b>{highlight.scope} · {highlight.color}{validViewAnchor(paper, highlight) ? '' : ' · source changed, review needed'}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove view highlight ${highlight.id}`} onClick={() => removeViewHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
-    {pdfNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigatePdf(note)}><b>{pdfAnnotationScope(note) === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · page {note.page}{note.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(note.quote ?? note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete PDF note ${note.id}`} onClick={() => removePdfNote(note.id)}><Trash2 size={14} /></button></div>)}
-    {pdfHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigatePdf(highlight)}><b>{pdfAnnotationScope(highlight) === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · page {highlight.page} · {highlight.color} highlight{highlight.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(highlight.quote ?? highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove PDF highlight ${highlight.id}`} onClick={() => removePdfHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
+    {pdfNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigatePdf(note)}><b>{pdfAnnotationScope(note) === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · {pdfPageLabel(note)}{note.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(note.quote ?? note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete PDF note ${note.id}`} onClick={() => removePdfNote(note.id)}><Trash2 size={14} /></button></div>)}
+    {pdfHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigatePdf(highlight)}><b>{pdfAnnotationScope(highlight) === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · {pdfPageLabel(highlight)} · {highlight.color} highlight{highlight.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(highlight.quote ?? highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove PDF highlight ${highlight.id}`} onClick={() => removePdfHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
   </div>;
 }
 
@@ -609,6 +830,9 @@ function App() {
     const scrollByTab = { ...current.position?.scrollByTab };
     const key = scrollKey();
     scrollByTab[key] = mainScrollRef.current?.scrollTop || 0;
+    const pdfHost = mainScrollRef.current?.querySelector('.pdf-continuous');
+    const pdfPage = pdfPageElement(pdfHost, pageNumber);
+    if (pdfPage) scrollByTab[pdfScrollKey(pdfHost.dataset.pdfScope, pageNumber)] = Math.max(0, pdfHost.scrollTop - pdfPage.offsetTop);
     let block = activeBlock;
     if (tab === 'Reader' && !search && mainScrollRef.current) {
       const top = mainScrollRef.current.getBoundingClientRect().top;
@@ -670,6 +894,29 @@ function App() {
   function changeFacsimilePage(number) {
     setPageNumber(number);
     commitPaper(current => ({ ...current, position: { ...current.position, page: number } }));
+  }
+  function changePdfPage(scope, number, offset, manual) {
+    if (paperRef.current?.id !== paper.id) return;
+    if (manual) {
+      void finishNoteEditing();
+      setPdfNavigation(null);
+      setSelection(null);
+    }
+    setPageNumber(number);
+    const key = pdfScrollKey(scope, number);
+    commitPaper(current => {
+      const position = current.position;
+      if (position?.page === number && position.scrollByTab?.[key] === offset) return current;
+      return { ...current, position: { ...position, page: number, scrollByTab: { ...position?.scrollByTab, [key]: offset } } };
+    }, { delay: manual ? 0 : 250, deferUndo: !manual });
+  }
+  function selectPdf(anchor, scope) {
+    const next = { ...anchor, id: null, kind: 'source', scope };
+    if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(next)) void finishNoteEditing();
+    setSelection(next); setSelectionResults({}); setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
+  }
+  function hideQuickSelectionOnScroll() {
+    setSelection(current => current?.rect ? { ...current, rect: null } : current);
   }
   const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
     if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
@@ -1685,12 +1932,14 @@ function App() {
   function addHighlight(color) {
     if (!selection) return;
     if (isPdfScope(selection.scope)) {
-      if (!validPdfSelection(selection) || selection.page !== pageNumber) { setError('Select exact text on the current PDF page before highlighting.'); return; }
+      if (!validPdfSelection(selection)) { setError('Select exact text in the original PDF before highlighting.'); return; }
       const saved = paper.pdfHighlights || [];
       const matching = saved.filter(item => highlightMatchesSelection(item, selection));
       if (matching.length === 1 && matching[0].color === color && matching[0].quote === selection.quote) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
-      const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, page: selection.page, offset: selection.offset, text: selection.text, quote: selection.quote, color };
+      const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
+        page: selection.page, offset: selection.offset, text: selection.text, quote: selection.quote,
+        ...(selection.anchors && { anchors: storedPdfAnchors(selection) }), color };
       commitPaper(current => ({ ...current, pdfHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
       const action = !matching.length ? 'saved' : matching[0].color === color ? 'updated' : 'color updated';
       setStatus(`PDF highlight ${action} in ${selection.scope === 'paperPdf' ? 'Paper' : 'Original'}.`);
@@ -1735,7 +1984,7 @@ function App() {
     const currentPaper = paperRef.current;
     const currentSelection = selectionRef.current;
     if (!currentPaper || !sameNoteSelection(currentPaper.id, currentSelection, sourceIdentity)) return;
-    if (!validNoteSelection(currentPaper, currentSelection) || isPdfScope(currentSelection.scope) && currentSelection.page !== pageNumber) {
+    if (!validNoteSelection(currentPaper, currentSelection)) {
       setError('This note needs an exact selection in the current saved document.');
       return;
     }
@@ -1847,8 +2096,8 @@ function App() {
     if (item.needsReview) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
     const scope = pdfAnnotationScope(item);
     const targetTab = scope === 'paperPdf' ? 'Paper' : 'Original';
-    recordReadingJump(location => location.tab === targetTab && location.page === item.page && selectionRef.current?.scope === scope
-      && selectionRef.current?.offset === item.offset && selectionRef.current?.text === item.text);
+    recordReadingJump(location => location.tab === targetTab && selectionRef.current?.scope === scope
+      && samePdfSelection(item, selectionRef.current));
     setInspector(true); setTab(targetTab); setPageNumber(item.page);
     if (scope === 'paperPdf') setDisplayMode('source');
     setPdfNavigation({ ...item, scope, id: crypto.randomUUID() });
@@ -1873,11 +2122,11 @@ function App() {
   function pdfNavigationFailed() {
     const requested = pdfNavigation;
     if (requested) commitPaper(current => ({ ...current,
-      pdfNotes: (current.pdfNotes || []).map(item => pdfAnnotationScope(item) === pdfAnnotationScope(requested) && item.page === requested.page && item.offset === requested.offset && item.text === requested.text ? { ...item, needsReview: true } : item),
-      pdfHighlights: (current.pdfHighlights || []).map(item => pdfAnnotationScope(item) === pdfAnnotationScope(requested) && item.page === requested.page && item.offset === requested.offset && item.text === requested.text ? { ...item, needsReview: true } : item)
+      pdfNotes: (current.pdfNotes || []).map(item => samePdfSelection(item, requested) ? { ...item, needsReview: true } : item),
+      pdfHighlights: (current.pdfHighlights || []).map(item => samePdfSelection(item, requested) ? { ...item, needsReview: true } : item)
     }));
     setPdfNavigation(null);
-    setError('The saved PDF text no longer matches this page. The annotation was kept for review.');
+    setError('The saved PDF text no longer matches its page ranges. The annotation was kept for review.');
   }
   function modifyBlocks(transform) {
     if (taskRef.current) { setError('Finish or stop the current task before editing the source.'); return; }
@@ -2006,13 +2255,18 @@ function App() {
           <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.type === 'pdf' && displayMode === 'source' ? 'Exact native PDF rendering with selectable text and original page layout' : paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Reflowed selectable PDF text · exact pages remain available in Original mode' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
           {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
           {paper.type === 'pdf' && displayMode === 'source' ? <PdfView
+            key={paper.id}
             paper={paper}
+            scope="paperPdf"
             pageNumber={pageNumber}
+            position={paper.position?.scrollByTab?.[pdfScrollKey('paperPdf', pageNumber)] || 0}
+            restoreToken={readingRestoration.current}
             highlights={(paper.pdfHighlights || []).filter(item => pdfAnnotationScope(item) === 'paperPdf')}
+            selected={selection?.scope === 'paperPdf' ? selection : null}
             navigation={pdfNavigation?.scope === 'paperPdf' ? pdfNavigation : null}
-            onRendered={restoreMainScroll}
-            onPage={number => { void finishNoteEditing(); restoringScroll.current = true; setPageNumber(number); setPdfNavigation(null); setSelection(null); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }}
-            onSelect={anchor => { const nextSelection = { ...anchor, id: null, kind: 'source', scope: 'paperPdf' }; if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing(); setSelection(nextSelection); setSelectionResults({}); setNoteDraft(findSelectionNote(paperRef.current, nextSelection)?.body || ''); }}
+            onPage={(...args) => changePdfPage('paperPdf', ...args)}
+            onScrollSelection={hideQuickSelectionOnScroll}
+            onSelect={anchor => selectPdf(anchor, 'paperPdf')}
             onNavigate={pdfNavigationReady}
             onNavigationFailure={pdfNavigationFailed}
             onOcr={runMineru}
@@ -2028,13 +2282,18 @@ function App() {
         </div>}
         {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={blockAnnotationsFor(block.highlights, 'reader')}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, blockAnnotationsFor(block.highlights, 'reader'))}</div>{!block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={blockAnnotationsFor(block.translationHighlights, 'reader')}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, blockAnnotationsFor(block.translationHighlights, 'reader'))) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView
+          key={paper.id}
           paper={paper}
+          scope="pdf"
           pageNumber={pageNumber}
+          position={paper.position?.scrollByTab?.[pdfScrollKey('pdf', pageNumber)] || 0}
+          restoreToken={readingRestoration.current}
           highlights={(paper.pdfHighlights || []).filter(item => pdfAnnotationScope(item) === 'pdf')}
+          selected={selection?.scope === 'pdf' ? selection : null}
           navigation={pdfNavigation?.scope !== 'paperPdf' ? pdfNavigation : null}
-          onRendered={restoreMainScroll}
-          onPage={number => { void finishNoteEditing(); restoringScroll.current = true; setPageNumber(number); setPdfNavigation(null); setSelection(null); commitPaper(current => ({ ...current, position: { ...current.position, page: number } })); }}
-          onSelect={anchor => { const nextSelection = { ...anchor, id: null, kind: 'source', scope: 'pdf' }; if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing(); setSelection(nextSelection); setSelectionResults({}); setNoteDraft(findSelectionNote(paperRef.current, nextSelection)?.body || ''); }}
+          onPage={(...args) => changePdfPage('pdf', ...args)}
+          onScrollSelection={hideQuickSelectionOnScroll}
+          onSelect={anchor => selectPdf(anchor, 'pdf')}
           onNavigate={pdfNavigationReady}
           onNavigationFailure={pdfNavigationFailed}
           onOcr={runMineru}
@@ -2068,7 +2327,7 @@ function App() {
         </>}
       </div>
     </main>
-    <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote>{short(selection.quote ?? selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
+    <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote>{short(selection.quote ?? selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={() => { void finishNoteEditing(); setSelection(null); setSelectionResults({}); }} />}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
