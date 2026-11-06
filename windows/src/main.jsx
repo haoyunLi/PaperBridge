@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
-import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData } from './prompts.mjs';
+import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, parsedMarkdownBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
@@ -25,6 +25,7 @@ import SettingsPanel from './SettingsPanel.jsx';
 import { modelSettingsPatch } from './modelCatalog.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, openAISetupMessage, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
+import { connectedBatchVersion, pendingConnectedBatches, planConnectedBatches, restoreConnectedExcerpt } from './connectedTranslation.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -938,11 +939,11 @@ function App() {
     else if (name === 'find') { if (paper) { setTab('Reader'); setTimeout(() => searchRef.current?.focus(), 0); } }
     else if (name === 'primaryTask' && paper && !busy) {
       if (tab === 'Summary') { if (!paper.summary || paper.summary.stale) summarize(); }
-      else if (tab === 'Full Translation') { if (fullTranslationNeedsWork) fullTranslation(!!paper.connectedTranslation); }
+      else if (tab === 'Full Translation') { if (fullTranslationNeedsWork) fullTranslation(); }
       else if (paper.blocks.some(block => block.status !== 'ok')) translateBlocks(paper.blocks.map(block => block.id));
     }
     else if (name === 'generateSummary') { if (paper && !busy) { setTab('Summary'); summarize(); } }
-    else if (name === 'generateFullTranslation') { if (paper && !busy) { setTab('Full Translation'); fullTranslation(!!paper.connectedTranslation); } }
+    else if (name === 'generateFullTranslation') { if (paper && !busy) { setTab('Full Translation'); fullTranslation(); } }
     else if (name === 'export') { if (paper && !busy) setModal('export'); }
     else if (name === 'inspector') { if (focus) toggleFocus(); setInspector(true); }
     else if (name === 'translateSelection') { if (selection && !busy) runSelection('translate'); }
@@ -1289,39 +1290,61 @@ function App() {
     try {
       const config = settingsRef.current;
       const translationModel = activeAIModel(config, 'translation');
-      const blocks = paperRef.current.blocks;
-      const references = referenceBlockIds(blocks);
-      const previous = paperRef.current.connectedBlocks || [];
-      const outputs = [];
-      for (let i = 0; i < blocks.length; i++) {
-        if (token.cancelled) return;
-        const block = blocks[i];
-        const source = block.sourceMarkdown || block.text;
-        setBusy({ label: `Translating full paper · ${i + 1} of ${blocks.length}` }); setProgress({ done: i, total: blocks.length });
-        let output = source;
-        let status = 'ok';
-        if (!references.has(block.id) && !block.resource && config.sourceLanguage !== config.targetLanguage) {
-          const saved = previous[i];
-          if (!force && saved?.source === source && saved?.status === 'ok') output = saved.output;
-          else {
-            try {
-              const protectedBlock = block.sourceMarkdown ? protectMarkdown(source) : null;
-              const parts = chunkText(protectedBlock?.text || source, 4800);
-              const context = outputs.slice(-2).map(item => omitInlineImageData(item.output)).join('\n\n').slice(-800);
-              const translated = [];
-              for (const part of parts) {
-                const prompt = block.sourceMarkdown ? markdownTranslationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)) : translationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
-                translated.push(await generate(translationModel, `${context ? `Previous translated context for terminology only:\n${context}\n\n` : ''}${prompt}`, translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token));
-              }
-              output = protectedBlock ? restoreMarkdown(translated.join('\n'), protectedBlock.tokens) : translated.join(' ');
-            } catch (cause) { if (token.cancelled) return; if (config.aiProvider === 'openai' && isGlobalOpenAIError(cause.message)) throw cause; status = 'failed'; setStatus(`Full translation block ${block.id} failed: ${cause.message}. Original text retained.`); }
-          }
-        }
-        outputs.push({ id: block.id, source, output, status });
-        commitPaper(current => ({ ...current, connectedBlocks: [...outputs], connectedTranslation: outputs.map(item => item.output).join('\n\n'), connectedShared: false, connectedStale: i < blocks.length - 1 }));
-        setProgress({ done: i + 1, total: blocks.length });
+      const current = paperRef.current;
+      if (!force && current.connectedTranslation && !current.connectedStale && !pendingConnectedBatches(current).length) {
+        setStatus('Using the saved connected full translation.');
+        return;
       }
-      setStatus(`Connected full-paper translation saved. ${outputs.filter(item => item.status === 'failed').length} block(s) retained in the original language.`);
+      const saveDraft = batches => commitPaper(paper => ({
+        ...paper, connectedBlocks: [...batches],
+        connectedTranslation: batches.map(batch => batch.output).join('\n\n'),
+        connectedBatchVersion, connectedShared: false, connectedStale: false
+      }));
+      if (config.sourceLanguage === config.targetLanguage) {
+        const source = current.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
+        saveDraft([{ kind: 'original', source, output: source, status: 'ok' }]);
+        setStatus('Source and target languages match. The full draft uses the original text.');
+        return;
+      }
+      const previous = !force && !current.connectedStale && current.connectedBatchVersion === connectedBatchVersion
+        ? current.connectedBlocks : [];
+      const batches = planConnectedBatches(current.blocks).map((batch, index) => {
+        const saved = previous?.[index];
+        if (saved?.kind === batch.kind && saved.source === batch.source && saved.status === 'ok' && saved.output) return saved;
+        return { ...batch, output: batch.source, status: batch.kind === 'original' ? 'ok' : 'pending' };
+      });
+      const translationCount = batches.filter(batch => batch.kind === 'translation').length;
+      let done = batches.filter(batch => batch.kind === 'translation' && batch.status === 'ok').length;
+      if (done === translationCount) {
+        saveDraft(batches);
+        setStatus('Connected full-paper translation saved.');
+        return;
+      }
+      const setupMessage = openAISetupMessage(config, openAIStateRef.current.consent, openAIStateRef.current.hasKey, 'translation');
+      if (setupMessage) throw new Error(setupMessage);
+      if (config.aiProvider !== 'openai' && !models.includes(translationModel)) throw new Error(`Install ${translationModel} in Ollama first.`);
+      setProgress({ done, total: translationCount });
+      for (const [index, batch] of batches.entries()) {
+        if (batch.status === 'ok') continue;
+        requireActiveTask(token);
+        setBusy({ label: `Translating full paper · batch ${done + 1} of ${translationCount}` });
+        try {
+          const protectedExcerpt = protectMarkdown(batch.source);
+          const prompt = connectedTranslationPrompt(protectedExcerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(protectedExcerpt.text));
+          const answer = await generate(translationModel, prompt, translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage)), token);
+          const output = restoreConnectedExcerpt(answer, protectedExcerpt.tokens);
+          batches[index] = { ...batch, output, status: 'ok' };
+        } catch (cause) {
+          if (token.cancelled) return;
+          if (config.aiProvider === 'openai' && isGlobalOpenAIError(cause.message)) throw cause;
+          batches[index] = { ...batch, status: 'failed', error: cause.message };
+        }
+        saveDraft(batches);
+        setProgress({ done: ++done, total: translationCount });
+      }
+      const failures = batches.filter(batch => batch.status === 'failed').length;
+      setStatus(failures ? `Connected full-paper translation saved. ${failures} failed batch(es) retain the original text.`
+        : 'Connected full-paper translation saved.');
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   async function runMineru() {
@@ -1685,9 +1708,11 @@ function App() {
   const abstractConclusionIds = translationRangeIds(paper?.blocks || [], sections.filter(section => /abstract|conclusion|摘要|结论/i.test(section.title)).flatMap(section => section.ids), referenceIDs);
   const unfinishedTranslationIds = translationRangeIds(paper?.blocks || [], null, referenceIDs);
   const structuredFull = usesSharedMarkdown(paper);
+  const plainUnfinished = structuredFull ? [] : pendingConnectedBatches(paper);
   const fullTranslationNeedsWork = paper && (!paper.connectedTranslation || paper.connectedStale
-    || (structuredFull && (!paper.connectedShared || unfinishedTranslationIds.length > 0)));
-  const fullTranslationAction = !paper?.connectedTranslation ? 'Translate full paper' : structuredFull ? 'Update from Reader' : 'Regenerate';
+    || plainUnfinished.length > 0 || (structuredFull && (!paper.connectedShared || unfinishedTranslationIds.length > 0)));
+  const fullTranslationAction = !paper?.connectedTranslation ? 'Translate full paper'
+    : structuredFull ? 'Update from Reader' : plainUnfinished.length ? 'Resume unfinished batches' : 'Regenerate';
   const menuReady = ready && modal !== 'onboarding';
   const menuBusy = Boolean(busy || onboardingBusy);
   const canPrimaryTask = translatableCount > 0 && (tab === 'Summary' ? !paper.summary || paper.summary.stale : tab === 'Full Translation' ? fullTranslationNeedsWork : translatedCount < translatableCount);
@@ -1771,11 +1796,12 @@ function App() {
               ? 'Shares Reader translations and preserves Markdown structure'
               : 'A separate document-wide pass for consistent terminology'}</p></div>
             <button className="button coral" disabled={!!busy || !paper.blocks.some(block => !block.heading && !block.resource) || (structuredFull && !fullTranslationNeedsWork)}
-              onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {fullTranslationAction}</button>
+              onClick={() => fullTranslation(fullTranslationAction === 'Regenerate')}><Languages size={16} /> {fullTranslationAction}</button>
           </div>
           {paper.connectedStale && <Notice tone="error">The source changed after this translation. Update it to match the current source.</Notice>}
           {structuredFull && paper.connectedShared && !paper.connectedStale && unfinishedTranslationIds.length > 0 &&
             <Notice>{unfinishedTranslationIds.length} unfinished block(s) shown in the original language.</Notice>}
+          {plainUnfinished.length > 0 && <Notice>{plainUnfinished.length} unfinished batch(es) shown in the original language. Completed batches are saved.</Notice>}
           {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation"
             onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}>
             <Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown>

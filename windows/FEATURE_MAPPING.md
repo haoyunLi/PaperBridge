@@ -79,7 +79,7 @@ Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480
 | C13 | 正在翻译时将当前章节插队 | 运行时可把当前章节插入剩余队列前端 | 部分 | 异步取消及真实 Ollama 长队列待验证。 |
 | C14 | 连贯全文翻译是独立可选任务 | Full Translation 单独按钮与保存 | 对齐 | 不自动替代段落翻译。 |
 | C15 | 全文翻译保留原 Markdown 非语言块与共享译稿 | MinerU 全文与 Reader 共用翻译结果，保留原结构及未完成原文；重试结果同步到全文和导出 | 部分 | Electron 验证共享、失败回退、参考文献和资源保护；RX 7800 XT 扫描件验证已有 Reader 译文原样进入全文。复杂论文全文结果仍需与 macOS 并排验收。 |
-| C16 | 上下文分批与失败块保留原文 | 逐块上下文翻译、进度保存与失败原文保留；全文输出和标注按设置/来源版本保存 | 部分 | 设置切换与原文失效已有单元回归；真实长文恢复及失败重试仍待验证。 |
+| C16 | 上下文分批与失败块保留原文 | 普通文本与 PDF 文字层合并相邻段落，每批最多 4,800 字符；保存已完成译文，失败与中断位置保留原文并支持续跑 | 部分 | Electron 验证失败、迟到响应、关闭重启和快捷键续跑；RX 7800 XT 对 15 页真实论文分 7 批，首批完成后重启续跑余下 6 批。Mac 的 PDF 页面图像与全文组合呈现仍待对照。 |
 | C17 | 按方向匹配保存术语注入提示 | `matchingTerms` 限 24 条 | 对齐 | 已完成译文不被术语更新静默覆盖。 |
 
 Mac 证据：[段落队列与全文翻译](../PaperBridge/PaperReaderViewModel.swift#L741)、[翻译范围菜单](../PaperBridge/ContentView.swift#L633)、[结构化保护](../PaperBridge/Services/AcademicMarkdownProcessor.swift#L273)。Windows 证据：[翻译任务](src/main.jsx#L191)、[全文翻译](src/main.jsx#L253)、[范围菜单](src/main.jsx#L403)。

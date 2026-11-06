@@ -13,7 +13,7 @@ export function withSharedMarkdownTranslation(paper) {
     }
     return block.sourceMarkdown || block.text;
   }).join('\n\n');
-  return { ...paper, connectedTranslation: markdown, connectedBlocks: [], connectedShared: true, connectedStale: false };
+  return { ...paper, connectedTranslation: markdown, connectedBlocks: [], connectedBatchVersion: null, connectedShared: true, connectedStale: false };
 }
 
 export function readableHtml(text) {

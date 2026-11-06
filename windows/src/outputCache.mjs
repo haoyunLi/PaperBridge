@@ -58,12 +58,14 @@ export function switchOutputSettings(paper, previous, next, { paragraphsOnly = f
   if (!paragraphsOnly && connectedKey(previous) !== connectedKey(next)) {
     variants.connected = { ...variants.connected, [scoped(connectedKey(previous))]: {
       source: paperSource(paper), text: paper.connectedTranslation, blocks: paper.connectedBlocks, stale: paper.connectedStale, shared: paper.connectedShared,
+      batchVersion: paper.connectedBatchVersion,
       notes: (paper.viewNotes || []).filter(item => item.scope === 'fullTranslation'),
       highlights: (paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation')
     } };
     const saved = variants.connected[scoped(connectedKey(next))];
     const match = saved && same(saved.source, paperSource(paper)) ? saved : null;
     Object.assign(result, { connectedTranslation: match?.text || '', connectedBlocks: match?.blocks || [], connectedStale: match?.stale || false, connectedShared: match?.shared || false,
+      connectedBatchVersion: match?.batchVersion ?? null,
       viewNotes: [...(result.viewNotes || []).filter(item => item.scope !== 'fullTranslation'), ...(match?.notes || [])],
       viewHighlights: [...(result.viewHighlights || []).filter(item => item.scope !== 'fullTranslation'), ...(match?.highlights || [])] });
   }

@@ -8,6 +8,8 @@ Overview summaries and Full Translation display inline highlights and support sa
 
 For MinerU documents, **Full Translation** builds a continuous draft from the Reader's translated blocks. It only sends unfinished text to the selected model. Formulas, images, tables and references keep their original content, and a failed block keeps its original text until a retry succeeds. Retrying in Reader updates the full draft and its Markdown export.
 
+For pasted text and the selectable PDF text layer, **Full Translation** groups adjacent paragraphs into excerpts of at most 4,800 characters after protecting formulas, links and inline assets. Completed batches are saved as they finish. **Resume unfinished batches** retries failed and interrupted excerpts after stopping or reopening the app. The draft and its export show original text for unfinished excerpts, and references stay in their original language. **Regenerate** starts a fresh pass over a completed draft.
+
 PDF import now follows macOS 1.9.2/1.10 feedback: the selected filename replaces stale content, elapsed time and recognized MinerU layout/formula/text stages are shown, and Cancel Import returns to the previous paper. A failed or late import cannot replace the previous translations, notes, bookmarks, or reading position.
 
 ## Build and run
