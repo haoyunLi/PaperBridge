@@ -6,7 +6,7 @@
 
 桌面回归覆盖旧笔记、重复文字、行内公式、跨块及跨页、重启、撤销和视图隔离。在 RX 7800 XT 的 Windows 机器上，用 15 页 Attention Is All You Need 的真实标题对比截图，原 PDF 与 MinerU 预览均出现蓝色下划线。加入 Amber 高亮后，下划线仍可见。
 
-Windows 0.2.2 包含第二十八至第三十阶段的标注改进。 [Windows 0.2.2](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2)
+Windows 0.2.2 包含第二十八至第三十阶段的标注改进。发布工作流通过 130 项单元测试、桌面回归及打包启动检查。重新下载两个公开文件并核对 SHA-256。公开便携版可直接运行并恢复真实论文标题的笔记和高亮。用公开安装包从 0.2.1 升级，核对了更新提示、运行版本、论文和标注，隔离测试卸载后数据保留。两份公开程序均未签名。 [Windows 0.2.2](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42270811870)
 
 ## 第二十九阶段：Paper 跨段高亮与笔记（2026-11-06 UTC）
 
