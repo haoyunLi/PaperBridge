@@ -113,3 +113,9 @@ Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报
 ## 导入策略与 DirectML 独立重提取（2026-11-06）
 
 在隔离工作区用同一份 15 页论文验证。故意指定缺失的 MinerU 路径，严格模式保留当前练习论文和书签，优先模式打开原 PDF 并得到 214 个文字层块，原因随论文保存。切回 MinerU-only 并指定本机 MinerU 4.1.7 后，通过 **Re-extract PDF as New Copy** 创建独立副本，得到 167 个结构化块。原文字层版本仍在库中。进度日志确认 DirectML 选择 RX 7800 XT，提取及原页渲染约 28.2 秒。
+
+## 两页双栏图像扫描（2026-11-06 UTC）
+
+将 ResNet 论文前两页以 145 DPI 灰度栅格化，第 2 页顺时针倾斜 1.2 度，再保存成只有图像的 PDF。采用默认 MinerU preferred 和 Auto，留空可执行路径。软件自动发现先前一键安装的 MinerU 4.1.7，解析日志确认选择 `dml` 和 RX 7800 XT。日志也显示 OCR 检测会话使用 CPU。导入约 16.8 秒，PDF 文字层为 0 块，MinerU 保存 29 块，其中有 3 个图像块。五处标题与正文锚点按预期顺序出现。 [原论文](https://arxiv.org/abs/1512.03385)
+
+从 Paper 精确 PDF 第 2 页且当前采用 PDF 文字层的状态打开 OCR Reader。后退恢复原 PDF 第 2 页，前进回到 OCR Reader。第 2 页的段落经 TranslateGemma 4B 得到中文译文，Ollama 日志确认 ROCm，模型大小与显存占用均为 2,881,948,220 字节。退出并重开后仍可查看译文和书签。实际便携导出将三个图像写为 Markdown 引用的本地文件，导出的 `original.pdf` 与扫描输入逐字节一致。该样本验证双栏和轻微倾斜的英文扫描。

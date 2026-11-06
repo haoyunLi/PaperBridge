@@ -8,6 +8,7 @@ const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
+const { findMineruMarkdown, readMineruMarkdown } = require('./mineru-output.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
@@ -120,33 +121,6 @@ async function pullOllamaModel(baseURL, model, signal, update) {
     update(event);
   }
   return true;
-}
-
-async function findMarkdown(folder) {
-  if (!fs.existsSync(folder)) return null;
-  for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
-    const full = path.join(folder, entry.name);
-    if (entry.isDirectory()) { const found = await findMarkdown(full); if (found) return found; }
-    else if (entry.name.toLowerCase().endsWith('.md')) return full;
-  }
-  return null;
-}
-
-async function readMineruMarkdown(file) {
-  let markdown = fs.readFileSync(file, 'utf8');
-  const matches = [...markdown.matchAll(/!\[([^\]]*)\]\(([^)]+)\)/g)];
-  for (const match of matches) {
-    const relative = decodeURIComponent(match[2].replace(/^<|>$/g, ''));
-    if (/^(?:https?:|data:|file:)/i.test(relative)) continue;
-    const candidate = path.resolve(path.dirname(file), relative);
-    const allowedRoot = path.resolve(path.dirname(file));
-    if (!candidate.startsWith(`${allowedRoot}${path.sep}`) || !fs.existsSync(candidate)) continue;
-    const ext = path.extname(candidate).toLowerCase();
-    const mime = ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' })[ext];
-    if (!mime || fs.statSync(candidate).size > 8_000_000) continue;
-    markdown = markdown.replace(match[0], `![${match[1]}](data:${mime};base64,${fs.readFileSync(candidate).toString('base64')})`);
-  }
-  return markdown;
 }
 
 function registerHandlers() {
@@ -337,12 +311,10 @@ function registerHandlers() {
         child.on('close', code => { mineruJobs.detach(job, child); code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
       });
       mineruJobs.check(job);
-      const file = invocation.markdown
-        ? (fs.existsSync(invocation.markdown) ? invocation.markdown : null)
-        : await findMarkdown(output);
+      const file = findMineruMarkdown(output, path.parse(stagedPdf).name);
       mineruJobs.check(job);
       if (!file) throw new Error('MinerU finished without a Markdown file.');
-      const markdown = await readMineruMarkdown(file);
+      const markdown = readMineruMarkdown(file);
       mineruJobs.check(job);
       try {
         fs.mkdirSync(savedOutput, { recursive: true });

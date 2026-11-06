@@ -54,7 +54,7 @@ function mineruInvocation(detected, pdf, output, backend, toolsRoot) {
   if (detected.kitExecutable) {
     const markdown = path.join(output, 'paper.md');
     return {
-      command: detected.kitExecutable, markdown,
+      command: detected.kitExecutable,
       args: ['parse', pdf, '-o', markdown, '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
       env: mineru4Environment(toolsRoot, backend)
     };

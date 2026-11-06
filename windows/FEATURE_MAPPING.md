@@ -20,20 +20,20 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 | A04 | 无模型时试用虚构练习论文 | 有论文打开时保留原工作区并提示 | 对齐 | 练习论文只从空工作区创建。 |
 | A05 | 重复打开同一 PDF 恢复原工作区 | SHA-256 去重并载入保存文档 | 对齐 | 验证编辑、翻译、标注均未覆盖。 |
 | A06 | 重新提取为新的图书馆副本 | More 中重新提取为独立副本 | 对齐 | Electron 流程验证原副本保留且图书馆新增一项。 |
-| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，先探测并解析结构化正文，再处理 PDF 文字层 | 部分 | 15 页双栏论文和单页图像型扫描 PDF 已在 AMD/CPU pipeline 自动解析；更多真实扫描件待验证。 |
+| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，先探测并解析结构化正文，再处理 PDF 文字层 | 部分 | 真机已自动解析 15 页论文、单页扫描及两页双栏扫描。两页扫描验证了 AMD DirectML 路径。 |
 | A08 | MinerU 失败自动降级，并说明原因 | 优先模式保留原 PDF 及可用文字层，降级原因在重开后可见 | 部分 | 真机用缺失可执行路径从 15 页 PDF 读到 214 个文字块。桌面回归覆盖探测失败、运行失败、空结果和重新打开。 |
 | A09 | MinerU only / MinerU preferred / PDFKit only 三种模式 | MinerU-only 拒绝不可读的结构化结果并保留当前论文；PDF-only 跳过 MinerU | 部分 | 真机严格模式缺失路径保留旧论文与书签，换回 MinerU 4.1.7 通过 DirectML 提取 167 个块。桌面测试覆盖仅资源结果及 PDF-only。 |
-| A10 | 多栏正文阅读顺序 | MinerU 保留结构化正文顺序。PDF 文字层识别窄栏间距，在跨栏标题和表注之间逐栏读取。 | 部分 | ResNet 双栏论文及合成跨栏样例通过 Windows 桌面导入。更多栏数、跨栏图形与 Mac 真机并排仍需验收。 |
+| A10 | 多栏正文阅读顺序 | MinerU 保留结构化正文顺序。PDF 文字层识别窄栏间距，在跨栏标题和表注之间逐栏读取。 | 部分 | ResNet 双栏论文、合成跨栏样例及 ResNet 两页图像扫描通过桌面导入。扫描验证五处正文顺序，更多版式与 Mac 并排仍需验收。 |
 | A11 | 图片、表格、独立公式、代码随正文交错 | 按行拆出独立资源块，图表说明保留为可翻译段落；安全渲染 HTML | 部分 | 15 页论文重开验证 5 图、4 表、5 独立公式均按源顺序出现在 Paper/Reader；其它论文的复杂 HTML/代码仍待验收。 |
 | A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` 包括代码围栏、整张 HTML 表格、行内标签及多种公式 | 部分 | 单元测试覆盖 token 还原；更多模型对复杂结构的输出位置仍待验收。 |
 | A13 | 原 PDF 无修改保存并原样查看 | 复制原 PDF，PDF.js canvas + text layer | 对齐 | 像素、页数和可选文字与源文件一致。 |
-| A14 | 无文字层的扫描件仍可看原 PDF | 原 PDF 保留画面与翻页；无文字层时 Paper、Reader、Original 显示 OCR 引导，OCR 完成后原页可直接跳到 OCR Reader；翻译/摘要/全文任务在无文本时禁用，缺少 MinerU 则进入一键安装 | 部分 | 空白无文字层 PDF 引导和单页图像型 PDF 的真实 OCR、翻译已验证；复杂扫描件的 OCR 质量仍待验收。 |
+| A14 | 无文字层的扫描件仍可看原 PDF | Paper 与 Original 的原页可直接打开已有 OCR Reader，当前使用 PDF 文字层时自动切换；翻译、摘要和全文任务在无文本时禁用，缺少 MinerU 则进入一键安装 | 部分 | 已验证单页及两页双栏扫描的 OCR 与翻译。两页样本验证返回原 PDF 第 2 页及重启恢复译文。更多扫描质量和语言仍需验收。 |
 | A15 | PDFKit 便携页面图片（最多前 120 页） | 导出 bundle 时逐页渲染 PNG，最大边 1,800 像素，最多 120 页；页面索引链接到完整原 PDF | 部分 | 真机用 15 页论文验证 PNG，用 121 页测试 PDF 验证只写 120 张、显示上限提示并保留完整 PDF。Mac 在打开时生成持久页面缓存，Windows 在查看时按页渲染并在便携导出时写 PNG。 |
 | A16 | 跨页断词、断句修复 | 页内和跨页共用断词规则，保留复合词连字符与 PDF 文字层明确给出的空格。跨页拼接记录终止页，并保留下一独立段。 | 部分 | 15 页论文复核了复合词。12 页双栏论文复核了因字体切换被拆开的 `ImageNet test set`。同行断词和公式仍需验收。 |
 | A17 | 重复页眉、页脚、图表标签过滤 | 过滤重复页眉、页脚、页码及页边旋转 arXiv 标识。图表标题从上一段分开，其他旋转文字保留为独立行。 | 部分 | 双栏真文验证了侧边标识不混入正文、图注与轴标签分开。复杂图表标签的归属仍需验证。 |
 | A18 | 提取质量警告定位到 Reader 段落 | Overview 列出可疑段落和 Review 跳转 | 部分 | 启发式规则仍需双栏及扫描件回归。 |
 | A19 | 尾部参考文献或中途参考文献智能排除 | 段落翻译、全文翻译和摘要共用参考文献范围，识别无标题列表、同块标题和引文，并恢复后续附录和方法。阅读预览和 Markdown 导出保留引文原文。 | 部分 | 桌面测试验证附录恢复及导出。15 页样例的 MinerU 与 PDF 文字层均识别参考文献并保留后续图注，更多引文格式和跨页混排仍需验收。 |
-| A20 | MinerU 资源目录与原 PDF 持久化 | 原 PDF 持久化；图片转 data URI，另留 MinerU 输出目录 | 部分 | 资源可跨重启引用，丢失资产时报告且可恢复。 |
+| A20 | MinerU 资源目录与原 PDF 持久化 | 多输出目录优先选择与输入同名的非空主稿，兼容完整稿命名；本地图像随文保存，缺失图像时保留链接 | 部分 | 单元覆盖主稿与辅助稿竞争、百分号文件名和缺失链接。真实两页扫描重启后导出 3 个图像资源与字节相同的原 PDF。 |
 
 Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[PDF 文本修复](../PaperBridge/Services/PDFTextExtractor.swift)、[Markdown 结构](../PaperBridge/Services/AcademicMarkdownProcessor.swift)、[原页归档](../PaperBridge/Services/PDFVisualArchiveService.swift)。Windows 证据：[导入与手动 MinerU](src/main.jsx)、[PDF.js 提取](src/pdf.mjs)、[Markdown 按行分段](src/academicMarkdown.mjs)、[原 PDF 复制](electron/main.cjs#L105)。
 

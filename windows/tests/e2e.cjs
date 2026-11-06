@@ -663,6 +663,22 @@ async function run() {
       ipcMain.removeHandler('mineru:status');
       ipcMain.handle('mineru:status', () => ({ compatible: true, executable: 'test-mineru' }));
       ipcMain.removeHandler('mineru:extract');
+      ipcMain.handle('mineru:extract', () => '# Recovered scan\n\nMinerU recovered this experimental passage from the scanned page.');
+    });
+    await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Parse with MinerU' }).click();
+    await reopenedPage.getByText('MinerU structure ready:', { exact: false }).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Paper', exact: true }).click();
+    await reopenedPage.getByLabel('Paper display mode').selectOption('source');
+    await reopenedPage.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
+    await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Open OCR Reader' }).click();
+    await reopenedPage.locator('.reader-list').getByText('MinerU recovered this experimental passage from the scanned page.', { exact: true }).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Back to previous reading location', exact: true }).click();
+    await reopenedPage.locator('[data-pdf-scope="paperPdf"]').waitFor();
+    await reopenedPage.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Forward in reading history', exact: true }).click();
+    await reopenedPage.locator('.reader-list').getByText('MinerU recovered this experimental passage from the scanned page.', { exact: true }).waitFor();
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('mineru:extract');
       ipcMain.handle('mineru:extract', () => '  \n ');
     });
     const emptyMineruPath = path.join(artifacts, 'empty-mineru-result.pdf');

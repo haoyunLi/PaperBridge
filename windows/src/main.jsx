@@ -594,9 +594,10 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
   const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
+  const ocrReady = Boolean(paper.mineruBlocks?.length || paper.sourceMode === 'mineru' && paper.blocks.length);
   return <div className="pdf-panel">
     <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} />
-    {pageStatus === false && <ScanNotice page ocrReady={paper.sourceMode === 'mineru' && paper.blocks.length > 0} onParse={onOcr} onSetup={onSetup} onReader={paper.blocks.length ? onReader : null} />}
+    {pageStatus === false && <ScanNotice page ocrReady={ocrReady} onParse={onOcr} onSetup={onSetup} onReader={ocrReady || paper.blocks.length ? onReader : null} />}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
     {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} tabIndex={0} aria-label="Continuous original PDF"
       onScroll={handleScroll} onMouseDown={event => {
@@ -1977,6 +1978,12 @@ function App() {
     setStatus(`Reader source changed to ${mode === 'mineru' ? 'MinerU' : 'PDF text'}. The other version remains saved.`);
     return true;
   }
+  function openPdfReader() {
+    const current = paperRef.current;
+    if (current?.mineruBlocks?.length && paperArticleSource(current).mode !== 'mineru') {
+      if (switchSourceMode('mineru')) setTab('Reader');
+    } else navigateToTab('Reader');
+  }
   async function exportMarkdown(kind) {
     if (!paper) return;
     const document = markdownDocuments(paper).find(item => item.kind === kind);
@@ -2511,7 +2518,7 @@ function App() {
             onNavigationFailure={pdfNavigationFailed}
             onOcr={runMineru}
             onSetup={() => setModal('setup')}
-            onReader={() => { changeDisplayMode('bilingual'); }}
+            onReader={openPdfReader}
           /> : <>
             {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} />}
             <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
@@ -2538,7 +2545,7 @@ function App() {
           onNavigationFailure={pdfNavigationFailed}
           onOcr={runMineru}
           onSetup={() => setModal('setup')}
-          onReader={() => navigateToTab('Reader')}
+          onReader={openPdfReader}
         />}
         {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>

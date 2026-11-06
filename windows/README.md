@@ -28,6 +28,8 @@ When a paper uses its PDF text layer, **Paper** in Bilingual or Translation mode
 
 PDF import shows the selected filename, elapsed time, and MinerU layout, formula and text stages. **Cancel Import** returns to the previous paper. In **MinerU only** mode a failed or unreadable result keeps the current paper and reports the cause. **MinerU preferred** keeps the original PDF and uses any selectable text when MinerU fails. The fallback reason appears again when you reopen the paper. **PDF only** reads the original and its text layer without starting MinerU. **Re-extract PDF as New Copy** uses the same import rules and preserves the saved version.
 
+On a scanned page in Paper or Original, **Open OCR Reader** opens the saved MinerU text. If the paper is showing the PDF text layer, the button switches to MinerU. Use Back to return to the original page and reading source.
+
 ## Build and run
 
 Requirements: Windows 10 or later, Node.js 20.19+ or 22.12+, and npm. From this folder:
