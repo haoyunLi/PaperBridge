@@ -5,7 +5,7 @@
 <h1 align="center">PaperBridge</h1>
 
 <p align="center">
-  <strong>A local-first academic paper reader for macOS.</strong><br>
+  <strong>A local-first academic paper reader for macOS, with a Windows development preview.</strong><br>
   Preserve the original PDF, read a structured paper, and translate or analyze it with local Ollama models or opt-in OpenAI.
 </p>
 
@@ -13,6 +13,8 @@
   <a href="https://paperbridges.net"><strong>Official Website</strong></a>
   &nbsp;·&nbsp;
   <a href="https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg"><strong>Download for macOS</strong></a>
+  &nbsp;·&nbsp;
+  <a href="https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.5"><strong>Download for Windows (preview)</strong></a>
   &nbsp;·&nbsp;
   <a href="#build-from-source"><strong>Build from Source</strong></a>
 </p>
@@ -112,7 +114,7 @@ Each changed local JSON save retains one readable `.backup` beside it and automa
 ### Install the ready-made Mac app
 
 1. [Download PaperBridge.dmg](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), open it, and drag PaperBridge into Applications.
-2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required; Windows is not yet available.
+2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. A separate [Windows preview](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.5) has x64 installer and portable downloads.
 3. Choose your route below. The setup guide can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
 | What you want to do | What to install |
