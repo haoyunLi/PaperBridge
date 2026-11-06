@@ -1,4 +1,7 @@
 import { isHeading } from './text.mjs';
+import { referenceBlockIds } from './references.mjs';
+
+export { referenceBlockIds };
 
 const libraryLabelSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
@@ -14,22 +17,6 @@ export function libraryLabel(title, tags) {
     libraryTitle: limit(title, 200),
     tags: [...new Set(tags.split(',').map(tag => limit(tag, 40)).filter(Boolean))].sort().slice(0, 20)
   };
-}
-
-const referenceHeading = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(?:references|bibliography|works cited|literature cited|reference list)\s*$/i;
-const postReferenceHeading = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(?:star[+\s-]*methods|resource availability|method details|key resources table|supplemental information|supplementary (?:information|materials?|figures?)|appendix|methods?|materials and methods)\s*$/i;
-
-export function referenceBlockIds(blocks) {
-  const ids = new Set();
-  let inside = false;
-  for (const block of blocks) {
-    const heading = block.heading || /^#{1,6}\s/.test(block.sourceMarkdown || '');
-    const title = String(block.text || '').replace(/^#{1,6}\s*/, '').trim();
-    if (heading && referenceHeading.test(title)) inside = true;
-    else if (inside && heading && postReferenceHeading.test(title)) inside = false;
-    if (inside) ids.add(block.id);
-  }
-  return ids;
 }
 
 export function sectionRanges(blocks) {

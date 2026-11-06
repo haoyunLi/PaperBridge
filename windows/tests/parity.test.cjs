@@ -48,6 +48,43 @@ test('reference exclusion stops when methods resume after bibliography', async (
   assert.deepEqual(sectionRanges(blocks).map(section => section.title), ['Introduction', 'References', 'STAR Methods']);
 });
 
+test('reference ranges recognize inline and unlabelled bibliographies without losing later body text', async () => {
+  const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
+  const { planConnectedBatches } = await import('../src/connectedTranslation.mjs');
+  const blocks = [
+    { id: 11, text: 'The team calibrated the sensors.' },
+    { id: 23, text: 'References to previous studies informed the baseline.' },
+    { id: 26, text: 'The control and treatment differed.' },
+    { id: 31, text: '[1] Ng, A. (2021). Results for the previous sensor. Journal of Testing.' },
+    { id: 32, text: '[2] J. Lee and P. Moss. Sensors in the field. Proceedings of Testing, 2022.' },
+    { id: 33, text: '[3] Renée Moreau, Liam Clarke, and Amy Gold. Estimating calibration error, 2018.' },
+    { id: 41, text: 'Appendix A. The team repeated the calibration with cold water.' },
+    { id: 43, text: 'The cold-water measurements agreed with the baseline.' }
+  ];
+  for (const prefix of ['', '9. References: ']) {
+    const sample = blocks.map(block => block.id === 31 ? { ...block, text: prefix + block.text } : block);
+    assert.deepEqual([...referenceBlockIds(sample)], [31, 32, 33]);
+    assert.deepEqual(summarySourceBlocks(sample).map(block => block.id), [11, 23, 26, 41, 43]);
+    assert.deepEqual(translationRangeIds(sample), [11, 23, 26, 41, 43]);
+    const plan = planConnectedBatches(sample);
+    assert.deepEqual(plan.map(batch => batch.kind), ['translation', 'original', 'original', 'original', 'translation']);
+    assert.deepEqual(plan.slice(1, 4).map(batch => batch.source), sample.slice(3, 6).map(block => block.text));
+    assert.match(plan.at(-1).source, /Appendix A\./);
+  }
+  const protocol = [
+    '1. Repeat the 2021 calibration with a fresh sensor.',
+    '2. Apply the 2022 baseline using https://example.test/protocol.',
+    '3. Compare the 2024 measurements with the workshop notes.'
+  ];
+  assert.deepEqual([...referenceBlockIds([...blocks.slice(0, 3), ...protocol.map((text, i) => ({ id: 90 + i, text }))])], []);
+  const discussion = [
+    'Lee (2021) tested an earlier implementation.',
+    'Moreau et al. (2022) reported a smaller margin of error.',
+    'Ng and Moss (2023) repeated the calibration with a new sensor.'
+  ];
+  assert.deepEqual([...referenceBlockIds([...blocks.slice(0, 3), ...discussion.map((text, i) => ({ id: 91 + i, text }))])], []);
+});
+
 test('translation range counts exactly the unfinished queue including headings', async () => {
   const { referenceBlockIds, translationRangeIds } = await import('../src/paper.mjs');
   const blocks = [

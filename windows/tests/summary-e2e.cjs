@@ -16,6 +16,7 @@ async function run() {
   const unvalidated = 'The appendix reported a separate measurement without a confidence interval.';
   const longParagraph = `${'Repeated measurements reproduced the control. '.repeat(340)}${tail} ${unvalidated}`;
   const references = 'This reference entry must never be sent to the summary model.';
+  const appendix = 'Appendix A. The team calibrated the sensors again after cold storage.';
   const requests = [];
   let held;
   let regenerate = '';
@@ -69,7 +70,7 @@ async function run() {
     app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const page = await app.firstWindow();
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
-    await page.locator('.paste-area').fill([opening, longParagraph, 'References', references].join('\n\n'));
+    await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
     await page.getByRole('button', { name: 'Open text', exact: true }).click();
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.getByRole('button', { name: 'Generate summary' }).click();
@@ -79,8 +80,9 @@ async function run() {
     assert.equal(await summaries.last().locator('li').count(), 4);
     const excerpts = requests.filter(item => item.kind === 'excerpt');
     assert.equal(excerpts.length, 4);
-    assert.ok(excerpts.every(item => item.payload.length <= 6000 && !item.payload.includes(references)));
+    assert.ok(excerpts.every(item => item.payload.length <= 6000 && !item.payload.includes(references) && !item.payload.includes('Earlier calibration.')));
     assert.match(excerpts.at(-1).payload, /\[P2\][\s\S]*low visibility conditions/);
+    assert.ok(excerpts.at(-1).payload.includes(appendix));
     const merges = requests.filter(item => item.kind === 'merge');
     assert.equal(merges.length, 3);
     assert.ok(requests.indexOf(merges[0]) < requests.indexOf(excerpts[2]), 'Consolidation must happen before the next source excerpt');

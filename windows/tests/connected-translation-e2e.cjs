@@ -10,12 +10,17 @@ async function run() {
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'connected-translation-'));
   const model = 'translategemma:4b';
+  const citations = [
+    '[1] Ng, A. (2021). Results for the previous sensor. Journal of Testing.',
+    '[2] J. Lee and P. Moss. Sensors in the field. Proceedings of Testing, 2022.',
+    '[3] Renée Moreau, Liam Clarke, and Amy Gold. Estimating calibration error, 2018.'
+  ];
   const paragraphs = [
     'Opening method. ' + 'Sample measurement was calibrated. '.repeat(73),
     'Second opening paragraph. ' + 'The baseline was repeated. '.repeat(53),
     'Separate middle batch. ' + 'The measured difference was small. '.repeat(116),
-    'Final unprocessed batch. ' + 'Evidence requires further validation. '.repeat(112),
-    'References', '[1] Preserve this citation entry.'
+    ...citations,
+    'Appendix A. Final unprocessed batch. ' + 'Evidence requires further validation. '.repeat(112)
   ].map(text => text.trim());
   const excerpts = [];
   let heldResponse;
@@ -33,7 +38,7 @@ async function run() {
       response.statusCode = 503;
       return response.end('{}');
     }
-    if (initialRun && excerpt.startsWith('Final unprocessed batch.')) { heldResponse = response; return; }
+    if (initialRun && excerpt.startsWith('Appendix A.')) { heldResponse = response; return; }
     const text = excerpt.startsWith('Opening method.') ? '第一批译文。' : excerpt.startsWith('Separate middle batch.') ? '第二批译文。' : '第三批译文。';
     response.end(JSON.stringify({ response: text, done: true }));
   });
@@ -74,15 +79,16 @@ async function run() {
     await page.keyboard.press('Control+Enter');
     await page.getByText('Connected full-paper translation saved.', { exact: true }).waitFor();
     const completed = page.locator('[data-view-scope="fullTranslation"]');
-    for (const text of ['第一批译文。', '第二批译文。', '第三批译文。', '[1] Preserve this citation entry.']) {
+    for (const text of ['第一批译文。', '第二批译文。', '第三批译文。', ...citations]) {
       await completed.getByText(text, { exact: true }).waitFor();
     }
     assert.equal(excerpts.length, 5, 'Only failed and interrupted batches should run again');
     assert.equal(excerpts[0], paragraphs.slice(0, 2).join('\n\n'));
     assert.equal(excerpts[1], paragraphs[2]);
     assert.equal(excerpts[3], excerpts[1]);
-    assert.equal(excerpts[4], paragraphs[3]);
+    assert.equal(excerpts[4], paragraphs.at(-1));
     assert.ok(excerpts.every(excerpt => excerpt.length <= 4800));
+    assert.ok(excerpts.every(excerpt => citations.every(citation => !excerpt.includes(citation))));
     const file = fs.readdirSync(path.join(workspace, 'papers')).find(name => /^[a-f\d]{64}\.json$/.test(name));
     await page.waitForFunction(async id => {
       const paper = await window.paperBridge.loadPaper(id);
@@ -91,7 +97,25 @@ async function run() {
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'));
     assert.equal(saved.connectedBatchVersion, 1);
     assert.ok(saved.blocks.every(block => block.status === 'pending'), 'Plain connected translation should leave Reader output independent');
-    console.log('Connected translation verified: excerpt batching, source fallback, late response isolation, restart resume and saved draft.');
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    const reference = page.locator('#block-4');
+    await reference.getByText(citations[0], { exact: true }).waitFor();
+    assert.equal(await reference.getByTitle('Translate or retry block').count(), 0);
+    assert.match(await page.locator('.reader-top').innerText(), /0 of 4 blocks translated/);
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    const preview = page.locator('[data-paper-block-id="4"]');
+    await preview.getByText(citations[0], { exact: true }).waitFor();
+    assert.equal(await preview.locator('.paper-preview-translation').count(), 0);
+    const destination = path.join(workspace, 'translated.md');
+    await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath }); }, destination);
+    await page.getByRole('button', { name: 'More' }).click();
+    await page.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.getByRole('button', { name: 'Translated Markdown', exact: true }).click();
+    await page.getByText('Exported ' + destination, { exact: true }).waitFor();
+    const exported = fs.readFileSync(destination, 'utf8');
+    assert.ok(exported.includes(citations.join('\n\n')));
+    assert.doesNotMatch(exported, /\[Untranslated block [456]\]/);
+    console.log('Connected translation verified: excerpt batching, unlabelled references, appendix, restart resume and Markdown export.');
   } finally {
     heldResponse?.destroy();
     await app?.close();

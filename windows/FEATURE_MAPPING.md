@@ -32,7 +32,7 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 | A16 | 跨页断词、断句修复 | 页内断词处理，并保守拼接跨页未完句与断词 | 部分 | 公式、复合词及双栏跨页仍需真实论文对照。 |
 | A17 | 重复页眉、页脚、图表标签过滤 | 按跨页重复签名过滤页眉、页脚和页码 | 部分 | 与 Mac 同类启发式；图表标签和复杂排版仍需验证。 |
 | A18 | 提取质量警告定位到 Reader 段落 | Overview 列出可疑段落和 Review 跳转 | 部分 | 启发式规则仍需双栏及扫描件回归。 |
-| A19 | 尾部参考文献或中途参考文献智能排除 | 参考文献区从正文翻译和摘要队列排除 | 部分 | 中途参考文献与后续章节边界仍需论文验证。 |
+| A19 | 尾部参考文献或中途参考文献智能排除 | 段落翻译、全文翻译和摘要共用参考文献范围，识别无标题列表、同块标题和引文，并恢复后续附录和方法。阅读预览和 Markdown 导出保留引文原文。 | 部分 | 桌面测试验证附录恢复及导出。15 页样例的 MinerU 与 PDF 文字层均识别参考文献并保留后续图注，更多引文格式和跨页混排仍需验收。 |
 | A20 | MinerU 资源目录与原 PDF 持久化 | 原 PDF 持久化；图片转 data URI，另留 MinerU 输出目录 | 部分 | 资源可跨重启引用，丢失资产时报告且可恢复。 |
 
 Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[PDF 文本修复](../PaperBridge/Services/PDFTextExtractor.swift)、[Markdown 结构](../PaperBridge/Services/AcademicMarkdownProcessor.swift)、[原页归档](../PaperBridge/Services/PDFVisualArchiveService.swift)。Windows 证据：[导入与手动 MinerU](src/main.jsx)、[PDF.js 提取](src/pdf.mjs)、[Markdown 按行分段](src/academicMarkdown.mjs)、[原 PDF 复制](electron/main.cjs#L105)。
