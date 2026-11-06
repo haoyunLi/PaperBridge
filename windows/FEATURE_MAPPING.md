@@ -165,8 +165,8 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G11 | 后台下载及进度、取消 | 安装与模型下载由主进程管理；模型下载可取消、重试并与安装互斥，引导与 SetupPanel 都可显示进度及取消 | 部分 | 模型流关闭、旧消息隔离与重试已回归；安装状态检测期间取消不误报完成的单元和组件界面取消/重开的 Electron mock 已过；真实安装中退出及恢复待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L；菜单项随论文、任务、选区和更新检查状态动态启停 | 部分 | 状态转换有单元覆盖，空白页、论文、选区、忙碌任务、撤销及重开引导有 Electron 菜单回归；其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
-| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 单元覆盖正式下载资产与旧缓存，Electron 验证原生菜单和重启提示。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，仓库 Latest 保留给 Mac | 部分 | 真机验证 NSIS 0.1.0 → 0.2.0，恢复论文、高亮、笔记并卸载测试实例。两个公开下载通过 SHA-256 校验。发布包当前未签名。 |
+| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 已安装的公开 0.2.0 从 GitHub 显示 0.2.1 更新提示，升级后报告已是当前版本。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，仓库 Latest 保留给 Mac | 部分 | 公开 0.2.0 → 0.2.1 安装包升级保留论文、高亮和笔记。0.2.1 安装版与便携版均通过 SHA-256 核对，公开便携版在 RX 7800 XT 上完成实际翻译。发布包当前未签名。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 
