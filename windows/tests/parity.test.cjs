@@ -64,6 +64,16 @@ test('translation range counts exactly the unfinished queue including headings',
   assert.deepEqual(translationRangeIds(blocks, [], references), []);
 });
 
+test('MinerU imports require readable structured text while preserving companion resources', async () => {
+  const { readableMineruBlocks } = await import('../src/academicMarkdown.mjs');
+  for (const markdown of ['', ' \n ', '![Cover](cover.png)', '$$x^2$$', '# References\n\nAn excluded citation.']) {
+    assert.throws(() => readableMineruBlocks(markdown), /MinerU returned no readable blocks/);
+  }
+  const blocks = readableMineruBlocks('# Methods\n\nThe model compares two groups.\n\n![Result](figure.png)');
+  assert.deepEqual(blocks.map(block => block.resource), [false, false, true]);
+  assert.equal(blocks[2].sourceMarkdown, '![Result](figure.png)');
+});
+
 test('library labels preserve Unicode graphemes and bound sorted, unique tags', async () => {
   const { libraryLabel } = await import('../src/paper.mjs');
   const grapheme = '👩‍🔬';

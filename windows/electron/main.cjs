@@ -303,10 +303,11 @@ function registerHandlers() {
   ipcMain.handle('mineru:cancel', () => mineruJobs.cancel());
   ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
   ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
-  ipcMain.handle('mineru:extract', async (_event, { id, executable, backend }) => {
+  ipcMain.handle('mineru:extract', async (_event, { id, executable, backend, requestId }) => {
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
     const job = mineruJobs.begin();
+    const reportProgress = status => { if (!job.cancelled) progress({ kind: 'mineru', requestId, status }); };
     let staging = null;
     try {
       const detected = await detectMineruExecutable(executable, setupManager.toolsRoot);
@@ -325,8 +326,13 @@ function registerHandlers() {
         const child = spawn(invocation.command, invocation.args, { shell: false, windowsHide: true, env: invocation.env });
         mineruJobs.attach(job, child);
         let log = '';
-        child.stdout.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
-        child.stderr.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
+        const appendLog = data => {
+          const text = data.toString();
+          log = (log + text).slice(-10000);
+          reportProgress(text.trim().slice(-200));
+        };
+        child.stdout.on('data', appendLog);
+        child.stderr.on('data', appendLog);
         child.on('error', error => { mineruJobs.detach(job, child); reject(new Error(`MinerU could not start: ${error.message}`)); });
         child.on('close', code => { mineruJobs.detach(job, child); code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
       });
@@ -342,7 +348,7 @@ function registerHandlers() {
         fs.mkdirSync(savedOutput, { recursive: true });
         fs.cpSync(output, savedOutput, { recursive: true, force: true });
       } catch (error) {
-        progress({ kind: 'mineru', status: `Parsed text is ready, but the auxiliary MinerU files could not be kept: ${error.message.slice(0, 140)}` });
+        reportProgress(`Parsed text is ready, but the auxiliary MinerU files could not be kept: ${error.message.slice(0, 140)}`);
       }
       return markdown;
     } finally {

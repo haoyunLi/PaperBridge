@@ -111,3 +111,12 @@ export function parsedMarkdownBlocks(markdown) {
     notes: []
   }));
 }
+
+export function readableMineruBlocks(markdown) {
+  const blocks = parsedMarkdownBlocks(markdown);
+  const references = referenceBlockIds(blocks);
+  if (!blocks.some(block => !block.resource && !references.has(block.id) && block.text.trim())) {
+    throw new Error('MinerU returned no readable blocks.');
+  }
+  return blocks;
+}

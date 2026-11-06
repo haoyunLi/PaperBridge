@@ -20,9 +20,9 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 | A04 | 无模型时试用虚构练习论文 | 有论文打开时保留原工作区并提示 | 对齐 | 练习论文只从空工作区创建。 |
 | A05 | 重复打开同一 PDF 恢复原工作区 | SHA-256 去重并载入保存文档 | 对齐 | 验证编辑、翻译、标注均未覆盖。 |
 | A06 | 重新提取为新的图书馆副本 | More 中重新提取为独立副本 | 对齐 | Electron 流程验证原副本保留且图书馆新增一项。 |
-| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，导入自动检测并解析 | 部分 | 15 页双栏论文和单页图像型扫描 PDF 已在 AMD/CPU pipeline 自动解析；更多真实扫描件待验证。 |
-| A08 | MinerU 失败自动降级，并说明原因 | MinerU preferred 失败或返回空块时保留 PDF.js 可用文本并说明原因 | 部分 | 合成空结果回归通过；真实失败和 OCR 设备路径待验证。 |
-| A09 | MinerU only / MinerU preferred / PDFKit only 三种模式 | Settings 提供 MinerU only / preferred / PDF only | 部分 | 三模式已有代码路径；真实 MinerU-only 失败行为待验证。 |
+| A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，先探测并解析结构化正文，再处理 PDF 文字层 | 部分 | 15 页双栏论文和单页图像型扫描 PDF 已在 AMD/CPU pipeline 自动解析；更多真实扫描件待验证。 |
+| A08 | MinerU 失败自动降级，并说明原因 | 优先模式保留原 PDF 及可用文字层，降级原因在重开后可见 | 部分 | 真机用缺失可执行路径从 15 页 PDF 读到 214 个文字块。桌面回归覆盖探测失败、运行失败、空结果和重新打开。 |
+| A09 | MinerU only / MinerU preferred / PDFKit only 三种模式 | MinerU-only 拒绝不可读的结构化结果并保留当前论文；PDF-only 跳过 MinerU | 部分 | 真机严格模式缺失路径保留旧论文与书签，换回 MinerU 4.1.7 通过 DirectML 提取 167 个块。桌面测试覆盖仅资源结果及 PDF-only。 |
 | A10 | MinerU 多栏正文阅读顺序 | MinerU Markdown 或 PDF.js 简单双栏排序 | 部分 | 一篇双栏论文的标题顺序已核对；跨栏图、脚注及 Mac 对照仍待验收。 |
 | A11 | 图片、表格、独立公式、代码随正文交错 | 按行拆出独立资源块，图表说明保留为可翻译段落；安全渲染 HTML | 部分 | 15 页论文重开验证 5 图、4 表、5 独立公式均按源顺序出现在 Paper/Reader；其它论文的复杂 HTML/代码仍待验收。 |
 | A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` 包括代码围栏、整张 HTML 表格、行内标签及多种公式 | 部分 | 单元测试覆盖 token 还原；更多模型对复杂结构的输出位置仍待验收。 |

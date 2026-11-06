@@ -11,7 +11,7 @@ import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
-import { anchorText, parsedMarkdownBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { anchorText, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
@@ -668,7 +668,8 @@ function App() {
       if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
     }
     resetReadingHistory();
-    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`);
+    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1);
+    setStatus(loaded.extractionWarning || (hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`));
     return true;
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
@@ -902,7 +903,15 @@ function App() {
       api.graphicsStatus().then(setHardware).catch(() => {});
       api.mineruRuntime(currentSettings.mineruExecutable).then(setMineruRuntime).catch(() => {});
     }).catch(err => setError(err.message));
-    const off = api.onProgress(data => { if (data.kind === 'setup') setSetupProgress(data); else if (data.kind === 'model') setPullProgress(data); else { const message = data.status || 'MinerU is processing the PDF…'; setStatus(message); setPendingImport(current => current ? { ...current, stage: mineruImportStage(message) } : current); } });
+    const off = api.onProgress(data => {
+      if (data.kind === 'setup') setSetupProgress(data);
+      else if (data.kind === 'model') setPullProgress(data);
+      else if (data.kind === 'mineru' && data.requestId && data.requestId === taskRef.current?.mineruRequest) {
+        const message = data.status || 'MinerU is processing the PDF…';
+        setStatus(message);
+        setPendingImport(current => current ? { ...current, stage: mineruImportStage(message) } : current);
+      }
+    });
     return off;
   }, []);
   useEffect(() => {
@@ -1079,12 +1088,11 @@ function App() {
     try { imported = await api.importPdf(); }
     catch (err) { setError(err.message); return; }
     if (!imported || taskRef.current) return;
-    const token = startTask(`Opening ${imported.name}…`);
-    setPendingImport({ name: imported.name, startedAt: Date.now(), stage: 'Preparing the selected PDF' });
+    const token = startPdfImport(imported.name, 'Preparing the selected PDF');
     try {
       requireActiveTask(token);
       await ingestPdf(imported, token);
-    } catch (err) { if (!token.cancelled) setError(`Could not import ${imported.name}: ${err.message}`); } finally { setPendingImport(null); endTask(token); }
+    } catch (err) { if (!token.cancelled) setError(`Could not import ${imported.name}: ${err.message}`); } finally { endTask(token); }
   }
   async function dropPdf(event) {
     const files = [...event.dataTransfer.files];
@@ -1094,8 +1102,7 @@ function App() {
     if (taskRef.current) { setError('Finish or stop the current task before opening another paper.'); return; }
     const file = files.find(item => /\.pdf$/i.test(item.name));
     if (!file) { setError('Drop a PDF file to open it.'); return; }
-    const token = startTask('Opening dropped PDF…');
-    setPendingImport({ name: file.name, startedAt: Date.now(), stage: 'Reading the selected file' });
+    const token = startPdfImport(file.name, 'Reading the selected file');
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       requireActiveTask(token);
@@ -1103,42 +1110,80 @@ function App() {
       requireActiveTask(token);
       setPendingImport(current => current ? { ...current, name: imported.name, stage: 'Preparing the selected PDF' } : current);
       await ingestPdf(imported, token);
-    } catch (err) { if (!token.cancelled) setError(`Could not import ${file.name}: ${err.message}`); } finally { setPendingImport(null); endTask(token); }
+    } catch (err) { if (!token.cancelled) setError(`Could not import ${file.name}: ${err.message}`); } finally { endTask(token); }
+  }
+  function startPdfImport(name, stage) {
+    const token = startTask(`Opening ${name}…`);
+    token.kind = 'pdfImport';
+    setPendingImport({ name, startedAt: Date.now(), stage });
+    return token;
+  }
+  async function extractMineruForTask(id, executable, backend, token) {
+    const requestId = crypto.randomUUID();
+    token.mineruRequest = requestId;
+    try {
+      const markdown = await api.extractMineru({ id, executable, backend, requestId });
+      requireActiveTask(token);
+      return markdown;
+    } finally { token.mineruRequest = null; }
   }
   async function ingestPdf(imported, token) {
-      requireActiveTask(token);
-      if (imported.existing) { await loadPaper(imported.existing, { fromImport: true, token }); return; }
-      const pdf = await openPdf(imported.bytes);
+    requireActiveTask(token);
+    if (imported.existing) { await loadPaper(imported.existing, { fromImport: true, token }); return; }
+    const config = settingsRef.current;
+    const mode = config.pdfExtractionMode || 'mineruPreferred';
+    let mineruMarkdown = '';
+    let mineruBlocks = null;
+    const warnings = [];
+    if (mode !== 'pdfOnly') {
       try {
-      requireActiveTask(token);
-      const mode = settings.pdfExtractionMode || 'mineruPreferred';
-      let mineruMarkdown = '';
-      let warning = '';
-      if (mode !== 'pdfOnly') {
         setPendingImport(current => current ? { ...current, stage: 'Checking MinerU availability' } : current);
-        const mineru = await api.mineruStatus(settings.mineruExecutable);
+        const mineru = await api.mineruStatus(config.mineruExecutable);
         requireActiveTask(token);
-        if (mineru.compatible) {
-          setBusy({ label: 'MinerU is reconstructing the paper…' });
-          setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
-          try { mineruMarkdown = await api.extractMineru({ id: imported.id, executable: mineru.executable, backend: settings.mineruBackend }); }
-          catch (cause) { requireActiveTask(token); if (mode === 'mineruOnly') throw cause; warning = `MinerU failed: ${cause.message}. Using the selectable PDF text layer.`; }
-        } else if (mode === 'mineruOnly') throw new Error(`${mineru.reason || 'MinerU-only mode requires a compatible installation.'} Open Local AI setup.`);
+        if (!mineru.compatible) throw new Error(mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
+        setBusy({ label: 'MinerU is reconstructing the paper…' });
+        setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
+        mineruMarkdown = await extractMineruForTask(imported.id, mineru.executable, config.mineruBackend, token);
+        mineruBlocks = readableMineruBlocks(mineruMarkdown);
+      } catch (cause) {
+        requireActiveTask(token);
+        if (mode === 'mineruOnly') throw cause;
+        warnings.push(`MinerU failed: ${cause.message} Using the original PDF and any selectable text.`);
       }
-      requireActiveTask(token);
+    }
+    let pdf;
+    let pdfBlocks = [];
+    let pageCount = 0;
+    try {
       setBusy({ label: 'Reading PDF text layer…' });
       setPendingImport(current => current ? { ...current, stage: 'Reading selectable PDF text' } : current);
-      const pdfBlocks = await extractPdf(pdf, (done, total) => { requireActiveTask(token); setProgress({ done, total }); setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current); }, () => requireActiveTask(token));
+      pdf = await openPdf(imported.bytes);
       requireActiveTask(token);
-      const mineruBlocks = mineruMarkdown ? parsedMarkdownBlocks(mineruMarkdown) : [];
-      const useMineru = mineruBlocks.length > 0;
-      if (mineruMarkdown && !useMineru) warning = `MinerU returned no readable blocks.${mode === 'mineruOnly' ? ' The original PDF remains available.' : ' Using the selectable PDF text layer if present.'}`;
-      const blocks = useMineru ? mineruBlocks : mode === 'mineruOnly' ? [] : pdfBlocks;
-      const document = { id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(), blocks, pdfBlocks, mineruBlocks: useMineru ? mineruBlocks : null, mineruMarkdown: useMineru ? mineruMarkdown : '', sourceMode: useMineru ? 'mineru' : 'pdf', tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }, extraction: useMineru ? 'MinerU' : 'PDF.js' };
-      resetReadingHistory();
-      setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
-      setStatus(warning || (blocks.length ? `Extracted ${blocks.length} blocks from ${pdf.numPages} pages. Compare uncertain passages with Original PDF.` : 'No selectable text found. The exact original PDF is available; use MinerU for OCR.'));
-      } finally { await pdf.loadingTask.destroy(); }
+      pageCount = pdf.numPages;
+      pdfBlocks = await extractPdf(pdf, (done, total) => {
+        setProgress({ done, total });
+        setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current);
+      }, () => requireActiveTask(token));
+      if (!pdfBlocks.length && !mineruBlocks) warnings.push('No selectable text found. The exact original PDF is available. Use MinerU for OCR.');
+    } catch (cause) {
+      requireActiveTask(token);
+      if (!pdf && !mineruBlocks) throw cause;
+      warnings.push(`The selectable PDF text could not be read: ${cause.message} The original file is preserved.`);
+    } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
+    const blocks = mineruBlocks || pdfBlocks;
+    const extractionWarning = warnings.join(' ');
+    if (!await finishNoteEditing()) throw new Error('Retry the current paper save before opening another paper.');
+    requireActiveTask(token);
+    const document = {
+      id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(),
+      blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
+      extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning,
+      tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(config), explanationLanguage: 'English',
+      paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
+    };
+    resetReadingHistory();
+    setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
+    setStatus(extractionWarning || `Extracted ${blocks.length} blocks${pageCount ? ` from ${pageCount} pages` : ''}. Compare uncertain passages with Original PDF.`);
   }
   async function importText(text, name = 'Pasted Text') {
     if (!text.trim() || taskRef.current) return;
@@ -1158,7 +1203,13 @@ function App() {
   }
   function startTask(label) { const token = { cancelled: false, ids: new Set(), paperId: paperRef.current?.id }; taskRef.current = token; setBusy({ label }); setProgress(null); setError(''); return token; }
   function requireActiveTask(token) { if (token.cancelled || taskRef.current !== token) throw new Error('Cancelled'); }
-  function endTask(token) { if (taskRef.current === token) { taskRef.current = null; setBusy(null); setProgress(null); } }
+  function endTask(token) {
+    if (taskRef.current !== token) return;
+    taskRef.current = null;
+    if (token.kind === 'pdfImport') setPendingImport(null);
+    setBusy(null);
+    setProgress(null);
+  }
   async function generate(model, prompt, system, token, format) {
     requireActiveTask(token);
     const requestId = crypto.randomUUID(); token.ids.add(requestId);
@@ -1284,7 +1335,8 @@ function App() {
   }
   async function reextractAsNew() {
     if (paper?.type !== 'pdf' || busy || taskRef.current) return;
-    setModal(''); const token = startTask('Creating a new extraction…');
+    setModal('');
+    const token = startPdfImport(`${paper.name} (new extraction)`, 'Preparing an independent PDF copy');
     try { await ingestPdf(await api.copyPdfAsNew({ id: paper.id, name: paper.name }), token); }
     catch (cause) { if (!token.cancelled) setError(cause.message); }
     finally { endTask(token); }
@@ -1461,14 +1513,12 @@ function App() {
     if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); setModal('setup'); return; }
     const token = startTask('MinerU is extracting structure…');
     try {
-      const markdown = await api.extractMineru({ id: paper.id, executable: runtime.executable, backend: settings.mineruBackend });
-      if (token.cancelled) return;
-      const blocks = parsedMarkdownBlocks(markdown);
-      if (!blocks.length) { setStatus('MinerU completed but found no readable blocks. The original PDF and existing Reader were kept.'); return; }
+      const markdown = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
+      const blocks = readableMineruBlocks(markdown);
       resetReadingHistory();
       commitPaper(current => {
         const hasUserWork = current.summary || current.connectedTranslation || current.blocks.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
-        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, pdfBlocks: current.pdfBlocks || current.blocks, blocks: hasUserWork ? current.blocks : blocks, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
+        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, pdfBlocks: current.pdfBlocks || current.blocks, blocks: hasUserWork ? current.blocks : blocks, extractionWarning: '', extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
       });
       setStatus(`MinerU structure ready: ${blocks.length} blocks. You can switch Reader source without discarding either version.`);
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }

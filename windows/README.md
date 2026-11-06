@@ -20,7 +20,7 @@ For pasted text and the selectable PDF text layer, **Full Translation** groups a
 
 When a paper uses its PDF text layer, **Paper** in Bilingual or Translation mode and **Full Translation** show a browsable original page with the text. Wide views place them side by side. Use **Open original PDF** to select and annotate the exact page. A portable bundle places the original page images and a link to the unchanged PDF before the extracted text in its reading documents, including Full Translation. If you stop rendering pages, the bundle keeps the Markdown, original PDF, and previews already saved.
 
-PDF import now follows macOS 1.9.2/1.10 feedback: the selected filename replaces stale content, elapsed time and recognized MinerU layout/formula/text stages are shown, and Cancel Import returns to the previous paper. A failed or late import cannot replace the previous translations, notes, bookmarks, or reading position.
+PDF import shows the selected filename, elapsed time, and MinerU layout, formula and text stages. **Cancel Import** returns to the previous paper. In **MinerU only** mode a failed or unreadable result keeps the current paper and reports the cause. **MinerU preferred** keeps the original PDF and uses any selectable text when MinerU fails. The fallback reason appears again when you reopen the paper. **PDF only** reads the original and its text layer without starting MinerU. **Re-extract PDF as New Copy** uses the same import rules and preserves the saved version.
 
 ## Build and run
 
