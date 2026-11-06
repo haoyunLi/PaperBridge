@@ -10,16 +10,13 @@ const maxImageBytes = 8_000_000;
 
 async function unpackMineruArchive(archive, folder, checkActive) {
   const zip = await yauzl.openPromise(archive, { strictFileNames: true });
-  let imageBytes = 0;
   try {
     for await (const entry of zip.eachEntry()) {
       checkActive();
       const name = entry.fileName;
       const image = /^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/i.test(name);
-      if (image) {
-        if (entry.uncompressedSize > maxImageBytes || imageBytes + entry.uncompressedSize > 256 * 1024 * 1024) continue;
-        imageBytes += entry.uncompressedSize;
-      } else if (!['markdown.md', structuredOutput].includes(name) || entry.uncompressedSize > maxMetadataBytes) continue;
+      // Keep full-size images for portable export. Only the preview has an inline size limit.
+      if (!image && name !== 'markdown.md' && name !== structuredOutput) continue;
       const destination = path.join(folder, name === 'markdown.md' ? 'paper.md' : name);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
       await pipeline(await zip.openReadStreamPromise(entry), fs.createWriteStream(destination, { flags: 'wx' }));
