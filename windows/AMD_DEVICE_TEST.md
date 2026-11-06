@@ -2,6 +2,8 @@
 
 这份记录来自本机 Windows 11 Pro（build 26200）、AMD Radeon RX 7800 XT（驱动 32.0.31035.1003，16 GiB 显存）。集成显卡是 AMD Radeon Graphics。测试使用 Ollama 0.34.2、`translategemma:4b` 和 MinerU 3.4.5。生成的工作区、报告与截图保存在被 Git 忽略的 `test-artifacts/`。
 
+2026-11-06 用通过 SHA-256 校验的公开 Windows 0.2.2 便携版直接打开真实 MinerU 论文，在 Reader 翻译 Attention Is All You Need 的第 30 块。TranslateGemma 4B 输出了包含“堆叠的自注意力机制”的中文段落。Ollama 0.40.15 选中 RX 7800 XT 的 ROCm `gfx1101`，日志显示 35/35 层卸载到 GPU，`/api/ps` 的模型大小和显存分配均为 2,881,948,220 字节。 [公开便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2)
+
 ## 翻译与 AMD 加速
 
 Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成显卡。模型加载后，`/api/ps` 报告模型占用的 2.68 GiB 全部在 VRAM。这里的 GPU 结论同时有运行时后端日志与实际显存分配作为依据。
