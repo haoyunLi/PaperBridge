@@ -1,6 +1,6 @@
 # macOS ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) covers macOS 1.9 (`73951d9`). Its original audit recorded **43 aligned and 68 partial**. The individual rows for Windows 0.2.9 now record **55 aligned and 56 partial**. The [whole-app review](WHOLE_APP_REVIEW.md) records the fixes and verification behind those changes. The [1.9.1 report](MAC_1_9_1_GAPS.md) records **12 aligned additions** from `33cfb933`, and the [1.10 report](MAC_1_10_GAPS.md) records **21 aligned additions** from `16e01ac`. The [AMD device report](AMD_DEVICE_TEST.md) records RX 7800 XT translation and quick lookup, installation, a 15-page MinerU paper import, and OCR of an image-only PDF.
+The [111-item feature mapping](FEATURE_MAPPING.md) covers macOS 1.9 (`73951d9`). Its original audit recorded **43 aligned and 68 partial**. The individual rows for the current Windows branch record **56 aligned and 55 partial**. The [whole-app review](WHOLE_APP_REVIEW.md) records the fixes and verification behind those changes. The [1.9.1 report](MAC_1_9_1_GAPS.md) records **12 aligned additions** from `33cfb933`, and the [1.10 report](MAC_1_10_GAPS.md) records **21 aligned additions** from `16e01ac`. The [AMD device report](AMD_DEVICE_TEST.md) records RX 7800 XT translation and quick lookup, installation, a 15-page MinerU paper import, and OCR of an image-only PDF.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |

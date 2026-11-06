@@ -805,6 +805,23 @@ function ParagraphExplanation({ paper, activeBlock, language, setLanguage, resul
   return <div className="inspector-section paragraph-explanation"><small>{block.heading ? 'HEADING EXPLANATION' : 'FULL PARAGRAPH EXPLANATION'} · BLOCK {block.id}</small><select aria-label="Explanation language" value={language} onChange={event => setLanguage(event.target.value)}>{languages.map(value => <option key={value}>{value}</option>)}</select><button className="inspector-link" disabled={!!busy} onClick={() => onExplain(block.id)}>{block.heading ? 'Explain heading' : 'Explain full paragraph'}</button>{result?.id === block.id && <p>{result.output}</p>}</div>;
 }
 
+function selectionLookupInput(paper, selection, settings, explanationLanguage, glossary) {
+  if (!paper || !selection || !settings) return null;
+  const quote = selection.quote ?? selection.text;
+  const block = paper.blocks.find(item => item.id === selection.id);
+  const translated = selection.kind === 'translation';
+  const blockContext = translated ? block?.translation : block?.text;
+  const fullContext = (isPdfScope(selection.scope) || selection.renderedAnchor ? selection.context : blockContext || selection.context) || '';
+  const from = translated ? settings.targetLanguage : settings.sourceLanguage;
+  const to = translated ? settings.sourceLanguage : settings.targetLanguage;
+  const model = activeAIModel(settings, 'quickLookup');
+  const terms = matchingGlossaryTerms(glossary, quote, from, to);
+  const identity = selectionIdentity(selection);
+  const key = JSON.stringify([paper.id, selectionTranslationCacheVersion, identity, quote, fullContext, from, to, model,
+    aiCacheNamespace(settings), explanationLanguage, terms]);
+  return { key, identity, quote, fullContext, from, to, model, terms };
+}
+
 function SelectionResults({ results }) {
   return <>{['translate', 'explain'].filter(kind => results?.[kind]).map(kind => <div className={`inspector-result ${kind}`} key={kind}><small>{kind === 'translate' ? 'TRANSLATION' : 'SIMPLE EXPLANATION'}</small><p>{results[kind]}</p></div>)}</>;
 }
@@ -885,8 +902,8 @@ function App() {
   const [libraryEdit, setLibraryEdit] = useState(null);
   const [glossarySearch, setGlossarySearch] = useState('');
   const [selection, setSelection] = useState(null);
-  const [selectionResults, setSelectionResults] = useState({});
-  const [selectionLookup, setSelectionLookup] = useState({ status: '', error: '' });
+  const [lookupCache, setLookupCache] = useState(() => new Map());
+  const [lookupFeedback, setSelectionLookup] = useState({ status: '', error: '' });
   const [explanationLanguage, setExplanationLanguage] = useState('English');
   const [noteDraft, setNoteDraft] = useState('');
   const [termDraft, setTermDraft] = useState('');
@@ -916,7 +933,6 @@ function App() {
   const taskRef = useRef(null);
   const selectionRef = useRef(null);
   selectionRef.current = selection;
-  const lookupCache = useRef(new Map());
   const translationQueueRef = useRef(null);
   const mineruPreflight = useRef(false);
   const saveQueue = useRef(null);
@@ -1018,7 +1034,7 @@ function App() {
     restoringScroll.current = true;
     searchOrigin.current = location.searchOrigin ?? null;
     window.getSelection()?.removeAllRanges();
-    setSelection(null); setSelectionResults({}); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+    setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
     setTab(location.tab); setDisplayMode(location.displayMode); setActiveBlock(location.block); setPageNumber(location.page); setSearch(location.search);
     const sourceChanged = location.sourceMode && location.sourceMode !== paperArticleSource(paperRef.current).mode;
     if (sourceChanged) { setUndo([]); setEdit(null); setError(''); }
@@ -1139,13 +1155,11 @@ function App() {
     settingsRef.current = next; setSettings(next);
     if (paperRef.current && taskChanged) {
       commitPaper(current => ({ ...switchOutputSettings(current, previous, next), taskSettings: snapshotPaperSettings(next) }));
-      setSelectionResults({});
       setUndo([]);
     }
   };
   const changeExplanationLanguage = language => {
     if (taskRef.current?.kind === 'selection') cancelTask();
-    setSelectionResults({});
     setExplanationLanguage(language);
     if (paperRef.current) commitPaper(current => ({ ...current, explanationLanguage: language }));
   };
@@ -1200,7 +1214,7 @@ function App() {
     if (mode !== displayMode && selectionRef.current?.scope === 'paperArticle') {
       void finishNoteEditing();
       window.getSelection()?.removeAllRanges();
-      setSelection(null); setSelectionResults({});
+      setSelection(null);
     }
     setDisplayMode(mode);
     commitPaper(current => ({ ...current, position: { ...current.position, displayMode: mode } }));
@@ -1453,7 +1467,7 @@ function App() {
   useEffect(() => { if (paperRef.current && !focus && paperRef.current.inspectorOpen !== inspector) commitPaper(current => ({ ...current, inspectorOpen: inspector })); }, [inspector, paper?.id, focus]);
   useEffect(() => {
     void finishNoteEditing();
-    setSelection(null); setSelectionResults({});
+    setSelection(null);
   }, [tab, paper?.id]);
   useEffect(() => {
     if (!viewNavigation || !paper || tab !== markdownViewTab(viewNavigation.scope)) return;
@@ -1844,23 +1858,21 @@ function App() {
     return true;
   }
   async function runSelection(kind) {
-    if (!selection || busy || taskRef.current) return;
-    const quote = selection.quote ?? selection.text;
-    const block = paperRef.current.blocks.find(item => item.id === selection.id);
-    const fullContext = isPdfScope(selection.scope) || selection.renderedAnchor ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
+    if (busy || taskRef.current) return;
+    const currentPaper = paperRef.current;
     const config = settingsRef.current;
-    const model = activeAIModel(config, 'quickLookup');
-    const from = selection.kind === 'translation' ? config.targetLanguage : config.sourceLanguage;
-    const to = selection.kind === 'translation' ? config.sourceLanguage : config.targetLanguage;
+    const input = selectionLookupInput(currentPaper, selectionRef.current, config, explanationLanguage, glossary);
+    if (!input) return;
+    const { key, identity, quote, fullContext, from, to, model, terms } = input;
+    if (lookupCache.get(key)?.[kind] !== undefined) {
+      setSelectionLookup({ key, status: 'Using cached quick lookup.', error: '' });
+      return;
+    }
     const sourceContext = omitInlineImageData(fullContext);
     const context = selectionContext(sourceContext, quote, kind === 'translate' ? 600 : 2400);
-    const terms = kind === 'translate' ? matchingTerms(quote, from, to) : [];
-    const selectedKey = selectionIdentity(selection);
-    const cacheKey = JSON.stringify([paperRef.current.id, kind, selectionTranslationCacheVersion, selectedKey, quote, fullContext, from, to, model, aiCacheNamespace(config), explanationLanguage, terms]);
-    if (lookupCache.current.has(cacheKey)) { setSelectionResults(current => ({ ...current, [kind]: lookupCache.current.get(cacheKey) })); setSelectionLookup({ status: 'Using cached quick lookup.', error: '' }); return; }
     setSelectionLookup({ status: '', error: '' });
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
-    token.kind = 'selection'; token.selectionKey = selectedKey;
+    token.kind = 'selection'; token.selectionKey = identity;
     try {
       if (!await prepareTaskAI(config, kind === 'explain' || from !== to ? ['quickLookup'] : [], token)) return;
       let output = quote;
@@ -1868,7 +1880,7 @@ function App() {
         const withContext = context.includes(quote) && spansCompleteSentences(quote, sourceContext);
         const strict = strictSelectionTranslationPrompt(quote, from, to, terms);
         const prompt = withContext ? selectionTranslationPrompt(quote, context, from, to, terms) : strict;
-        const system = translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to));
+        const system = translationInstructions(config, to, currentPaper.name, selectionTranslationSystem(to));
         output = await generate(model, prompt, system, token);
         // Only a contextual local request has a distinct, non-billable fallback.
         if (withContext && config.aiProvider !== 'openai' && isLikelyOverexpandedSelection(output, quote)) {
@@ -1879,8 +1891,11 @@ function App() {
       } else if (kind === 'explain') {
         output = await generate(model, explainPrompt(quote, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
       }
-      if (!token.cancelled && selectionIdentity(selectionRef.current) === selectedKey) { lookupCache.current.set(cacheKey, output); setSelectionResults(current => ({ ...current, [kind]: output })); setSelectionLookup({ status: kind === 'translate' ? 'Selection translated.' : 'Selection explained.', error: '' }); }
-    } catch (err) { if (!token.cancelled) { setSelectionLookup({ status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
+      if (!token.cancelled && paperRef.current?.id === currentPaper.id && selectionIdentity(selectionRef.current) === identity) {
+        setLookupCache(current => new Map(current).set(key, { ...current.get(key), [kind]: output }));
+        setSelectionLookup({ key, status: kind === 'translate' ? 'Selection translated.' : 'Selection explained.', error: '' });
+      }
+    } catch (err) { if (!token.cancelled) { setSelectionLookup({ key, status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
   }
   async function reextractAsNew() {
     if (paper?.type !== 'pdf' || busy || taskRef.current) return;
@@ -2080,7 +2095,7 @@ function App() {
     commitPaper(current => ({ ...switchReadingSource(current, mode, settingsRef.current), position: { ...current.position, block: 1 } }));
     searchOrigin.current = null;
     window.getSelection()?.removeAllRanges();
-    setUndo([]); setEdit(null); setSelection(null); setSelectionResults({}); setSearch('');
+    setUndo([]); setEdit(null); setSelection(null); setSearch('');
     setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
     setActiveBlock(1);
     setError('');
@@ -2182,6 +2197,7 @@ function App() {
       openAIRefreshId.current = null;
       setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
       await api.clearData();
+      setLookupCache(new Map());
       const data = await api.bootstrap();
       resetReadingHistory();
       paperRef.current = null; setPaper(null); setLibrary([]); setGlossary([]); settingsRef.current = data.settings; setSettings(data.settings);
@@ -2431,7 +2447,6 @@ function App() {
       }
     }
     setSelection(next);
-    setSelectionResults({});
     setNoteDraft(findSelectionNote(current, next)?.body || '');
     setPdfNavigation(null);
   }
@@ -2447,7 +2462,7 @@ function App() {
   function resetStructureNavigation() {
     resetReadingHistory();
     window.getSelection()?.removeAllRanges();
-    setEdit(null); setSelection(null); setSelectionResults({}); setNoteDraft('');
+    setEdit(null); setSelection(null); setNoteDraft('');
     setBlockNavigation(null); setViewNavigation(null);
   }
   function modifyBlocks(start, count, replacements) {
@@ -2526,7 +2541,6 @@ function App() {
     const previous = selectionRef.current;
     if (selectionIdentity(previous) !== selectionIdentity(next)) {
       if (previous) void finishNoteEditing();
-      setSelectionResults({});
       setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
     }
     setSelection(next);
@@ -2565,11 +2579,15 @@ function App() {
     }
     if (selectionRef.current) {
       void finishNoteEditing();
-      setSelection(null); setSelectionResults({}); setNoteDraft('');
+      setSelection(null); setNoteDraft('');
     }
   }
   function mergeBlock(id) { if (id > 1) mergeNextBlock(id - 1); }
   function mergeNextBlock(id) { if (id < paper.blocks.length) modifyBlocks(id - 1, 2, [mergeBlocks(paper.blocks[id - 1], paper.blocks[id])]); }
+  const lookupKey = useMemo(() => selectionLookupInput(paper, selection, settings, explanationLanguage, glossary)?.key,
+    [paper, selection, settings, explanationLanguage, glossary]);
+  const selectionResults = lookupCache.get(lookupKey) || {};
+  const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
   const outline = useMemo(() => paper?.blocks.filter(block => block.heading) || [], [paper]);
   const sections = useMemo(() => sectionRanges(paper?.blocks || []), [paper]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
@@ -2730,7 +2748,7 @@ function App() {
       </div>
     </main>
     <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={selection.scope === 'paperArticle' ? 'paper-article-quote' : undefined}>{short(selection.quote ?? selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
-    {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={() => { void finishNoteEditing(); setSelection(null); setSelectionResults({}); }} />}
+    {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={() => { void finishNoteEditing(); setSelection(null); }} />}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}

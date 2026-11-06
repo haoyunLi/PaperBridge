@@ -84,10 +84,10 @@ async function run() {
       ipcMain.removeHandler('openai:generate');
       ipcMain.handle('openai:generate', (_event, payload) => {
         globalThis.__paperBridgeOpenAIRequests.push(payload);
-        return 'expanded context '.repeat(12);
+        return globalThis.__paperBridgeOpenAIRequests.length === 1 ? 'expanded context '.repeat(12) : '在线选区缓存译文';
       });
     });
-    await page.locator('#block-2 .source-text').evaluate(element => {
+    const selectFirstSentence = () => page.locator('#block-2 .source-text').evaluate(element => {
       const range = document.createRange();
       range.setStart(element.firstChild, 0);
       range.setEnd(element.firstChild, element.textContent.indexOf('.') + 1);
@@ -96,6 +96,7 @@ async function run() {
       selection.addRange(range);
       element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
+    await selectFirstSentence();
     const inspector = page.locator('.inspector');
     await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
     await inspector.getByRole('alert').filter({ hasText: 'The model expanded the selection instead of translating it. Retry with another model.' }).waitFor();
@@ -103,6 +104,8 @@ async function run() {
     assert.equal(selectionRequests.length, 1, 'One selection click must not trigger a billable retry');
     assert.match(selectionRequests[0].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
     assert.equal(await inspector.locator('.inspector-result.translate').count(), 0, 'An overexpanded OpenAI answer must not be displayed as a translation');
+    await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+    await inspector.getByText('在线选区缓存译文', { exact: true }).waitFor();
     await page.keyboard.press('Escape');
 
     // Revoking online consent while a multi-block pass is waiting must cancel
@@ -127,6 +130,12 @@ async function run() {
     await page.getByRole('button', { name: 'Set up translation', exact: true }).waitFor();
     assert.equal(await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests.length), 1, 'Consent revocation must stop the remaining queue');
     assert.equal(await page.getByText('不得保存的迟到译文', { exact: true }).count(), 0, 'A cancelled late response must be discarded');
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await inspector.locator('blockquote').waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await selectFirstSentence();
+    await inspector.getByText('在线选区缓存译文', { exact: true }).waitFor();
+    assert.equal(await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests.length), 1, 'Reselecting a cached online result must not send text while consent is paused');
 
     // A provider-wide authorization/quota/model failure is not a paragraph
     // error: the batch must stop after one request instead of repeating it.

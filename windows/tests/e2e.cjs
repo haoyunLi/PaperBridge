@@ -163,12 +163,13 @@ async function run() {
     await page.getByText('Translation pass finished.', { exact: false }).waitFor({ timeout: 15000 });
     await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await page.locator('.inspector').waitFor({ state: 'hidden' });
-    await page.evaluate(() => {
+    const selectPaperSentence = () => page.evaluate(() => {
       const node = document.querySelector('.document-preview p').firstChild;
       const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, node.textContent.indexOf('.') + 1);
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
+    await selectPaperSentence();
     const quickSelection = page.getByRole('dialog', { name: 'Quick selection' });
     await quickSelection.waitFor();
     assert.equal(await page.locator('.selection-toolbar').count(), 1);
@@ -189,6 +190,11 @@ async function run() {
     assert.doesNotMatch(generateRequests[selectionRequestStart + 1].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
     await quickSelection.getByRole('button', { name: 'Translate', exact: true }).click();
     await quickSelection.locator('.selection-lookup-message').getByText('Using cached quick lookup.', { exact: true }).waitFor();
+    await quickSelection.getByRole('button', { name: 'Close quick lookup' }).click();
+    await quickSelection.waitFor({ state: 'detached' });
+    await selectPaperSentence();
+    await quickSelection.getByText('精确选区译文', { exact: true }).waitFor();
+    assert.equal(generateRequests.length - selectionRequestStart, 2, 'Reselecting the Paper sentence should restore the cached result without requesting a model');
     await quickSelection.getByRole('button', { name: 'Cobalt highlight', exact: true }).click();
     assert.equal(await page.locator('.document-preview mark.mark-teal').count(), 1, 'Quick Selection should apply the selected highlight color');
     await quickSelection.getByRole('button', { name: 'Remove Highlight', exact: true }).click();
@@ -241,6 +247,21 @@ async function run() {
     await page.keyboard.press('Control+Alt+e');
     await page.locator('.inspector-result.explain').waitFor({ timeout: 15000 });
     assert.equal(await page.locator('.inspector-result.translate').count(), 1, 'Translation should remain visible after explaining the same selection');
+    const readerLookupCount = generateRequests.length;
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.locator('.inspector blockquote').waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await clickTextOffset(page, readerPassage, 0);
+    for (let index = 0; index < 10; index++) await page.keyboard.press('Shift+ArrowRight');
+    await page.locator('.inspector-result.translate').waitFor();
+    await page.locator('.inspector-result.explain').waitFor();
+    const explanationLanguage = page.getByLabel('Explanation language');
+    await explanationLanguage.selectOption('French');
+    await page.locator('.inspector-result').first().waitFor({ state: 'detached' });
+    await explanationLanguage.selectOption('English');
+    await page.locator('.inspector-result.translate').waitFor();
+    await page.locator('.inspector-result.explain').waitFor();
+    assert.equal(generateRequests.length, readerLookupCount, 'Reselection and language switches should never generate results automatically');
     await page.keyboard.press('Control+Shift+h');
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 1);
     const noteInput = page.locator('.inspector textarea');
