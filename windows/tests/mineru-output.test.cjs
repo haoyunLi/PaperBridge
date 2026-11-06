@@ -51,6 +51,10 @@ test('MinerU figure loading tolerates literal percent signs and keeps unavailabl
     '[Supporting data](images/figure%201.png)',
     '```html\n<img src="images/figure%201.png">\n```',
     '`<img src="images/figure%201.png">`',
+    'Literal backtick ` before a new paragraph.',
+    '',
+    '[![Linked figure](images/figure%201.png)](https://example.org/figure) and an unrelated ` mark.',
+    '<img-widget src="images/figure%201.png">',
     '![Unavailable](images/not-found.jpg)',
     '![Outside](../elsewhere.png)'
   ].join('\n'));
@@ -63,6 +67,8 @@ test('MinerU figure loading tolerates literal percent signs and keeps unavailabl
   assert.ok(content.includes('[Supporting data](images/figure%201.png)'));
   assert.ok(content.includes('```html\n<img src="images/figure%201.png">\n```'));
   assert.ok(content.includes('`<img src="images/figure%201.png">`'));
+  assert.ok(content.includes(`[![Linked figure](${first})](https://example.org/figure)`));
+  assert.ok(content.includes('<img-widget src="images/figure%201.png">'));
   assert.ok(content.includes('![Unavailable](images/not-found.jpg)'));
   assert.ok(content.includes('![Outside](../elsewhere.png)'));
   assert.ok(content.startsWith('Readable extracted body text.'));

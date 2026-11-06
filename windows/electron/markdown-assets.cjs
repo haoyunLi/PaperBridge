@@ -3,10 +3,10 @@ const path = require('node:path');
 
 const assetTokens = new RegExp([
   /^ {0,3}(?<fence>`{3,}|~{3,})[^\r\n]*(?:\r?\n[\s\S]*?(?:^ {0,3}\k<fence>[`~]*[ \t]*(?=\r?$)|(?![\s\S]))|$)/.source,
-  /(?<!`)(?<ticks>`+)(?!`)[\s\S]*?(?<!`)\k<ticks>(?!`)/.source,
+  /(?<!`)(?<ticks>`+)(?!`)(?:[^\r\n]|\r?\n(?![ \t]*\r?\n))*?(?<!`)\k<ticks>(?!`)/.source,
   /<!--[\s\S]*?-->|<(?<literal>pre|code|script|style)\b[^>]*>[\s\S]*?<\/\k<literal>\s*>/.source,
-  /(?<tag><img\b(?:[^"'>]|"[^"]*"|'[^']*')*>)/.source,
-  /(?<opening>!?\[(?:\\.|[^\]\\\r\n])*\]\([ \t]*)(?<destination><[^>\r\n]+>|[^\s()<>]+)(?<closing>(?:[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|\([^()\r\n]*\)))?[ \t]*\))/.source
+  /(?<tag><img(?=[\s/>])(?:[^"'>]|"[^"]*"|'[^']*')*>)/.source,
+  /(?<opening>!?\[(?:\\.|[^\[\]\\\r\n])*\]\([ \t]*)(?<destination><[^>\r\n]+>|[^\s()<>]+)(?<closing>(?:[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|\([^()\r\n]*\)))?[ \t]*\))/.source
 ].join('|'), 'gim');
 const attribute = /(\s+)([^\s=/>]+)(?:([ \t\r\n]*=[ \t\r\n]*)("[^"]*"|'[^']*'|[^\s"'`=<>]+))?/g;
 
