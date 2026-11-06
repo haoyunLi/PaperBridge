@@ -1,3 +1,5 @@
+import { joinPdfText } from './text.mjs';
+
 // Keep the first occurrence of a running header; discard repeated headers and footers.
 // Original PDF pages are never changed.
 export function filterRepeatedPageDecorations(pages) {
@@ -32,14 +34,13 @@ export function stitchPageBlocks(blocks) {
     const previous = result.at(-1);
     const left = previous?.text?.trim() || '';
     const right = block.text?.trim() || '';
-    const adjacent = previous?.endPage === block.page - 1 || previous?.page === block.page - 1;
+    const adjacent = (previous?.endPage ?? previous?.page) === block.page - 1;
     const prose = previous && !previous.heading && !block.heading && !previous.resource && !block.resource &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表|\[\d+\])\b/i.test(right);
-    const continuation = !/[.!?。！？:;]$/.test(left) && /[a-z-]$/.test(left) && /^[a-z,;:)]/.test(right);
-    if (adjacent && prose && continuation && (left.length >= 20 || left.endsWith('-'))) {
-      const hyphen = /[A-Za-z]{4,}-$/.test(left);
-      previous.text = `${hyphen ? left.slice(0, -1) : left + ' '}${right}`;
+    const continuation = /[\p{Ll}‐-]$/u.test(left) && /^[\p{Ll},;:)]/u.test(right);
+    if (adjacent && prose && continuation && (left.length >= 20 || /[‐-]$/.test(left))) {
+      previous.text = joinPdfText(left, right);
       previous.endPage = block.page;
     } else result.push({ ...block });
   }

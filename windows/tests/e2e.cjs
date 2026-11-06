@@ -5,7 +5,7 @@ const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
 function samplePdf(blank = false, variant = '') {
-  const stream = blank ? '' : 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj ET';
+  const stream = blank ? '' : 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj ET';
   const secondStream = blank ? '' : `BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page${variant}.) Tj ET`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -320,6 +320,7 @@ async function run() {
     await page.getByText('Extracted', { exact: false }).first().waitFor({ timeout: 20000 });
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByText('This practice PDF contains selectable academic text', { exact: false }).first().waitFor();
+    await page.locator('.source-text').getByText(/It uses attention-based inference\./).waitFor();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const reference = page.getByRole('region', { name: 'Original PDF reference' });
     await reference.getByRole('img', { name: 'Original PDF page 1' }).waitFor();

@@ -22,6 +22,21 @@ export function cleanLine(value) {
   return value.replace(/\u00ad/g, '').replace(/\s+/g, ' ').trim();
 }
 
+const compoundSuffixes = new Set([
+  'aware', 'based', 'cell', 'class', 'dependent', 'defined', 'dimensional', 'domain', 'driven', 'free',
+  'level', 'like', 'making', 'order', 'range', 'related', 'resolution', 'reviewed', 'scale', 'source',
+  'space', 'specific', 'stage', 'step', 'supervised', 'term', 'time', 'to', 'trained', 'tuning',
+  'validation', 'wise', 'known'
+]);
+
+export function joinPdfText(left, right) {
+  const previous = left.match(/(?:^|\s)(\p{L}+(?:[-‐]\p{L}+)*)[-‐]$/u)?.[1];
+  const next = right.match(/^\p{Ll}[\p{L}]*/u)?.[0];
+  if (!previous || !next) return left + ' ' + right;
+  const compound = /[-‐]/.test(previous) || compoundSuffixes.has(next.toLowerCase());
+  return (compound ? left : left.slice(0, -1)) + right;
+}
+
 export function blocksFromText(text) {
   return text.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map(part => {
     const raw = part.trim();
@@ -36,9 +51,7 @@ export function joinLines(lines) {
   for (const line of lines) {
     const value = cleanLine(line.text || line);
     if (!value) continue;
-    if (!text) text = value;
-    else if (text.endsWith('-') && /^[a-z]/.test(value)) text = text.slice(0, -1) + value;
-    else text += ' ' + value;
+    text = text ? joinPdfText(text, value) : value;
   }
   return text.trim();
 }

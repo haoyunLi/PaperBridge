@@ -95,3 +95,19 @@ test('PDF page stitching repairs an interrupted word but keeps complete sentence
   assert.equal(blocks[0].endPage, 2);
   assert.equal(blocks[1].text, 'Results end here.');
 });
+
+test('PDF line and page wrapping preserve compound hyphens and separate paragraphs on the same page', async () => {
+  const { joinLines } = await import('../src/text.mjs');
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  assert.equal(joinLines(['It uses attention-', 'based inference and repro-', 'ducible evaluation.']), 'It uses attention-based inference and reproducible evaluation.');
+  assert.equal(joinLines(['A state-of-the-', 'art model at low‐', 'resolution.']), 'A state-of-the-art model at low‐resolution.');
+  const blocks = stitchPageBlocks([
+    { page: 1, text: 'The paper proposes attention-' },
+    { page: 2, text: 'based inference with a slower alternative' },
+    { page: 2, text: 'another paragraph belongs to this page.' }
+  ]);
+  assert.deepEqual(blocks.map(({ text, page, endPage }) => ({ text, page, endPage })), [
+    { text: 'The paper proposes attention-based inference with a slower alternative', page: 1, endPage: 2 },
+    { text: 'another paragraph belongs to this page.', page: 2, endPage: undefined }
+  ]);
+});
