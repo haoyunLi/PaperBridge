@@ -597,7 +597,8 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const ocrReady = Boolean(paper.mineruBlocks?.length || paper.sourceMode === 'mineru' && paper.blocks.length);
   return <div className="pdf-panel">
     <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} />
-    {pageStatus === false && <ScanNotice page ocrReady={ocrReady} onParse={onOcr} onSetup={onSetup} onReader={ocrReady || paper.blocks.length ? onReader : null} />}
+    {pageStatus === false && <ScanNotice page ocrReady={ocrReady} onParse={onOcr} onSetup={onSetup}
+      onReader={ocrReady || paper.blocks.length ? () => onReader(currentPage) : null} />}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
     {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} tabIndex={0} aria-label="Continuous original PDF"
       onScroll={handleScroll} onMouseDown={event => {
@@ -2045,11 +2046,25 @@ function App() {
     setStatus(`Reader source changed to ${mode === 'mineru' ? 'MinerU' : 'PDF text'}. The other version remains saved.`);
     return true;
   }
-  function openPdfReader() {
+  function openPdfReader(page) {
     const current = paperRef.current;
-    if (current?.mineruBlocks?.length && paperArticleSource(current).mode !== 'mineru') {
-      if (switchSourceMode('mineru')) setTab('Reader');
-    } else navigateToTab('Reader');
+    const origin = currentReadingLocation();
+    if (!current || !origin) return;
+    const sourceChanged = origin.sourceMode !== 'mineru' && Boolean(current.mineruBlocks?.length);
+    if (sourceChanged && !canSwitchReadingSource(current, 'mineru')) return;
+
+    const blocks = sourceChanged ? current.mineruBlocks : current.blocks;
+    const target = blocks.find(block => block.page === page && !block.resource && block.text?.trim());
+    const scrollByTab = { ...origin.scrollByTab };
+    if (target || sourceChanged) delete scrollByTab.Reader;
+    const block = target?.id ?? (sourceChanged ? blocks[0]?.id : origin.block);
+    recordReadingJump();
+    restoreReadingLocation({
+      ...origin, sourceMode: sourceChanged ? 'mineru' : origin.sourceMode, tab: 'Reader', page, block,
+      displayMode: origin.displayMode === 'translation' ? 'bilingual' : origin.displayMode,
+      search: '', searchOrigin: null, scrollByTab
+    });
+    if (sourceChanged) setStatus(target ? `Opened MinerU text from PDF page ${page}.` : 'Opened the saved MinerU Reader.');
   }
   async function exportMarkdown(kind) {
     if (!paper) return;

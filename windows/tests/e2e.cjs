@@ -659,24 +659,68 @@ async function run() {
     await reopenedPage.getByRole('tab', { name: 'Parsing', exact: true }).click();
     await reopenedPage.getByLabel('PDF extraction mode').selectOption('mineruPreferred');
     await reopenedPage.locator('.modal-head .icon-button').click();
-    await app.evaluate(({ ipcMain }) => {
+    const firstOcr = 'MinerU recovered this experimental passage from the first scanned page.';
+    const secondOcr = 'The first readable paragraph of the second scanned page begins here.';
+    const pageOneBody = 'Additional results on the first page explain the historical measurements. '.repeat(40).trim();
+    const pageTwoBody = 'Further results on the second page support the conclusions. '.repeat(40).trim();
+    await app.evaluate(({ ipcMain }, { firstOcr, secondOcr, pageOneBody, pageTwoBody }) => {
       ipcMain.removeHandler('mineru:status');
       ipcMain.handle('mineru:status', () => ({ compatible: true, executable: 'test-mineru' }));
       ipcMain.removeHandler('mineru:extract');
-      ipcMain.handle('mineru:extract', () => '# Recovered scan\n\nMinerU recovered this experimental passage from the scanned page.');
-    });
+      ipcMain.handle('mineru:extract', () => ({
+        markdown: ['# Recovered scan', firstOcr, pageOneBody, secondOcr, pageTwoBody].join('\n\n'),
+        pageHints: ['Recovered scan', firstOcr, pageOneBody, secondOcr, pageTwoBody].map((text, index) => ({ page: index < 3 ? 1 : 2, text }))
+      }));
+    }, { firstOcr, secondOcr, pageOneBody, pageTwoBody });
     await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Parse with MinerU' }).click();
     await reopenedPage.getByText('MinerU structure ready:', { exact: false }).waitFor();
     await reopenedPage.getByRole('button', { name: 'Paper', exact: true }).click();
     await reopenedPage.getByLabel('Paper display mode').selectOption('source');
     await reopenedPage.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
+    await reopenedPage.locator('.pdf-toolbar').getByRole('button', { name: 'Next page' }).click();
+    await reopenedPage.locator('.pdf-toolbar').getByText(/page 2 of 2/).waitFor();
+    const exactPdf = reopenedPage.locator('[data-pdf-scope="paperPdf"]');
+    await exactPdf.evaluate(host => { host.scrollTop += 75; });
+    const pageTwoOffset = await exactPdf.evaluate(host => host.scrollTop - host.querySelector('[data-pdf-page="2"]').offsetTop);
+    assert.ok(pageTwoOffset > 0);
+    const expectReaderBlock = async (id, text) => {
+      await reopenedPage.locator(`#block-${id} .source-text`).getByText(text, { exact: true }).waitFor();
+      await reopenedPage.waitForFunction(id => {
+        const block = document.getElementById(`block-${id}`);
+        const host = document.querySelector('.main-scroll');
+        const top = block?.getBoundingClientRect().top - host.getBoundingClientRect().top;
+        return block?.classList.contains('current') && top >= -2 && top <= 25;
+      }, id);
+    };
     await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Open OCR Reader' }).click();
-    await reopenedPage.locator('.reader-list').getByText('MinerU recovered this experimental passage from the scanned page.', { exact: true }).waitFor();
+    await expectReaderBlock(4, secondOcr);
     await reopenedPage.getByRole('button', { name: 'Back to previous reading location', exact: true }).click();
-    await reopenedPage.locator('[data-pdf-scope="paperPdf"]').waitFor();
+    await exactPdf.waitFor();
+    await reopenedPage.locator('.pdf-toolbar').getByText(/page 2 of 2/).waitFor();
+    await reopenedPage.waitForFunction(offset => {
+      const host = document.querySelector('[data-pdf-scope="paperPdf"]');
+      const slot = host?.querySelector('[data-pdf-page="2"]');
+      return slot && Math.abs(host.scrollTop - slot.offsetTop - offset) < 5;
+    }, pageTwoOffset);
     await reopenedPage.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
     await reopenedPage.getByRole('button', { name: 'Forward in reading history', exact: true }).click();
-    await reopenedPage.locator('.reader-list').getByText('MinerU recovered this experimental passage from the scanned page.', { exact: true }).waitFor();
+    await expectReaderBlock(4, secondOcr);
+
+    await reopenedPage.getByLabel('Reading mode').selectOption('translation');
+    const readerSearch = reopenedPage.getByPlaceholder('Search paper  Ctrl+F');
+    await readerSearch.fill('second scanned page');
+    await reopenedPage.getByRole('button', { name: 'Original', exact: true }).click();
+    await reopenedPage.locator('.pdf-toolbar').getByRole('button', { name: 'Previous page' }).click();
+    await reopenedPage.locator('.pdf-toolbar').getByText(/page 1 of 2/).waitFor();
+    await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Open OCR Reader' }).click();
+    await expectReaderBlock(1, 'Recovered scan');
+    assert.equal(await reopenedPage.getByLabel('Reading mode').inputValue(), 'bilingual');
+    assert.equal(await readerSearch.inputValue(), '');
+    await reopenedPage.getByRole('button', { name: 'Back to previous reading location', exact: true }).click();
+    await reopenedPage.locator('[data-pdf-scope="pdf"]').waitFor();
+    await reopenedPage.locator('.pdf-toolbar').getByText(/page 1 of 2/).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Forward in reading history', exact: true }).click();
+    await expectReaderBlock(1, 'Recovered scan');
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('mineru:extract');
       ipcMain.handle('mineru:extract', () => '  \n ');
