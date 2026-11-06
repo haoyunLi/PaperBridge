@@ -54,7 +54,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B11 | 显示/隐藏左右侧栏 | 两侧切换按钮 | 对齐 | 面板切换不丢当前阅读位置。 |
 | B12 | Focus Reading 退出后恢复进入前的面板状态 | 焦点阅读进入前保存左右面板状态，退出恢复 | 对齐 | 面板状态切换已实现。 |
 | B13 | 窄窗口检查器改为底部布局 | 与 Mac 相同在 `<1400px` 切换为独立底部抽屉，按窗口高度限制为 190–340px；选区和解释/已存标注分成可独立滚动的两列，宽窗口恢复 330px 右侧检查器 | 对齐 | Electron 自动验证 980×620、1320×820、1500×820 及运行时跨断点切换；仍随整软件继续做更多 Windows DPI 真机目视验收。 |
-| B14 | 字号、行距、阅读宽度调节 | Settings 三项滑块用于 Reader、Paper 和 Full Translation 文字预览 | 对齐 | Electron 检查 21px、1.9 行距、700px 宽度；原 PDF 几何不受文字预览样式影响。 |
+| B14 | 工具栏调节字号、行距、阅读宽度并重置 | Reading Appearance 弹层与设置页共用控件，实时更新 Reader、Paper、Full Translation 及双语摘要文字，支持恢复 Windows 默认值。 | 对齐 | Electron 验证键盘打开、Esc 焦点返回、跨论文和重启保存、两处入口重置。150% 缩放下用真实 15 页论文核对预览和原 PDF 画布。 |
 | B15 | 提取段落的质量提示与 Review 链接 | Overview 的提取检查按阅读来源独立折叠，Review 打开双语 Reader 中的对应警告 | 对齐 | Electron 验证 PDF 与 MinerU 两种来源、返回时保留展开状态及原文比对。 |
 | B16 | 结构化 Markdown 公式/表格本地预览 | React Markdown、KaTeX、GFM，加受限 HTML 渲染 | 部分 | 15 页论文的 11 处上标、4 张表、5 张图、5 个独立公式已在 Paper/Reader 验证；更多排版仍待验收。 |
 

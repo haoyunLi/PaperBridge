@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const readingAppearanceDefaults = require('./reading-appearance.json');
 
 const defaults = {
   aiProvider: 'ollama',
@@ -15,9 +16,7 @@ const defaults = {
   sourceLanguage: 'English',
   targetLanguage: 'Simplified Chinese',
   maxParagraphChars: 1800,
-  fontSize: 17,
-  lineHeight: 1.7,
-  readingWidth: 860,
+  ...readingAppearanceDefaults,
   mineruExecutable: '',
   mineruBackend: 'auto',
   pdfExtractionMode: 'mineruPreferred',

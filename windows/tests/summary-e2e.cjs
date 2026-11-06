@@ -97,6 +97,23 @@ async function run() {
     const summaries = page.locator('.summary-card');
     assert.match(await summaries.first().innerText(), /Final limitation/);
     assert.equal(await summaries.last().locator('li').count(), 4);
+    const summaryAppearance = () => summaries.evaluateAll(cards => cards.map(card => {
+      const style = getComputedStyle(card);
+      return { size: style.fontSize, line: style.lineHeight };
+    }));
+    const defaultAppearance = await summaryAppearance();
+    await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+    const appearancePopover = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
+    await appearancePopover.getByRole('slider', { name: 'Reader font size', exact: true }).press('End');
+    await appearancePopover.getByRole('slider', { name: 'Line spacing', exact: true }).press('End');
+    assert.deepEqual(await summaryAppearance(), Array.from({ length: 2 }, () => ({ size: '25px', line: '55px' })));
+    await page.keyboard.press('Escape');
+    await appearancePopover.waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Reading', exact: true }).click();
+    await page.getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    assert.deepEqual(await summaryAppearance(), defaultAppearance);
     await page.getByText(/AI-generated summary\. Source links show where quotations appear\./).waitFor();
     await page.setViewportSize({ width: 1800, height: 850 });
     const wideSource = await summaries.first().boundingBox();

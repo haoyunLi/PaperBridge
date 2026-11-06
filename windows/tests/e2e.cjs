@@ -389,6 +389,19 @@ async function run() {
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('.textLayer[data-page="1"] span').length > 0, null, { timeout: 10000 });
+    const originalGeometry = () => page.locator('.pdf-sheet canvas').first().evaluate(canvas => ({
+      width: canvas.width, height: canvas.height, displayWidth: canvas.clientWidth, displayHeight: canvas.clientHeight
+    }));
+    const originalSize = await originalGeometry();
+    await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+    const appearancePopover = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
+    await appearancePopover.getByRole('slider', { name: 'Reader font size', exact: true }).press('End');
+    await appearancePopover.getByRole('slider', { name: 'Reading width', exact: true }).press('Home');
+    await page.waitForFunction(() => document.querySelector('.app')?.style.getPropertyValue('--reader-width') === '560px');
+    assert.deepEqual(await originalGeometry(), originalSize, 'Reading appearance should leave the exact PDF canvas geometry intact');
+    await appearancePopover.getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await appearancePopover.waitFor({ state: 'hidden' });
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size || 0), 0);
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0);
     await page.screenshot({ path: path.join(artifacts, 'original-pdf.png') });

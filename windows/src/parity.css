@@ -23,7 +23,7 @@
 ::highlight(paperbridge-note){text-decoration:underline 2px #0a59d6;text-underline-offset:3px}
 .summary-evidence-note{color:#56606c;font-size:13px;line-height:1.5;margin:10px 0}
 .summary-panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,350px),1fr));align-items:start;gap:16px;margin:15px 0}
-.summary-panels .summary-card{margin:0;min-width:0;padding:clamp(16px,3vw,34px)}
+.summary-panels .summary-card{margin:0;min-width:0;padding:clamp(16px,3vw,34px);font-size:var(--reader-font);line-height:var(--reader-line)}
 .evidence-claim{border-top:1px solid #e9e0d6;padding:4px 0}
 .evidence-claim summary{cursor:pointer;padding:9px 3px;font-size:13px;font-weight:650;color:#122033}
 .evidence-claim summary:focus-visible{outline:2px solid #0a59d6;border-radius:4px}

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
+const appearanceDefaults = require('../electron/reading-appearance.json');
 
 const modelA = 'paperbridge-test-a:1b';
 const modelB = 'paperbridge-test-b:1b';
@@ -148,12 +149,34 @@ async function run() {
     await chooseSettings(page, 'Japanese', 'English', modelB);
     await page.locator('button[title="Toggle inspector"]').click();
     await explainBlockIn(page, 'German');
-    await openSettings(page);
-    await page.getByRole('tab', { name: 'Reading', exact: true }).click();
-    await page.getByRole('slider', { name: /Reader font size/ }).press('End');
-    await page.getByRole('slider', { name: /Line spacing/ }).press('End');
-    await page.getByRole('slider', { name: /Reading width/ }).press('End');
-    await closeSettings(page);
+    await page.setViewportSize({ width: 980, height: 620 });
+    const appearanceButton = () => page.getByRole('button', { name: 'Reading Appearance', exact: true });
+    const appearancePopover = () => page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
+    const fontSlider = () => appearancePopover().getByRole('slider', { name: 'Reader font size', exact: true });
+    await appearanceButton().press('Enter');
+    await appearancePopover().waitFor();
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Reader font size');
+    const triggerBounds = await appearanceButton().boundingBox();
+    const panelBounds = await appearancePopover().boundingBox();
+    assert.ok(panelBounds.x >= 0 && panelBounds.y >= triggerBounds.y + triggerBounds.height);
+    assert.ok(panelBounds.x + panelBounds.width <= 980 && panelBounds.y + panelBounds.height <= 620);
+    assert.ok(Math.abs(panelBounds.x + panelBounds.width - triggerBounds.x - triggerBounds.width) < 2, 'The popover should align to its toolbar button');
+    await fontSlider().press('End');
+    await appearancePopover().getByRole('slider', { name: 'Line spacing', exact: true }).press('End');
+    await appearancePopover().getByRole('slider', { name: 'Reading width', exact: true }).press('End');
+    await page.waitForFunction(() => {
+      const passage = document.querySelector('#block-2 .source-text');
+      const style = passage && getComputedStyle(passage);
+      return style?.fontSize === '25px' && style.lineHeight === '55px' && getComputedStyle(document.querySelector('.reader-list')).maxWidth === '1100px';
+    });
+    await page.keyboard.press('Escape');
+    await appearancePopover().waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Reading Appearance');
+    await appearanceButton().click();
+    await appearancePopover().waitFor();
+    await page.locator('.title-wrap h1').click();
+    await appearancePopover().waitFor({ state: 'hidden' });
+    await page.setViewportSize({ width: 1320, height: 820 });
     const appearance = { fontSize: '25', lineHeight: '2.2', readingWidth: '1100' };
     await waitFor(() => readPaper(textB).taskSettings?.translationModel === modelB, 'paper B task settings');
     await waitFor(() => readPaper(textB).inspectorOpen === true && Object.values(readPaper(textB).paragraphExplanations || {}).some(result => result.language === 'German' && result.output === 'Saved paragraph explanation'), 'paper B explanation and inspector');
@@ -223,7 +246,19 @@ async function run() {
     await page.locator('.undo-button').click();
     await waitFor(() => readPaper(textA).blocks.length === 2 && readPaper(textA).blocks[1].translation === original.translation && readPaper(textA).blocks[1].bookmark, 'undo restores the original bookmarked translation');
 
-    console.log('Per-paper settings and explanations restored across restart; manual edit split saved separate paragraphs and undo restored the original translation.');
+    for (const tab of ['Overview', 'Full Translation', 'Paper', 'Reader']) {
+      await page.getByRole('button', { name: tab, exact: true }).click();
+      await appearanceButton().click();
+      await appearancePopover().waitFor();
+      assert.equal(await fontSlider().inputValue(), '25');
+    }
+    await appearancePopover().getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await appearancePopover().waitFor({ state: 'hidden' });
+    await assertSettings(page, 'English', 'Simplified Chinese', modelA, Object.fromEntries(Object.entries(appearanceDefaults).map(([key, value]) => [key, String(value)])));
+    assert.equal(readPaper(textA).blocks[1].translation, original.translation);
+
+    console.log('Paper settings and explanations restored across restart; the toolbar appearance popover updates live, dismisses, persists globally, and resets without changing paper tasks.');
   } finally {
     await app?.close();
     ollama.close();
