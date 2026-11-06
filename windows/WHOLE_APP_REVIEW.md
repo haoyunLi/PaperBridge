@@ -6,6 +6,8 @@ Overview 可展开查看前 40 条提取建议、段号及最后 160 个字符�
 
 151 项单元测试、生产构建、阅读历史、摘要、Reader 复核和主桌面流程通过。RX 7800 XT 机器上复用真实《Attention Is All You Need》的两种保存来源，PDF 文字层有 26 条提示，MinerU 有 10 条。第 38 段打开原 PDF 第 3 页，修改末尾后该条提示消失，撤销后恢复。确认 MinerU 禁用编辑并可比对 PDF。0.2.7 汇集第四十一至第四十三阶段。
 
+GitHub 发布构建通过 151 项单元、23 套桌面回归与打包启动检查。公开 Setup 和 Portable 重新下载后 SHA-256 均匹配，Authenticode 状态均为 NotSigned。0.2.6 显示 0.2.7 更新提示，运行公开安装包后恢复论文、高亮和笔记，卸载测试实例后工作区保留。公开便携版也完成真实摘要与提取复核，GitHub 首页指向 0.2.7。 [Windows 0.2.7](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.7) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42301057153)
+
 ## 第四十二阶段：摘要证据展开与双语布局（2026-11-06 UTC）
 
 macOS 1.10.0 的摘要按可用空间切换双语布局，并可逐条展开证据。Windows 使用并排或纵排的双语卡片，默认折叠各条证据，支持鼠标与键盘独立操作。摘要说明标注 AI 生成内容，并说明引文只用于确认原句位置。阅读历史会保留同一论文当前会话的展开状态，PDF 文字层与 MinerU 各自独立。
