@@ -17,3 +17,17 @@ test('portable reading records include every surface, direction, color, bookmark
   assert.match(output, /Original PDF · page 3\n\n> Page quote\n\nPDF note/);
   assert.doesNotMatch(output, /Pagequote/);
 });
+
+test('rendered quotes export with review status and no Markdown syntax', async () => {
+  const { annotationsMarkdown } = await import('../src/annotationsMarkdown.mjs');
+  const markdown = 'A stack of $N = 6$ identical layers.';
+  const highlight = { text: 'stack of N=6 identical layers', offset: null, color: 'coral',
+    renderedAnchor: { offset: 2, before: 'A ', after: '.' } };
+  const output = annotationsMarkdown({
+    blocks: [{ id: 1, text: 'A stack of [Formula] identical layers.', sourceMarkdown: markdown, highlights: [highlight] }],
+    connectedTranslation: markdown,
+    viewHighlights: [{ ...highlight, scope: 'fullTranslation', needsReview: true }]
+  });
+  assert.match(output, /Reader · Block 1 · source · coral\n\n> stack of N=6 identical layers/);
+  assert.match(output, /Full Translation · coral · source changed, review needed\n\n> stack of N=6 identical layers/);
+});

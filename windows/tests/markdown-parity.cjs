@@ -4,6 +4,23 @@ const path = require('node:path');
 const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
+async function selectFormula(paragraph) {
+  await paragraph.locator('.katex-html').waitFor();
+  return paragraph.evaluate(node => {
+    const math = node.querySelector('.katex');
+    const start = math.previousSibling;
+    const end = math.nextSibling;
+    const range = document.createRange();
+    range.setStart(start, start.length - 'stack of '.length);
+    range.setEnd(end, ' identical layers'.length);
+    const selected = window.getSelection();
+    selected.removeAllRanges();
+    selected.addRange(range);
+    node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    return 'stack of ' + math.querySelector('.katex-html').textContent + ' identical layers';
+  });
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
@@ -13,9 +30,11 @@ async function run() {
   fs.mkdirSync(path.join(workspace, 'papers'), { recursive: true });
   const id = 'a'.repeat(64);
   const figure = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=';
+  const formula = 'A stack of $N = 6$ identical layers.';
+  const translated = '阿什什<sup>∗</sup>报告了一个测量结果。 ' + formula;
   const parts = [
     '# Research title',
-    'Ashish Vaswani<sup>∗</sup> reported a measured result.',
+    'Ashish Vaswani<sup>∗</sup> reported a measured result. ' + formula,
     '<table><thead><tr><th>Method</th><th>Score</th></tr></thead><tbody><tr><td>Attention</td><td>42</td></tr></tbody></table>',
     `![Figure](${figure})`,
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
@@ -25,16 +44,19 @@ async function run() {
     '[1] Reference entry remains in the original language.'
   ];
   const blocks = parts.map((sourceMarkdown, index) => ({
-    id: index + 1, sourceMarkdown, text: sourceMarkdown, heading: index === 0,
+    id: index + 1, sourceMarkdown, text: sourceMarkdown.replace('$N = 6$', '[Formula]'), heading: index === 0,
     resource: index === 2 || index === 3, status: index === 1 ? 'ok' : index === 5 ? 'failed' : 'pending',
-    translation: index === 1 ? '阿什什<sup>∗</sup>报告了一个测量结果。' : '',
-    translationMarkdown: index === 1 ? '阿什什<sup>∗</sup>报告了一个测量结果。' : null,
+    translation: index === 1 ? translated.replace('$N = 6$', '[Formula]') : '',
+    translationMarkdown: index === 1 ? translated : null,
     error: index === 5 ? 'Local model stopped.' : '', highlights: [], translationHighlights: [],
     notes: index === 5 ? [{ id: 'stale-note', text: 'Missing citation', offset: 0, kind: 'source', body: 'Retain this stale note.' }] : []
   }));
   fs.writeFileSync(path.join(workspace, 'papers', `${id}.json`), JSON.stringify({
     id, name: 'Markdown parity fixture', type: 'text', blocks,
     mineruMarkdown: parts.join('\n\n'), sourceMode: 'mineru', extraction: 'MinerU',
+    summary: { source: formula, target: formula, sourceLanguage: 'English', targetLanguage: 'Chinese' },
+    viewNotes: [{ id: 'shifted-summary', scope: 'summarySource', text: 'stack', offset: null,
+      renderedAnchor: { offset: 2, before: 'A ', after: ' was here' }, body: 'A changed summary annotation' }],
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     position: { tab: 'Paper', block: 1, displayMode: 'bilingual' }
   }));
@@ -84,6 +106,22 @@ async function run() {
     assert.equal(paperStyle.size, '21px');
     assert.ok(paperStyle.width <= 701);
     assert.ok(Number.parseFloat(paperStyle.line) > 35);
+    const formulaQuote = await selectFormula(page.locator('[data-paper-block-id="2"] [data-paper-kind="source"] p'));
+    assert.match(formulaQuote, /^stack of N\s*=\s*6 identical layers$/);
+    assert.equal(await page.locator('.inspector blockquote').innerText(), formulaQuote);
+    await page.locator('.inspector .highlight.coral').click();
+    await page.locator('.inspector textarea').fill('Paper formula selection');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size), 1);
+    await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.blocks[1].notes.some(item => item.body === 'Paper formula selection'), id);
+    const formulaSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8')).blocks[1];
+    for (const item of [...formulaSaved.notes, ...formulaSaved.highlights]) {
+      assert.equal(item.text, formulaQuote);
+      assert.equal(item.offset, null);
+      assert.equal(item.renderedAnchor.offset, item.displayOffset);
+      assert.equal(item.renderedSource, undefined);
+      assert.equal(item.renderedText, undefined);
+    }
     await page.evaluate(() => {
       const paragraph = document.querySelector('[data-paper-block-id="7"] p');
       const range = document.createRange();
@@ -123,9 +161,8 @@ async function run() {
     await page.locator('.inspector textarea').fill('Author marker is preserved.');
     await page.getByRole('button', { name: 'Save note' }).click();
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
-    assert.deepEqual(saved.blocks[1].highlights.map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'reader', text: 'Vaswani∗', offset: 7 }]);
-    assert.equal(saved.blocks[1].notes[0].body, 'Author marker is preserved.');
-    assert.equal(saved.blocks[1].notes[0].scope, 'reader');
+    assert.deepEqual(saved.blocks[1].highlights.filter(item => item.scope === 'reader').map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'reader', text: 'Vaswani∗', offset: 7 }]);
+    assert.equal(saved.blocks[1].notes.find(item => item.scope === 'reader').body, 'Author marker is preserved.');
     await page.getByLabel('Reading mode').selectOption('translation');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'The third occurrence belongs to block seven.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && window.getSelection()?.toString() === 'repeat');
@@ -159,6 +196,10 @@ async function run() {
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    assert.equal(await selectFormula(page.locator('#block-2 .source-text p')), formulaQuote);
+    assert.equal(await page.locator('.inspector blockquote').innerText(), formulaQuote);
+    await page.locator('.inspector textarea').fill('Reader formula selection');
+    await page.getByRole('button', { name: 'Save note' }).click();
     await page.screenshot({ path: path.join(artifacts, 'markdown-parity-reader.png') });
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
@@ -181,6 +222,18 @@ async function run() {
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
     assert.equal(requests.length, 5, 'A Reader retry should update the full draft without regenerating other blocks');
+    assert.equal(await selectFormula(draft.locator('p').filter({ has: page.locator('.katex') })), formulaQuote);
+    await page.locator('.inspector .highlight.coral').click();
+    await page.locator('.inspector textarea').fill('Full translation formula selection');
+    await page.getByRole('button', { name: 'Save note' }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    for (const side of ['summarySource', 'summaryTarget']) {
+      assert.equal(await selectFormula(page.locator(`[data-view-scope="${side}"] p`)), formulaQuote);
+      await page.locator('.inspector .highlight.coral').click();
+      await page.locator('.inspector textarea').fill(`Formula in ${side}`);
+      await page.getByRole('button', { name: 'Save note' }).click();
+    }
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('markdown:export');
       ipcMain.handle('markdown:export', (_event, document) => { globalThis.__sharedMarkdownExport = document.content; return 'fixture.md'; });
@@ -198,6 +251,19 @@ async function run() {
     }, id);
     await page.reload();
     await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
+    for (const note of ['Paper formula selection', 'Reader formula selection', 'Formula in summarySource', 'Formula in summaryTarget', 'Full translation formula selection']) {
+      await page.locator('.saved-annotations .annotation-row').filter({ hasText: note }).locator('button').first().click();
+      await page.waitForFunction(({ quote, note }) => {
+        const selected = window.getSelection();
+        if (!selected?.rangeCount || selected.isCollapsed) return false;
+        const fragment = selected.getRangeAt(0).cloneContents();
+        fragment.querySelectorAll('.katex-mathml').forEach(node => node.remove());
+        return fragment.textContent === quote && document.querySelector('.inspector textarea')?.value === note;
+      }, { quote: formulaQuote, note });
+    }
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'A changed summary annotation' }).locator('button').first().click();
+    await page.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
+    await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.viewNotes.find(item => item.id === 'shifted-summary')?.needsReview, id);
     assert.equal(requests.length, 5, 'Reopening a completed draft should not issue model requests');
     console.log('Markdown rendering, exact annotations, and shared full translation, retry, and export verified.');
   } finally {

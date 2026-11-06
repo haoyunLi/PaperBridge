@@ -9,6 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
+import { blockMarkdown, renderedAnchorOffset, sameTextAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
@@ -17,7 +18,7 @@ import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from '
 import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
 import { annotationsMarkdown } from './annotationsMarkdown.mjs';
-import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection } from './noteAnnotations.mjs';
+import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory } from './readingHistory.mjs';
 import SetupPanel from './SetupPanel.jsx';
@@ -37,7 +38,7 @@ import './save-status.css';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
-const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text, value.anchors && pdfAnchorKey(value)]) : '';
+const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text, value.anchors && pdfAnchorKey(value), value.renderedAnchor]) : '';
 const pdfScrollKey = (scope, page) => `Pdf:${scope}:${page}`;
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
 const sample = ['Abstract', 'This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.', '1 Introduction', 'Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.', '2 Methods', 'Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.', '3 Results', 'Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.', '4 Limitations', 'A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.', '5 Conclusion', 'Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action.'];
@@ -60,23 +61,38 @@ function refreshRichHighlights() {
     else CSS.highlights.delete(`paperbridge-${color}`);
   }
 }
+function hiddenMathText(node) {
+  return (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('.katex-mathml');
+}
+function textWalker(root, visibleOnly) {
+  return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, visibleOnly ? {
+    acceptNode: node => hiddenMathText(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  } : null);
+}
+function domText(root, visibleOnly) {
+  if (!root || !visibleOnly) return root?.textContent || '';
+  const walker = textWalker(root, true);
+  let text = '';
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node.textContent;
+  return text;
+}
 function markdownHighlightRanges(root, highlights) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const walker = textWalker(root, true);
   const nodes = [];
   let node;
   while ((node = walker.nextNode())) {
-    if (node.parentElement?.closest('.katex-mathml')) continue;
     nodes.push({ node, start: nodes.length ? nodes.at(-1).end : 0, end: 0 });
     nodes.at(-1).end = nodes.at(-1).start + node.textContent.length;
   }
   const text = nodes.map(item => item.node.textContent).join('');
   const result = { amber: [], teal: [], blue: [], coral: [] };
   for (const highlight of highlights) {
-    if (!result[highlight.color] || !highlight.text) continue;
+    if (!result[highlight.color] || !highlight.text || highlight.needsReview) continue;
     const first = text.indexOf(highlight.text);
     const displayAt = Number.isInteger(highlight.displayOffset) && text.slice(highlight.displayOffset, highlight.displayOffset + highlight.text.length) === highlight.text ? highlight.displayOffset : -1;
-    const at = displayAt >= 0 ? displayAt : text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : -1;
-    if (at < 0) continue;
+    const at = highlight.renderedAnchor ? renderedAnchorOffset(text, highlight)
+      : displayAt >= 0 ? displayAt : text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : null;
+    if (at === null) continue;
     const start = nodes.find(item => item.end > at);
     const end = nodes.find(item => item.end >= at + highlight.text.length);
     if (!start || !end) continue;
@@ -99,30 +115,36 @@ function Markdown({ children, highlights }) {
   return <div ref={host} data-markdown-host><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
 }
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
-function domSelectionIn(root) {
-  const selection = window.getSelection();
-  return domRangeIn(root, selection?.rangeCount ? selection.getRangeAt(0) : null);
-}
-function domRangeIn(root, range) {
+function domRangeIn(root, range, visibleOnly = false) {
   if (!root || !range || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
-  const raw = range.cloneContents().textContent || '';
+  if (visibleOnly && (hiddenMathText(range.startContainer) || hiddenMathText(range.endContainer))) return null;
+  const raw = domText(range.cloneContents(), visibleOnly);
   const text = raw.trim();
   if (!text || text.length > 3000) return null;
   const before = document.createRange();
   before.selectNodeContents(root);
   before.setEnd(range.startContainer, range.startOffset);
-  const offset = before.cloneContents().textContent.length + raw.length - raw.trimStart().length;
+  const offset = domText(before.cloneContents(), visibleOnly).length + raw.length - raw.trimStart().length;
   const rect = range.getBoundingClientRect();
-  return { text, offset, rect: { x: rect.left, y: rect.top }, context: root.textContent || '' };
+  return { text, offset, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
 }
 function exactAnchorOffset(context, selection) {
-  if (context.slice(selection.offset, selection.offset + selection.text.length) === selection.text) return selection.offset;
-  const first = context.indexOf(selection.text);
-  return first >= 0 && first === context.lastIndexOf(selection.text) ? first : null;
+  if (context === selection.context) return selection.offset;
+  const { text } = selection;
+  let sourceAt = context.indexOf(text);
+  let displayAt = selection.context.indexOf(text);
+  let match = null;
+  // Rendered formatting can hide raw occurrences or create new ones.
+  while (sourceAt >= 0 && displayAt >= 0) {
+    if (displayAt === selection.offset) match = sourceAt;
+    sourceAt = context.indexOf(text, sourceAt + text.length);
+    displayAt = selection.context.indexOf(text, displayAt + text.length);
+  }
+  return sourceAt < 0 && displayAt < 0 ? match : null;
 }
-function textRangeAt(root, offset, length) {
+function textRangeAt(root, offset, length, visibleOnly = false) {
   if (!root || !Number.isInteger(offset) || offset < 0 || !Number.isInteger(length) || length <= 0) return null;
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const walker = textWalker(root, visibleOnly);
   let node; let seen = 0; let first = null; let last = null;
   while ((node = walker.nextNode())) {
     const next = seen + node.textContent.length;
@@ -149,11 +171,11 @@ function pdfSelectionContent(root, range, text, offset, pageText) {
   const context = textRangeAt(root, start, end - start);
   return { text, offset, pageText, quote: quote !== text ? quote : undefined, context: context ? readablePdfRange(context) : quote };
 }
-function viewText(paper, scope) {
-  return scope === 'summarySource' ? paper.summary?.source || '' : scope === 'summaryTarget' ? paper.summary?.target || '' : scope === 'fullTranslation' ? paper.connectedTranslation || '' : '';
+function validViewAnchor(paper, item) {
+  const source = viewText(paper, item.scope);
+  return !item.needsReview && textAnchorAvailable(item, source, source);
 }
-function validViewAnchor(paper, item) { return Number.isInteger(item.offset) && viewText(paper, item.scope).slice(item.offset, item.offset + item.text.length) === item.text; }
-function validBlockAnchor(block, item, kind) { return Number.isInteger(item?.offset) && anchorText(block, kind).slice(item.offset, item.offset + item.text.length) === item.text; }
+function validBlockAnchor(block, item, kind) { return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), blockMarkdown(block, kind)); }
 function blockAnnotationScope(item) { return item?.scope === 'paper' ? 'paper' : 'reader'; }
 function blockAnnotationsFor(items, scope) { return (items || []).filter(item => blockAnnotationScope(item) === scope); }
 function displayHighlightColor(color) { return color === 'blue' ? 'teal' : color; }
@@ -161,8 +183,8 @@ function highlightColorName(color) { return color === 'teal' ? 'Cobalt' : `${col
 function highlightMatchesSelection(item, selection) {
   if (!item || item.needsReview || !selection) return false;
   if (isPdfScope(selection.scope)) return samePdfSelection(item, selection);
-  if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) return item.scope === selection.scope && item.offset === selection.offset && item.text === selection.text;
-  return blockAnnotationScope(item) === selection.scope && item.offset === selection.offset && item.text === selection.text;
+  if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) return item.scope === selection.scope && sameTextAnchor(item, selection);
+  return blockAnnotationScope(item) === selection.scope && sameTextAnchor(item, selection);
 }
 function selectionHighlights(paper, selection) {
   if (!paper || !selection) return [];
@@ -200,6 +222,7 @@ function withHighlight(text, highlights = []) {
   if (!highlights.length) return text;
   const spans = [];
   for (const highlight of highlights) {
+    if (highlight.needsReview || highlight.renderedAnchor) continue;
     const stored = Number.isInteger(highlight.offset) && text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : -1;
     const first = text.indexOf(highlight.text);
     const at = stored >= 0 ? stored : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : -1;
@@ -1250,18 +1273,21 @@ function App() {
     if (!viewNavigation || !paper || tab !== (viewNavigation.scope === 'fullTranslation' ? 'Full Translation' : 'Summary')) return;
     const host = document.querySelector(`[data-view-scope="${viewNavigation.scope}"] [data-markdown-host]`);
     if (!host) return;
-    const source = host.textContent || '';
+    const source = domText(host, true);
     const savedOffset = viewNavigation.displayOffset;
     const exact = Number.isInteger(savedOffset) && source.slice(savedOffset, savedOffset + viewNavigation.text.length) === viewNavigation.text ? savedOffset : null;
     const first = source.indexOf(viewNavigation.text);
-    const offset = exact ?? (first >= 0 && first === source.lastIndexOf(viewNavigation.text) ? first : null);
-    const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, viewNavigation.text.length);
-    if (!range) { setError('The saved Markdown text no longer matches this view. The annotation was kept for review.'); setViewNavigation(null); return; }
+    const offset = viewNavigation.renderedAnchor ? renderedAnchorOffset(source, viewNavigation)
+      : exact ?? (first >= 0 && first === source.lastIndexOf(viewNavigation.text) ? first : null);
+    const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, viewNavigation.text.length, true);
+    if (!range) { markViewAnchorForReview(viewNavigation); setViewNavigation(null); return; }
     const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
     range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-    setSelection({ ...viewNavigation, id: null, kind: viewNavigation.scope === 'summarySource' ? 'source' : 'translation', displayOffset: offset, rect: null });
+    setSelection({ ...viewNavigation, id: null, kind: viewNavigation.scope === 'summarySource' ? 'source' : 'translation', displayOffset: offset, rect: null,
+      context: source.slice(Math.max(0, offset - 300), offset + viewNavigation.text.length + 300),
+      ...(viewNavigation.renderedAnchor && { renderedSource: viewText(paper, viewNavigation.scope), renderedText: source }) });
     setSelectionResults({}); setNoteDraft(findSelectionNote(paper, viewNavigation)?.body || ''); setInspector(true); setViewNavigation(null);
-  }, [viewNavigation?.id, tab, paper?.id]);
+  }, [viewNavigation?.requestId, tab, paper?.id]);
   const command = name => {
     if (name === 'dismiss') { dismissModal(); setSelection(null); return; }
     if (modal === 'onboarding' && name !== 'onboarding') return;
@@ -1329,12 +1355,14 @@ function App() {
       const root = request.scope === 'paper'
         ? document.querySelector(`[data-paper-block-id="${request.blockId}"] [data-paper-kind="${request.kind}"]`)
         : document.querySelector(`[data-block-id="${request.blockId}"][data-kind="${request.kind}"]`);
-      const rendered = root?.textContent || '';
+      const rich = Boolean(root?.querySelector('[data-markdown-host]'));
+      const rendered = domText(root, rich);
       const displayAt = Number.isInteger(request.displayOffset) && rendered.slice(request.displayOffset, request.displayOffset + request.text.length) === request.text ? request.displayOffset : null;
       const sourceAt = Number.isInteger(request.offset) && rendered.slice(request.offset, request.offset + request.text.length) === request.text ? request.offset : null;
       const first = rendered.indexOf(request.text);
-      const at = displayAt ?? sourceAt ?? (first >= 0 && first === rendered.lastIndexOf(request.text) ? first : null);
-      const range = block && validBlockAnchor(block, request, request.kind) && at !== null ? textRangeAt(root, at, request.text.length) : null;
+      const at = request.renderedAnchor ? renderedAnchorOffset(rendered, request)
+        : displayAt ?? sourceAt ?? (first >= 0 && first === rendered.lastIndexOf(request.text) ? first : null);
+      const range = block && validBlockAnchor(block, request, request.kind) && at !== null ? textRangeAt(root, at, request.text.length, rich) : null;
       if (!range) {
         commitPaper(current => ({ ...current, blocks: current.blocks.map(item => item.id !== request.blockId ? item : request.recordType === 'note'
           ? { ...item, notes: (item.notes || []).map(note => note.id === request.id ? { ...note, needsReview: true } : note) }
@@ -1345,7 +1373,8 @@ function App() {
       }
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-      const nextSelection = { id: block.id, kind: request.kind, text: request.text, offset: request.offset, displayOffset: at, scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) };
+      const nextSelection = { id: block.id, kind: request.kind, text: request.text, offset: request.offset, displayOffset: at, scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300),
+        ...(request.renderedAnchor && { renderedAnchor: request.renderedAnchor, renderedSource: blockMarkdown(block, request.kind), renderedText: rendered }) };
       setSelection(nextSelection);
       setSelectionResults({}); setNoteDraft(findSelectionNote(paperRef.current, nextSelection)?.body || ''); setInspector(true); setBlockNavigation(null);
     }));
@@ -1578,7 +1607,7 @@ function App() {
     if (!selection || busy || taskRef.current) return;
     const quote = selection.quote ?? selection.text;
     const block = paperRef.current.blocks.find(item => item.id === selection.id);
-    const fullContext = isPdfScope(selection.scope) ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
+    const fullContext = isPdfScope(selection.scope) || selection.renderedAnchor ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
     const config = settingsRef.current;
     const model = activeAIModel(config, 'quickLookup');
     const from = selection.kind === 'translation' ? config.targetLanguage : config.sourceLanguage;
@@ -1916,14 +1945,16 @@ function App() {
     if (!range) return;
     const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
     const element = start?.closest('[data-block-id]');
-    const captured = domSelectionIn(element);
+    const rich = Boolean(element?.querySelector('[data-markdown-host]'));
+    const captured = domRangeIn(element, range, rich);
     if (!captured) return;
     const block = paperRef.current?.blocks.find(item => item.id === Number(element.dataset.blockId));
     const kind = element.dataset.kind || 'source';
     const source = anchorText(block, kind);
     const { text, rect } = captured;
     const offset = exactAnchorOffset(source, captured);
-    const nextSelection = { id: block?.id ?? null, kind, text, offset, displayOffset: captured.offset, scope: 'reader', rect };
+    const nextSelection = { id: block?.id ?? null, kind, text, ...selectionOffsets(captured, offset, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
+      context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing();
     setSelection(nextSelection);
     const saved = findSelectionNote(paperRef.current, nextSelection);
@@ -1946,12 +1977,13 @@ function App() {
       return;
     }
     if (['summarySource', 'summaryTarget', 'fullTranslation'].includes(selection.scope)) {
-      if (!validViewAnchor(paper, selection)) { setError('This selection cannot be anchored exactly in the saved document.'); return; }
+      if (!validNoteSelection(paper, selection)) { setError('This selection cannot be anchored exactly in the saved document.'); return; }
       const saved = paper.viewHighlights || [];
       const matching = saved.filter(item => highlightMatchesSelection(item, selection));
       if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
-      const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, color };
+      const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+        ...(selection.renderedAnchor && { renderedAnchor: selection.renderedAnchor }), color };
       commitPaper(current => ({ ...current, viewHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
       setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved in the annotation list.');
       return;
@@ -1959,12 +1991,13 @@ function App() {
     const block = paper.blocks.find(item => item.id === selection.id);
     const key = selection.kind === 'translation' ? 'translationHighlights' : 'highlights';
     const source = anchorText(block, selection.kind);
-    if (!['reader', 'paper'].includes(selection.scope) || !block || !Number.isInteger(selection.offset) || source?.slice(selection.offset, selection.offset + selection.text.length) !== selection.text) { setError('This exact selection cannot be anchored to one source block.'); return; }
+    if (!['reader', 'paper'].includes(selection.scope) || !block || !validTextSelection(selection, source, blockMarkdown(block, selection.kind))) { setError('This exact selection cannot be anchored to one source block.'); return; }
     const highlights = block[key] || [];
     const matching = highlights.filter(item => highlightMatchesSelection(item, selection));
     if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
     rememberUndo();
-    const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset, color };
+    const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+      ...(selection.renderedAnchor && { renderedAnchor: selection.renderedAnchor }), color };
     updateBlock(block.id, { [key]: [...highlights.filter(entry => !highlightMatchesSelection(entry, selection)), item] });
     setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
   }
@@ -2070,27 +2103,30 @@ function App() {
     const mode = scope === 'paper' ? 'bilingual' : (kind === 'translation' && displayMode === 'source' || kind === 'source' && displayMode === 'translation') ? 'bilingual' : displayMode;
     recordReadingJump(location => location.tab === targetTab && (scope === 'paper' || !location.search) && location.block === blockId && location.displayMode === mode
       && selectionRef.current?.scope === scope && selectionRef.current?.id === blockId && selectionRef.current?.kind === kind
-      && selectionRef.current?.offset === item.offset && selectionRef.current?.text === item.text);
+      && sameTextAnchor(selectionRef.current, item));
     window.getSelection()?.removeAllRanges();
     setInspector(true); setSelection(null); setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab(targetTab);
     setBlockNavigation({ ...item, scope, blockId, kind, recordType, requestId: crypto.randomUUID() });
     commitPaper(current => ({ ...current, position: { ...current.position, tab: targetTab, block: blockId, displayMode: mode } }));
   }
-  function navigateView(item) {
-    if (item.needsReview || !validViewAnchor(paperRef.current, item)) {
-      if (!item.needsReview) commitPaper(current => ({ ...current,
+  function markViewAnchorForReview(item) {
+    if (!item.needsReview) commitPaper(current => ({ ...current,
         viewNotes: (current.viewNotes || []).map(note => note.id === item.id ? { ...note, needsReview: true } : note),
         viewHighlights: (current.viewHighlights || []).map(highlight => highlight.id === item.id ? { ...highlight, needsReview: true } : highlight)
-      }));
-      setError('The saved Markdown text no longer matches this view. The annotation was kept for review.');
+    }));
+    setError('The saved Markdown text no longer matches this view. The annotation was kept for review.');
+  }
+  function navigateView(item) {
+    if (!validViewAnchor(paperRef.current, item)) {
+      markViewAnchorForReview(item);
       return;
     }
     const targetTab = item.scope === 'fullTranslation' ? 'Full Translation' : 'Summary';
     recordReadingJump(location => location.tab === targetTab && selectionRef.current?.scope === item.scope
-      && selectionRef.current?.offset === item.offset && selectionRef.current?.text === item.text);
+      && sameTextAnchor(selectionRef.current, item));
     setInspector(true);
     setTab(targetTab);
-    setViewNavigation({ ...item, id: crypto.randomUUID() });
+    setViewNavigation({ ...item, requestId: crypto.randomUUID() });
   }
   function navigatePdf(item) {
     if (item.needsReview) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
@@ -2147,38 +2183,33 @@ function App() {
   }
   function captureViewSelection(event, scope, kind) {
     const host = scope === 'paper' ? event.currentTarget : event.currentTarget.querySelector('[data-markdown-host]');
-    const captured = domSelectionIn(host);
-    if (!captured) return;
-    const { text, rect } = captured;
-    const range = window.getSelection().getRangeAt(0);
+    const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
+    if (!range) return;
     let id = null;
-    let offset = null;
-    let displayOffset = null;
+    let captured;
+    let offsets = { offset: null };
     if (scope === 'paper') {
       const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
       const side = start?.closest('[data-paper-kind]');
       const element = side?.closest('[data-paper-block-id]');
       const block = paperRef.current?.blocks.find(item => item.id === Number(element?.dataset.paperBlockId));
-      const within = domSelectionIn(side);
-      if (block && within?.text === text) {
+      const rich = Boolean(side?.querySelector('[data-markdown-host]'));
+      const within = domRangeIn(side, range, rich);
+      if (block && within) {
+        captured = within;
         id = block.id;
-        offset = exactAnchorOffset(anchorText(block, kind), within);
-        displayOffset = within.offset;
+        offsets = selectionOffsets(within, exactAnchorOffset(anchorText(block, kind), within), rich && blockMarkdown(block, kind));
+      } else {
+        captured = domRangeIn(host, range, true);
       }
     } else {
-      const source = scope === 'summarySource' ? paperRef.current?.summary?.source : scope === 'summaryTarget' ? paperRef.current?.summary?.target : paperRef.current?.connectedTranslation;
-      displayOffset = captured.offset;
-      const matches = [];
-      let searchAt = 0;
-      while (source && searchAt < source.length) {
-        const at = source.indexOf(text, searchAt);
-        if (at < 0) break;
-        matches.push(at); searchAt = at + text.length;
-      }
-      const ordinal = captured.context.slice(0, captured.offset).split(text).length - 1;
-      offset = matches[ordinal] ?? null;
+      captured = domRangeIn(host, range, true);
+      const source = viewText(paperRef.current, scope);
+      if (captured) offsets = selectionOffsets(captured, exactAnchorOffset(source, captured), source);
     }
-    const nextSelection = { id, kind, text, offset, displayOffset, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
+    if (!captured) return;
+    const { text, rect } = captured;
+    const nextSelection = { id, kind, text, ...offsets, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     if (selectionRef.current && selectionIdentity(selectionRef.current) !== selectionIdentity(nextSelection)) void finishNoteEditing();
     const saved = findSelectionNote(paperRef.current, nextSelection);
     setSelection(nextSelection); setSelectionResults({}); setNoteDraft(saved?.body || '');
