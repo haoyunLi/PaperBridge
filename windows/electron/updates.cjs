@@ -24,23 +24,25 @@ function releaseUrl(tag) {
 function releaseResult(tag, installerName, currentVersion) {
   if (typeof tag !== 'string') return null;
   const latestVersion = RELEASE_TAG.exec(tag)?.[1];
-  if (!versionParts(currentVersion) || !versionParts(latestVersion) || installerName !== `PaperBridge Setup ${latestVersion}.exe`) return null;
+  if (!versionParts(currentVersion) || !versionParts(latestVersion)) return null;
+  const names = [`PaperBridge-Windows-${latestVersion}-x64-Setup.exe`, `PaperBridge Setup ${latestVersion}.exe`];
+  if (!names.includes(installerName)) return null;
   return { status: compareVersions(latestVersion, currentVersion) > 0 ? 'available' : 'current', currentVersion, latestVersion, tag,
     installerName, releaseUrl: releaseUrl(tag) };
 }
 
 function selectWindowsRelease(releases, currentVersion) {
   if (!versionParts(currentVersion) || !Array.isArray(releases)) throw new Error('Invalid release information.');
-  const candidates = releases.filter(release => {
-    const version = RELEASE_TAG.exec(release?.tag_name)?.[1];
-    return versionParts(version) && !release.draft && !release.prerelease && Array.isArray(release.assets) &&
-      release.assets.some(asset => asset?.state === 'uploaded' && asset.name === `PaperBridge Setup ${version}.exe`);
+  const candidates = releases.flatMap(release => {
+    if (release?.draft || release?.prerelease || !Array.isArray(release?.assets)) return [];
+    return release.assets.flatMap(asset => {
+      if (asset?.state !== 'uploaded') return [];
+      const result = releaseResult(release.tag_name, asset.name, currentVersion);
+      return result ? [result] : [];
+    });
   });
-  candidates.sort((left, right) => compareVersions(RELEASE_TAG.exec(right.tag_name)[1], RELEASE_TAG.exec(left.tag_name)[1]));
-  const latest = candidates[0];
-  if (!latest) return { status: 'unpublished', currentVersion };
-  const latestVersion = RELEASE_TAG.exec(latest.tag_name)[1];
-  return releaseResult(latest.tag_name, `PaperBridge Setup ${latestVersion}.exe`, currentVersion);
+  candidates.sort((left, right) => compareVersions(right.latestVersion, left.latestVersion));
+  return candidates[0] || { status: 'unpublished', currentVersion };
 }
 
 async function checkWindowsRelease(currentVersion, fetchImpl = fetch) {

@@ -11,11 +11,13 @@ Remove-Item Env:\PAPERBRIDGE_INSTALLER_E2E
 
 The preflight is read-only. Every invocation checks HKCU/HKLM, both registry views, application installation keys, uninstall records, desktop/start-menu shortcuts, running PaperBridge processes, and the updater cache. Any existing installation or conflicting state is a refusal; the script never removes it to make the test pass.
 
-The script copies the built installer into a fresh `test-artifacts/i-*` directory and records its SHA-256. It installs under that directory, opens the installed executable, creates a practice paper with a highlight and note through the UI, closes the app, reinstalls the exact same installer, and verifies restored UI/data. It then uninstalls and confirms the saved paper/settings remain. The app workspace, Chromium profile, and managed-tools directory are isolated under the fixture. Results remain in `report.json` alongside the saved data.
+The script copies the built installer into a fresh `test-artifacts/i-*` directory and records its SHA-256. It installs under that directory, opens the installed executable, creates a practice paper with a highlight and note through the UI, closes the app, reinstalls the same version, and verifies restored UI and data. It then uninstalls and confirms the saved paper and settings remain. The app workspace, Chromium profile, and managed-tools directory are isolated under the fixture. Results remain in `report.json` alongside the saved data.
+
+For a cross-version upgrade, place the previous trusted installer in `release/` and set `PAPERBRIDGE_INSTALLER_FROM_VERSION` to its version. The test accepts the versioned x64 filename and the older `PaperBridge Setup <version>.exe` convention. Both installers are hashed before use, and the test checks the running app and registry version before and after the upgrade.
 
 Fixtures use a compact `test-artifacts/i-*` name. Before mutation, the test combines that install path with every file under `release/win-unpacked` and refuses a longest path of 260 characters or more. This mirrors the traditional Win32 path boundary used by electron-builder's NSIS atomic update removal. The production installer keeps electron-builder's safe default directory and does not expose a custom directory page.
 
-This validates **same-version reinstallation**, not a cross-version update, rollback, interrupted installation, or preservation of an existing user's default profile. Those need separate scenarios.
+The test uses an isolated install directory for both versions. Rollback, interrupted installation, and an existing user's default profile need separate scenarios.
 
 ## Safety boundaries
 

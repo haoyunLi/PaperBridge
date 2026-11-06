@@ -26,7 +26,7 @@ async function run() {
     const currentVersion = await app.evaluate(({ app }) => app.getVersion());
     const parts = currentVersion.split('.').map(Number);
     const nextVersion = `${parts[0]}.${parts[1] + 1}.0`;
-    const identity = { tag: `windows-v${nextVersion}`, installerName: `PaperBridge Setup ${nextVersion}.exe` };
+    const identity = { tag: `windows-v${nextVersion}`, installerName: `PaperBridge-Windows-${nextVersion}-x64-Setup.exe` };
     await app.evaluate((_electron, fixture) => {
       const originalFetch = global.fetch;
       global.__updateReleaseCalls = 0;

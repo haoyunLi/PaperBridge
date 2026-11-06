@@ -7,13 +7,14 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { compareVersions } = require('../electron/updates.cjs');
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(__dirname, '..');
 const artifacts = path.join(root, 'test-artifacts');
 const metadata = require('../package.json');
 const guid = '1a046d2c-29e5-5f45-8614-2c68ad2c6d75';
-const note = 'Installer lifecycle: retain this annotation after same-version reinstall and uninstall.';
+const note = 'Installer lifecycle: retain this annotation through installation and uninstall.';
 
 function safePath(value, parent) {
   const resolved = path.resolve(value);
@@ -132,7 +133,7 @@ function assertNoProcesses(state) {
   if (state.processes.length) throw new Error(`Close existing PaperBridge processes before this test: ${JSON.stringify(state.processes)}`);
 }
 
-function assertOwned(state, installDir) {
+function assertOwned(state, installDir, ...versions) {
   assertNoProcesses(state);
   const uninstaller = path.join(installDir, 'Uninstall PaperBridge.exe');
   for (const entry of state.registry) {
@@ -141,7 +142,7 @@ function assertOwned(state, installDir) {
     else {
       assert.equal(entry.name, guid, 'Unexpected PaperBridge uninstall identity');
       assert.equal(entry.command?.toLowerCase(), `"${uninstaller}" /currentuser`.toLowerCase(), 'UninstallString must still belong to this test');
-      assert.equal(entry.version, metadata.version, 'Registered version must match the tested installer');
+      assert.ok(versions.includes(entry.version), 'Registered version must match one of the tested installers');
     }
   }
   for (const shortcut of state.shortcuts) assert.equal(path.resolve(shortcut.target).toLowerCase(), path.join(installDir, 'PaperBridge.exe').toLowerCase(), 'Refusing a shortcut belonging to another installation');
@@ -211,7 +212,13 @@ async function run() {
   assert.equal(metadata.build.nsis.oneClick, false);
   assert.equal(metadata.build.nsis.allowToChangeInstallationDirectory, false, 'The assisted installer must keep the safe default path');
   for (const option of ['perMachine', 'script', 'include', 'deleteAppDataOnUninstall']) if (metadata.build.nsis[option]) throw new Error(`Review test safety before using NSIS option ${option}`);
-  const source = executable(path.join(root, 'release', `PaperBridge Setup ${metadata.version}.exe`), root);
+  const source = executable(path.join(root, 'release', `PaperBridge-Windows-${metadata.version}-x64-Setup.exe`), root);
+  const fromVersion = process.env.PAPERBRIDGE_INSTALLER_FROM_VERSION || metadata.version;
+  assert.ok(/^\d+\.\d+\.\d+$/.test(fromVersion) && compareVersions(fromVersion, metadata.version) <= 0, 'The starting installer version must be the current version or an older version.');
+  const upgrading = fromVersion !== metadata.version;
+  const namedOlder = path.join(root, 'release', `PaperBridge-Windows-${fromVersion}-x64-Setup.exe`);
+  const firstSource = upgrading ? executable(fs.existsSync(namedOlder) ? namedOlder : path.join(root, 'release', `PaperBridge Setup ${fromVersion}.exe`), root) : source;
+  const lifecycle = upgrading ? 'Cross-version upgrade' : 'Same-version reinstall';
   const initial = await inspectMachine();
   assertNoProcesses(initial);
   if (initial.registry.length || initial.shortcuts.length) throw new Error(`Refusing existing PaperBridge installation or shortcuts: ${JSON.stringify(initial)}`);
@@ -222,8 +229,8 @@ async function run() {
   const longestInstalledPath = longestPackagedPath(installDir);
   if (longestInstalledPath.length >= 260) throw new Error(`Test install path would exceed the NSIS update limit: ${JSON.stringify(longestInstalledPath)}`);
   if (fs.existsSync(fixture)) throw new Error('Installer fixture must be new.');
-  const plan = { version: metadata.version, source, installerSha256: hash(source), fixture, installDir, updaterCache, longestInstalledPath,
-    coverage: 'Real NSIS install, same-version reinstall, uninstall; isolated workspace preservation. Not a cross-version update.' };
+  const plan = { version: metadata.version, fromVersion, source, firstSource, installerSha256: hash(source), firstInstallerSha256: hash(firstSource),
+    fixture, installDir, updaterCache, longestInstalledPath, coverage: `Real NSIS install, ${lifecycle.toLowerCase()}, uninstall and isolated workspace preservation.` };
   if (preflightOnly) { console.log(JSON.stringify({ preflight: 'passed', ...plan }, null, 2)); return; }
 
   fs.mkdirSync(path.join(fixture, 'input'), { recursive: true });
@@ -231,6 +238,9 @@ async function run() {
   const installer = path.join(fixture, 'input', path.basename(source));
   fs.copyFileSync(source, installer);
   assert.equal(hash(installer), plan.installerSha256);
+  const firstInstaller = upgrading ? path.join(fixture, 'input', path.basename(firstSource)) : installer;
+  if (upgrading) fs.copyFileSync(firstSource, firstInstaller);
+  assert.equal(hash(firstInstaller), plan.firstInstallerSha256);
   const workspace = safePath(path.join(fixture, 'workspace'), artifacts);
   const profile = safePath(path.join(fixture, 'profile'), artifacts);
   const tools = safePath(path.join(fixture, 'tools'), artifacts);
@@ -245,21 +255,21 @@ async function run() {
   let savedPaper;
   const installedExe = path.join(installDir, 'PaperBridge.exe');
   const paperFile = () => path.join(workspace, 'papers', `${paperId}.json`);
-  const launch = async () => {
+  const launch = async version => {
     executable(installedExe, fixture);
     app = await electron.launch({ executablePath: installedExe, args: [`--user-data-dir=${profile}`], cwd: fixture,
       env: { ...process.env, PAPERBRIDGE_WORKSPACE: workspace, PAPERBRIDGE_TOOLS_ROOT: tools }, timeout: 30000 });
     const actual = await app.evaluate(({ app }) => ({ version: app.getVersion(), executable: process.execPath, userData: app.getPath('userData') }));
     assert.equal(path.resolve(actual.executable).toLowerCase(), installedExe.toLowerCase());
     assert.equal(path.resolve(actual.userData).toLowerCase(), profile.toLowerCase(), 'Chromium profile must be isolated');
-    assert.equal(actual.version, metadata.version);
+    assert.equal(actual.version, version);
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     return page;
   };
   const uninstall = async () => {
     const state = await inspectMachine();
-    assertOwned(state, installDir);
+    assertOwned(state, installDir, fromVersion, metadata.version);
     const sourceUninstaller = executable(path.join(installDir, 'Uninstall PaperBridge.exe'), fixture);
     const runner = path.join(fixture, 'runner', 'Uninstall PaperBridge.exe');
     safePath(runner, fixture);
@@ -275,20 +285,20 @@ async function run() {
   };
 
   try {
-    // Recheck immediately before every installer mutation, including same-version reinstall.
+    // Recheck immediately before every installer mutation.
     const before = await inspectMachine();
     assertNoProcesses(before);
     assert.deepEqual(before.registry, []);
     assert.deepEqual(before.shortcuts, []);
     assert.equal(fs.existsSync(updaterCache), false);
     installationAttempted = true;
-    const firstInstall = await runHidden(installer, `/S /currentuser /D=${installDir}`, fixture);
+    const firstInstall = await runHidden(firstInstaller, `/S /currentuser /D=${installDir}`, fixture);
     let state = await inspectMachine();
-    assertOwned(state, installDir);
+    assertOwned(state, installDir, fromVersion);
     assert.ok(state.registry.some(entry => entry.type === 'install'));
     assert.ok(state.registry.some(entry => entry.type === 'uninstall'));
     record('Installed at the requested isolated absolute path', { elapsedMs: firstInstall.elapsedMs, registry: state.registry });
-    let page = await launch();
+    let page = await launch(fromVersion);
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
@@ -307,7 +317,7 @@ async function run() {
     await page.locator('#block-2 .block-notes').getByText(note, { exact: false }).waitFor();
     await waitFor(async () => {
       const snapshot = await page.evaluate(() => window.paperBridge.bootstrap());
-      paperId = snapshot.lastPaperId;
+      paperId = snapshot.lastPaperId || snapshot.library?.[0]?.id;
       if (!paperId || !fs.existsSync(paperFile())) return false;
       const block = JSON.parse(fs.readFileSync(paperFile(), 'utf8')).blocks.find(block => block.id === 2);
       return block.highlights?.length && block.notes?.some(item => item.body === note);
@@ -317,12 +327,19 @@ async function run() {
     savedPaper = JSON.parse(fs.readFileSync(paperFile(), 'utf8'));
     record('Installed app saved a practice paper, highlight, and note', { paperId });
 
-    assertOwned(await inspectMachine(), installDir);
-    assert.equal(hash(installer), plan.installerSha256, 'Reinstall must use the exact same installer');
+    assertOwned(await inspectMachine(), installDir, fromVersion);
+    assert.equal(hash(installer), plan.installerSha256, 'Verify the target installer before replacing the app');
+    if (fs.existsSync(updaterCache)) {
+      const cachedInstaller = safeUpdaterFile(updaterCache, initial.localAppData);
+      assert.deepEqual(fs.readdirSync(updaterCache), ['installer.exe']);
+      assert.equal(hash(cachedInstaller), plan.firstInstallerSha256, 'The updater cache must still belong to this test');
+    }
     const reinstall = await runHidden(installer, `/S /currentuser /D=${safePath(installDir, fixture)}`, fixture);
-    assertOwned(await inspectMachine(), installDir);
-    assert.deepEqual(JSON.parse(fs.readFileSync(paperFile(), 'utf8')), savedPaper, 'Same-version reinstall must preserve saved paper data');
-    page = await launch();
+    const updated = await inspectMachine();
+    assertOwned(updated, installDir, metadata.version);
+    assert.ok(updated.registry.some(entry => entry.type === 'uninstall'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(paperFile(), 'utf8')), savedPaper, `${lifecycle} must preserve saved paper data`);
+    page = await launch(metadata.version);
     await page.locator('.title-wrap h1').getByText(savedPaper.name, { exact: true }).waitFor({ timeout: 20000 });
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text mark').waitFor();
@@ -330,7 +347,7 @@ async function run() {
     await app.close(); app = null;
     await waitForNoPaperBridgeProcesses('reinstalled app processes to exit before uninstall');
     const beforeUninstall = hash(paperFile());
-    record('Same-version reinstall reopened the saved paper with its highlight and note', { elapsedMs: reinstall.elapsedMs });
+    record(`${lifecycle} reopened the saved paper with its highlight and note`, { elapsedMs: reinstall.elapsedMs });
     await uninstall();
     assert.equal(hash(paperFile()), beforeUninstall, 'Uninstall must preserve the isolated saved paper and annotation');
     assert.equal(fs.existsSync(path.join(workspace, 'settings.json')), true);
@@ -348,7 +365,7 @@ async function run() {
     // NSIS writes one installer cache outside /D. Remove only a newly created, matching file.
     if (installationAttempted && fs.existsSync(updaterCache)) {
       const cachedInstaller = safeUpdaterFile(updaterCache, initial.localAppData);
-      if (uninstalled && fs.existsSync(cachedInstaller) && hash(cachedInstaller) === plan.installerSha256 && fs.readdirSync(updaterCache).length === 1) {
+      if (uninstalled && fs.existsSync(cachedInstaller) && [plan.installerSha256, plan.firstInstallerSha256].includes(hash(cachedInstaller)) && fs.readdirSync(updaterCache).length === 1) {
         fs.unlinkSync(cachedInstaller);
         fs.rmdirSync(updaterCache);
         report.updaterCacheCleaned = true;

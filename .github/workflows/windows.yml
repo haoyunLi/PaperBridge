@@ -39,6 +39,19 @@ jobs:
             throw "Tag $env:GITHUB_REF_NAME must match Windows package version $packageVersion"
           }
       - run: npm run dist
+      - name: Verify release binaries and write checksums
+        id: release-assets
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          foreach ($target in @('Setup', 'Portable')) {
+            $name = "PaperBridge-Windows-$version-x64-$target.exe"
+            $binary = Get-Item -LiteralPath "release/$name" -ErrorAction Stop
+            if ($binary.Length -le 0) { throw "Empty release binary $name" }
+            $hash = (Get-FileHash -LiteralPath $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content -LiteralPath "release/$name.sha256" -Value "$hash  $name" -Encoding ascii
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
       - name: Verify onboarding and desktop setup workflows
         shell: pwsh
         run: |
@@ -47,17 +60,31 @@ jobs:
             npm run $suite
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+      - run: npm run test:packaged
       - uses: actions/upload-artifact@v4
         with:
           name: PaperBridge-Windows
           path: |
-            windows/release/*.exe
-            windows/release/*.blockmap
+            windows/release/PaperBridge-Windows-*-x64-*.exe
+            windows/release/PaperBridge-Windows-*-x64-*.exe.sha256
           if-no-files-found: error
       - name: Attach Windows binaries to release
         if: startsWith(github.ref, 'refs/tags/windows-v')
         uses: softprops/action-gh-release@v2
         with:
-          files: windows/release/*.exe
+          name: PaperBridge for Windows ${{ steps.release-assets.outputs.version }}
+          make_latest: 'false'
+          fail_on_unmatched_files: true
+          body: |
+            PaperBridge for Windows is a development preview for Windows x64.
+
+            - **Setup** installs PaperBridge for the current Windows user.
+            - **Portable** runs directly after download.
+            - Each executable has a SHA-256 checksum. The binaries are unsigned.
+
+            You can open and annotate PDFs immediately. Use **Local AI setup** to install Ollama and the translation model when you first need local AI. MinerU is optional for scanned PDFs and structured extraction.
+          files: |
+            windows/release/PaperBridge-Windows-*-x64-*.exe
+            windows/release/PaperBridge-Windows-*-x64-*.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

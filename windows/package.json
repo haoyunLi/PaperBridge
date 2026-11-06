@@ -82,8 +82,12 @@
       "icon": "assets/paperbridge.ico"
     },
     "nsis": {
+      "artifactName": "PaperBridge-Windows-${version}-${arch}-Setup.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": false
+    },
+    "portable": {
+      "artifactName": "PaperBridge-Windows-${version}-${arch}-Portable.${ext}"
     }
   }
 }

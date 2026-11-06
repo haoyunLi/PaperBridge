@@ -17,6 +17,21 @@ test('Windows update check ignores macOS, drafts, prereleases, and incomplete as
   assert.equal(selectWindowsRelease([release('v1.9')], '0.2.0').status, 'unpublished');
 });
 
+test('Windows update check recognizes the public setup filename and ignores other release assets', () => {
+  const installer = 'PaperBridge-Windows-0.2.0-x64-Setup.exe';
+  const assets = [
+    { name: 'PaperBridge-Windows-0.2.0-x64-Portable.exe', state: 'uploaded' },
+    { name: `${installer}.sha256`, state: 'uploaded' },
+    { name: 'PaperBridge-Windows-0.2.0-arm64-Setup.exe', state: 'uploaded' },
+    { name: installer, state: 'starter' }
+  ];
+  assert.equal(selectWindowsRelease([release('windows-v0.2.0', { assets })], '0.1.0').status, 'unpublished');
+  assets.push({ name: installer, state: 'uploaded' });
+  const versions = [release('v1.10.0'), release('windows-v0.2.0', { assets })];
+  assert.equal(selectWindowsRelease(versions, '0.1.0').installerName, installer);
+  assert.equal(selectWindowsRelease(versions, '0.2.0').status, 'current');
+});
+
 test('update URL and version comparison accept only Windows release tags', () => {
   assert.equal(compareVersions('0.10.0', '0.9.9'), 1);
   assert.throws(() => releaseUrl('v1.9'));
