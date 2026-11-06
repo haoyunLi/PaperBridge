@@ -199,7 +199,7 @@ function withHighlight(text, highlights = []) {
 }
 async function sha256(value) { const bytes = new TextEncoder().encode(value); return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join(''); }
 
-function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, onNavigate, onNavigationFailure, onRendered, onOcr, onSetup, onReader }) {
+function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, onNavigate, onNavigationFailure, onRendered, onOcr, onSetup, onReader, facsimile = false }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const highlightKey = useRef({});
@@ -209,21 +209,28 @@ function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, 
   const [pageHasText, setPageHasText] = useState(null);
   useEffect(() => {
     let live = true;
+    let opened;
     setPdf(null); setError('');
     if (paper?.type !== 'pdf') return;
-    api.readPdf(paper.id).then(openPdf).then(value => { if (live) setPdf(value); }).catch(err => { if (live) setError(err.message); });
-    return () => { live = false; };
+    api.readPdf(paper.id).then(bytes => live ? openPdf(bytes) : null).then(value => {
+      opened = value;
+      if (live) setPdf(value);
+      else return value?.loadingTask.destroy();
+    }).catch(err => { if (live) setError(err.message); });
+    return () => { live = false; opened?.loadingTask.destroy().catch(() => {}); };
   }, [paper?.id, paper?.type]);
   useEffect(() => {
     if (!pdf || !canvas.current) return;
     let cancelled = false;
     let task;
+    let textLayer;
     (async () => {
+      setError('');
       setPageHasText(null);
       const page = await pdf.getPage(Math.max(1, Math.min(pageNumber, pdf.numPages)));
       if (cancelled) return;
       const base = page.getViewport({ scale: 1 });
-      const width = Math.min(850, Math.max(520, canvas.current.parentElement.clientWidth - 48));
+      const width = facsimile ? Math.min(850, 1600 * base.width / base.height) : Math.min(850, Math.max(520, canvas.current.parentElement.clientWidth - 48));
       const viewport = page.getViewport({ scale: width / base.width });
       const surface = canvas.current;
       const ratio = window.devicePixelRatio || 1;
@@ -238,7 +245,9 @@ function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, 
       onRendered?.();
       try {
         const pdfjs = await import('pdfjs-dist');
-        const textLayer = new pdfjs.TextLayer({ textContentSource: await page.getTextContent(), container: layer.current, viewport });
+        const textContentSource = await page.getTextContent();
+        if (cancelled || !layer.current) return;
+        textLayer = new pdfjs.TextLayer({ textContentSource, container: layer.current, viewport });
         await textLayer.render();
         if (cancelled) return;
         layer.current.dataset.page = String(pageNumber);
@@ -246,8 +255,8 @@ function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, 
         setLayerRevision(previous => previous + 1);
       } catch { if (!cancelled) setPageHasText(false); /* canvas remains a faithful page preview */ }
     })().catch(err => { if (!cancelled) setError(err.message); });
-    return () => { cancelled = true; task?.cancel(); };
-  }, [pdf, pageNumber]);
+    return () => { cancelled = true; task?.cancel(); textLayer?.cancel(); };
+  }, [pdf, pageNumber, facsimile]);
   useEffect(() => {
     const root = layer.current;
     if (!root || root.dataset.page !== String(pageNumber) || !CSS.highlights) return;
@@ -268,12 +277,22 @@ function PdfView({ paper, pageNumber, highlights, navigation, onPage, onSelect, 
     onNavigate?.({ text: navigation.text, offset: navigation.offset, page: navigation.page, pageText, context: pageText.slice(Math.max(0, navigation.offset - 300), navigation.offset + navigation.text.length + 300) });
   }, [navigation?.id, pageNumber, layerRevision]);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
-  return <div className="pdf-panel"><div className="pdf-toolbar"><span>Exact original PDF · page {pageNumber} of {pdf?.numPages || '…'}</span><div className="row"><button className="icon-button" aria-label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}><ChevronLeft size={17} /></button><button className="icon-button" aria-label="Next page" disabled={!pdf || pageNumber >= pdf.numPages} onClick={() => onPage(pageNumber + 1)}><ChevronRight size={17} /></button></div></div>{pageHasText === false && <ScanNotice page ocrReady={paper.sourceMode === 'mineru' && paper.blocks.length > 0} onParse={onOcr} onSetup={onSetup} onReader={paper.blocks.length ? onReader : null} />}{error ? <Notice tone="error">{error}</Notice> : <div className="pdf-scroll" onMouseUp={event => {
+  return <div className="pdf-panel"><div className="pdf-toolbar"><span>Exact original PDF · page {pageNumber} of {pdf?.numPages || '…'}</span><div className="row"><button className="icon-button" aria-label="Previous page" disabled={pageNumber <= 1} onClick={() => onPage(pageNumber - 1)}><ChevronLeft size={17} /></button><button className="icon-button" aria-label="Next page" disabled={!pdf || pageNumber >= pdf.numPages} onClick={() => onPage(pageNumber + 1)}><ChevronRight size={17} /></button></div></div>{pageHasText === false && <ScanNotice page ocrReady={paper.sourceMode === 'mineru' && paper.blocks.length > 0} onParse={onOcr} onSetup={onSetup} onReader={paper.blocks.length ? onReader : null} />}{error && <Notice tone="error">{error}</Notice>}<div className="pdf-scroll" hidden={Boolean(error)} onMouseUp={event => {
     if (!event.target.closest('.textLayer')) return;
     const captured = domSelectionIn(layer.current);
     if (!captured || layer.current.textContent.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return;
     onSelect?.({ text: captured.text, offset: captured.offset, page: pageNumber, pageText: captured.context, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + captured.text.length + 300), rect: captured.rect });
-  }}><div className="pdf-sheet"><canvas ref={canvas} /><div ref={layer} className="textLayer" /></div></div>}</div>;
+  }}><div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? `Original PDF page ${pageNumber}` : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}</div></div></div>;
+}
+function PdfFacsimile({ paper, pageNumber, onPage, onOriginal }) {
+  const [expanded, setExpanded] = useState(true);
+  return <section className="pdf-facsimile" aria-label="Original PDF reference">
+    <div className="pdf-facsimile-heading">
+      <button className="button ghost" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Hide original page' : 'Show original page'}</button>
+      <button className="button outline" onClick={onOriginal}>Open original PDF</button>
+    </div>
+    {expanded && <PdfView facsimile paper={paper} pageNumber={pageNumber} onPage={onPage} />}
+  </section>;
 }
 function Empty({ title, body, children }) { return <div className="empty"><BookOpen size={36} strokeWidth={1.5} /><h2>{title}</h2><p>{body}</p>{children}</div>; }
 function Notice({ children, tone = 'info', onClose }) { return <div className={`notice ${tone}`}><span>{children}</span>{onClose && <button className="icon-button" aria-label="Dismiss" onClick={onClose}><X size={15} /></button>}</div>; }
@@ -604,6 +623,10 @@ function App() {
     if (!paperRef.current || target === tab) return;
     recordReadingJump();
     setTab(target);
+  }
+  function changeFacsimilePage(number) {
+    setPageNumber(number);
+    commitPaper(current => ({ ...current, position: { ...current.position, page: number } }));
   }
   const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
     if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
@@ -1080,7 +1103,7 @@ function App() {
       resetReadingHistory();
       setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
       setStatus(warning || (blocks.length ? `Extracted ${blocks.length} blocks from ${pdf.numPages} pages. Compare uncertain passages with Original PDF.` : 'No selectable text found. The exact original PDF is available; use MinerU for OCR.'));
-      } finally { await pdf.destroy(); }
+      } finally { await pdf.loadingTask.destroy(); }
   }
   async function importText(text, name = 'Pasted Text') {
     if (!text.trim() || taskRef.current) return;
@@ -1116,7 +1139,20 @@ function App() {
     }
     finally { token.ids.delete(requestId); }
   }
-  function cancelTask() { const token = taskRef.current; if (!token) return; token.cancelled = true; for (const id of token.ids) { api.cancel(id).catch(() => {}); api.cancelOpenAI(id).catch(() => {}); } api.cancelMineru().catch(() => {}); setPendingImport(null); taskRef.current = null; setBusy(null); setProgress(null); if (token.kind === 'selection') setSelectionLookup({ status: 'Quick lookup cancelled.', error: '' }); setStatus('Task cancelled. Completed work was saved.'); }
+  function cancelTask() {
+    const token = taskRef.current;
+    if (!token) return;
+    token.cancelled = true;
+    if (token.kind === 'bundleExport') {
+      token.cancelRender?.();
+      setStatus('Stopping page export…');
+      return;
+    }
+    for (const id of token.ids) { api.cancel(id).catch(() => {}); api.cancelOpenAI(id).catch(() => {}); }
+    api.cancelMineru().catch(() => {}); setPendingImport(null); taskRef.current = null; setBusy(null); setProgress(null);
+    if (token.kind === 'selection') setSelectionLookup({ status: 'Quick lookup cancelled.', error: '' });
+    setStatus('Task cancelled. Completed work was saved.');
+  }
   function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) { return glossary.filter(term => term.sourceLanguage === from && term.targetLanguage === to && text.toLowerCase().includes(term.source.toLowerCase())).slice(0, 24); }
   async function translateBlocks(ids, { sharedFull = false } = {}) {
     if (!paperRef.current || busy || taskRef.current) return;
@@ -1398,36 +1434,61 @@ function App() {
     setModal('');
   }
   async function exportBundle() {
-    if (!paper) return;
-    let token = null;
+    if (!paper || taskRef.current) return;
+    const token = startTask('Exporting portable Markdown bundle…');
+    token.kind = 'bundleExport';
     try {
-      const result = await api.exportBundle({ paper: { id: paper.id, name: paper.name, type: paper.type }, documents: markdownDocuments(paper) });
+      const result = await api.exportBundle({
+        paper: { id: paper.id, name: paper.name, type: paper.type, facsimile: pdfFacsimile },
+        documents: markdownDocuments(paper)
+      });
       if (!result) return;
       setModal('');
       let pageImages = 0;
-      if (paper.type === 'pdf') {
-        token = startTask('Exporting portable PDF page images…');
-        const pdf = await openPdf(await api.readPdf(paper.id));
+      let missingPages = 0;
+      if (result.originalPdf) {
+        setBusy({ label: 'Exporting portable PDF page images…' });
+        const destination = { id: paper.id, folder: result.folder };
+        let pdf;
         try {
-          const limit = Math.min(pdf.numPages, 120);
+          pdf = await openPdf(await api.readPdf(paper.id));
+          const limit = Math.min(pdf.numPages, result.maximumPreviewPages);
           for (let pageNumber = 1; pageNumber <= limit && !token.cancelled; pageNumber++) {
             setProgress({ done: pageNumber - 1, total: limit });
-            const page = await pdf.getPage(pageNumber);
-            const base = page.getViewport({ scale: 1 });
-            const viewport = page.getViewport({ scale: Math.min(1.5, 1400 / base.width) });
-            const canvas = document.createElement('canvas');
-            canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-            await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
-            const image = await new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not render a PDF page image.')), 'image/png'));
-            await api.exportBundlePage({ id: paper.id, folder: result.folder, pageNumber, bytes: new Uint8Array(await image.arrayBuffer()) });
-            pageImages++;
+            let image;
+            try {
+              const page = await pdf.getPage(pageNumber);
+              if (token.cancelled) break;
+              const base = page.getViewport({ scale: 1 });
+              const viewport = page.getViewport({ scale: Math.min(1.5, 1800 / Math.max(base.width, base.height)) });
+              const canvas = document.createElement('canvas');
+              canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+              const render = page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport });
+              token.cancelRender = () => render.cancel();
+              await render.promise;
+              if (!token.cancelled) image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+            } catch {
+              // A damaged page does not prevent exporting the other pages and exact PDF.
+            } finally {
+              token.cancelRender = null;
+            }
+            if (token.cancelled) break;
+            if (image) {
+              const bytes = new Uint8Array(await image.arrayBuffer());
+              if (token.cancelled) break;
+              await api.exportBundlePage({ ...destination, pageNumber, bytes });
+              pageImages++;
+            } else missingPages++;
             setProgress({ done: pageNumber, total: limit });
           }
-        } finally { if (typeof pdf.destroy === 'function') await pdf.destroy(); }
+        } finally {
+          try { await api.finishBundle({ ...destination, pageCount: pdf?.numPages || 0, stopped: token.cancelled }); }
+          finally { await pdf?.loadingTask.destroy(); }
+        }
       }
-      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token?.cancelled ? ' (page export stopped)' : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}`);
+      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}`);
     } catch (cause) { setError(`Bundle export incomplete: ${cause.message}`); }
-    finally { if (token) endTask(token); setModal(''); }
+    finally { endTask(token); setModal(''); }
   }
   async function clearSavedData() {
     if (taskRef.current) return;
@@ -1708,6 +1769,7 @@ function App() {
   const abstractConclusionIds = translationRangeIds(paper?.blocks || [], sections.filter(section => /abstract|conclusion|摘要|结论/i.test(section.title)).flatMap(section => section.ids), referenceIDs);
   const unfinishedTranslationIds = translationRangeIds(paper?.blocks || [], null, referenceIDs);
   const structuredFull = usesSharedMarkdown(paper);
+  const pdfFacsimile = paper?.type === 'pdf' && paper.sourceMode !== 'mineru';
   const plainUnfinished = structuredFull ? [] : pendingConnectedBatches(paper);
   const fullTranslationNeedsWork = paper && (!paper.connectedTranslation || paper.connectedStale
     || plainUnfinished.length > 0 || (structuredFull && (!paper.connectedShared || unfinishedTranslationIds.length > 0)));
@@ -1753,7 +1815,7 @@ function App() {
         {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
-        {paper && tab === 'Paper' && <div className="content-column">
+        {paper && tab === 'Paper' && <div className={pdfFacsimile && displayMode !== 'source' ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.type === 'pdf' && displayMode === 'source' ? 'Exact native PDF rendering with selectable text and original page layout' : paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Reflowed selectable PDF text · exact pages remain available in Original mode' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
           {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
           {paper.type === 'pdf' && displayMode === 'source' ? <PdfView
@@ -1771,7 +1833,10 @@ function App() {
             onReader={() => { changeDisplayMode('bilingual'); }}
           /> : <>
             {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} />}
-            <PaperPreview paper={paper} displayMode={displayMode} onSelect={captureViewSelection} />
+            <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
+              {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
+              <PaperPreview paper={paper} displayMode={displayMode} onSelect={captureViewSelection} />
+            </div>
           </>}
         </div>}
         {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{(!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={blockAnnotationsFor(block.highlights, 'reader')}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, blockAnnotationsFor(block.highlights, 'reader'))}</div>{!block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={blockAnnotationsFor(block.translationHighlights, 'reader')}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, blockAnnotationsFor(block.translationHighlights, 'reader'))) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
@@ -1790,7 +1855,7 @@ function App() {
           onReader={() => navigateToTab('Reader')}
         />}
         {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
-        {paper && tab === 'Full Translation' && <div className="content-column">
+        {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading">
             <div><h2>Connected full translation</h2><p>{structuredFull
               ? 'Shares Reader translations and preserves Markdown structure'
@@ -1802,13 +1867,16 @@ function App() {
           {structuredFull && paper.connectedShared && !paper.connectedStale && unfinishedTranslationIds.length > 0 &&
             <Notice>{unfinishedTranslationIds.length} unfinished block(s) shown in the original language.</Notice>}
           {plainUnfinished.length > 0 && <Notice>{plainUnfinished.length} unfinished batch(es) shown in the original language. Completed batches are saved.</Notice>}
-          {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation"
-            onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}>
-            <Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown>
-          </article> : <Empty title={paper.blocks.length ? 'No full translation yet' : 'No readable text yet'} body={!paper.blocks.length
-            ? 'Use MinerU OCR from Paper or Original before translating this PDF.'
-            : structuredFull ? 'The full draft reuses completed Reader blocks and translates the remaining text in document order.'
-            : 'This optional pass translates longer passages with context. The bilingual reader remains available separately.'} />}
+          <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
+            {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
+            {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation"
+              onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}>
+              <Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown>
+            </article> : <Empty title={paper.blocks.length ? 'No full translation yet' : 'No readable text yet'} body={!paper.blocks.length
+              ? 'Use MinerU OCR from Paper or Original before translating this PDF.'
+              : structuredFull ? 'The full draft reuses completed Reader blocks and translates the remaining text in document order.'
+              : 'This optional pass translates longer passages with context. The bilingual reader remains available separately.'} />}
+          </div>
         </div>}
         </>}
       </div>

@@ -320,6 +320,16 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByText('This practice PDF contains selectable academic text', { exact: false }).first().waitFor();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    const reference = page.getByRole('region', { name: 'Original PDF reference' });
+    await reference.getByRole('img', { name: 'Original PDF page 1' }).waitFor();
+    await page.getByLabel('Paper display mode').selectOption('translation');
+    await reference.getByRole('button', { name: 'Next page' }).click();
+    await reference.getByRole('img', { name: 'Original PDF page 2' }).waitFor();
+    await reference.getByRole('button', { name: 'Hide original page' }).click();
+    assert.equal(await reference.getByRole('img').count(), 0);
+    await reference.getByRole('button', { name: 'Show original page' }).click();
+    await reference.getByRole('img', { name: 'Original PDF page 2' }).waitFor();
+    await reference.getByRole('button', { name: 'Previous page' }).click();
     await page.getByLabel('Paper display mode').selectOption('source');
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('.textLayer span').length > 0, null, { timeout: 10000 });
@@ -391,25 +401,82 @@ async function run() {
     assert.match(await page.locator('.inspector blockquote').innerText(), /^Abstract$/);
     await page.getByRole('button', { name: 'Previous page' }).click();
     await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.getByRole('button', { name: 'Translate full paper' }).click();
+    await page.getByText('Connected full-paper translation saved.', { exact: true }).waitFor();
+    assert.match(await page.locator('[data-view-scope="fullTranslation"]').innerText(), /本地测试译文/);
+    await reference.getByRole('button', { name: 'Next page' }).click();
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector('.pdf-facsimile canvas[aria-label="Original PDF page 2"]');
+      if (!canvas || canvas.width < 500) return false;
+      const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      return data.some((value, index) => index % 4 === 0 && value < 100 && data[index + 3] === 255);
+    });
+    await page.setViewportSize({ width: 1320, height: 820 });
+    const originalBox = await reference.boundingBox();
+    const translationBox = await page.locator('[data-view-scope="fullTranslation"]').boundingBox();
+    assert.ok(originalBox.x + originalBox.width < translationBox.x, 'Wide views place the original beside the translation');
+    await page.screenshot({ path: path.join(artifacts, 'full-translation-facsimile.png') });
+    await page.setViewportSize({ width: 640, height: 620 });
+    const stacked = await page.locator('.pdf-comparison').evaluate(comparison => {
+      const original = comparison.querySelector('.pdf-facsimile').getBoundingClientRect();
+      const translation = comparison.querySelector('[data-view-scope="fullTranslation"]').getBoundingClientRect();
+      return original.bottom <= translation.top && comparison.scrollWidth <= comparison.clientWidth;
+    });
+    assert.ok(stacked, 'Narrow views stack the original and translation without horizontal scrolling');
+    await page.setViewportSize({ width: 1320, height: 820 });
+    await reference.getByRole('button', { name: 'Open original PDF' }).click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '2');
+    await page.getByRole('button', { name: 'Previous page' }).click();
+    await page.waitForFunction(() => document.querySelector('.textLayer')?.dataset.page === '1');
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
-    await page.getByRole('button', { name: 'More' }).click();
-    await page.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
-    await page.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
-    await page.waitForFunction(() => /Exported|Bundle export incomplete/.test(document.body.innerText), null, { timeout: 30000 });
+    const exportBundle = async () => {
+      await page.getByRole('button', { name: 'More' }).click();
+      await page.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+      await page.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
+    };
+    const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
+    const beforeExport = new Set(bundleFolders());
+    await exportBundle();
+    await page.waitForFunction(() => /Exported \d+ Markdown files|Bundle export incomplete/.test(document.body.innerText), null, { timeout: 30000 });
     assert.match(await page.locator('.main-scroll').innerText(), /Exported/, 'Bundle export should complete without an error');
-    const bundles = fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge')).sort((left, right) => fs.statSync(path.join(artifacts, left)).mtimeMs - fs.statSync(path.join(artifacts, right)).mtimeMs);
-    assert.ok(bundles.length > 0);
-    assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'original.pdf')));
-    assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'pages', 'page-001.png')));
-    assert.ok(fs.existsSync(path.join(artifacts, bundles.at(-1), 'pages', 'page-002.png')));
-    assert.match(fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Original Pages.md'), 'utf8'), /pages\/page-001\.png/);
-    const exportedAnalysis = fs.readFileSync(path.join(artifacts, bundles.at(-1), 'Analysis.md'), 'utf8');
+    const bundle = path.join(artifacts, bundleFolders().find(name => !beforeExport.has(name)));
+    assert.deepEqual(fs.readFileSync(path.join(bundle, 'original.pdf')), fs.readFileSync(pdfPath));
+    assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-001.png')));
+    assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-002.png')));
+    for (const name of ['Original Pages', 'Original', 'Translated', 'Bilingual', 'Full Translation']) {
+      const markdown = fs.readFileSync(path.join(bundle, `${name}.md`), 'utf8');
+      assert.match(markdown, /\(original\.pdf\)[\s\S]*\(pages\/page-001\.png\)[\s\S]*\(pages\/page-002\.png\)/);
+      if (name === 'Full Translation') assert.match(markdown, /# Full translation of selectable text\n\n本地测试译文/);
+    }
+    const exportedAnalysis = fs.readFileSync(path.join(bundle, 'Analysis.md'), 'utf8');
     assert.match(exportedAnalysis, /Original PDF · page 1\n\n> Abstract\n\nThis note belongs to the original PDF page\./);
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1\n\n> Abstract\n\nThis note belongs to the exact PDF inside Paper\./);
     assert.match(exportedAnalysis, /Original PDF · page 2\n\n> Abstract\n\nThe repeated heading belongs to page two\./);
     assert.match(exportedAnalysis, /Original PDF · page 1 · teal/);
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral/);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);
+    const beforeStop = new Set(bundleFolders());
+    await page.evaluate(() => {
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      let count = 0;
+      HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
+        if (++count === 2) {
+          HTMLCanvasElement.prototype.toBlob = toBlob;
+          window.releasePageImage = () => toBlob.call(this, callback, ...options);
+        } else toBlob.call(this, callback, ...options);
+      };
+    });
+    await exportBundle();
+    await page.waitForFunction(() => typeof window.releasePageImage === 'function');
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
+    await page.evaluate(() => { window.releasePageImage(); delete window.releasePageImage; });
+    await page.getByText(/1 PDF page image\(s\) \(page export stopped\)/).waitFor();
+    const stopped = path.join(artifacts, bundleFolders().find(name => !beforeStop.has(name)));
+    const stoppedTranslation = fs.readFileSync(path.join(stopped, 'Full Translation.md'), 'utf8');
+    assert.match(stoppedTranslation, /Page export stopped[\s\S]*pages\/page-001\.png[\s\S]*本地测试译文/);
+    assert.doesNotMatch(stoppedTranslation, /pages\/page-002\.png/);
+    assert.deepEqual(fs.readdirSync(path.join(stopped, 'pages')), ['page-001.png']);
     const pdfBytes = fs.readFileSync(pdfPath);
     await page.evaluate(bytes => {
       const file = new File([new Uint8Array(bytes)], 'practice.pdf', { type: 'application/pdf' });
@@ -485,7 +552,7 @@ async function run() {
     await reopenedPage.getByText('MinerU returned no readable blocks.', { exact: false }).waitFor();
     await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
     await reopenedPage.getByText('This practice PDF contains selectable academic text', { exact: false }).first().waitFor();
-    console.log('Electron workflow verified: native menu and shortcuts, source/PDF annotations, two-page export, scan OCR guidance, empty MinerU fallback, and restart recovery.');
+    console.log('Electron workflow verified: native menu and shortcuts, source/PDF annotations, original-page comparison, full and stopped portable export, scan OCR guidance, empty MinerU fallback, and restart recovery.');
   } finally { await app?.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

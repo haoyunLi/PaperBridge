@@ -28,7 +28,7 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 | A12 | 公式、图片路径、URL、代码、HTML 翻译前保护 | `protectMarkdown` / `restoreMarkdown` 包括代码围栏、整张 HTML 表格、行内标签及多种公式 | 部分 | 单元测试覆盖 token 还原；更多模型对复杂结构的输出位置仍待验收。 |
 | A13 | 原 PDF 无修改保存并原样查看 | 复制原 PDF，PDF.js canvas + text layer | 对齐 | 像素、页数和可选文字与源文件一致。 |
 | A14 | 无文字层的扫描件仍可看原 PDF | 原 PDF 保留画面与翻页；无文字层时 Paper、Reader、Original 显示 OCR 引导，OCR 完成后原页可直接跳到 OCR Reader；翻译/摘要/全文任务在无文本时禁用，缺少 MinerU 则进入一键安装 | 部分 | 空白无文字层 PDF 引导和单页图像型 PDF 的真实 OCR、翻译已验证；复杂扫描件的 OCR 质量仍待验收。 |
-| A15 | PDFKit 便携页面图片（最多前 120 页） | 导出 bundle 时逐页渲染 PNG，最多 120 页 | 部分 | Electron 测试覆盖单页；长 PDF 页面尺寸、取消和空间占用待验证。 |
+| A15 | PDFKit 便携页面图片（最多前 120 页） | 导出 bundle 时逐页渲染 PNG，最大边 1,800 像素，最多 120 页；页面索引链接到完整原 PDF | 部分 | 真机用 15 页论文验证 PNG，用 121 页测试 PDF 验证只写 120 张、显示上限提示并保留完整 PDF。Mac 在打开时生成持久页面缓存，Windows 在查看时按页渲染并在便携导出时写 PNG。 |
 | A16 | 跨页断词、断句修复 | 页内断词处理，并保守拼接跨页未完句与断词 | 部分 | 公式、复合词及双栏跨页仍需真实论文对照。 |
 | A17 | 重复页眉、页脚、图表标签过滤 | 按跨页重复签名过滤页眉、页脚和页码 | 部分 | 与 Mac 同类启发式；图表标签和复杂排版仍需验证。 |
 | A18 | 提取质量警告定位到 Reader 段落 | Overview 列出可疑段落和 Review 跳转 | 部分 | 启发式规则仍需双栏及扫描件回归。 |
@@ -44,7 +44,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B01 | 三栏：文档侧栏、正文、研究检查器 | 三栏布局 | 对齐 | 窄窗口各面板仍能使用。 |
 | B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Overview（阅读地图、质量检查与双语摘要）、Full Translation，另有 Original；内部保留旧 `Summary` 状态值兼容已保存位置 | 对齐 | Original 是 Windows 额外的原生 PDF 工作区。 |
 | B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 的 Original 模式直接复用精确 PDF 画布/文字层，Bilingual / Translation 显示完整结构文档；Windows 另保留 Original 标签 | 对齐 | Paper 内即可完成 Mac 对应切换，额外 Original 入口不改变 Paper 行为。 |
-| B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存 | 对齐 | Electron 流程验证三模式切换。 |
+| B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存。PDF 文字层的双语和译文模式附带可翻页的原页预览 | 对齐 | Electron 流程验证三模式切换、原页预览翻页与折叠。 |
 | B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 使用 Mac 同组五类规范化标题、问题提示和精确原文摘录；只在当前章节内找正文，无标题时回退开篇，并提供 Reader 精确跳转、Start Reading、View Original、翻译进度及来源免责声明 | 对齐 | 单元测试覆盖编号/罗马数字标题、拒绝宽松子串误匹配及不借用下一章节正文；Electron 实际验证段落跳转和 Original 模式。 |
 | B06 | 章节大纲跳转 | 侧栏 OUTLINE，跳转前清除 Reader 搜索 | 对齐 | 搜索后目录跳转已回归；复杂 MinerU 标题层级仍需验证。 |
 | B07 | 段落书签及侧栏文字预览 | 书签按钮与侧栏摘要 | 对齐 | 解析来源切换后位置应保持。 |
@@ -79,7 +79,7 @@ Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480
 | C13 | 正在翻译时将当前章节插队 | 运行时可把当前章节插入剩余队列前端 | 部分 | 异步取消及真实 Ollama 长队列待验证。 |
 | C14 | 连贯全文翻译是独立可选任务 | Full Translation 单独按钮与保存 | 对齐 | 不自动替代段落翻译。 |
 | C15 | 全文翻译保留原 Markdown 非语言块与共享译稿 | MinerU 全文与 Reader 共用翻译结果，保留原结构及未完成原文；重试结果同步到全文和导出 | 部分 | Electron 验证共享、失败回退、参考文献和资源保护；RX 7800 XT 扫描件验证已有 Reader 译文原样进入全文。复杂论文全文结果仍需与 macOS 并排验收。 |
-| C16 | 上下文分批与失败块保留原文 | 普通文本与 PDF 文字层合并相邻段落，每批最多 4,800 字符；保存已完成译文，失败与中断位置保留原文并支持续跑 | 部分 | Electron 验证失败、迟到响应、关闭重启和快捷键续跑；RX 7800 XT 对 15 页真实论文分 7 批，首批完成后重启续跑余下 6 批。Mac 的 PDF 页面图像与全文组合呈现仍待对照。 |
+| C16 | 上下文分批与失败块保留原文 | 普通文本与 PDF 文字层合并相邻段落，每批最多 4,800 字符；保存已完成译文，失败与中断位置保留原文并支持续跑。PDF 文字层全文附带原页预览与便携导出 | 部分 | Electron 验证失败、迟到响应、关闭重启、快捷键续跑和原页组合；RX 7800 XT 对 15 页真实论文分 7 批，重启续跑余下 6 批并导出全文与 15 张原页。仍需用同一论文对照 Mac 输出。 |
 | C17 | 按方向匹配保存术语注入提示 | `matchingTerms` 限 24 条 | 对齐 | 已完成译文不被术语更新静默覆盖。 |
 
 Mac 证据：[段落队列与全文翻译](../PaperBridge/PaperReaderViewModel.swift#L741)、[翻译范围菜单](../PaperBridge/ContentView.swift#L633)、[结构化保护](../PaperBridge/Services/AcademicMarkdownProcessor.swift#L273)。Windows 证据：[翻译任务](src/main.jsx#L191)、[全文翻译](src/main.jsx#L253)、[范围菜单](src/main.jsx#L403)。
@@ -156,7 +156,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G02 | 导出逐段译文 Markdown | 逐段译文 Markdown 单文件及便携 bundle | 部分 | 结构化全文稿和逐段译稿语义仍需比较。 |
 | G03 | 导出双语 Markdown | 双语 Markdown 单文件及 bundle 包含书签、各视图高亮和笔记 | 部分 | 仅高亮加书签的导出 UI 已回归；复杂资产及公式顺序仍需验证。 |
 | G04 | 导出摘要/笔记/证据 Markdown | 摘要、证据、书签、各视图高亮/笔记含 Paper/Reader、原译文侧、Paper exact PDF/Original PDF、页码及需复核提示 | 部分 | 仅高亮加书签及同页双 PDF scope 的 Analysis 导出已回归；复杂 Markdown 锚点与证据格式仍需比较。 |
-| G05 | 资源 bundle、原 PDF、便携页面图片和全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与已生成的全文稿 | 部分 | 真机导出 15 页 MinerU 论文，核对 15 张 PNG、5 个本地图片及原 PDF 哈希。超过 120 页的提示和取消仍待实测。 |
+| G05 | 资源 bundle、原 PDF、便携页面图片和全文译稿 | 便携 bundle 含 Markdown、外置图片、原 PDF、前 120 页 PNG 与已生成的全文稿。PDF 文字层阅读稿内嵌已保存原页的相对链接 | 部分 | 真机分别验证 15 页 MinerU 和 PDF 文字层便携包；桌面验证导出取消后保留已写的 PNG，以及 121 页测试 PDF 的导出上限和完整原文件。 |
 | G06 | 首次启动分步引导；可重新打开 | 首次启动六步 Getting Started：Ollama、翻译模型、MinerU、解释模型及就绪检查；Settings 与 Help 可重开，可跳过并记录完成状态 | 部分 | 六步、跨启动页码恢复、跳过/重开、忙时焦点和关闭锁、保存去重、练习文档及 980×620/1320×820 布局已通过 Electron 验证；仍需更多 DPI 和 Mac 实机并排对照。 |
 | G07 | 自动检测/启动/安装 Ollama | SetupPanel 可勾选 Ollama、模型、MinerU；仅选模型时自动补 Ollama 依赖，单选 MinerU 不启动 Ollama | 部分 | AMD 真机已完成签名安装和复用；组件选择及依赖由单元与 Electron mock 回归验证，真实安装取消及其它硬件待验收。 |
 | G08 | 自动发现、下载并选择模型 | 六步引导及 Settings > Local AI 都提供 TranslateGemma 4B/12B/27B 和六个可选助手模型卡片、内存建议、下载/选择/取消；下载状态跨设置分页保持可见 | 部分 | 九张卡、角色继承、四任务模型、下载取消/重试、跨论文/端点迟到结果隔离及重启恢复已通过 Electron 回归；12B/27B 等大模型仍需实际下载及更多内存配置验证。 |

@@ -10,6 +10,8 @@ For MinerU documents, **Full Translation** builds a continuous draft from the Re
 
 For pasted text and the selectable PDF text layer, **Full Translation** groups adjacent paragraphs into excerpts of at most 4,800 characters after protecting formulas, links and inline assets. Completed batches are saved as they finish. **Resume unfinished batches** retries failed and interrupted excerpts after stopping or reopening the app. The draft and its export show original text for unfinished excerpts, and references stay in their original language. **Regenerate** starts a fresh pass over a completed draft.
 
+When a paper uses its PDF text layer, **Paper** in Bilingual or Translation mode and **Full Translation** show a browsable original page with the text. Wide views place them side by side. Use **Open original PDF** to select and annotate the exact page. A portable bundle places the original page images and a link to the unchanged PDF before the extracted text in its reading documents, including Full Translation. If you stop rendering pages, the bundle keeps the Markdown, original PDF, and previews already saved.
+
 PDF import now follows macOS 1.9.2/1.10 feedback: the selected filename replaces stale content, elapsed time and recognized MinerU layout/formula/text stages are shown, and Cancel Import returns to the previous paper. A failed or late import cannot replace the previous translations, notes, bookmarks, or reading position.
 
 ## Build and run

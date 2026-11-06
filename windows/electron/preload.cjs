@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   exportMarkdown: payload => ipcRenderer.invoke('markdown:export', payload),
   exportBundle: payload => ipcRenderer.invoke('markdown:bundle', payload),
   exportBundlePage: payload => ipcRenderer.invoke('markdown:bundle-page', payload),
+  finishBundle: payload => ipcRenderer.invoke('markdown:bundle-finish', payload),
   listModels: baseURL => ipcRenderer.invoke('ollama:models', baseURL),
   runningModels: baseURL => ipcRenderer.invoke('ollama:running', baseURL),
   graphicsStatus: () => ipcRenderer.invoke('hardware:status'),

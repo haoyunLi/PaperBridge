@@ -6,7 +6,12 @@ import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecoration
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export async function openPdf(bytes) {
-  return pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false }).promise;
+  const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+  try { return await loading.promise; }
+  catch (error) {
+    await loading.destroy().catch(() => {});
+    throw error;
+  }
 }
 
 function pageLines(content, pageWidth) {

@@ -102,6 +102,36 @@ test('portable bundle writes real image assets and the unchanged original PDF', 
   }
 });
 
+test('PDF facsimile bundles include only completed page images and preserve the translated body', () => {
+  const { writeBundle, writeBundleFacsimile } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-facsimile-'));
+  const pdf = path.join(parent, 'source.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.4\nsource bytes');
+  try {
+    const documents = [
+      { kind: 'full', name: 'Full Translation', content: 'Saved translated text.' },
+      { kind: 'analysis', name: 'Analysis', content: 'Exact notes.' }
+    ];
+    const bundle = writeBundle(parent, { name: 'PDF text.pdf', type: 'pdf', facsimile: true }, documents, pdf);
+    writeBundleFacsimile({ ...bundle, renderedPages: new Set([1, 120]) }, 125, true);
+    const full = fs.readFileSync(path.join(bundle.folder, 'Full Translation.md'), 'utf8');
+    assert.match(full, /first 120 of 125 pages/);
+    assert.match(full, /Page export stopped/);
+    assert.match(full, /\(original\.pdf\)/);
+    assert.deepEqual([...full.matchAll(/pages\/page-(\d+)\.png/g)].map(match => match[1]), ['001', '120']);
+    assert.match(full, /# Full translation of selectable text\n\nSaved translated text\.\n$/);
+    assert.equal(fs.readFileSync(path.join(bundle.folder, 'Analysis.md'), 'utf8'), 'Exact notes.');
+
+    const structured = writeBundle(parent, { name: 'MinerU.pdf', type: 'pdf' }, documents, pdf);
+    writeBundleFacsimile({ ...structured, renderedPages: new Set() }, 1, false);
+    assert.match(fs.readFileSync(path.join(structured.folder, 'Original Pages.md'), 'utf8'), /previews are unavailable/);
+    assert.equal(fs.readFileSync(path.join(structured.folder, 'Full Translation.md'), 'utf8'), 'Saved translated text.');
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('split and merge retain exact note and highlight anchors', async () => {
   const { splitBlockAt, mergeBlocks } = await import('../src/paper.mjs');
   const original = { id: 1, text: 'First sentence. Second sentence.', status: 'ok', translation: 'old', bookmark: true,

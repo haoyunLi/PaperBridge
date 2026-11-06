@@ -9,7 +9,7 @@ const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
-const { writeBundle } = require('./bundle.cjs');
+const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
@@ -250,22 +250,27 @@ function registerHandlers() {
     if (!Array.isArray(documents) || documents.length > 8 || documents.some(item => typeof item.name !== 'string' || typeof item.content !== 'string')) throw new Error('Invalid Markdown bundle.');
     const result = await dialog.showOpenDialog(window, { title: 'Choose export folder', properties: ['openDirectory', 'createDirectory'] });
     if (result.canceled) return null;
-    const bundle = writeBundle(result.filePaths[0], { id: paper.id, name: paper.name, type: paper.type }, documents, store.pdfPath(paper.id));
-    activeBundle = { id: paper.id, folder: bundle.folder };
-    return bundle;
+    const bundle = writeBundle(result.filePaths[0], { name: paper.name, type: paper.type, facsimile: paper.facsimile === true }, documents, store.pdfPath(paper.id));
+    const { facsimileDocuments, ...report } = bundle;
+    activeBundle = bundle.originalPdf ? { id: paper.id, folder: bundle.folder, facsimileDocuments, renderedPages: new Set() } : null;
+    return { ...report, maximumPreviewPages };
   });
   ipcMain.handle('markdown:bundle-page', (_event, { id, folder, pageNumber, bytes }) => {
-    if (!activeBundle || id !== activeBundle.id || folder !== activeBundle.folder || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > 120) throw new Error('No matching page-image export is active.');
+    if (!activeBundle || id !== activeBundle.id || folder !== activeBundle.folder || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > maximumPreviewPages) throw new Error('No matching page-image export is active.');
     const png = Buffer.from(bytes);
     if (png.length > 20_000_000 || !png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error('Invalid page image.');
     const pages = path.join(folder, 'pages');
     fs.mkdirSync(pages, { recursive: true });
-    const name = `page-${String(pageNumber).padStart(3, '0')}.png`;
+    const name = pageImageName(pageNumber);
     fs.writeFileSync(path.join(pages, name), png);
-    const index = path.join(folder, 'Original Pages.md');
-    if (!fs.existsSync(index)) fs.writeFileSync(index, '# Original PDF pages\n\nThese images are a portable reading copy. The unchanged source file is original.pdf.\n\n');
-    fs.appendFileSync(index, `## Page ${pageNumber}\n\n![Original PDF page ${pageNumber}](pages/${name})\n\n`);
+    activeBundle.renderedPages.add(pageNumber);
     return name;
+  });
+  ipcMain.handle('markdown:bundle-finish', (_event, { id, folder, pageCount, stopped }) => {
+    if (!activeBundle || id !== activeBundle.id || folder !== activeBundle.folder || !Number.isSafeInteger(pageCount) || pageCount < 0) throw new Error('No matching page-image export is active.');
+    const bundle = activeBundle;
+    activeBundle = null;
+    writeBundleFacsimile(bundle, pageCount, stopped === true);
   });
   ipcMain.handle('ollama:models', async (_event, baseURL) => {
     const response = await ollamaRequest(baseURL, 'api/tags');
