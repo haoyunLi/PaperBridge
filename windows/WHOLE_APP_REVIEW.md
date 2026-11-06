@@ -6,7 +6,7 @@
 
 132 项单元测试及桌面回归覆盖源切换、过滤与清空搜索、翻译期间暂缓、两套内容保留和旧回调。使用 RX 7800 XT Windows 机器上的 15 页 Attention Is All You Need，验证从 PDF 文字层 Reader 跳到 MinerU 公式笔记，前进后退恢复两处滚动。另从精确 PDF 第 2 页跳到同一笔记，后退恢复第 2 页约 160 像素的页内偏移。
 
-Windows 0.2.3 包含第三十一至第三十三阶段的改进。 [Windows 0.2.3](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.3)
+Windows 0.2.3 包含第三十一至第三十三阶段的改进。发布工作流通过单元、桌面和打包启动回归。重新下载两个公开程序后核对了 SHA-256，两份程序均未签名。公开便携版通过真实跨来源回跳和 ROCm 翻译。安装版从 0.2.2 检测到更新，升级后恢复论文及标注，测试卸载后数据保留。 [Windows 0.2.3](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.3) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42279106643)
 
 ## 第三十二阶段：引文移动后的标注恢复（2026-11-06 UTC）
 

@@ -4,6 +4,8 @@
 
 2026-11-06 用通过 SHA-256 校验的公开 Windows 0.2.2 便携版直接打开真实 MinerU 论文，在 Reader 翻译 Attention Is All You Need 的第 30 块。TranslateGemma 4B 输出了包含“堆叠的自注意力机制”的中文段落。Ollama 0.40.15 选中 RX 7800 XT 的 ROCm `gfx1101`，日志显示 35/35 层卸载到 GPU，`/api/ps` 的模型大小和显存分配均为 2,881,948,220 字节。 [公开便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2)
 
+同日重新下载并校验公开 0.2.3 便携版。Reader 再次完成同一真实段落的中文翻译，ROCm 仍使用 RX 7800 XT，35/35 层载入 GPU，模型大小与显存分配均为 2,881,948,220 字节。 [Windows 0.2.3](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.3)
+
 ## 翻译与 AMD 加速
 
 Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成显卡。模型加载后，`/api/ps` 报告模型占用的 2.68 GiB 全部在 VRAM。这里的 GPU 结论同时有运行时后端日志与实际显存分配作为依据。
