@@ -28,3 +28,26 @@ test('Markdown translation also protects HTML, fenced code, bracket formulas, an
   assert.equal(restoreMarkdown(protectedBlock.text, protectedBlock.tokens), original);
   assert.throws(() => restoreMarkdown(protectedBlock.text.replace(protectedBlock.tokens[0][0], ''), protectedBlock.tokens));
 });
+
+test('selection translation keeps a bounded context separate from the exact requested text', async () => {
+  const { selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt } = await import('../src/prompts.mjs');
+  const selected = 'target phrase';
+  const context = `${'A'.repeat(450)}${selected}${'B'.repeat(450)}`;
+  const bounded = selectionContext(context, selected, 600);
+  assert.equal(bounded.length, 600);
+  assert.ok(bounded.includes(selected));
+  const prompt = selectionTranslationPrompt(selected, bounded, 'English', 'Chinese', [{ source: 'target', target: '目标' }]);
+  assert.match(prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
+  assert.match(prompt, /PAPERBRIDGE_SELECTION_TRANSLATE_ONLY/);
+  assert.match(prompt, /target = 目标/);
+  assert.match(strictSelectionTranslationPrompt(selected, 'English', 'Chinese'), /Do not add a label/);
+  assert.doesNotMatch(strictSelectionTranslationPrompt(selected, 'English', 'Chinese'), /CONTEXT_DO_NOT_TRANSLATE/);
+});
+
+test('short overexpanded selection translations request a strict retry', async () => {
+  const { isLikelyOverexpandedSelection, selectionTranslationCacheVersion } = await import('../src/prompts.mjs');
+  assert.equal(selectionTranslationCacheVersion, 'selection-translation-v2');
+  assert.equal(isLikelyOverexpandedSelection('x'.repeat(49), 'short phrase'), true);
+  assert.equal(isLikelyOverexpandedSelection('concise translation', 'short phrase'), false);
+  assert.equal(isLikelyOverexpandedSelection('x'.repeat(1000), 's'.repeat(321)), false);
+});

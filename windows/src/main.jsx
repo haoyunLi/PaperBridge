@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
-import { translationSystem, translationPrompt, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
+import { translationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
 import { referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, parsedMarkdownBlocks } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
@@ -1068,20 +1068,27 @@ function App() {
   async function runSelection(kind) {
     if (!selection || busy || taskRef.current) return;
     const block = paperRef.current.blocks.find(item => item.id === selection.id);
-    const context = isPdfScope(selection.scope) ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
+    const fullContext = isPdfScope(selection.scope) ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
     const model = settings.quickLookupModel || (kind === 'translate' ? settings.translationModel : settings.explainModel);
     const from = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
     const to = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
+    const context = selectionContext(fullContext, selection.text, kind === 'translate' ? 600 : 2400);
+    const terms = matchingTerms(selection.text, from, to);
     const selectedKey = selectionIdentity(selection);
-    const cacheKey = JSON.stringify([paperRef.current.id, kind, selectedKey, context, from, to, model, settings.ollamaBaseURL, explanationLanguage, matchingTerms(selection.text, from, to)]);
+    const cacheKey = JSON.stringify([paperRef.current.id, kind, selectionTranslationCacheVersion, selectedKey, fullContext, from, to, model, settings.ollamaBaseURL, explanationLanguage, terms]);
     if (lookupCache.current.has(cacheKey)) { setSelectionResults(current => ({ ...current, [kind]: lookupCache.current.get(cacheKey) })); setSelectionLookup({ status: 'Using cached quick lookup.', error: '' }); return; }
     setSelectionLookup({ status: '', error: '' });
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
     token.kind = 'selection'; token.selectionKey = selectedKey;
     try {
-      const output = kind === 'translate'
-         ? await generate(model, translationPrompt(selection.text, from, to, matchingTerms(selection.text, from, to)), translationSystem(to), token)
-         : await generate(model, explainPrompt(selection.text, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
+      let output;
+      if (kind === 'translate') {
+        output = from === to ? selection.text : await generate(model, selectionTranslationPrompt(selection.text, context, from, to, terms), translationSystem(to), token);
+        if (isLikelyOverexpandedSelection(output, selection.text)) {
+          setBusy({ label: 'Refining exact selection…' });
+          output = await generate(model, strictSelectionTranslationPrompt(selection.text, from, to, terms), translationSystem(to), token);
+        }
+      } else output = await generate(model, explainPrompt(selection.text, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
       if (!token.cancelled && selectionIdentity(selectionRef.current) === selectedKey) { lookupCache.current.set(cacheKey, output); setSelectionResults(current => ({ ...current, [kind]: output })); setSelectionLookup({ status: kind === 'translate' ? 'Selection translated.' : 'Selection explained.', error: '' }); }
     } catch (err) { if (!token.cancelled) { setSelectionLookup({ status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
   }

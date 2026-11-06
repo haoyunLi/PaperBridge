@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第九阶段：精确选区翻译保护（2026-11-05）
+
+对照 macOS `PaperReaderViewModel+Selection.swift` 后，Windows 补齐选区翻译的精确边界：翻译上下文围绕选中文字限制为 600 字符，解释上下文限制为 2400 字符；提示词用独立分隔符声明上下文只用于消歧、不可翻译，真正要翻译的选区另行标记。长度不超过 320 字符的选区若首次输出超过 `max(48, 选区长度 × 3)`，应用会显示 “Refining exact selection…” 并自动发送不含上下文的严格重译请求，避免模型把整段正文一起输出。缓存版本同步升级，旧的宽松结果不会被复用；原文与目标语言相同时直接返回选区，不浪费模型调用。
+
+新增单元测试覆盖居中上下文裁剪、提示词分隔、术语、过度延伸阈值与缓存版本；主 Electron 流程模拟首次过长输出，核对两次请求的提示内容、严格重译结果和随后缓存命中。本阶段通过 **98/98 单元测试**、生产构建和主 Electron 端到端流程。
+
 ## 第八阶段：选区查询状态与取消（2026-09-21）
 
 对照 macOS `QuickSelectionView` 和 `SelectionInspectorView` 后，Windows 把选区查询状态统一到 Quick Selection 与展开的 Research Inspector。两处现在都会显示翻译/解释进行状态和 Cancel；完成后显示 Selection translated / explained，重复同一查询显示 Using cached quick lookup，失败显示在当前选区内。展开检查器同时补上当前选区的 Original / Translation 侧标识，避免同一段双语内容难以辨认。

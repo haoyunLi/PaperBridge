@@ -35,13 +35,22 @@ async function run() {
   if (!path.resolve(workspace).startsWith(path.resolve(artifacts) + path.sep)) throw new Error('Unexpected workspace path');
   fs.rmSync(workspace, { recursive: true, force: true });
   let generateDelayMs = 0;
+  const generateRequests = [];
+  const forcedGenerateResponses = [];
   const ollama = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b' }] }));
     if (request.url === '/api/ps') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b', size_vram: 1_073_741_824, size: 2_000_000_000 }] }));
     if (request.url === '/api/generate') {
-      const finish = () => response.end(JSON.stringify({ response: '本地测试译文', done: true }));
-      return generateDelayMs ? setTimeout(finish, generateDelayMs) : finish();
+      let body = '';
+      request.on('data', chunk => { body += chunk; });
+      request.on('end', () => {
+        try { generateRequests.push(JSON.parse(body)); } catch { generateRequests.push({}); }
+        const output = forcedGenerateResponses.length ? forcedGenerateResponses.shift() : '本地测试译文';
+        const finish = () => { if (!response.destroyed && !response.writableEnded) response.end(JSON.stringify({ response: output, done: true })); };
+        if (generateDelayMs) setTimeout(finish, generateDelayMs); else finish();
+      });
+      return;
     }
     response.statusCode = 404; response.end('{}');
   });
@@ -160,8 +169,15 @@ async function run() {
     assert.ok(quickBounds && quickBounds.x >= 0 && quickBounds.y >= 0 && quickBounds.x + quickBounds.width <= 980 && quickBounds.y + quickBounds.height <= 620, 'Quick Selection should remain fully visible at the minimum window size');
     await page.screenshot({ path: path.join(artifacts, 'quick-selection-980x620.png') });
     await page.setViewportSize({ width: 1320, height: 820 });
+    const selectionRequestStart = generateRequests.length;
+    forcedGenerateResponses.push('x'.repeat(80), '精确选区译文');
     await quickSelection.getByRole('button', { name: 'Translate', exact: true }).click();
     await quickSelection.locator('.selection-lookup-message').getByText('Selection translated.', { exact: true }).waitFor();
+    await quickSelection.getByText('精确选区译文', { exact: true }).waitFor();
+    assert.equal(generateRequests.length - selectionRequestStart, 2, 'An overexpanded short selection should run one strict retry');
+    assert.match(generateRequests[selectionRequestStart].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
+    assert.match(generateRequests[selectionRequestStart].prompt, /PAPERBRIDGE_SELECTION_TRANSLATE_ONLY/);
+    assert.doesNotMatch(generateRequests[selectionRequestStart + 1].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
     await quickSelection.getByRole('button', { name: 'Translate', exact: true }).click();
     await quickSelection.locator('.selection-lookup-message').getByText('Using cached quick lookup.', { exact: true }).waitFor();
     await quickSelection.getByRole('button', { name: 'Cobalt highlight', exact: true }).click();
