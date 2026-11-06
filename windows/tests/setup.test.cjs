@@ -205,7 +205,7 @@ function managedInstallFixture(t) {
     }
     return '';
   };
-  return { root, previous, backup: path.join(root, 'mineru.backup', 'Scripts', 'mineru.exe'), manager, events };
+  return { root, previous, backup: path.join(root, 'mineru.rollback', 'Scripts', 'mineru.exe'), manager, events };
 }
 
 test('failed MinerU activation restores the previous managed environment', async t => {
@@ -235,6 +235,25 @@ test('failed or cancelled MinerU runtime verification rolls back after command a
     assert.equal(fs.readFileSync(previous, 'utf8'), 'previous');
     assert.equal(fs.existsSync(backup), false);
   });
+});
+
+test('MinerU activation retries a transient Windows staging rename error', async t => {
+  const { manager, root, previous, backup } = managedInstallFixture(t);
+  manager.controller = new AbortController();
+  manager.checkMineruRuntime = async () => ({ checked: true, directml: true });
+  const rename = fs.renameSync;
+  let refusals = 0;
+  fs.renameSync = (source, destination) => {
+    if (source === path.join(root, 'mineru.installing') && refusals++ < 2) {
+      throw Object.assign(new Error('Windows temporarily refused the rename'), { code: 'EPERM' });
+    }
+    return rename(source, destination);
+  };
+  try { await manager.installMineru({ index: null }, true); }
+  finally { fs.renameSync = rename; }
+  assert.equal(refusals, 3);
+  assert.equal(fs.readFileSync(previous, 'utf8'), 'new');
+  assert.equal(fs.existsSync(backup), false);
 });
 
 test('cancelling optional MinerU model preloading reports the activated parser as installed', async t => {

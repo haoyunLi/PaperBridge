@@ -5,8 +5,11 @@ const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
+const { setTimeout: delay } = require('node:timers/promises');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
+const { mineruPaths, claimMineruSetup, recoverMineru, rollbackMineru, beginMineruActivation,
+  commitMineruActivation, removeEnvironment } = require('./mineru-installation.cjs');
 
 const exec = promisify(execFile);
 const UV_VERSION = '0.11.29';
@@ -60,6 +63,19 @@ function setupPlan(status, requiredModels = [], config = {}) {
 
 function cancelled(signal) {
   if (signal?.aborted) { const error = new Error('Setup cancelled. You can resume it later.'); error.name = 'AbortError'; throw error; }
+}
+
+async function activateStagedMineru(staging, final, signal) {
+  for (let attempt = 0; ; attempt++) {
+    cancelled(signal);
+    try { fs.renameSync(staging, final); return; }
+    catch (error) {
+      if (!['EPERM', 'EACCES', 'EBUSY'].includes(error.code) || attempt === 12) throw error;
+    }
+    // A Windows scanner or a recently closed launcher can still have a handle
+    // on the staged environment after its verification process exits.
+    await delay(250);
+  }
 }
 
 async function where(command) {
@@ -266,23 +282,34 @@ class SetupManager {
   }
 
   async installMineru(gpu, useOnnx = process.arch === 'x64' && !gpu.index) {
-    const final = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru'));
-    const staging = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.installing'));
-    const backup = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.backup'));
+    const paths = mineruPaths(this.toolsRoot);
+    const release = claimMineruSetup(paths.root);
+    if (!release) throw new Error('MinerU setup is running in another operation. Wait for it to finish.');
+    try { return await this.installMineruEnvironment(paths, gpu, useOnnx); }
+    finally { release(); }
+  }
+
+  async installMineruEnvironment(paths, gpu, useOnnx) {
+    const { final, staging, retired, legacyBackup } = paths;
     const environment = { ...(useOnnx ? mineru4Environment(this.toolsRoot, 'auto') : process.env), UV_PYTHON_INSTALL_DIR: path.join(this.toolsRoot, 'python'), UV_CACHE_DIR: path.join(this.toolsRoot, 'cache'), UV_NO_PROGRESS: '1', UV_HTTP_TIMEOUT: '600' };
     const versionArgs = useOnnx ? ['version', '--json'] : ['--version'];
-    if (fs.existsSync(backup)) {
+    recoverMineru(paths);
+    if (fs.existsSync(legacyBackup)) {
       let finalWorks = false;
       if (fs.existsSync(final)) {
-        try { finalWorks = (await mineruStatus(path.join(final, 'Scripts', 'mineru.exe'), this.toolsRoot)).runtime?.checked === true; }
+        try {
+          const executable = path.join(final, 'Scripts', 'mineru.exe');
+          const detected = await detectMineruExecutable(executable, this.toolsRoot, { repairOwner: true });
+          finalWorks = detected.compatible && (await mineruRuntime(executable, this.toolsRoot, detected)).checked === true;
+        }
         catch { /* Recover the last working installation after an interrupted activation. */ }
       }
       if (!finalWorks) {
-        if (fs.existsSync(final)) fs.rmSync(final, { recursive: true, force: true });
-        fs.renameSync(backup, final);
+        removeEnvironment(final);
+        fs.renameSync(legacyBackup, final);
       }
     }
-    if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
+    removeEnvironment(staging);
     const uv = await this.installUV();
     try {
       let managedPython = managedPythonPath(this.toolsRoot);
@@ -317,27 +344,26 @@ class SetupManager {
       if (useOnnx) await this.run(path.join(staging, 'Scripts', 'mineru-kit.exe'), ['parse', '--help'], 'mineru', 'Verifying the local ONNX parser…', { env: environment });
       cancelled(this.controller.signal);
       this.send('mineru', 'Activating the verified MinerU environment…');
-      if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
-      if (fs.existsSync(final)) fs.renameSync(final, backup);
+      beginMineruActivation(paths);
       const executable = path.join(final, 'Scripts', 'mineru.exe');
       const kitExecutable = useOnnx ? path.join(final, 'Scripts', 'mineru-kit.exe') : '';
       let runtime;
       try {
-        fs.renameSync(staging, final);
+        await activateStagedMineru(staging, final, this.controller.signal);
         await this.run(executable, versionArgs, 'mineru', 'Checking the active MinerU installation…', { env: environment });
         if (kitExecutable) await this.run(kitExecutable, ['parse', '--help'], 'mineru', 'Checking the active ONNX parser…', { env: environment });
         this.send('mineru', 'Checking the active MinerU runtime and graphics backend…');
         runtime = await this.checkMineruRuntime(executable, kitExecutable);
         cancelled(this.controller.signal);
         if (!runtime?.checked) throw new Error(runtime?.reason || 'MinerU runtime verification failed.');
+        commitMineruActivation(paths);
       } catch (error) {
-        if (fs.existsSync(final)) fs.rmSync(final, { recursive: true, force: true });
-        if (fs.existsSync(backup)) fs.renameSync(backup, final);
+        rollbackMineru(paths);
         throw error;
       }
       if (gpu.index && !useOnnx && !runtime.cuda) gpuWarning ||= 'MinerU installed, but PyTorch did not confirm CUDA. Parsing will use its available CPU path.';
       const warnings = gpuWarning ? [gpuWarning] : [];
-      try { fs.rmSync(backup, { recursive: true, force: true }); }
+      try { removeEnvironment(retired); removeEnvironment(legacyBackup); }
       catch { warnings.push('MinerU is installed. The previous environment could not be cleaned up.'); }
       const downloader = path.join(final, 'Scripts', useOnnx ? 'mineru-kit.exe' : 'mineru-models-download.exe');
       if (fs.existsSync(downloader)) {
@@ -351,7 +377,7 @@ class SetupManager {
         }
       }
       return { executable, runtime, onnx: useOnnx, warning: warnings.join(' ') };
-    } finally { if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true }); }
+    } finally { removeEnvironment(staging); }
   }
 
   async install(config) {

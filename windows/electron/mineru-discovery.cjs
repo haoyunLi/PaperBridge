@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { mineruPaths, managedMineruAvailable } = require('./mineru-installation.cjs');
 
 const exec = promisify(execFile);
 
@@ -71,7 +72,15 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
     try { return fileSystem.statSync(file).isFile(); } catch { return false; }
   }
   let firstIncompatible = null;
+  let managedUnavailable = '';
+  const managed = toolsRoot && path.join(mineruPaths(toolsRoot).final, 'Scripts', 'mineru.exe').toLowerCase();
   for (const candidate of candidates(configured, toolsRoot, options.environment)) {
+    if (managed && path.resolve(candidate.executable).toLowerCase() === managed && !options.repairOwner) {
+      try {
+        if (!managedMineruAvailable(toolsRoot)) managedUnavailable = 'MinerU setup is running in another operation. Wait for it to finish.';
+      } catch (error) { managedUnavailable = `Could not recover the previous MinerU installation: ${error.message}`; }
+      if (managedUnavailable) continue;
+    }
     if (!isFile(candidate.executable)) continue;
     let version;
     try { version = String(await checkVersion(candidate.executable, toolsRoot)).trim().slice(0, 200); }
@@ -91,8 +100,8 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
   if (firstIncompatible) return firstIncompatible;
   const explicit = String(configured || '').trim();
   return { installed: false, compatible: false, executable: '', version: '', source: '',
-    reason: explicit && !/^(?:mineru|mineru\.exe)$/i.test(explicit) ? `Configured MinerU executable was not found: ${explicit}`
-      : 'MinerU was not found in PaperBridge managed tools or on PATH. Install it in Local AI setup or enter its full path.' };
+    reason: managedUnavailable || (explicit && !/^(?:mineru|mineru\.exe)$/i.test(explicit) ? `Configured MinerU executable was not found: ${explicit}`
+      : 'MinerU was not found in PaperBridge managed tools or on PATH. Install it in Local AI setup or enter its full path.') };
 }
 
 module.exports = { candidates, detectMineruExecutable, mineru4Environment, mineruInvocation };

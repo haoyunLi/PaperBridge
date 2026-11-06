@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { candidates, detectMineruExecutable, mineruInvocation } = require('../electron/mineru-discovery.cjs');
+const { mineruPaths, claimMineruSetup, beginMineruActivation, commitMineruActivation } = require('../electron/mineru-installation.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-detect-'));
@@ -48,6 +49,57 @@ test('auto-detect skips a broken managed command and chooses compatible PATH Min
   assert.equal(result.executable, paths.onPath);
   assert.equal(result.source, 'path');
   assert.equal(result.compatible, true);
+});
+
+test('detection leaves a live repair alone and restores the old parser after its owner exits', async t => {
+  const fixturePaths = fixture(t);
+  const { toolsRoot, managed, onPath, environment } = fixturePaths;
+  const paths = mineruPaths(toolsRoot);
+  const release = claimMineruSetup(paths.root);
+  assert.ok(release);
+  t.after(release);
+  assert.equal(claimMineruSetup(paths.root), null);
+  beginMineruActivation(paths);
+  fs.mkdirSync(path.dirname(managed), { recursive: true });
+  fs.writeFileSync(managed, 'replacement still under verification');
+  const options = { environment, probeVersion: async executable => {
+    if (executable === managed) assert.equal(fs.readFileSync(managed, 'utf8'), 'test placeholder');
+    return 'MinerU 3.4.5';
+  } };
+  assert.match((await detectMineruExecutable(managed, toolsRoot, options)).reason, /setup is running/);
+  assert.equal((await detectMineruExecutable('', toolsRoot, options)).executable, onPath);
+  assert.ok(fs.existsSync(paths.rollback));
+  release();
+  assert.equal((await detectMineruExecutable('', toolsRoot, options)).executable, managed);
+  assert.equal(fs.existsSync(paths.rollback), false);
+});
+
+test('detection ignores a committed rollback copy and restores the older backup layout if final is missing', async t => {
+  const { toolsRoot, managed, environment } = fixture(t);
+  const paths = mineruPaths(toolsRoot);
+  const options = { environment, probeVersion: async () => 'MinerU 3.4.5' };
+  beginMineruActivation(paths);
+  fs.mkdirSync(path.dirname(managed), { recursive: true });
+  fs.writeFileSync(managed, 'verified replacement');
+  commitMineruActivation(paths);
+  assert.equal((await detectMineruExecutable('', toolsRoot, options)).executable, managed);
+  assert.equal(fs.readFileSync(managed, 'utf8'), 'verified replacement');
+  assert.ok(fs.existsSync(paths.retired));
+  fs.renameSync(paths.final, paths.legacyBackup);
+  assert.equal((await detectMineruExecutable('', toolsRoot, options)).executable, managed);
+  assert.equal(fs.existsSync(paths.legacyBackup), false);
+});
+
+test('detection discards an interrupted first activation without advertising it as installed', async t => {
+  const { toolsRoot, managed } = fixture(t);
+  const paths = mineruPaths(toolsRoot);
+  fs.renameSync(paths.final, paths.staging);
+  beginMineruActivation(paths);
+  fs.renameSync(paths.staging, paths.final);
+  const status = await detectMineruExecutable(managed, toolsRoot, { probeVersion: async () => assert.fail('Unverified parser was run') });
+  assert.equal(status.compatible, false);
+  assert.equal(fs.existsSync(paths.final), false);
+  assert.equal(fs.existsSync(paths.rollback), false);
 });
 
 test('incompatible or absent tools produce explicit, non-installing diagnostics', async t => {
