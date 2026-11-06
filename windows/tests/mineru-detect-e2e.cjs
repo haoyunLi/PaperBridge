@@ -131,6 +131,8 @@ async function run() {
     await app.evaluate(({ ipcMain }) => {
       global.__mineruDetectMode = 'pending';
       global.__summaryPending = null;
+      ipcMain.removeHandler('ollama:models');
+      ipcMain.handle('ollama:models', () => ['translategemma:4b']);
       ipcMain.removeHandler('ollama:generate');
       ipcMain.handle('ollama:generate', () => new Promise(resolve => { global.__summaryPending = resolve; }));
     });
