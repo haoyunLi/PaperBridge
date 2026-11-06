@@ -38,6 +38,7 @@ async function run() {
   let generateDelayMs = 0;
   const generateRequests = [];
   const forcedGenerateResponses = [];
+  const progressResponseGates = [];
   const ollama = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b' }] }));
@@ -49,7 +50,10 @@ async function run() {
         try { generateRequests.push(JSON.parse(body)); } catch { generateRequests.push({}); }
         const output = forcedGenerateResponses.length ? forcedGenerateResponses.shift() : '本地测试译文';
         const finish = () => { if (!response.destroyed && !response.writableEnded) response.end(JSON.stringify({ response: output, done: true })); };
-        if (generateDelayMs) setTimeout(finish, generateDelayMs); else finish();
+        const gate = progressResponseGates.shift();
+        if (gate) void gate.then(finish);
+        else if (generateDelayMs) setTimeout(finish, generateDelayMs);
+        else finish();
       });
       return;
     }
@@ -144,16 +148,19 @@ async function run() {
     await page.getByRole('heading', { name: 'Saved Terminology' }).waitFor();
     await page.locator('.modal-head .icon-button').click();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
-    generateDelayMs = 300;
+    const firstBlock = Promise.withResolvers();
+    const secondBlock = Promise.withResolvers();
+    progressResponseGates.push(firstBlock.promise, secondBlock.promise);
     await page.keyboard.press('Control+Enter');
-    const taskProgress = page.locator('.task-progress progress');
+    const taskProgress = page.locator('.task-progress progress[value]');
     await taskProgress.waitFor();
     const taskValues = await taskProgress.evaluate(element => ({ value: element.value, max: element.max }));
     assert.ok(taskValues.max > 1 && taskValues.value < taskValues.max, 'Translation should show determinate progress while running');
+    firstBlock.resolve();
     await page.waitForFunction(() => document.querySelector('.task-progress progress')?.value > 0);
     await page.screenshot({ path: path.join(artifacts, 'task-progress.png') });
+    secondBlock.resolve();
     await page.getByText('Translation pass finished.', { exact: false }).waitFor({ timeout: 15000 });
-    generateDelayMs = 0;
     await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
     await page.locator('.inspector').waitFor({ state: 'hidden' });
     await page.evaluate(() => {

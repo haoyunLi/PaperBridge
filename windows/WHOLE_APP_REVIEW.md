@@ -6,6 +6,8 @@
 
 154 项单元测试及 Windows 桌面回归覆盖组件计划、缺模型、端点切换、OpenAI 暂停及设置入口。RX 7800 XT 上故意配置一个未安装模型，Windows 实际检测后只列出该模型。经 Choose task models 改选本机 TranslateGemma 4B，再手动翻译练习段落，Ollama 报告 2,881,948,220 字节显存占用，译文重启后恢复。实机复测使用已有模型，安装流程由受控桌面回归验证。0.2.9 汇集第四十六和第四十七阶段。
 
+GitHub 发布构建通过 154 项单元测试、23 套桌面回归和打包启动检查。公开 Setup 与 Portable 的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开 0.2.8 安装版显示更新提示，用公开 0.2.9 升级后恢复论文、笔记和高亮，卸载测试实例后工作区保留。公开 0.2.9 便携版也完成上述缺模型、选择替代模型、ROCm 翻译与重启恢复流程。GitHub 首页直链已更新，仓库 Latest 仍指向 macOS。 [Windows 0.2.9](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.9) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42310176938)
+
 ## 第四十六阶段：章节优先与真实翻译队列续译（2026-11-06 UTC）
 
 打开 Translation Range 时直接读取当前可见段落。插队按钮显示当前章节实际还在等待的段数，只重排这些段落。进行中的段落继续处理，已处理段落保持结果。停止会立即关闭本轮队列，进度单独统计本轮失败，侧栏继续显示整篇论文的失败总数。
