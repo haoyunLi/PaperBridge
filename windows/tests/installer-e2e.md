@@ -15,6 +15,8 @@ The script copies the built installer into a fresh `test-artifacts/i-*` director
 
 For a cross-version upgrade, place the previous trusted installer in `release/` and set `PAPERBRIDGE_INSTALLER_FROM_VERSION` to its version. The test accepts the versioned x64 filename and the older `PaperBridge Setup <version>.exe` convention. Both installers are hashed before use, and the test checks the running app and registry version before and after the upgrade.
 
+After the target release is public, pass `--check-published-update` to verify the older installed app's update banner against GitHub and confirm that the upgraded app reports the current version.
+
 Fixtures use a compact `test-artifacts/i-*` name. Before mutation, the test combines that install path with every file under `release/win-unpacked` and refuses a longest path of 260 characters or more. This mirrors the traditional Win32 path boundary used by electron-builder's NSIS atomic update removal. The production installer keeps electron-builder's safe default directory and does not expose a custom directory page.
 
 The test uses an isolated install directory for both versions. Rollback, interrupted installation, and an existing user's default profile need separate scenarios.

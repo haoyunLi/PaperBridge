@@ -83,6 +83,8 @@ jobs:
             - Each executable has a SHA-256 checksum. The binaries are unsigned.
 
             You can open and annotate PDFs immediately. Use **Local AI setup** to install Ollama and the translation model when you first need local AI. MinerU is optional for scanned PDFs and structured extraction.
+
+            See the [Windows README](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/windows/README.md) for changes and setup details.
           files: |
             windows/release/PaperBridge-Windows-*-x64-*.exe
             windows/release/PaperBridge-Windows-*-x64-*.exe.sha256

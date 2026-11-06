@@ -205,6 +205,7 @@ async function waitForNoPaperBridgeProcesses(message) {
 async function run() {
   if (process.platform !== 'win32') throw new Error('This installer test requires Windows.');
   const preflightOnly = process.argv.includes('--preflight');
+  const checkPublishedUpdate = process.argv.includes('--check-published-update');
   if (!preflightOnly && process.env.PAPERBRIDGE_INSTALLER_E2E !== '1') throw new Error('Opt in with PAPERBRIDGE_INSTALLER_E2E=1, or run --preflight for a read-only check.');
   assert.equal(metadata.build.appId, 'net.paperbridges.windows');
   assert.equal(metadata.name, 'paperbridge-windows');
@@ -216,6 +217,7 @@ async function run() {
   const fromVersion = process.env.PAPERBRIDGE_INSTALLER_FROM_VERSION || metadata.version;
   assert.ok(/^\d+\.\d+\.\d+$/.test(fromVersion) && compareVersions(fromVersion, metadata.version) <= 0, 'The starting installer version must be the current version or an older version.');
   const upgrading = fromVersion !== metadata.version;
+  if (checkPublishedUpdate && !upgrading) throw new Error('The published update check needs an older starting version.');
   const namedOlder = path.join(root, 'release', `PaperBridge-Windows-${fromVersion}-x64-Setup.exe`);
   const firstSource = upgrading ? executable(fs.existsSync(namedOlder) ? namedOlder : path.join(root, 'release', `PaperBridge Setup ${fromVersion}.exe`), root) : source;
   const lifecycle = upgrading ? 'Cross-version upgrade' : 'Same-version reinstall';
@@ -300,6 +302,16 @@ async function run() {
     record('Installed at the requested isolated absolute path', { elapsedMs: firstInstall.elapsedMs, registry: state.registry });
     let page = await launch(fromVersion);
     await page.locator('.welcome').waitFor({ timeout: 20000 });
+    if (checkPublishedUpdate) {
+      await app.evaluate(({ Menu, BrowserWindow }) => {
+        Menu.getApplicationMenu().getMenuItemById('command:checkUpdates').click(null, BrowserWindow.getAllWindows()[0]);
+      });
+      await page.locator('.update-banner').getByText(`PaperBridge for Windows ${metadata.version} is available`, { exact: true }).waitFor();
+      const { release } = JSON.parse(fs.readFileSync(path.join(workspace, 'updates.json'), 'utf8'));
+      assert.equal(release.tag, `windows-v${metadata.version}`);
+      assert.equal(release.installerName, path.basename(source));
+      record('Previous installed version showed the published update banner', { release });
+    }
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text').waitFor();
@@ -341,6 +353,13 @@ async function run() {
     assert.deepEqual(JSON.parse(fs.readFileSync(paperFile(), 'utf8')), savedPaper, `${lifecycle} must preserve saved paper data`);
     page = await launch(metadata.version);
     await page.locator('.title-wrap h1').getByText(savedPaper.name, { exact: true }).waitFor({ timeout: 20000 });
+    if (checkPublishedUpdate) {
+      const update = await page.evaluate(() => window.paperBridge.checkUpdates(false));
+      assert.equal(update.status, 'current');
+      assert.equal(update.latestVersion, metadata.version);
+      assert.equal(update.currentVersion, metadata.version);
+      record('Upgraded app confirmed it is on the current published Windows version', { update });
+    }
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text mark').waitFor();
     await page.locator('#block-2 .block-notes').getByText(note, { exact: false }).waitFor();
