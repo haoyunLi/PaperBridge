@@ -1,17 +1,20 @@
 const clone = value => structuredClone(value);
 
 export function normalizeReadingLocation(value = {}) {
+  const search = typeof value.search === 'string' ? value.search : '';
   const scrollByTab = Object.fromEntries(Object.entries(value.scrollByTab || {})
     .filter(([, offset]) => Number.isFinite(Number(offset)))
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([key, offset]) => [key, Number(offset)]));
   return {
     paperId: typeof value.paperId === 'string' ? value.paperId : '',
+    ...(['pdf', 'mineru', 'text'].includes(value.sourceMode) && { sourceMode: value.sourceMode }),
     tab: typeof value.tab === 'string' ? value.tab : 'Paper',
     displayMode: ['source', 'translation', 'bilingual'].includes(value.displayMode) ? value.displayMode : 'bilingual',
     block: Number.isInteger(value.block) && value.block > 0 ? value.block : 1,
     page: Number.isInteger(value.page) && value.page > 0 ? value.page : 1,
-    search: typeof value.search === 'string' ? value.search : '',
+    search,
+    ...(search && Number.isFinite(value.searchOrigin) && { searchOrigin: value.searchOrigin }),
     scrollByTab
   };
 }
@@ -36,17 +39,19 @@ export function createReadingHistory(limit = 50) {
       forward = [];
       return back.length !== before;
     },
-    goBack(current) {
-      const destination = back.pop();
-      if (!destination) return null;
+    goBack(current, canRestore = () => true) {
+      const destination = clone(back.at(-1));
+      if (!destination || !canRestore(destination)) return null;
+      back.pop();
       forward = append(forward, current);
-      return clone(destination);
+      return destination;
     },
-    goForward(current) {
-      const destination = forward.pop();
-      if (!destination) return null;
+    goForward(current, canRestore = () => true) {
+      const destination = clone(forward.at(-1));
+      if (!destination || !canRestore(destination)) return null;
+      forward.pop();
       back = append(back, current);
-      return clone(destination);
+      return destination;
     },
     reset() { back = []; forward = []; },
     canGoBack() { return back.length > 0; },

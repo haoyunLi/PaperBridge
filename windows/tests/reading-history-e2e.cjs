@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
 function samplePdf() {
@@ -68,14 +69,36 @@ async function run() {
   fs.mkdirSync(path.join(workspace, 'pdfs'), { recursive: true });
   const id = crypto.createHash('sha256').update('PaperBridge reading history fixture').digest('hex');
   const otherId = crypto.createHash('sha256').update('PaperBridge second history fixture').digest('hex');
-  const settings = { ollamaBaseURL: 'http://127.0.0.1:11434', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', autoCheckUpdates: false, onboardingCompletedVersion: 1 };
+  let finishTranslation;
+  const ollama = http.createServer((request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b' }] }));
+    if (request.url === '/api/generate') {
+      request.resume();
+      request.on('end', () => {
+        finishTranslation = () => {
+          finishTranslation = null;
+          response.end(JSON.stringify({ response: '结构化来源译文。', done: true }));
+        };
+      });
+      return;
+    }
+    response.end('{}');
+  });
+  await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
+  const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', autoCheckUpdates: false, onboardingCompletedVersion: 1 };
   const filler = ' Supporting detail keeps this reading surface tall enough to exercise exact scroll restoration.'.repeat(10);
   const texts = ['Abstract', `Opening context.${filler}`, 'Methods', `Unique evidence phrase supports the history target.${filler}`, 'Results', `Result details remain available.${filler}`, 'Discussion', `Discussion details remain available.${filler}`, 'Conclusion', `Closing context remains available.${filler}`];
   const blocks = texts.map((text, index) => ({ id: index + 1, text, heading: index % 2 === 0, translation: '', status: 'pending', bookmark: [4, 6].includes(index + 1), notes: [], highlights: [] }));
+  const mineruBlocks = blocks.map(block => {
+    const text = block.heading ? `MinerU section ${block.id}` : `Structured passage ${block.id}.${filler}`;
+    return { ...block, text, sourceMarkdown: block.heading ? `# ${text}` : text, bookmark: false };
+  });
   const quote = 'Unique evidence phrase supports the history target.';
   const paper = {
     id, name: 'Reading history fixture.pdf', type: 'pdf', createdAt: '2026-09-21T00:00:00.000Z', updatedAt: '2026-09-21T00:00:00.000Z',
     taskSettings: settings, explanationLanguage: 'English', inspectorOpen: true, extraction: 'PDF.js', sourceMode: 'pdf', blocks, pdfBlocks: blocks,
+    mineruBlocks, mineruMarkdown: mineruBlocks.map(block => block.sourceMarkdown).join('\n\n'),
     position: { block: 2, page: 1, tab: 'Summary', displayMode: 'translation', scrollByTab: { Summary: 0, Reader: 0, 'Original:1': 0, 'Original:2': 0 } },
     summary: { source: `${'Summary context. '.repeat(120)}\n\n${quote}`, target: `摘要内容。${'更多摘要。'.repeat(120)}`,
       sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', claims: [{ text: 'The paper includes a history target.', sources: [{ paragraphID: 4, quote }] }] },
@@ -160,6 +183,88 @@ async function run() {
     assert.equal(native.back, true);
 
     await back.click();
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.getByLabel('Paper display mode').selectOption('bilingual');
+    await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).waitFor();
+    await back.click();
+    await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
+    await forward.click();
+    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).waitFor();
+    const structuredQuote = 'MinerU section 7\nStructured passage 8.';
+    await page.evaluate(() => {
+      const article = document.querySelector('[data-view-scope="paperArticle"]');
+      const start = article.querySelector('[data-paper-block-id="7"] [data-paper-kind="source"] h1').firstChild;
+      const end = article.querySelector('[data-paper-block-id="8"] [data-paper-kind="source"] p').firstChild;
+      const range = document.createRange();
+      range.setStart(start, 0);
+      range.setEnd(end, 'Structured passage 8.'.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      article.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    assert.equal(await page.locator('.inspector blockquote').textContent(), structuredQuote);
+    await page.getByPlaceholder('What should you remember?').fill('MinerU history annotation');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByLabel('Reading mode').selectOption('source');
+    const unfilteredScroll = await page.locator('.main-scroll').evaluate(host => { host.scrollTop = 640; return host.scrollTop; });
+    await search.evaluate(input => {
+      // Change the filter without Playwright scrolling its input into view.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Supporting detail');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.reader-list .block').length === 5);
+    const filteredScroll = await page.locator('.main-scroll').evaluate(host => { host.scrollTop = 355; return host.scrollTop; });
+    assert.ok(unfilteredScroll > 300 && filteredScroll > 100);
+    const structuredNote = page.locator('.saved-annotations .annotation-row').filter({ hasText: 'MinerU history annotation' }).locator('button').first();
+    await structuredNote.click();
+    await page.waitForFunction(quote => {
+      const host = document.querySelector('.main-scroll');
+      const heading = host.querySelector('[data-paper-block-id="7"]');
+      return document.querySelector('.inspector blockquote')?.textContent === quote && heading &&
+        heading.getBoundingClientRect().top >= host.getBoundingClientRect().top &&
+        heading.getBoundingClientRect().top < host.getBoundingClientRect().bottom;
+    }, structuredQuote);
+    const structuredScroll = await page.locator('.main-scroll').evaluate(host => host.scrollTop);
+    assert.ok(structuredScroll > 300, 'The annotation jump should scroll the reflowed paper');
+    await back.click();
+    await page.waitForFunction(expected => {
+      const host = document.querySelector('.main-scroll');
+      return document.querySelector('.reader-mode-select')?.value === 'source' &&
+        document.querySelector('.search')?.value === 'Supporting detail' &&
+        host.textContent.includes('Unique evidence phrase') && Math.abs(host.scrollTop - expected) < 12;
+    }, filteredScroll);
+    await forward.click();
+    await page.waitForFunction(expected => {
+      const host = document.querySelector('.main-scroll');
+      return document.querySelector('[aria-label="Paper display mode"]')?.value === 'bilingual' &&
+        document.querySelector('.source-mode')?.textContent.includes('Reader source: MinerU Markdown') &&
+        Math.abs(host.scrollTop - expected) < 12;
+    }, structuredScroll);
+    assert.ok(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size > 0));
+
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    const translated = page.locator('#block-8');
+    await translated.locator('button[title="Translate or retry block"]').click();
+    await waitFor(() => typeof finishTranslation === 'function', 'translation request to start');
+    await back.click();
+    await page.getByText('Finish or stop the current task before switching the reading source.', { exact: true }).waitFor();
+    assert.equal(await back.isEnabled(), true);
+    await translated.locator('.source-text').getByText(/Structured passage 8/).waitFor();
+    finishTranslation();
+    await translated.locator('.translation-text.done').getByText('结构化来源译文。', { exact: true }).waitFor();
+    await back.click();
+    await page.waitForFunction(expected => document.querySelector('.search')?.value === 'Supporting detail' &&
+      Math.abs(document.querySelector('.main-scroll').scrollTop - expected) < 12, filteredScroll);
+    await search.fill('');
+    await page.waitForFunction(expected => Math.abs(document.querySelector('.main-scroll').scrollTop - expected) < 12, unfilteredScroll);
+    await waitFor(() => readPaper().sourceMode === 'pdf', 'Back restored the PDF text source');
+    await forward.click();
+    await translated.locator('.translation-text.done').getByText('结构化来源译文。', { exact: true }).waitFor();
+    await back.click();
+    await waitFor(() => readPaper().sourceMode === 'pdf', 'PDF source before structure repair');
     await page.locator('#block-4 button[title="Edit source"]').click();
     await page.locator('#block-4 .edit-area textarea').fill(`${blocks[3].text} Revised.`);
     await page.getByRole('button', { name: 'Save edit', exact: true }).click();
@@ -174,12 +279,14 @@ async function run() {
     assert.equal(await back.isDisabled(), true, 'opening another paper must clear Back');
     assert.equal(await forward.isDisabled(), true, 'opening another paper must clear Forward');
     await page.screenshot({ path: path.join(artifacts, 'reading-history.png') });
-    console.log('Reading history checks passed: de-duplicated jumps, Back/Forward, branch clearing, search/scroll/page restoration, stale callback guard, native shortcuts, structure reset and paper isolation.');
+    console.log('Reading history checks passed: PDF text and MinerU source swaps, Back/Forward, busy retry, search/scroll/page restoration, native shortcuts and paper isolation.');
   } catch (error) {
     await page?.screenshot({ path: path.join(artifacts, 'reading-history-failure.png') }).catch(() => {});
     throw error;
   } finally {
+    finishTranslation?.();
     await app?.close().catch(() => {});
+    await new Promise(resolve => ollama.close(resolve));
   }
 }
 

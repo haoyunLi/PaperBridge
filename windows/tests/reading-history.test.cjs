@@ -44,3 +44,18 @@ test('locations include tab, mode, search, page and every sorted surface offset'
   assert.equal(sameReadingLocation(value, { ...value, scrollByTab: { Summary: 8, Reader: 4 } }), true);
   assert.equal(sameReadingLocation(value, { ...value, page: 3 }), false);
 });
+
+test('reading history distinguishes extraction sources and leaves blocked moves in place', async () => {
+  const { createReadingHistory, sameReadingLocation } = await historyModule;
+  const pdf = location(4, { sourceMode: 'pdf', search: 'evidence', searchOrigin: 640 });
+  const mineru = { ...pdf, sourceMode: 'mineru' };
+  assert.equal(sameReadingLocation(pdf, mineru), false);
+  const history = createReadingHistory();
+  history.record(pdf);
+  assert.equal(history.goBack(mineru, () => false), null);
+  assert.deepEqual(history.snapshot(), { back: [pdf], forward: [] });
+  assert.deepEqual(history.goBack(mineru, target => target.sourceMode === 'pdf'), pdf);
+  assert.equal(history.goForward(pdf, () => false), null);
+  assert.deepEqual(history.snapshot(), { back: [], forward: [mineru] });
+  assert.deepEqual(history.goForward(pdf), mineru);
+});
