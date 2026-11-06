@@ -76,13 +76,10 @@ async function openByBlocks(page, count, distinctiveText) {
 }
 
 async function waitForSavedExplanation(page) {
-  const explainedBlock = page.locator('#block-2');
-  await explainedBlock.scrollIntoViewIfNeeded();
-  await explainedBlock.click();
-  const result = page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation');
-  await result.waitFor({ state: 'attached' });
-  await result.scrollIntoViewIfNeeded();
-  await result.waitFor({ state: 'visible' });
+  // Locator actions re-resolve after React replaces a paper/inspector subtree;
+  // cached element handles and separate scroll calls can race that replacement.
+  await page.locator('#block-2').click();
+  await page.locator('.paragraph-explanation p').getByText('Saved paragraph explanation', { exact: true }).waitFor({ state: 'visible' });
 }
 
 async function explainBlockIn(page, language) {
