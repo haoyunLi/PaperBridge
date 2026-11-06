@@ -1,5 +1,5 @@
 import { anchorText } from './academicMarkdown.mjs';
-import { blockMarkdown, textAnchorAvailable } from './markdownAnchors.mjs';
+import { blockMarkdown, paperArticleAnchorAvailable, textAnchorAvailable } from './markdownAnchors.mjs';
 import { pdfPageLabel } from './pdfAnchors.mjs';
 
 export function annotationsMarkdown(paper) {
@@ -26,6 +26,10 @@ export function annotationsMarkdown(paper) {
   const scopes = { summarySource: ['Summary · source', paper.summary?.source], summaryTarget: ['Summary · translation', paper.summary?.target], fullTranslation: ['Full Translation', paper.connectedTranslation] };
   for (const [items, destination] of [[paper.viewNotes, notes], [paper.viewHighlights, highlights]]) {
     for (const item of items || []) {
+      if (item.scope === 'paperArticle') {
+        append(destination, 'Paper · document preview', { ...item, needsReview: item.needsReview || !paperArticleAnchorAvailable(paper, item) });
+        continue;
+      }
       const [label, source] = scopes[item.scope] || [item.scope, ''];
       append(destination, label, item, source || '', source);
     }

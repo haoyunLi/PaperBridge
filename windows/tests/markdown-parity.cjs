@@ -265,7 +265,90 @@ async function run() {
     await page.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
     await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.viewNotes.find(item => item.id === 'shifted-summary')?.needsReview, id);
     assert.equal(requests.length, 5, 'Reopening a completed draft should not issue model requests');
-    console.log('Markdown rendering, exact annotations, and shared full translation, retry, and export verified.');
+
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.getByLabel('Paper display mode').selectOption('bilingual');
+    await page.locator('[data-paper-block-id="2"] [data-paper-kind="source"] .katex').waitFor();
+    await page.evaluate(() => {
+      const root = document.querySelector('[data-view-scope="paperArticle"]');
+      const start = root.querySelector('[data-paper-block-id="1"] h1').firstChild;
+      const end = root.querySelector('[data-paper-block-id="2"] [data-paper-kind="source"] .katex').nextSibling;
+      const range = document.createRange();
+      range.setStart(start, 'Research '.length);
+      range.setEnd(end, end.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      root.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.getByText('SELECTED TEXT · PAPER', { exact: true }).waitFor();
+    const crossQuote = await page.locator('.inspector blockquote').textContent();
+    assert.match(crossQuote, /^title\n研究标题\nAshish Vaswani∗/);
+    assert.ok(crossQuote.endsWith(formulaQuote + '.'));
+    assert.doesNotMatch(crossQuote, /Translation unavailable|\$N|Formula/);
+    const crossNote = 'This note spans Paper sections.';
+    await page.locator('.inspector .highlight.amber').click();
+    await page.locator('.inspector textarea').fill(crossNote);
+    await page.getByRole('button', { name: 'Save note' }).click();
+    await page.waitForFunction(async ({ id, crossNote }) => (await window.paperBridge.loadPaper(id))?.viewNotes.some(item => item.body === crossNote), { id, crossNote });
+    const crossSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
+    for (const list of [crossSaved.viewNotes, crossSaved.viewHighlights]) {
+      const saved = list.filter(item => item.scope === 'paperArticle');
+      assert.equal(saved.length, 1);
+      assert.equal(saved[0].text, crossQuote);
+      assert.equal(saved[0].displayMode, 'bilingual');
+      assert.equal(saved[0].sourceMode, 'mineru');
+      assert.equal(saved[0].renderedSource, undefined);
+    }
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
+
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.getByRole('button', { name: 'Summary, sources and notes', exact: true }).click();
+    await page.getByText('Exported fixture.md', { exact: true }).waitFor();
+    const crossExport = await app.evaluate(() => globalThis.__sharedMarkdownExport);
+    assert.ok(crossExport.includes('### Paper · document preview\n\n> ' + crossQuote.replaceAll('\n', '\n> ') + '\n\n' + crossNote));
+
+    await page.getByLabel('Paper display mode').selectOption('translation');
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.waitForFunction(async paperId => {
+      const position = (await window.paperBridge.loadPaper(paperId))?.position;
+      return position?.tab === 'Reader' && position.displayMode === 'translation';
+    }, id);
+    await page.reload();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
+    await page.waitForFunction(({ crossQuote, crossNote }) => {
+      const selected = window.getSelection();
+      if (!selected?.rangeCount) return false;
+      const fragment = selected.getRangeAt(0).cloneContents();
+      fragment.querySelectorAll('.katex-mathml, [data-selection-ignore]').forEach(node => node.remove());
+      return fragment.textContent === crossQuote && document.querySelector('.inspector textarea')?.value === crossNote;
+    }, { crossQuote, crossNote });
+    assert.equal(await page.getByLabel('Paper display mode').inputValue(), 'bilingual');
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
+    await page.getByLabel('Back to previous reading location').click();
+    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'translation');
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Paper · document preview · amber' }).getByRole('button', { name: /^Remove view highlight/ }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);
+    await page.getByRole('button', { name: 'Undo last highlight or note change' }).click();
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
+    await app.close();
+    const savedPath = path.join(workspace, 'papers', `${id}.json`);
+    const changed = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
+    changed.blocks[1].sourceMarkdown = changed.blocks[1].sourceMarkdown.replace('Ashish', 'Changed');
+    fs.writeFileSync(savedPath, JSON.stringify(changed));
+    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    const reopened = await app.firstWindow();
+    await reopened.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
+    await reopened.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
+    assert.equal(await reopened.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);
+    await reopened.waitForFunction(async ({ id, crossNote, crossQuote }) => {
+      const record = (await window.paperBridge.loadPaper(id))?.viewNotes.find(item => item.body === crossNote);
+      return record?.needsReview && record.text === crossQuote;
+    }, { id, crossNote, crossQuote });
+    console.log('Markdown rendering, cross-section Paper annotations, and shared full translation, retry, and export verified.');
   } finally {
     await app?.close();
     await new Promise(resolve => ollama.close(resolve));

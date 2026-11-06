@@ -1,12 +1,10 @@
 import { anchorText } from './academicMarkdown.mjs';
 import { isPdfScope, pdfAnchorKey, samePdfSelection, storedPdfAnchors, validPdfSelection } from './pdfAnchors.mjs';
-import { blockMarkdown, sameTextAnchor, validTextSelection } from './markdownAnchors.mjs';
-
-const viewScopes = new Set(['summarySource', 'summaryTarget', 'fullTranslation']);
+import { blockMarkdown, isMarkdownView, sameTextAnchor, sameViewAnchor, validPaperArticleSelection, validTextSelection } from './markdownAnchors.mjs';
 
 export function noteSelectionIdentity(paperId, selection) {
   if (!paperId || !selection) return '';
-  return JSON.stringify([paperId, selection.scope, selection.id ?? null, selection.page ?? null, selection.kind || 'source', selection.offset, selection.text, selection.anchors && pdfAnchorKey(selection), selection.renderedAnchor]);
+  return JSON.stringify([paperId, selection.scope, selection.id ?? null, selection.page ?? null, selection.kind || 'source', selection.offset, selection.text, selection.anchors && pdfAnchorKey(selection), selection.renderedAnchor, selection.displayMode, selection.sourceMode]);
 }
 
 export function sameNoteSelection(paperId, selection, identity) {
@@ -22,7 +20,8 @@ export function viewText(paper, scope) {
 export function validNoteSelection(paper, selection) {
   if (!paper || !selection?.text) return false;
   if (isPdfScope(selection.scope)) return validPdfSelection(selection);
-  if (viewScopes.has(selection.scope)) {
+  if (selection.scope === 'paperArticle') return validPaperArticleSelection(paper, selection);
+  if (isMarkdownView(selection.scope)) {
     const source = viewText(paper, selection.scope);
     return validTextSelection(selection, source, source);
   }
@@ -34,14 +33,14 @@ export function validNoteSelection(paper, selection) {
 function matches(selection, item) {
   if (!item || item.needsReview) return false;
   if (isPdfScope(selection.scope)) return samePdfSelection(item, selection);
-  if (viewScopes.has(selection.scope)) return item.scope === selection.scope && sameTextAnchor(item, selection);
+  if (isMarkdownView(selection.scope)) return sameViewAnchor(item, selection);
   return (item.scope || 'reader') === selection.scope && sameTextAnchor(item, selection) && (item.kind || 'source') === (selection.kind || 'source');
 }
 
 export function findSelectionNote(paper, selection) {
   if (!paper || !selection) return null;
   if (isPdfScope(selection.scope)) return (paper.pdfNotes || []).find(item => matches(selection, item)) || null;
-  if (viewScopes.has(selection.scope)) return (paper.viewNotes || []).find(item => matches(selection, item)) || null;
+  if (isMarkdownView(selection.scope)) return (paper.viewNotes || []).find(item => matches(selection, item)) || null;
   const block = paper.blocks?.find(item => item.id === selection.id);
   return block?.notes?.find(item => matches(selection, item)) || null;
 }
@@ -74,8 +73,11 @@ export function applySelectionNote(paper, selection, body, makeId = () => crypto
     });
     return pdfNotes === (paper.pdfNotes || []) ? paper : { ...paper, pdfNotes };
   }
-  if (viewScopes.has(selection.scope)) {
-    const viewNotes = updateNotes(paper.viewNotes, selection, body, makeId, { scope: selection.scope });
+  if (isMarkdownView(selection.scope)) {
+    const viewNotes = updateNotes(paper.viewNotes, selection, body, makeId, {
+      scope: selection.scope,
+      ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind })
+    });
     return viewNotes === (paper.viewNotes || []) ? paper : { ...paper, viewNotes };
   }
   const index = paper.blocks.findIndex(item => item.id === selection.id);

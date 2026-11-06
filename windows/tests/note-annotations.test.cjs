@@ -94,3 +94,24 @@ test('notes map across reader translation, PDF, summary and full translation sco
   assert.equal(sameNoteSelection('another-paper', selections[0], identity), false);
   assert.equal(sameNoteSelection(paper.id, selections[1], identity), false);
 });
+
+test('Paper article notes keep their reading source and reject edits through a stale selection', async () => {
+  const { applySelectionNote, findSelectionNote, validNoteSelection } = await annotations;
+  const { paperArticleAnchorAvailable, paperArticleSource, selectionOffsets } = await import('../src/markdownAnchors.mjs');
+  const blocks = [{ id: 1, text: 'A rendered heading' }, { id: 2, text: 'A rendered paragraph' }];
+  const paper = { id: 'article', type: 'pdf', sourceMode: 'mineru', mineruMarkdown: '# A rendered heading', blocks };
+  const captured = { text: 'heading\nA rendered', context: 'A rendered heading\nA rendered paragraph', offset: 11 };
+  const selection = { ...selectionOffsets(captured, null, paperArticleSource(paper)), text: captured.text,
+    scope: 'paperArticle', displayMode: 'bilingual', sourceMode: 'mineru', kind: 'source' };
+  const saved = applySelectionNote(paper, selection, 'Across the heading', () => 'article-note');
+  assert.equal(findSelectionNote(saved, selection).body, 'Across the heading');
+  assert.equal(saved.viewNotes[0].renderedSource, undefined);
+  assert.equal(findSelectionNote(saved, { ...selection, displayMode: 'translation' }), null);
+  const otherSource = { ...saved, sourceMode: 'pdf', blocks: [{ id: 1, text: 'PDF text' }], mineruBlocks: blocks };
+  assert.equal(paperArticleAnchorAvailable(otherSource, saved.viewNotes[0]), true);
+  assert.equal(validNoteSelection(otherSource, selection), false);
+  const annotationOnly = { ...saved, blocks: [{ ...blocks[0], bookmark: true }, blocks[1]] };
+  assert.equal(validNoteSelection(annotationOnly, selection), true);
+  const edited = { ...saved, blocks: [blocks[0], { ...blocks[1], text: 'Edited while selected' }] };
+  assert.equal(applySelectionNote(edited, selection, 'Do not overwrite'), edited);
+});
