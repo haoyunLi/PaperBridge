@@ -77,6 +77,19 @@ test('undoing an edit restores removed source highlights but respects later expl
   assert.deepEqual(restored.blocks[0].notes, []);
 });
 
+test('an exact edit range restores results when one replacement matches an old paragraph', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { editedParagraphs } = await paperHelpers;
+  const before = paper([{ text: 'Original sentence.', status: 'ok', translation: 'Original translation' },
+    { text: 'Untouched paragraph.' }]);
+  const replacements = editedParagraphs(before.blocks[0], 'Original sentence.\n\nNew paragraph.');
+  const after = paper([...replacements, before.blocks[1]].map((block, index) => ({ ...block, id: index + 1 })));
+  const current = { ...after, blocks: [...after.blocks.slice(0, 2), { ...after.blocks[2], status: 'ok', translation: 'Untouched translation' }] };
+  const restored = applyUndoEntry(current, createUndoEntry(before, after, { start: 0, beforeEnd: 1, afterEnd: 2 }));
+  assert.deepEqual(restored.blocks.map(block => block.text), before.blocks.map(block => block.text));
+  assert.deepEqual(restored.blocks.map(block => block.translation), ['Original translation', 'Untouched translation']);
+});
+
 test('entries cannot undo into another paper or a different extraction, and AI-only changes create no entry', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const before = paper([{ text: 'Original.' }]);

@@ -210,7 +210,20 @@ async function run() {
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
     await page.locator('.undo-button').click();
     await waitForSavedExplanation(page);
-    console.log('Per-paper task settings, explanation cache, and inspector state restored across switching and restart; legacy paper inherited current settings.');
+
+    const original = readPaper(textA).blocks[1];
+    assert.equal(original.status, 'ok');
+    await page.locator('#block-2 button[title="Bookmark"]').click();
+    await page.locator('#block-2 button[title="Edit source"]').click();
+    const editor = page.locator('#block-2 .edit-area');
+    await editor.locator('textarea').fill(`${original.text}\n\nA new paragraph with a\nmanual line break.`);
+    await editor.getByRole('button', { name: 'Save edit' }).click();
+    await page.locator('#block-3 .source-text').getByText('A new paragraph with a manual line break.', { exact: true }).waitFor();
+    await waitFor(() => readPaper(textA).blocks.slice(1).length === 2 && readPaper(textA).blocks.slice(1).every(block => block.bookmark && block.status === 'pending'), 'separate saved paragraphs and bookmarks');
+    await page.locator('.undo-button').click();
+    await waitFor(() => readPaper(textA).blocks.length === 2 && readPaper(textA).blocks[1].translation === original.translation && readPaper(textA).blocks[1].bookmark, 'undo restores the original bookmarked translation');
+
+    console.log('Per-paper settings and explanations restored across restart; manual edit split saved separate paragraphs and undo restored the original translation.');
   } finally {
     await app?.close();
     ollama.close();

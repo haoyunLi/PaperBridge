@@ -255,3 +255,27 @@ test('sentence reflow keeps the annotated phrase in its new block', async () => 
   assert.equal(pieces[2].highlights[0].offset, 0);
   assert.equal(reflowBlock({ text: 'One very long sentence without a safe boundary.' }, 10).length, 1);
 });
+
+test('saving a manual edit splits at blank lines and moves exact annotations into their new blocks', async () => {
+  const { editedParagraphs } = await import('../src/paper.mjs');
+  const original = { id: 2, text: 'First sentence. Second sentence.', translation: 'old', status: 'ok', bookmark: true,
+    notes: [{ id: 'exact', text: 'Second', offset: 16, kind: 'source', body: 'Keep this' },
+      { id: 'crossing', text: 'sentence. Second', offset: 6, kind: 'source', body: 'Review this' }],
+    highlights: [{ text: 'Second', offset: 16, color: 'amber' }] };
+  const parts = editedParagraphs(original, ' First sentence.\r\n \r\nSecond\r\n  sentence. ');
+  assert.deepEqual(parts.map(block => block.text), ['First sentence.', 'Second sentence.']);
+  assert.ok(parts.every(block => block.bookmark && block.status === 'pending' && !block.translation));
+  assert.equal(parts[0].notes[0].needsReview, true);
+  assert.equal(parts[1].notes[0].id, 'exact');
+  assert.equal(parts[1].notes[0].offset, 0);
+  assert.equal(parts[1].highlights[0].offset, 0);
+  assert.deepEqual(editedParagraphs(original, ' \n \n '), []);
+  assert.equal(editedParagraphs(original, ` ${original.text} `)[0], original);
+
+  const repeated = { ...original, text: 'Same phrase. Same phrase.', highlights: [],
+    notes: [{ id: 'second', text: 'Same phrase', offset: 13, kind: 'source', body: 'Second occurrence' }] };
+  const [first, second] = editedParagraphs(repeated, 'Same phrase.\n\nSame phrase.');
+  assert.deepEqual(first.notes, []);
+  assert.equal(second.notes[0].offset, 0);
+  assert.equal(second.notes[0].needsReview, false);
+});

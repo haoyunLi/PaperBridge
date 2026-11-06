@@ -15,11 +15,11 @@ function changedFields(before, after, fields) {
 
 // Only user-editable fields enter the undo history. AI results and settings are
 // intentionally read from the live paper when an entry is applied.
-export function createUndoEntry(before, after) {
+export function createUndoEntry(before, after, range) {
   if (!before || !after || before.id !== after.id || before.sourceMode !== after.sourceMode) return null;
   const base = { paperId: before.id, sourceMode: before.sourceMode };
   if (!sameSources(before.blocks, after.blocks)) {
-    return { ...base, type: 'structure', beforeBlocks: clone(before.blocks), afterBlocks: clone(after.blocks) };
+    return { ...base, type: 'structure', beforeBlocks: clone(before.blocks), afterBlocks: clone(after.blocks), range };
   }
   const blocks = before.blocks.flatMap((block, index) => {
     const changes = changedFields(block, after.blocks[index], blockFields);
@@ -138,7 +138,7 @@ export function applyUndoEntry(current, entry) {
     }) };
   }
   if (entry.type !== 'structure' || !sameSources(current.blocks, entry.afterBlocks)) return current;
-  const { start, beforeEnd, afterEnd } = changedRange(entry.beforeBlocks, entry.afterBlocks);
+  const { start, beforeEnd, afterEnd } = entry.range || changedRange(entry.beforeBlocks, entry.afterBlocks);
   const restored = restoreStructuralAnnotations(clone(entry.beforeBlocks.slice(start, beforeEnd)), current.blocks.slice(start, afterEnd), entry.afterBlocks.slice(start, afterEnd));
   const blocks = [...current.blocks.slice(0, start), ...restored, ...current.blocks.slice(afterEnd)]
     .map((block, index) => ({ ...block, id: entry.beforeBlocks[index].id }));

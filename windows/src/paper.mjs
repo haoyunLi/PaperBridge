@@ -204,3 +204,22 @@ export function editedBlock(block, newText) {
     })
   };
 }
+
+export function editedParagraphs(block, draft) {
+  if (draft === block.text) return [block];
+  const paragraphs = draft.replace(/\r\n?/g, '\n').split(/\n(?:[ \t]*\n)+/)
+    .map(text => text.replace(/\s*\n\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim())
+    .filter(Boolean);
+  if (!paragraphs.length) return [];
+  if (paragraphs.length === 1 && paragraphs[0] === block.text) return [block];
+
+  const blocks = [];
+  // Match annotations before splitting so a blank line replacing a space keeps repeated quotes at their original offsets.
+  let remaining = editedBlock(block, paragraphs.join(' '));
+  for (const paragraph of paragraphs.slice(0, -1)) {
+    const [first, rest] = splitBlockAt(remaining, paragraph.length);
+    blocks.push(first);
+    remaining = { ...rest, bookmark: block.bookmark };
+  }
+  return [...blocks, remaining];
+}
