@@ -152,7 +152,7 @@ async function run() {
     assert.match(requests.at(-1).system, /Explain this whole academic paragraph/i);
     await waitFor(() => Object.values(JSON.parse(fs.readFileSync(paperFile, 'utf8')).paragraphExplanations || {})
       .some(result => result.output === 'This heading introduces the paper summary.'), 'saved heading explanation');
-    assert.match(await page.locator('.paragraph-explanation').innerText(), /This heading introduces the paper summary/);
+    await page.locator('.paragraph-explanation').getByText('This heading introduces the paper summary.', { exact: true }).waitFor();
     await page.locator('#block-1 button[title="Edit or split heading"]').click();
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Split', exact: true }).waitFor();
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Cancel', exact: true }).click();
