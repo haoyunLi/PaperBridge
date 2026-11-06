@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
-const { detectMineruExecutable } = require('./mineru-discovery.cjs');
+const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle } = require('./bundle.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
@@ -302,7 +302,6 @@ function registerHandlers() {
       const detected = await detectMineruExecutable(executable, setupManager.toolsRoot);
       mineruJobs.check(job);
       if (!detected.compatible) throw new Error(detected.reason);
-      const command = detected.executable;
       const savedOutput = path.join(store.root, 'mineru', id);
       // MinerU repeats the input stem inside its temporary result paths. A SHA-256
       // filename can push these paths past the Windows path limit, so use a short
@@ -311,10 +310,9 @@ function registerHandlers() {
       const stagedPdf = path.join(staging, 'paper.pdf');
       const output = path.join(staging, 'output');
       fs.copyFileSync(pdf, stagedPdf);
+      const invocation = mineruInvocation(detected, stagedPdf, output, backend, setupManager.toolsRoot);
       await new Promise((resolve, reject) => {
-        const args = ['-p', stagedPdf, '-o', output];
-        if (backend === 'pipeline') args.push('-b', 'pipeline');
-        const child = spawn(command, args, { shell: false, windowsHide: true });
+        const child = spawn(invocation.command, invocation.args, { shell: false, windowsHide: true, env: invocation.env });
         mineruJobs.attach(job, child);
         let log = '';
         child.stdout.on('data', data => { log = (log + data.toString()).slice(-10000); progress({ kind: 'mineru', status: data.toString().trim().slice(-200) }); });
@@ -323,7 +321,9 @@ function registerHandlers() {
         child.on('close', code => { mineruJobs.detach(job, child); code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
       });
       mineruJobs.check(job);
-      const file = await findMarkdown(output);
+      const file = invocation.markdown
+        ? (fs.existsSync(invocation.markdown) ? invocation.markdown : null)
+        : await findMarkdown(output);
       mineruJobs.check(job);
       if (!file) throw new Error('MinerU finished without a Markdown file.');
       const markdown = await readMineruMarkdown(file);

@@ -6,7 +6,7 @@ const { promisify } = require('node:util');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
-const { detectMineruExecutable } = require('./mineru-discovery.cjs');
+const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
 
 const exec = promisify(execFile);
 const UV_VERSION = '0.11.29';
@@ -14,7 +14,8 @@ const UV_ARTIFACTS = {
   x64: { name: 'uv-x86_64-pc-windows-msvc.zip', sha256: 'a047d55651bc3e0ca24595b25ec4cfcb10f9dca9fb56514e661269b37d4fae68' },
   arm64: { name: 'uv-aarch64-pc-windows-msvc.zip', sha256: '55b597ae81bc29531a7c352a1431a8a73cc2755d7a5b9ec454580cbe02e5154f' }
 };
-const MINERU_VERSION = '3.4.5'; // This app currently uses the MinerU 3.x CLI (-p, -o, -b).
+const MINERU_VERSION = '3.4.5'; // Legacy CLI for the managed NVIDIA PyTorch CUDA path.
+const MINERU_ONNX_VERSION = '4.1.7';
 
 function versionAtLeast(actual, minimum) {
   const a = String(actual || '').split('.').map(Number);
@@ -23,10 +24,12 @@ function versionAtLeast(actual, minimum) {
 }
 
 function cudaPlan(hardware) {
-  if (!hardware?.cudaDriver?.length) return { index: null, reason: hardware?.adapters?.some(item => item.vendor === 'AMD') ? 'AMD is not a CUDA device. Ollama can choose supported AMD acceleration; MinerU uses its CPU pipeline.' : 'No NVIDIA CUDA driver was detected; MinerU uses its CPU pipeline.' };
+  if (!hardware?.cudaDriver?.length) return { index: null, reason: process.arch === 'x64'
+    ? 'The managed MinerU ONNX installation selects DirectML or CPU on Windows. Ollama chooses its own acceleration.'
+    : 'No NVIDIA CUDA driver was detected; the managed MinerU installation uses its CPU pipeline.' };
   if (versionAtLeast(hardware.cudaVersion, '12.8')) return { index: 'cu128', reason: `NVIDIA CUDA ${hardware.cudaVersion}: install matching PyTorch CUDA wheels in the managed MinerU environment.` };
   if (versionAtLeast(hardware.cudaVersion, '12.6')) return { index: 'cu126', reason: `NVIDIA CUDA ${hardware.cudaVersion}: install matching PyTorch CUDA wheels in the managed MinerU environment.` };
-  return { index: null, reason: `NVIDIA driver reports CUDA ${hardware.cudaVersion || 'unknown'}. Update the driver to enable automatic MinerU CUDA setup; CPU parsing remains available.` };
+  return { index: null, reason: `NVIDIA driver reports CUDA ${hardware.cudaVersion || 'unknown'}. Managed CUDA wheels require 12.6 or newer.` };
 }
 
 function selectedComponents(components) {
@@ -46,7 +49,8 @@ function setupPlan(status, requiredModels = [], config = {}) {
   return {
     ollama: !status.ollama.running && (components.ollama || components.models),
     models,
-    mineru: components.mineru && (Boolean(config.repairMineru) || !status.mineru.compatible || Boolean(gpu.index && !status.mineru.runtime?.cuda)),
+    mineru: components.mineru && (Boolean(config.repairMineru) || !status.mineru.compatible
+      || Boolean(gpu.index && !status.mineru.kitExecutable && !status.mineru.runtime?.cuda)),
     gpu,
     components,
     ollamaRequiredByModels
@@ -71,7 +75,7 @@ async function ollamaAppPath() {
 
 async function mineruStatus(configured, toolsRoot) {
   const found = await detectMineruExecutable(configured, toolsRoot);
-  return { ...found, runtime: found.compatible ? await mineruRuntime(found.executable, toolsRoot) : null };
+  return { ...found, runtime: found.compatible ? await mineruRuntime(found.executable, toolsRoot, found) : null };
 }
 
 async function sha256(file) {
@@ -256,16 +260,17 @@ class SetupManager {
     }
   }
 
-  async installMineru(gpu) {
+  async installMineru(gpu, useOnnx = process.arch === 'x64' && !gpu.index) {
     const uv = await this.installUV();
     const final = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru'));
     const staging = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.installing'));
     const backup = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.backup'));
-    const environment = { ...process.env, UV_PYTHON_INSTALL_DIR: path.join(this.toolsRoot, 'python'), UV_CACHE_DIR: path.join(this.toolsRoot, 'cache'), UV_NO_PROGRESS: '1', UV_HTTP_TIMEOUT: '600' };
+    const environment = { ...(useOnnx ? mineru4Environment(this.toolsRoot, 'auto') : process.env), UV_PYTHON_INSTALL_DIR: path.join(this.toolsRoot, 'python'), UV_CACHE_DIR: path.join(this.toolsRoot, 'cache'), UV_NO_PROGRESS: '1', UV_HTTP_TIMEOUT: '600' };
+    const versionArgs = useOnnx ? ['version', '--json'] : ['--version'];
     if (fs.existsSync(backup)) {
       let finalWorks = false;
       if (fs.existsSync(final)) {
-        try { await exec(path.join(final, 'Scripts', 'mineru.exe'), ['--version'], { timeout: 15000, windowsHide: true }); finalWorks = true; }
+        try { finalWorks = (await detectMineruExecutable(path.join(final, 'Scripts', 'mineru.exe'), this.toolsRoot)).compatible; }
         catch { /* Recover the last working installation after an interrupted activation. */ }
       }
       if (!finalWorks) {
@@ -290,7 +295,7 @@ class SetupManager {
       await this.run(uv, ['venv', '--relocatable', '--python', managedPython, staging], 'mineru', 'Creating a private MinerU environment…', { env: environment });
       const python = path.join(staging, 'Scripts', 'python.exe');
       let gpuWarning = '';
-      if (gpu.index) {
+      if (gpu.index && !useOnnx) {
         try {
           // MinerU 3.4's Windows LMDeploy extra caps Torch at 2.8 and TorchVision at 0.23.
           await this.run(uv, ['pip', 'install', '--python', python, 'torch==2.8.0', 'torchvision==0.23.0', '--index-url', `https://download.pytorch.org/whl/${gpu.index}`], 'cuda', `Installing PyTorch ${gpu.index} for NVIDIA…`, { env: environment });
@@ -300,9 +305,11 @@ class SetupManager {
           this.send('cuda', gpuWarning);
         }
       }
-      await this.run(uv, ['pip', 'install', '--python', python, `mineru[all]==${MINERU_VERSION}`], 'mineru', 'Installing MinerU and its parsing components…', { env: environment });
+      const requirement = useOnnx ? `mineru==${MINERU_ONNX_VERSION}` : `mineru[all]==${MINERU_VERSION}`;
+      await this.run(uv, ['pip', 'install', '--python', python, requirement], 'mineru', 'Installing MinerU and its parsing components…', { env: environment });
       const stagedExe = path.join(staging, 'Scripts', 'mineru.exe');
-      await this.run(stagedExe, ['--version'], 'mineru', 'Verifying the MinerU command…', { env: environment });
+      await this.run(stagedExe, versionArgs, 'mineru', 'Verifying the MinerU command…', { env: environment });
+      if (useOnnx) await this.run(path.join(staging, 'Scripts', 'mineru-kit.exe'), ['parse', '--help'], 'mineru', 'Verifying the local ONNX parser…', { env: environment });
       cancelled(this.controller.signal);
       this.send('mineru', 'Activating the verified MinerU environment…');
       if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
@@ -310,7 +317,8 @@ class SetupManager {
       try {
         fs.renameSync(staging, final);
         const executable = path.join(final, 'Scripts', 'mineru.exe');
-        await this.run(executable, ['--version'], 'mineru', 'Checking the active MinerU installation…', { env: environment });
+        await this.run(executable, versionArgs, 'mineru', 'Checking the active MinerU installation…', { env: environment });
+        if (useOnnx) await this.run(path.join(final, 'Scripts', 'mineru-kit.exe'), ['parse', '--help'], 'mineru', 'Checking the active ONNX parser…', { env: environment });
       } catch (error) {
         if (fs.existsSync(final)) fs.rmSync(final, { recursive: true, force: true });
         if (fs.existsSync(backup)) fs.renameSync(backup, final);
@@ -318,14 +326,16 @@ class SetupManager {
       }
       if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
       const executable = path.join(final, 'Scripts', 'mineru.exe');
-      const runtime = await mineruRuntime(executable);
-      if (gpu.index && !runtime.cuda) gpuWarning ||= 'MinerU installed, but PyTorch did not confirm CUDA. Parsing will use its available CPU path.';
-      const downloader = path.join(final, 'Scripts', 'mineru-models-download.exe');
+      const runtime = await mineruRuntime(executable, this.toolsRoot);
+      if (gpu.index && !useOnnx && !runtime.cuda) gpuWarning ||= 'MinerU installed, but PyTorch did not confirm CUDA. Parsing will use its available CPU path.';
+      const downloader = path.join(final, 'Scripts', useOnnx ? 'mineru-kit.exe' : 'mineru-models-download.exe');
       if (fs.existsSync(downloader)) {
-        try { await this.run(downloader, ['--source', 'auto', '--model_type', 'pipeline'], 'models', 'Preloading MinerU pipeline models; this can take several GB…', { env: environment }); }
+        const args = useOnnx ? ['models', 'download', '--tier', 'basic', '--small-backend', 'onnx', '--source', 'auto']
+          : ['--source', 'auto', '--model_type', 'pipeline'];
+        try { await this.run(downloader, args, 'models', 'Preloading MinerU parsing models; this can take several GB…', { env: environment }); }
         catch (error) { if (this.controller.signal.aborted) throw error; gpuWarning += `${gpuWarning ? ' ' : ''}MinerU model preloading did not finish; it will retry when a PDF is parsed.`; }
       }
-      return { executable, runtime, warning: gpuWarning };
+      return { executable, runtime, onnx: useOnnx, warning: gpuWarning };
     } finally { if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true }); }
   }
 
@@ -340,6 +350,7 @@ class SetupManager {
       cancelled(this.controller.signal);
       let mineruExecutable = status.mineru.executable;
       let mineruCuda = Boolean(status.mineru.runtime?.cuda);
+      let mineruOnnx = Boolean(status.mineru.kitExecutable);
       let warning = '';
       if ((components.ollama || components.models) && status.plan.ollama) await this.startOrInstallOllama(config.baseURL);
       for (const model of components.models ? status.plan.models : []) {
@@ -348,14 +359,16 @@ class SetupManager {
         await this.pullModel(config.baseURL, model, this.controller.signal, update => this.send('model', `${model}: ${update.status}`, { received: update.completed || 0, total: update.total || null }));
       }
       if (components.mineru && status.plan.mineru) {
-        const result = await this.installMineru(status.plan.gpu);
+        const useOnnx = process.arch === 'x64' && (mineruOnnx || !status.plan.gpu.index);
+        const result = await this.installMineru(status.plan.gpu, useOnnx);
         mineruExecutable = result.executable;
         mineruCuda = Boolean(result.runtime?.cuda);
+        mineruOnnx = Boolean(result.onnx);
         warning = result.warning;
       }
       cancelled(this.controller.signal);
       this.send('done', warning || 'Local AI setup is ready.');
-      return components.mineru ? { mineruExecutable, mineruBackend: mineruCuda ? 'auto' : 'pipeline', warning } : { warning };
+      return components.mineru ? { mineruExecutable, mineruBackend: mineruCuda || mineruOnnx ? 'auto' : 'pipeline', warning } : { warning };
     } catch (error) {
       this.send(error.name === 'AbortError' ? 'cancelled' : 'error', error.message);
       throw error;

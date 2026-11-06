@@ -161,7 +161,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G07 | 自动检测/启动/安装 Ollama | SetupPanel 可勾选 Ollama、模型、MinerU；仅选模型时自动补 Ollama 依赖，单选 MinerU 不启动 Ollama | 部分 | AMD 真机已完成签名安装和复用；组件选择及依赖由单元与 Electron mock 回归验证，真实安装取消及其它硬件待验收。 |
 | G08 | 自动发现、下载并选择模型 | 六步引导及 Settings > Local AI 都提供 TranslateGemma 4B/12B/27B 和六个可选助手模型卡片、内存建议、下载/选择/取消；下载状态跨设置分页保持可见 | 部分 | 九张卡、角色继承、四任务模型、下载取消/重试、跨论文/端点迟到结果隔离及重启恢复已通过 Electron 回归；12B/27B 等大模型仍需实际下载及更多内存配置验证。 |
 | G09 | 翻译、摘要、解释、快速查词四套模型设置 | 四套任务模型可分别设置；引导选择翻译或助手模型会更新相应角色，保留用户另选的已安装助手模型 | 对齐 | 安装计划检查四套已选模型；引导模型角色继承有单元验证。 |
-| G10 | 独立安装 MinerU，允许自动发现、手动路径/后端 | 私有 Python/MinerU 安装；Settings 可 Use Auto-Detect 或指定路径/后端；检测、状态、导入共用 resolver；可单独选择 MinerU，并显式 Repair / update，使用暂存环境及旧版本回滚 | 部分 | AMD 已实际安装 MinerU 3.4.5；空路径自动发现后完成图像型 PDF OCR 和中文翻译。延迟检测取消/任务竞争、PATH/私有环境选择和失败回滚有自动回归；真实修复、NVIDIA CUDA 和复杂扫描件待验收。 |
+| G10 | 独立安装 MinerU，允许自动发现、手动路径/后端 | 私有 Python/MinerU 安装；Settings 可 Use Auto-Detect 或指定路径/后端；3.x 与 4.1+（4.x 系列）共用检测；独立安装与 Repair / update 支持暂存验证及回滚 | 部分 | RX 7800 XT 从空目录通过界面安装并自动发现 MinerU 4.1.7，完成扫描件 OCR 和中文翻译。NVIDIA CUDA、真机修复和复杂扫描件待验收。 |
 | G11 | 后台下载及进度、取消 | 安装与模型下载由主进程管理；模型下载可取消、重试并与安装互斥，引导与 SetupPanel 都可显示进度及取消 | 部分 | 模型流关闭、旧消息隔离与重试已回归；安装状态检测期间取消不误报完成的单元和组件界面取消/重开的 Electron mock 已过；真实安装中退出及恢复待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L；菜单项随论文、任务、选区和更新检查状态动态启停 | 部分 | 状态转换有单元覆盖，空白页、论文、选区、忙碌任务、撤销及重开引导有 Electron 菜单回归；其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
@@ -172,7 +172,7 @@ Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swif
 
 ## Windows 特有的硬件映射
 
-这不是 Mac 功能的同名复制，而是 Windows 的平台适配：`electron/hardware.cjs` 检测显卡及 `nvidia-smi`；`electron/setup.cjs` 在 NVIDIA 驱动报告 CUDA ≥12.6 时选 `cu126`/`cu128` PyTorch wheel，并在 MinerU 私有环境里检查 `torch.cuda.is_available()`。AMD **不能使用 CUDA**；受支持的 AMD/Vulkan 显卡可由 Ollama 自行选择后端，MinerU 维持 CPU pipeline。Settings 可看 Ollama `/api/ps` 的实际 VRAM 使用。RX 7800 XT 真机已验证 Ollama 选择 ROCm 且模型全部放入 VRAM；NVIDIA 和纯 CPU 路径仍需逐台验收，不能因检测到显卡就声称已经 GPU 加速。
+Windows x64 的 MinerU 4.1 走 ONNX DirectML 或 CPU。具备适配驱动的 NVIDIA 新安装仍可使用 MinerU 3.4.5 和 `cu126`/`cu128` PyTorch CUDA。Settings 分开报告 MinerU Auto 选择与 Ollama `/api/ps` 的显存使用。RX 7800 XT 的实际解析日志已确认版面分析、文字识别使用 DirectML，翻译模型通过 ROCm 完整驻留显存。NVIDIA CUDA 仍待真机验收。
 
 ## 实施顺序和完成标准
 

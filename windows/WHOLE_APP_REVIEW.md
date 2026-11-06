@@ -1,5 +1,9 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第十二阶段：MinerU 一键安装与 Windows DirectML（2026-11-06 UTC）
+
+Windows 支持同时检测 MinerU 3.x 和 4.1+ 的 4.x 版本。4.x 通过本地 `mineru-kit parse` 解析所有页，Auto 使用 ONNX 设备选择，兼容模式固定 ONNX CPU。x64 无合适 NVIDIA CUDA 时，一键安装固定 MinerU 4.1.7；符合条件的 NVIDIA 新装保留 3.4.5 CUDA 路径。自动检测、版本验证、模型预载和回滚继续使用同一私有工具目录。RX 7800 XT 的独立安装及扫描件验证见 [AMD 真机报告](AMD_DEVICE_TEST.md)。
+
 ## 第十一阶段：复查在线授权和旧译文（2026-11-06 UTC）
 
 按 macOS `16e01ac` 再核对选区和旧工作区。OpenAI 扩写选区时显示换模型提示，单次用户操作只提交一次；Ollama 仍会严格重译一次。早于 provider 设置的工作区按本地来源恢复缓存，打开时保留用户当前的 provider。清除工作区会在主进程撤销在线授权，保留独立加密的 key。Electron 验证这三项，1.10 增量映射增加到 21 项。真实 AMD 推理复测见 [设备报告](AMD_DEVICE_TEST.md)。

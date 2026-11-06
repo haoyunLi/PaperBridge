@@ -1064,7 +1064,7 @@ function App() {
           setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
           try { mineruMarkdown = await api.extractMineru({ id: imported.id, executable: mineru.executable, backend: settings.mineruBackend }); }
           catch (cause) { requireActiveTask(token); if (mode === 'mineruOnly') throw cause; warning = `MinerU failed: ${cause.message}. Using the selectable PDF text layer.`; }
-        } else if (mode === 'mineruOnly') throw new Error('MinerU-only mode requires a working MinerU 3.x installation. Open Local AI setup.');
+        } else if (mode === 'mineruOnly') throw new Error(`${mineru.reason || 'MinerU-only mode requires a compatible installation.'} Open Local AI setup.`);
       }
       requireActiveTask(token);
       setBusy({ label: 'Reading PDF text layer…' });

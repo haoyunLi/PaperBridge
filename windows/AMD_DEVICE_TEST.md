@@ -67,3 +67,13 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报告模型大小与显存占用均为 2,875,656,764 字节（2.68 GiB）。热模型短段实测约 121–124 输出 token/秒，首次统计段请求耗时 4.62 秒。
 
 本轮 `test:live-ocr` 在启动前发现本机私有工具目录缺少 MinerU，真实 OCR 仍需重新安装后复测。当前构建的 `test:import-progress-e2e` 使用受控 MinerU 响应，通过了文件名、阶段计数、取消及旧论文保护检查。
+
+## MinerU 4.1.7 一键安装与 DirectML（2026-11-06 UTC）
+
+从空工具目录在 Electron 的 **Local AI setup** 仅安装 MinerU。界面报告完成，用时 47.5 秒，测试复用了此前命令行试跑的模型下载缓存。自动发现识别到私有 MinerU 4.1.7，诊断报告选择 `AMD Radeon RX 7800 XT`。首次安装发现 MinerU 拒绝尚不存在的显式配置文件，改用私有目录下的默认配置路径后通过。
+
+同版本命令行日志显示 `layout` 和 `ocr_rec` 会话使用 `DmlExecutionProvider`，并选中 RX 7800 XT；`ocr_det` 使用 CPU。Windows 界面导入合成扫描件，得到 `pdfBlocks=0`、`mineruBlocks=5`，通过 Reader 翻译并验证 Original 页可跳回 OCR Reader。导入、翻译和界面导航合计 16.0 秒。Ollama 日志报告 ROCm，`translategemma:4b` 的模型大小和显存占用均为 2,875,656,764 字节。识别文本有一处 `fieldwas` 连字，译文保留了磁场由零升到两特斯拉的含义。
+
+同一安装在界面导入 15 页 Attention Is All You Need，38.8 秒内完成提取及原 PDF 页渲染检查。工作区保存 167 个 MinerU 阅读块，含 5 张图片、4 张表格（2 张 HTML、2 张 Markdown）和 5 个独立公式。另用相同本地 CLI 强制 ONNX CPU 解析扫描件，日志确认版面分析、检测和文字识别均使用 CPU，输出包含预期的实验段落。
+
+复跑时将 `PAPERBRIDGE_TOOLS_ROOT` 指向一个新绝对路径，设置 `PAPERBRIDGE_LIVE_INSTALL_MINERU=1` 和 `PAPERBRIDGE_LIVE_DIRECTML=1`，启动本地 Ollama 后执行 `npm run test:live-ocr`。

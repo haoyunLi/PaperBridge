@@ -3,7 +3,7 @@ const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { detectMineruExecutable } = require('./mineru-discovery.cjs');
+const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
 const run = promisify(execFile);
 
 function vendorOf(name) {
@@ -46,16 +46,24 @@ async function graphicsStatus() {
   return { adapters, cudaDriver, cudaVersion, systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
 }
 
-async function mineruRuntime(executable, toolsRoot) {
-  let command = String(executable || '').trim();
-  if (!command) {
-    const detected = await detectMineruExecutable('', toolsRoot);
-    if (!detected.compatible) return { checked: false, reason: detected.reason };
-    command = detected.executable;
+async function mineruRuntime(executable, toolsRoot, found) {
+  const detected = found || await detectMineruExecutable(executable, toolsRoot);
+  if (!detected.compatible) return { checked: false, reason: detected.reason };
+  if (detected.kitExecutable) {
+    try {
+      const { stdout } = await run(detected.kitExecutable, ['hardware', 'info', '--json'], {
+        timeout: 30000, windowsHide: true, env: mineru4Environment(toolsRoot, 'auto')
+      });
+      const onnx = JSON.parse(stdout).runtimes?.find(runtime => runtime.name === 'onnx');
+      if (onnx?.status !== 'ok') return { checked: false, engine: 'onnx', reason: 'MinerU could not verify its ONNX runtime.' };
+      const device = onnx.data?.selected_device;
+      const adapter = device?.adapter?.name;
+      const directml = device?.device === 'gpu' && device.backend === 'dml';
+      const description = directml ? `ONNX Auto selects DirectML${adapter ? ` on ${adapter}` : ''}` : 'ONNX Auto selects CPU';
+      return { checked: true, engine: 'onnx', directml, devices: directml && adapter ? [adapter] : [], description };
+    } catch (error) { return { checked: false, engine: 'onnx', reason: `Cannot check MinerU ONNX: ${error.message.slice(0, 140)}` }; }
   }
-  const resolved = fs.existsSync(command) ? command : '';
-  if (!resolved) return { checked: false, reason: 'Enter the full path to MinerU to check its Python environment.' };
-  const python = path.join(path.dirname(resolved), 'python.exe');
+  const python = path.join(path.dirname(detected.executable), 'python.exe');
   if (!fs.existsSync(python)) return { checked: false, reason: 'Could not identify the Python interpreter beside MinerU. Check CUDA in the same environment manually.' };
   try {
     const script = [

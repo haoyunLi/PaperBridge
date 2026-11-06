@@ -77,6 +77,8 @@ test('NVIDIA setup chooses supported wheel index and repairs CPU-only MinerU', (
   assert.equal(plan.mineru, true);
   assert.equal(cudaPlan({ ...hardware, cudaVersion: '12.6' }).index, 'cu126');
   assert.equal(cudaPlan({ ...hardware, cudaVersion: '12.4' }).index, null);
+  const onnx = { ...status, mineru: { compatible: true, kitExecutable: 'mineru-kit.exe', runtime: { directml: true } } };
+  assert.equal(setupPlan(onnx).mineru, false, 'A working ONNX parser does not require a CUDA reinstall');
 });
 
 test('managed bootstrap refuses a downloaded uv archive with the wrong checksum', async () => {

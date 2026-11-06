@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { candidates, detectMineruExecutable } = require('../electron/mineru-discovery.cjs');
+const { candidates, detectMineruExecutable, mineruInvocation } = require('../electron/mineru-discovery.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-detect-'));
@@ -68,4 +68,27 @@ test('incompatible or absent tools produce explicit, non-installing diagnostics'
   assert.equal(absent.installed, false);
   assert.match(absent.reason, /managed tools or on PATH/);
   assert.match((await detectMineruExecutable('mineru', paths.toolsRoot, options)).reason, /managed tools or on PATH/);
+});
+
+test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with an explicit CPU option', async t => {
+  const paths = fixture(t);
+  const options = { environment: paths.environment, probeVersion: async executable => executable === paths.managed ? 'MinerU 4.1.7' : 'MinerU 3.4.5' };
+  assert.match((await detectMineruExecutable(paths.managed, paths.toolsRoot, options)).reason, /missing mineru-kit.exe/);
+  assert.equal((await detectMineruExecutable('', paths.toolsRoot, options)).executable, paths.onPath);
+  const kit = path.join(path.dirname(paths.managed), 'mineru-kit.exe');
+  fs.writeFileSync(kit, 'test kit placeholder');
+  const modern = await detectMineruExecutable('', paths.toolsRoot, options);
+  assert.equal(modern.executable, paths.managed);
+  const pdf = path.join(paths.root, 'paper.pdf');
+  const output = path.join(paths.root, 'output');
+  const automatic = mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot);
+  assert.equal(automatic.command, kit);
+  assert.deepEqual(automatic.args, ['parse', pdf, '-o', path.join(output, 'paper.md'), '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
+  assert.equal(automatic.env.MINERU_MODEL_ONNX_DEVICE, 'auto');
+  assert.equal(automatic.env.MINERU_TELEMETRY_DISABLED, '1');
+  assert.equal(automatic.env.MINERU_HOME, path.join(paths.toolsRoot, 'mineru4-data'));
+  assert.equal(automatic.env.MINERU_CONFIG, undefined);
+  assert.equal(mineruInvocation(modern, pdf, output, 'pipeline', paths.toolsRoot).env.MINERU_MODEL_ONNX_DEVICE, 'cpu');
+  const legacy = await detectMineruExecutable(paths.onPath, paths.toolsRoot, options);
+  assert.deepEqual(mineruInvocation(legacy, pdf, output, 'pipeline', paths.toolsRoot).args, ['-p', pdf, '-o', output, '-b', 'pipeline']);
 });
