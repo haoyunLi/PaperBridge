@@ -92,8 +92,9 @@ async function run() {
     await page.getByLabel('Title').fill('Edited practice label');
     await page.getByLabel('Title').press('Tab');
     await page.getByRole('button', { name: 'Save label' }).click();
+    await page.locator('.modal-list-row').getByText('Edited practice label', { exact: true }).waitFor();
     await page.locator('.modal-head .icon-button').click();
-    assert.equal(await page.locator('.title-wrap h1').innerText(), 'Edited practice label');
+    assert.equal(await page.locator('.title-wrap h1').innerText(), 'Welcome to PaperBridge (practice sample)');
     await page.locator('.inspector.inspector-drawer').waitFor();
     const drawerLayout = await page.evaluate(() => {
       const sidebar = document.querySelector('.sidebar').getBoundingClientRect();

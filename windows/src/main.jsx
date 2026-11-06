@@ -10,7 +10,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, parsedMarkdownBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -368,14 +368,29 @@ function PaperPreview({ paper, displayMode, onSelect }) {
   </article>;
 }
 
-function LibraryView({ items, query, setQuery, loadPaper, setModal, setError, setLibraryEdit }) {
+function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLibraryEdit }) {
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState('');
+  async function openItem(id) {
+    setError('');
+    setOpening(true);
+    try {
+      if (await loadPaper(id)) setModal(current => current === 'library' ? '' : current);
+      else setError('Finish the current task or retry the workspace save before opening another paper.');
+    } catch (cause) {
+      setError(cause.message);
+    } finally { setOpening(false); }
+  }
   return <>
+    <p>Saved on this PC with each paper’s translations, notes, bookmarks, and reading position.</p>
     <input placeholder="Search titles and tags" value={query} onChange={event => setQuery(event.target.value)} />
     {items.map(item => <div className="library-entry" key={item.id}>
-      <button className="modal-list-row" onClick={() => { loadPaper(item.id).catch(cause => setError(cause.message)); setModal(''); }}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.blockCount} blocks · {item.updatedAt?.slice(0, 10)}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
+      <button className="modal-list-row" disabled={busy || opening} onClick={() => openItem(item.id)}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.translatedCount ?? 0}/{item.blockCount} translated{item.lastOpened ? ` · Opened ${new Date(item.lastOpened).toLocaleDateString()}` : ''}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
       <button className="icon-button" aria-label={`Edit label for ${item.name}`} onClick={() => { setLibraryEdit({ id: item.id, name: item.name, tags: (item.tags || []).join(', ') }); setModal('libraryLabel'); }}><Pencil size={16} /></button>
     </div>)}
-    {!items.length && <p>No matching papers.</p>}
+    {!items.length && <p>{query.trim() ? 'No matching papers. Try another title or tag.' : 'No saved papers. Open a PDF or paste text to begin.'}</p>}
+    {busy && <p>Finish or stop the current task before opening another paper.</p>}
+    {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
   </>;
 }
 
@@ -633,7 +648,8 @@ function App() {
     if (!await finishNoteEditing()) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
-    if (!loaded) throw new Error('Paper could not be loaded.');
+    if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained.');
+    if (taskRef.current && !fromImport) return false;
     const previous = settingsRef.current;
     const hasTaskSettings = Boolean(loaded.taskSettings);
     // Workspaces saved before provider support contain local results.
@@ -649,6 +665,7 @@ function App() {
     }
     resetReadingHistory();
     paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`);
+    return true;
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
   const updateSettings = change => {
@@ -911,7 +928,19 @@ function App() {
       if (previous?.isConnected && !previous.closest('[inert]')) previous.focus({ preventScroll: true });
     };
   }, [modal]);
-  useEffect(() => { if (paper?.id) { const id = paper.id; saveQueue.current.flush().then(saved => saved && api.markPaperOpened(id)).catch(cause => setError(cause.message)); } }, [paper?.id]);
+  useEffect(() => {
+    const id = paper?.id;
+    if (!id) return;
+    saveQueue.current.flush().then(async saved => {
+      if (!saved || paperRef.current?.id !== id) return;
+      const opened = await api.markPaperOpened(id);
+      if (paperRef.current?.id !== id) return;
+      setLibrary(current => {
+        const item = current.find(entry => entry.id === id);
+        return item ? [{ ...item, lastOpened: opened.lastOpened }, ...current.filter(entry => entry.id !== id)] : current;
+      });
+    }).catch(cause => setError(cause.message));
+  }, [paper?.id]);
   useEffect(() => {
     const query = window.matchMedia('(max-width: 1399px)');
     const update = event => setCompactInspector(event.matches);
@@ -1535,9 +1564,11 @@ function App() {
     try {
       const saved = await api.loadPaper(libraryEdit.id);
       if (!saved) throw new Error('This paper could not be loaded.');
-      const updated = { ...saved, name: libraryEdit.name.trim(), tags: libraryEdit.tags.split(',').map(value => value.trim()).filter(Boolean) };
-      if (paperRef.current?.id === updated.id) commitPaper(current => ({ ...current, name: updated.name, tags: updated.tags }));
-      else setLibrary(await api.savePaper(updated));
+      const label = libraryLabel(libraryEdit.name, libraryEdit.tags);
+      if (paperRef.current?.id === saved.id) {
+        commitPaper(current => ({ ...current, ...label }));
+        if (!await saveQueue.current.flush()) throw new Error('Could not save the library label. Retry the workspace save.');
+      } else setLibrary(await api.savePaper({ ...saved, ...label }));
       setModal('library'); setLibraryEdit(null);
     } catch (cause) { setError(cause.message); }
   }
@@ -1924,7 +1955,7 @@ function App() {
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => `${term.source} ${term.target}`.toLowerCase().includes(glossarySearch.toLowerCase())).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} onClick={() => setGlossary(current => current.filter((_, at) => at !== index))}><Trash2 size={16} /></button></div>)}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
-      {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} setError={setError} setLibraryEdit={setLibraryEdit} />}
+      {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} />}
       {modal === 'libraryLabel' && libraryEdit && <><p>Only the library label changes; the original PDF stays unchanged.</p><label>Title<input value={libraryEdit.name} onChange={event => setLibraryEdit({ ...libraryEdit, name: event.target.value })} /></label><label>Tags, separated by commas<input value={libraryEdit.tags} onChange={event => setLibraryEdit({ ...libraryEdit, tags: event.target.value })} /></label><div className="row"><button className="button blue" disabled={!libraryEdit.name.trim()} onClick={saveLibraryLabel}>Save label</button><button className="button outline" onClick={() => setModal('library')}>Cancel</button></div></>}
       {modal === 'more' && <div className="menu-list"><button onClick={() => setModal('range')}><Languages size={17} /> Translation Range</button><button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf'}><FileText size={17} /> Parse with MinerU</button><button onClick={reextractAsNew} disabled={paper?.type !== 'pdf' || !!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button><button onClick={() => setModal('export')}><Download size={17} /> Export Markdown</button><button onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button><button onClick={() => setModal('settings')}><Settings2 size={17} /> Settings</button></div>}
       {modal === 'range' && <div className="menu-list">

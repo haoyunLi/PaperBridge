@@ -139,9 +139,9 @@ Mac 证据：[选区行为](../PaperBridge/PaperReaderViewModel+Selection.swift)
 | F05 | 对选中段落重排文字 | 按完整句边界将长段重排为短段 | 部分 | 笔记和高亮迁移已测试；真实论文复杂标点待验证。 |
 | F06 | 段落编辑撤销 | 恢复原结构及受影响段落原译文，保留未改段落新输出和当前设置，后写摘要/全文保留并标过期 | 部分 | 拆分/合并、后写便签和旧锚点已单元回归；复杂真实论文和重启仍需验收。 |
 | F07 | MinerU 结构化段落禁止破坏性编辑 | MinerU 来源禁用编辑、拆分、合并 | 对齐 | 避免 Markdown 资源锚点被直接破坏。 |
-| F08 | 图书馆搜索标题与标签 | 搜索框及 library 弹窗 | 对齐 | 中文/大小写、空结果验收。 |
-| F09 | 打开旧论文恢复结果、标注、阅读位置 | 恢复结果、标注、模式、解释缓存、检查器、任务设置及各视图位置；单独记录最后打开的论文 | 部分 | 双论文切换/重启及最后打开独立于修改顺序已回归；长论文和跨版本迁移仍需验证。 |
-| F10 | 编辑图书馆显示标题与标签 | Library 编辑显示标题与标签，不修改源 PDF | 对齐 | Electron 流程验证图书馆标签入口。 |
+| F08 | 图书馆搜索标题与标签 | 论文库按最近打开排序，显示已译段落数、打开日期和标签；支持标题与标签搜索 | 对齐 | Electron 验证中文标签、空结果和排序。 |
+| F09 | 打开旧论文恢复结果、标注、阅读位置 | 恢复结果、标注、模式、解释缓存、检查器、任务设置及各视图位置；打开记录独立于修改时间 | 部分 | 双论文切换、旧打开记录迁移和重启已回归。读取失败保留库窗口与原条目。 |
+| F10 | 编辑图书馆显示标题与标签 | 库标题单独保存，文档名和导出命名沿用原文件。标题最多 200 个字符，标签最多 20 个，每个最多 40 个字符 | 对齐 | 单元覆盖 Unicode 边界、去重、排序，Electron 验证修改库标题后原文档名与译文保留。 |
 | F11 | 自动本地保存、损坏时读 `.backup` | JSON 原子写、备份回退、错误提示 | 对齐 | 故意损坏主文件后恢复最近可读副本。 |
 | F12 | 清除保存的 PaperBridge 数据 | Settings 确认后清除保存数据，保留 PDF 副本 | 对齐 | 单元测试验证 PDF 文件未删。 |
 | F13 | 全局外观与单论文任务设置分开恢复 | 每篇论文保存语言、四种模型、Ollama 地址、分段与 MinerU/PDF 解析设置；切换/重启恢复，阅读外观与更新偏好保持全局 | 对齐 | Electron 双论文流程验证；旧论文无任务设置时继承当前设置并提示检查。 |
@@ -166,7 +166,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单；Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E 及旧 Ctrl+L；菜单项随论文、任务、选区和更新检查状态动态启停 | 部分 | 状态转换有单元覆盖，空白页、论文、选区、忙碌任务、撤销及重开引导有 Electron 菜单回归；其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
 | G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 单元覆盖正式下载资产与旧缓存，Electron 验证原生菜单和重启提示。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，仓库 Latest 保留给 Mac | 部分 | 真机验证 NSIS 0.1.0 → 0.2.0，恢复论文、高亮、笔记并卸载测试实例。发布包当前未签名。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，仓库 Latest 保留给 Mac | 部分 | 真机验证 NSIS 0.1.0 → 0.2.0，恢复论文、高亮、笔记并卸载测试实例。两个公开下载通过 SHA-256 校验。发布包当前未签名。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 

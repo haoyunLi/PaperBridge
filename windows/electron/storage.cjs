@@ -83,8 +83,10 @@ function createStore(root) {
     markPaperOpened(id) {
       safeId(id);
       if (!readJson(paperPath(id), null)) throw new Error('Paper could not be loaded.');
-      writeJson(lastPaperFile, { id });
-      return id;
+      const previous = readJson(lastPaperFile, {});
+      const lastOpened = new Date().toISOString();
+      writeJson(lastPaperFile, { id, openedAt: { ...previous?.openedAt, [id]: lastOpened } });
+      return { id, lastOpened };
     },
     savePaper(paper) {
       safeId(paper.id);
@@ -103,10 +105,16 @@ function createStore(root) {
     },
     list() {
       if (!fs.existsSync(papersDir)) return [];
+      const recent = readJson(lastPaperFile, {});
       return fs.readdirSync(papersDir).filter(name => /^[a-f0-9]{64}\.json$/.test(name))
         .map(name => readJson(path.join(papersDir, name), null)).filter(Boolean)
-        .map(({ id, name, tags, createdAt, updatedAt, blocks, type }) => ({ id, name, tags: tags || [], createdAt, updatedAt, type, blockCount: blocks?.length || 0 }))
-        .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+        .map(({ id, name, libraryTitle, tags, createdAt, updatedAt, blocks, type }) => {
+          const opened = recent?.openedAt?.[id];
+          return { id, name: libraryTitle || name, tags: tags || [], createdAt, updatedAt, type, lastOpened: typeof opened === 'string' ? opened : null,
+            blockCount: blocks?.length || 0, translatedCount: blocks?.filter(block => block?.status === 'ok').length || 0 };
+        })
+        .sort((a, b) => Number(b.id === recent?.id) - Number(a.id === recent?.id)
+          || (b.lastOpened || b.createdAt || b.updatedAt || '').localeCompare(a.lastOpened || a.createdAt || a.updatedAt || ''));
     }
   };
 }

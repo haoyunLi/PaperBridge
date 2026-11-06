@@ -55,18 +55,24 @@ test('clearing saved work keeps original PDF copies', () => {
   }
 });
 
-test('bootstrap remembers the last opened paper even when another paper was edited more recently', async () => {
+test('library orders opens independently of edits and retains paper metadata across restart', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-last-opened-'));
   try {
     const store = createStore(root);
     const olderId = 'c'.repeat(64);
     const newerId = 'd'.repeat(64);
-    store.savePaper({ id: olderId, name: 'Opened without editing', blocks: [] });
+    store.savePaper({ id: olderId, name: 'Original title', libraryTitle: 'Opened without editing', blocks: [{ status: 'ok' }, { status: 'pending' }] });
     await new Promise(resolve => setTimeout(resolve, 10));
     store.savePaper({ id: newerId, name: 'Edited later', blocks: [] });
-    store.markPaperOpened(olderId);
+    store.markPaperOpened(newerId);
+    const opened = store.markPaperOpened(olderId);
+    store.savePaper({ ...store.paper(newerId), name: 'Edited after both opens' });
     const restarted = bootstrapSnapshot(createStore(root), '0.2.0');
-    assert.equal(restarted.library[0].id, newerId);
+    assert.deepEqual(restarted.library.map(item => item.id), [olderId, newerId]);
+    assert.equal(restarted.library[0].name, 'Opened without editing');
+    assert.equal(restarted.library[0].lastOpened, opened.lastOpened);
+    assert.equal(restarted.library[0].translatedCount, 1);
+    assert.equal(store.paper(olderId).name, 'Original title');
     assert.equal(restarted.lastPaperId, olderId);
     assert.equal(restarted.version, '0.2.0');
     assert.throws(() => store.markPaperOpened('e'.repeat(64)), /could not be loaded/);

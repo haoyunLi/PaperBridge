@@ -64,6 +64,17 @@ test('translation range counts exactly the unfinished queue including headings',
   assert.deepEqual(translationRangeIds(blocks, [], references), []);
 });
 
+test('library labels preserve Unicode graphemes and bound sorted, unique tags', async () => {
+  const { libraryLabel } = await import('../src/paper.mjs');
+  const grapheme = '👩‍🔬';
+  const longTag = '文'.repeat(50);
+  const tags = Array.from({ length: 24 }, (_, index) => `t${String(index).padStart(2, '0')}`).reverse();
+  const label = libraryLabel(`  ${grapheme.repeat(201)}  `, ` Beta, Alpha, Beta,, ${longTag}, ${tags.join(', ')}`);
+  assert.equal(label.libraryTitle, grapheme.repeat(200));
+  assert.deepEqual(label.tags, ['Alpha', 'Beta', ...tags.reverse().slice(0, 18)]);
+  assert.deepEqual(libraryLabel('  Title  ', ` ${longTag}, ${longTag} `), { libraryTitle: 'Title', tags: ['文'.repeat(40)] });
+});
+
 test('summary source links require an exact quote in a real source block', async () => {
   const { parseSummaryClaims, summarySourceCandidates } = await import('../src/paper.mjs');
   const passage = 'The measured intervention improved response time in the tested sample by twelve percent.';
