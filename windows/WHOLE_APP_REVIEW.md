@@ -6,6 +6,8 @@
 
 153 项单元测试、生产构建、主桌面和阅读历史回归通过。RX 7800 XT 机器复用真实两页 ResNet 扫描与此前的 ROCm 译文。Paper 第 2 页进入第 19 段，Back 恢复约 85 像素页内偏移。Original 第 1 页进入第 1 段，关闭重开后保持该位置，原第 23 段译文恢复。另验证旧版无页码扫描工作区可打开且保存内容保留。0.2.8 汇集第四十四和第四十五阶段。
 
+GitHub 发布构建通过 153 项单元、23 套桌面回归与打包启动检查。重新下载的 Setup 和 Portable 均通过 SHA-256，Authenticode 均为 NotSigned。0.2.7 检测到新版，运行公开安装包升级后恢复论文、笔记和高亮，卸载测试实例后工作区保留。公开便携版也完成真实扫描及旧记录测试，GitHub 首页指向 0.2.8。 [Windows 0.2.8](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.8) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42305773969)
+
 ## 第四十四阶段：MinerU 原页定位（2026-11-06 UTC）
 
 MinerU 4.x 在同一次本地解析中输出 Markdown、图像及结构化页码。Windows 从 ZIP 读取这些文件，保持已有段落 ID 和内容。识别 4.x 的正文续接标记，跨页段落定位到起始页。旧论文若保留匹配的 3.x 或 4.x 结构文件，重开时可恢复页码。缺少结构文件时，在已保存 PDF 文字层中确认长段落的唯一页码。原页仍不确定时，Compare Original 沿用当前页。
