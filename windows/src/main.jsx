@@ -26,6 +26,7 @@ import { modelSettingsPatch } from './modelCatalog.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, openAISetupMessage, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
 import { connectedBatchVersion, pendingConnectedBatches, planConnectedBatches, restoreConnectedExcerpt } from './connectedTranslation.mjs';
+import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -429,7 +430,7 @@ function HighlightControls({ activeColor, onAdd, onRemove, compact = false }) {
   return <div className={`highlight-controls ${compact ? 'compact' : ''}`}>{currentHighlightColors.map(color => <button key={color} className={`highlight ${color}${activeColor === color ? ' selected' : ''}`} title={`${highlightColorName(color)} highlight`} aria-label={`${highlightColorName(color)} highlight`} aria-pressed={activeColor === color} onClick={() => onAdd(color)}><Highlighter size={compact ? 14 : 16} /></button>)}{activeColor && <button className="remove-selection-highlight" onClick={onRemove}>Remove Highlight</button>}</div>;
 }
 
-function QuickSelection({ selection, results, busy, lookup, activeColor, quickTermOpen, termDraft, setTermDraft, onTranslate, onExplain, onHighlight, onRemoveHighlight, onOpenTerm, onSaveTerm, onCancelTerm, onMore, onCancelTask, onClose }) {
+function QuickSelection({ selection, results, busy, lookup, activeColor, quickTermOpen, termDraft, termSaving, setTermDraft, onTranslate, onExplain, onHighlight, onRemoveHighlight, onOpenTerm, onSaveTerm, onCancelTerm, onMore, onCancelTask, onClose }) {
   return <div className="selection-toolbar" role="dialog" aria-label="Quick selection" onMouseDown={event => { if (!event.target.closest('input')) event.preventDefault(); }}>
     <div className="quick-selection-head"><strong>{short(selection.text, 150)}</strong><button aria-label="Close quick lookup" onClick={onClose}><X size={14} /></button></div>
     <div className="quick-selection-actions"><button disabled={!!busy} onClick={onTranslate}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={onExplain}><Sparkles size={14} /> Explain</button></div>
@@ -438,7 +439,7 @@ function QuickSelection({ selection, results, busy, lookup, activeColor, quickTe
     {!busy && lookup?.error && <p className="selection-lookup-message error" role="alert">{lookup.error}</p>}
     {!busy && !lookup?.error && lookup?.status && <p className="selection-lookup-message">{lookup.status}</p>}
     <div className="quick-highlight-row"><span>Highlight</span><HighlightControls activeColor={activeColor} onAdd={onHighlight} onRemove={onRemoveHighlight} compact /></div>
-    {quickTermOpen ? <div className="quick-term"><input aria-label="Preferred translation" placeholder="Preferred translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><div className="row"><button disabled={!termDraft.trim()} onClick={onSaveTerm}>Save Term</button><button onClick={onCancelTerm}>Cancel</button></div></div> : <div className="quick-selection-foot"><button disabled={selection.text.length > 160} onClick={onOpenTerm}>Save Term…</button><button onClick={onMore}><MessageSquareText size={14} /> Notes & More</button></div>}
+    {quickTermOpen ? <div className="quick-term"><input aria-label="Preferred translation" placeholder="Preferred translation" value={termDraft} disabled={termSaving} onChange={event => setTermDraft(event.target.value)} /><div className="row"><button disabled={!termDraft.trim() || termSaving} onClick={onSaveTerm}>Save Term</button><button disabled={termSaving} onClick={onCancelTerm}>Cancel</button></div></div> : <div className="quick-selection-foot"><button disabled={termSaving || !canSaveTermSource(selection.text)} onClick={onOpenTerm}>Save Term…</button><button onClick={onMore}><MessageSquareText size={14} /> Notes & More</button></div>}
   </div>;
 }
 
@@ -453,6 +454,9 @@ function App() {
   const [updateStatus, setUpdateStatus] = useState('');
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [glossary, setGlossary] = useState([]);
+  const glossarySave = useRef(null);
+  const [glossarySaving, setGlossarySaving] = useState(false);
+  const [glossaryError, setGlossaryError] = useState('');
   const [library, setLibrary] = useState([]);
   const [paper, setPaper] = useState(null);
   const paperRef = useRef(null);
@@ -955,7 +959,7 @@ function App() {
     const timer = setInterval(() => checkForUpdates(true), 60 * 60 * 1000);
     return () => clearInterval(timer);
   }, [ready, settings?.autoCheckUpdates]);
-  useEffect(() => { if (ready) api.saveGlossary(glossary).catch(err => setError(err.message)); }, [glossary, ready]);
+  useEffect(() => { if (modal === 'glossary') setGlossaryError(''); }, [modal]);
   useEffect(() => { if (paperRef.current && paperRef.current.position?.tab !== tab) commitPaper(current => ({ ...current, position: { ...current.position, tab } })); }, [tab]);
   useEffect(() => { if (paperRef.current && !focus && paperRef.current.inspectorOpen !== inspector) commitPaper(current => ({ ...current, inspectorOpen: inspector })); }, [inspector, paper?.id, focus]);
   useEffect(() => {
@@ -1024,6 +1028,8 @@ function App() {
     window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
   }, []);
   useEffect(() => api.onPrepareClose(async () => {
+    try { await glossarySave.current; }
+    catch { api.closeCancelled(); return; }
     const saved = await finishNoteEditing();
     if (saved) api.closeReady();
     else {
@@ -1182,7 +1188,9 @@ function App() {
     if (token.kind === 'selection') setSelectionLookup({ status: 'Quick lookup cancelled.', error: '' });
     setStatus('Task cancelled. Completed work was saved.');
   }
-  function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) { return glossary.filter(term => term.sourceLanguage === from && term.targetLanguage === to && text.toLowerCase().includes(term.source.toLowerCase())).slice(0, 24); }
+  function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) {
+    return matchingGlossaryTerms(glossary, text, from, to);
+  }
   async function translateBlocks(ids, { sharedFull = false } = {}) {
     if (!paperRef.current || busy || taskRef.current) return;
     const token = startTask('Translating paragraphs…');
@@ -1253,7 +1261,7 @@ function App() {
     const from = selection.kind === 'translation' ? config.targetLanguage : config.sourceLanguage;
     const to = selection.kind === 'translation' ? config.sourceLanguage : config.targetLanguage;
     const context = selectionContext(omitInlineImageData(fullContext), selection.text, kind === 'translate' ? 600 : 2400);
-    const terms = matchingTerms(selection.text, from, to);
+    const terms = kind === 'translate' ? matchingTerms(selection.text, from, to) : [];
     const selectedKey = selectionIdentity(selection);
     const cacheKey = JSON.stringify([paperRef.current.id, kind, selectionTranslationCacheVersion, selectedKey, fullContext, from, to, model, aiCacheNamespace(config), explanationLanguage, terms]);
     if (lookupCache.current.has(cacheKey)) { setSelectionResults(current => ({ ...current, [kind]: lookupCache.current.get(cacheKey) })); setSelectionLookup({ status: 'Using cached quick lookup.', error: '' }); return; }
@@ -1549,6 +1557,7 @@ function App() {
     try {
       if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
       await settingsSaveChain.current;
+      await glossarySave.current?.catch(() => {});
       openAIRefreshId.current = null;
       setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
       await api.clearData();
@@ -1668,16 +1677,43 @@ function App() {
   function removeViewHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, viewHighlights: (current.viewHighlights || []).filter(item => item.id !== id) })); }
   function removePdfNote(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfNotes: (current.pdfNotes || []).filter(item => item.id !== id) })); }
   function removePdfHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfHighlights: (current.pdfHighlights || []).filter(item => item.id !== id) })); }
-  function addTerm() {
-    if (!selection || !termDraft.trim()) return false;
-    if (selection.text.length > 160 || termDraft.trim().length > 300) { setError('Use at most 160 characters for the term and 300 for its translation.'); return false; }
+  async function saveGlossary(next) {
+    const write = api.saveGlossary(next);
+    glossarySave.current = write;
+    setGlossarySaving(true);
+    try {
+      await write;
+      setGlossary(next);
+    } finally {
+      glossarySave.current = null;
+      setGlossarySaving(false);
+    }
+  }
+  async function addTerm() {
+    if (!selection || !termDraft.trim() || glossarySave.current) return;
+    const key = selectionIdentity(selection);
     const sourceLanguage = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
     const targetLanguage = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
-    const matches = term => term.source.toLocaleLowerCase() === selection.text.toLocaleLowerCase() && term.sourceLanguage === sourceLanguage && term.targetLanguage === targetLanguage;
-    if (glossary.length >= 500 && !glossary.some(matches)) { setError('The terminology list is full. Remove a term before adding another.'); return false; }
-    setGlossary(current => [{ source: selection.text, target: termDraft.trim(), sourceLanguage, targetLanguage }, ...current.filter(term => !matches(term))]);
-    setTermDraft(''); setStatus('Term saved for future translations.');
-    return true;
+    setSelectionLookup({ status: '', error: '' });
+    try {
+      const next = upsertGlossaryTerm(glossary, { source: selection.text, target: termDraft, sourceLanguage, targetLanguage });
+      try { await saveGlossary(next); }
+      catch (cause) { throw new Error(`Could not save the term: ${cause.message}`); }
+      if (selectionIdentity(selectionRef.current) === key) {
+        setTermDraft('');
+        setQuickTermOpen(false);
+        setSelectionLookup({ status: 'Term saved for future translations.', error: '' });
+      } else setStatus('Term saved for future translations.');
+    } catch (cause) {
+      if (selectionIdentity(selectionRef.current) === key) setSelectionLookup({ status: '', error: cause.message });
+      else setError(cause.message);
+    }
+  }
+  async function removeTerm(index) {
+    if (glossarySave.current) return;
+    setGlossaryError('');
+    try { await saveGlossary(glossary.filter((_, at) => at !== index)); }
+    catch (cause) { setGlossaryError(`Could not remove the term: ${cause.message}`); }
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
   function navigate(id, { revealSource = false } = {}) {
@@ -1940,8 +1976,8 @@ function App() {
         </>}
       </div>
     </main>
-    <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
-    {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={() => { if (addTerm()) setQuickTermOpen(false); }} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={() => { void finishNoteEditing(); setSelection(null); setSelectionResults({}); }} />}
+    <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
+    {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={() => { void finishNoteEditing(); setSelection(null); setSelectionResults({}); }} />}
     {modal && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Markdown', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}
@@ -1954,7 +1990,7 @@ function App() {
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, onCheck: () => checkForUpdates(false) }} />}
-      {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => `${term.source} ${term.target}`.toLowerCase().includes(glossarySearch.toLowerCase())).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} onClick={() => setGlossary(current => current.filter((_, at) => at !== index))}><Trash2 size={16} /></button></div>)}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
+      {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} />}
       {modal === 'libraryLabel' && libraryEdit && <><p>Only the library label changes; the original PDF stays unchanged.</p><label>Title<input value={libraryEdit.name} onChange={event => setLibraryEdit({ ...libraryEdit, name: event.target.value })} /></label><label>Tags, separated by commas<input value={libraryEdit.tags} onChange={event => setLibraryEdit({ ...libraryEdit, tags: event.target.value })} /></label><div className="row"><button className="button blue" disabled={!libraryEdit.name.trim()} onClick={saveLibraryLabel}>Save label</button><button className="button outline" onClick={() => setModal('library')}>Cancel</button></div></>}
       {modal === 'more' && <div className="menu-list"><button onClick={() => setModal('range')}><Languages size={17} /> Translation Range</button><button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf'}><FileText size={17} /> Parse with MinerU</button><button onClick={reextractAsNew} disabled={paper?.type !== 'pdf' || !!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button><button onClick={() => setModal('export')}><Download size={17} /> Export Markdown</button><button onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button><button onClick={() => setModal('settings')}><Settings2 size={17} /> Settings</button></div>}

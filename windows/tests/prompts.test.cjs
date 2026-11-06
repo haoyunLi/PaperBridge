@@ -39,7 +39,7 @@ test('selection translation keeps a bounded context separate from the exact requ
   const prompt = selectionTranslationPrompt(selected, bounded, 'English', 'Chinese', [{ source: 'target', target: '目标' }]);
   assert.match(prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
   assert.match(prompt, /PAPERBRIDGE_SELECTION_TRANSLATE_ONLY/);
-  assert.match(prompt, /target = 目标/);
+  assert.match(prompt, /"source":"target","translation":"目标"/);
   assert.match(strictSelectionTranslationPrompt(selected, 'English', 'Chinese'), /Do not add a label/);
   assert.doesNotMatch(strictSelectionTranslationPrompt(selected, 'English', 'Chinese'), /CONTEXT_DO_NOT_TRANSLATE/);
 });

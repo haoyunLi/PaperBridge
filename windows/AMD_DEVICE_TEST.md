@@ -101,3 +101,7 @@ Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报
 用 Qwen3 4B Instruct 生成摘要、TranslateGemma 4B 翻译结论，完成 6 个正文批次、5 次滚动合并及 6 条双语结论，耗时 584.8 秒。4 条带引文的结论引用了 3 个原段，逐字匹配，另外 2 条显示无核验来源。从仅译文模式点击引用后，Reader 恢复双语并打开对应原段。两模型均使用 RX 7800 XT 的 ROCm 后端，Ollama 报告 Qwen3 的 3,178,149,969 字节和 TranslateGemma 的 2,875,656,764 字节均在显存。抽查时，未验证来源的结论中有一条把并行化扩大到整个推理过程。
 
 复跑需先完成 DirectML 版的 `test:live-mineru`，在本机 Ollama 下载 `qwen3:4b-instruct` 与 `translategemma:4b`，再运行 `npm run test:live-summary`。该测试复制源工作区，可用 `PAPERBRIDGE_LIVE_SUMMARY_WORKSPACE`、`PAPERBRIDGE_LIVE_SUMMARY_MODEL`、`PAPERBRIDGE_LIVE_MODEL` 和 `PAPERBRIDGE_LIVE_OLLAMA` 指定工作区、两个模型与回环地址。
+
+## 保存术语后翻译（2026-11-06）
+
+在隔离工作区通过 Reader 选区保存 `Self-attention → 自注意机制`，等待写盘成功后翻译该段。TranslateGemma 4B 生成“自注意机制稳定了基线注意力得分。”Ollama 日志确认使用 RX 7800 XT 的 ROCm 后端，模型大小与显存占用均为 2,881,948,220 字节。此次验证的是一个英译中样例。

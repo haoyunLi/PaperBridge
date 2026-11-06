@@ -72,8 +72,14 @@ function createStore(root) {
     saveUpdateCheckAt(value) { writeJson(path.join(root, 'updates.json'), { lastCheckAt: value }); },
     updateCheckState() { return readJson(path.join(root, 'updates.json'), {}); },
     saveUpdateCheckState(value) { writeJson(path.join(root, 'updates.json'), value); },
-    glossary() { return readJson(path.join(root, 'glossary.json'), []); },
-    saveGlossary(glossary) { writeJson(path.join(root, 'glossary.json'), glossary.slice(0, 500)); },
+    glossary() {
+      const saved = readJson(path.join(root, 'glossary.json'), []);
+      return Array.isArray(saved) ? saved.filter(term => typeof term?.source === 'string' && typeof term?.target === 'string') : [];
+    },
+    saveGlossary(glossary) {
+      if (!Array.isArray(glossary) || glossary.length > 500) throw new Error('Invalid terminology list. The limit is 500 terms.');
+      writeJson(path.join(root, 'glossary.json'), glossary);
+    },
     paper(id) { return readJson(paperPath(id), null); },
     lastPaperId() {
       const id = readJson(lastPaperFile, {})?.id;
