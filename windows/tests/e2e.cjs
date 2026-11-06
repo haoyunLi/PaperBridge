@@ -4,8 +4,8 @@ const path = require('node:path');
 const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 
-function samplePdf(blank = false, variant = '') {
-  const stream = blank ? '' : 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj ET';
+function samplePdf(blank = false, variant = '', firstPage = '') {
+  const stream = blank ? '' : firstPage || 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj ET';
   const secondStream = blank ? '' : `BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page${variant}.) Tj ET`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -554,7 +554,26 @@ async function run() {
     await reopenedPage.getByText('MinerU returned no readable blocks.', { exact: false }).waitFor();
     await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
     await reopenedPage.getByText('This practice PDF contains selectable academic text', { exact: false }).first().waitFor();
-    console.log('Electron workflow verified: native menu and shortcuts, source/PDF annotations, original-page comparison, full and stopped portable export, scan OCR guidance, empty MinerU fallback, and restart recovery.');
+
+    const columnsPath = path.join(artifacts, 'narrow-gutter.pdf');
+    const column = (side, x, y) => Array.from({ length: 6 }, (_, i) =>
+      `1 0 0 1 ${x} ${y - i * 14} Tm (${side} line ${i + 1} reports valid sample results.) Tj`
+    ).join(' ');
+    const layout = [
+      'BT /F1 12 Tf 1 0 0 1 174 752 Tm (Shared heading across both columns) Tj',
+      column('Left upper', 58, 720), column('Right upper', 315, 720),
+      '1 0 0 1 90 615 Tm (Table 1. Results recorded across both columns before the follow-up trial.) Tj',
+      column('Left lower', 58, 582), column('Right lower', 315, 582), 'ET'
+    ].join(' ');
+    fs.writeFileSync(columnsPath, samplePdf(false, '', layout));
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, columnsPath);
+    await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
+    await reopenedPage.getByRole('heading', { name: 'narrow-gutter.pdf' }).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
+    await reopenedPage.locator('.source-text').getByText(/Right lower line 6/).waitFor();
+    const lines = (await reopenedPage.locator('.source-text').allInnerTexts()).join('\n');
+    assert.match(lines, /Shared heading[\s\S]*Left upper line 6[\s\S]*Right upper line 1[\s\S]*Right upper line 6[\s\S]*Table 1\.[\s\S]*Left lower line 6[\s\S]*Right lower line 1/);
+    console.log('Electron workflow verified: native menu and shortcuts, source/PDF annotations, original-page comparison, full and stopped portable export, scan OCR guidance, empty MinerU fallback, restart recovery, and narrow-gutter reading order.');
   } finally { await app?.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

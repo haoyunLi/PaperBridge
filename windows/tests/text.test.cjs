@@ -61,6 +61,49 @@ test('PDF lines split at headings and preserve page provenance', async () => {
   assert.equal(blocks[1].page, 3);
 });
 
+test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
+  const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, y, width, vertical = false) => ({
+    str, transform: [...(vertical ? [0, 10, -10, 0] : [10, 0, 0, 10]), x, y], width, height: 10
+  });
+  const leftUpper = Array.from({ length: 6 }, (_, i) => item('Left side records results from trial ' + i, 66, 740 - 12 * i, 234));
+  const rightUpper = leftUpper.map(({ transform }, i) => item('Right side reports values from trial ' + i, 329, transform[5], 218));
+  const lowerLeft = item('Left side continues after the shared table.', 66, 610, 236);
+  const lowerRight = item('Right side continues after the shared table.', 329, 610, 224);
+  const title = item('Shared title across the whole page', 122, 770, 355);
+  const table = item('Table 1. Shared measurements across the whole page.', 90, 650, 425);
+  const stamp = item('arXiv:1234.5678', 42, 716, 257, true);
+  const items = [
+    ...rightUpper, lowerRight, stamp, title,
+    item('ImageNet', 66, 740, 43),
+    item(' ', 109, 740, 1.5),
+    item('trial records reproducible baseline results', 110.5, 740, 189.5),
+    ...leftUpper.slice(1), table, lowerLeft
+  ];
+  const lines = pageLines({ items }, [20, 30, 632, 822]);
+  assert.deepEqual(pdfReadingGroups(lines).map(group => group.map(line => line.text)), [
+    [title.str],
+    ['ImageNet trial records reproducible baseline results', ...leftUpper.slice(1).map(item => item.str)],
+    rightUpper.map(item => item.str),
+    [table.str],
+    [lowerLeft.str],
+    [lowerRight.str]
+  ]);
+});
+
+test('short cell labels do not make a single-column PDF into two columns', async () => {
+  const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, y, width) => ({ str, transform: [10, 0, 0, 10, x, y], width, height: 10 });
+  const rows = Array.from({ length: 8 }, (_, i) => [
+    item('ID ' + i, 60, 750 - 12 * i, 224),
+    item('100', 322, 750 - 12 * i, 220)
+  ]).flat();
+  const text = item('A regular paragraph resumes underneath the table.', 60, 630, 470);
+  const lines = pageLines({ items: [...rows, text] }, [0, 0, 612, 792]);
+  assert.deepEqual(pdfReadingGroups(lines), [lines]);
+  assert.equal(lines.at(-1).text, text.str);
+});
+
 test('long text is chunked without losing characters', async () => {
   const { chunkText } = await import('../src/text.mjs');
   const text = 'First sentence. Second sentence. Third sentence.';

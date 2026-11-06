@@ -1,5 +1,6 @@
 const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|acknowledg(?:e)?ments|摘要|引言|方法|结果|讨论|结论)\s*$/i;
 const leadingNamedSection = /^(?:(?:\d+(?:\.\d+)*)\s+)?(?:abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|experiments?|evaluation|results?|discussion|conclusions?|appendix|acknowledg(?:e)?ments)(?:[.:])?\s+/i;
+const pdfCaption = /^(?:figure|fig\.|table)\s+\d+[.:]/i;
 
 export function isHeading(text, sourceMarkdown = null) {
   const value = String(text || '').trim();
@@ -75,9 +76,9 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     const heading = isHeading(line.text);
     const nextStarts = /^[A-Z\u4e00-\u9fff]/.test(line.text);
     const previousEnds = previous && /[.!?。！？:]$/.test(previous.text);
-    if (previous && (heading || isHeading(previous.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
+    if (previous && (line.independent || heading || pdfCaption.test(line.text) || isHeading(previous.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
     group.push(line);
-    if (heading) flush();
+    if (line.independent || heading) flush();
   }
   flush();
   return blocks;
