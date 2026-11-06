@@ -22,6 +22,9 @@ let window;
 let store;
 const mineruJobs = createMineruJobGuard();
 let setupManager = null;
+let setupOperation = null;
+let setupChangesMineru = false;
+let waitingForSetupQuit = false;
 let openAICredentials = null;
 let openAIClient = null;
 let openAIConsent = false;
@@ -142,7 +145,13 @@ function registerHandlers() {
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
   ipcMain.handle('setup:install', (_event, config) => {
     if (modelPullManager.busy) throw new Error('A model download is already running. Cancel it or wait before starting Local AI setup.');
-    localOllamaURL(config.baseURL, 'api/tags'); return setupManager.install(config);
+    if (setupOperation) throw new Error('A setup is already running.');
+    localOllamaURL(config.baseURL, 'api/tags');
+    const changesMineru = config.components == null || config.components.mineru === true;
+    if (changesMineru && mineruJobs.busy) throw new Error('Finish or stop the current PDF extraction before installing MinerU.');
+    setupChangesMineru = changesMineru;
+    setupOperation = setupManager.install(config).finally(() => { setupOperation = null; setupChangesMineru = false; });
+    return setupOperation;
   });
   ipcMain.handle('setup:cancel', () => setupManager.cancel());
   ipcMain.handle('ollama:running', async (_event, baseURL) => {
@@ -281,6 +290,7 @@ function registerHandlers() {
   ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
   ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
   ipcMain.handle('mineru:extract', async (_event, { id, executable, backend, requestId }) => {
+    if (setupChangesMineru) throw new Error('Finish or cancel the current MinerU setup before extracting a PDF.');
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
     const job = mineruJobs.begin();
@@ -430,7 +440,16 @@ app.on('before-quit', event => {
     requestRendererClose(true);
     return;
   }
-  setupManager?.cancel(); modelPullManager.cancel(); mineruJobs.cancel(); revokeOpenAIConsent();
+  if (setupOperation) {
+    event.preventDefault();
+    if (!waitingForSetupQuit) {
+      waitingForSetupQuit = true;
+      setupManager.cancel();
+      void setupOperation.then(() => app.quit(), () => app.quit());
+    }
+    return;
+  }
+  modelPullManager.cancel(); mineruJobs.cancel(); revokeOpenAIConsent();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 

@@ -7,6 +7,7 @@ function cancellationError() {
 function createMineruJobGuard() {
   let active = null;
   return {
+    get busy() { return active !== null; },
     begin() {
       if (active) throw new Error('MinerU is already processing a PDF. Stop it before starting another.');
       active = { cancelled: false, child: null };

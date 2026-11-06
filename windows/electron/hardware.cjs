@@ -46,13 +46,13 @@ async function graphicsStatus() {
   return { adapters, cudaDriver, cudaVersion, systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
 }
 
-async function mineruRuntime(executable, toolsRoot, found) {
+async function mineruRuntime(executable, toolsRoot, found, signal) {
   const detected = found || await detectMineruExecutable(executable, toolsRoot);
   if (!detected.compatible) return { checked: false, reason: detected.reason };
   if (detected.kitExecutable) {
     try {
       const { stdout } = await run(detected.kitExecutable, ['hardware', 'info', '--json'], {
-        timeout: 30000, windowsHide: true, env: mineru4Environment(toolsRoot, 'auto')
+        timeout: 30000, windowsHide: true, signal, env: mineru4Environment(toolsRoot, 'auto')
       });
       const onnx = JSON.parse(stdout).runtimes?.find(runtime => runtime.name === 'onnx');
       if (onnx?.status !== 'ok') return { checked: false, engine: 'onnx', reason: 'MinerU could not verify its ONNX runtime.' };
@@ -79,7 +79,7 @@ async function mineruRuntime(executable, toolsRoot, found) {
       '        reason = str(error)[:180]',
       'print(json.dumps({"torch":torch.__version__,"cuda":ready,"devices":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],"reason":reason}))'
     ].join('\n');
-    const { stdout } = await run(python, ['-c', script], { timeout: 30000, windowsHide: true });
+    const { stdout } = await run(python, ['-c', script], { timeout: 30000, windowsHide: true, signal });
     return { checked: true, ...JSON.parse(stdout.trim().split(/\r?\n/).at(-1)) };
   } catch (error) { return { checked: false, reason: `Cannot verify MinerU PyTorch CUDA: ${error.message.slice(0, 140)}` }; }
 }

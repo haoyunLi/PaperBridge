@@ -79,6 +79,7 @@ test('NVIDIA setup chooses supported wheel index and repairs CPU-only MinerU', (
   assert.equal(cudaPlan({ ...hardware, cudaVersion: '12.4' }).index, null);
   const onnx = { ...status, mineru: { compatible: true, kitExecutable: 'mineru-kit.exe', runtime: { directml: true } } };
   assert.equal(setupPlan(onnx).mineru, false, 'A working ONNX parser does not require a CUDA reinstall');
+  assert.equal(setupPlan({ ...onnx, mineru: { ...onnx.mineru, runtime: { checked: false } } }).mineru, true);
 });
 
 test('managed bootstrap refuses a downloaded uv archive with the wrong checksum', async () => {
@@ -179,8 +180,12 @@ test('cancelling during status detection does not report setup as done', async (
   assert.deepEqual(events.map(event => event.phase), ['detect', 'cancelled']);
 });
 
-test('failed MinerU activation restores the previous managed environment', async () => {
+function managedInstallFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-test-'));
+  t.after(() => {
+    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test directory');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
   const previous = path.join(root, 'mineru', 'Scripts', 'mineru.exe');
   const architecture = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
   const python = path.join(root, 'python', `cpython-3.12.13-windows-${architecture}-none`, 'python.exe');
@@ -188,24 +193,71 @@ test('failed MinerU activation restores the previous managed environment', async
   fs.writeFileSync(previous, 'previous');
   fs.mkdirSync(path.dirname(python), { recursive: true });
   fs.writeFileSync(python, 'python');
-  const manager = new SetupManager({ toolsRoot: root, ollamaRequest: () => {}, pullModel: () => {}, emit: () => {} });
-  manager.controller = new AbortController();
+  const events = [];
+  const manager = new SetupManager({ toolsRoot: root, ollamaRequest: () => {}, pullModel: () => {}, emit: event => events.push(event) });
   manager.installUV = async () => 'uv.exe';
-  manager.run = async (command, args) => {
+  manager.run = async (_command, args) => {
     if (args[0] === 'venv') {
       const staged = path.join(root, 'mineru.installing', 'Scripts', 'mineru.exe');
       fs.mkdirSync(path.dirname(staged), { recursive: true });
       fs.writeFileSync(staged, 'new');
+      fs.writeFileSync(path.join(path.dirname(staged), 'mineru-kit.exe'), 'kit');
     }
-    if (command === previous) throw new Error('verification failed');
     return '';
   };
-  try {
-    await assert.rejects(manager.installMineru({ index: null }), /verification failed/);
+  return { root, previous, backup: path.join(root, 'mineru.backup', 'Scripts', 'mineru.exe'), manager, events };
+}
+
+test('failed MinerU activation restores the previous managed environment', async t => {
+  const { manager, previous, backup } = managedInstallFixture(t);
+  manager.controller = new AbortController();
+  const run = manager.run;
+  manager.run = async (command, args) => {
+    if (command === previous) throw new Error('verification failed');
+    return run(command, args);
+  };
+  await assert.rejects(manager.installMineru({ index: null }, true), /verification failed/);
+  assert.equal(fs.readFileSync(previous, 'utf8'), 'previous');
+  assert.equal(fs.existsSync(backup), false);
+});
+
+test('failed or cancelled MinerU runtime verification rolls back after command activation', async t => {
+  for (const mode of ['failure', 'cancellation']) await t.test(mode, async child => {
+    const { manager, previous, backup } = managedInstallFixture(child);
+    manager.controller = new AbortController();
+    manager.checkMineruRuntime = async () => {
+      assert.equal(fs.readFileSync(previous, 'utf8'), 'new');
+      assert.equal(fs.readFileSync(backup, 'utf8'), 'previous');
+      if (mode === 'cancellation') manager.cancel();
+      return mode === 'failure' ? { checked: false, reason: 'ONNX verification failed' } : { checked: true, directml: true };
+    };
+    await assert.rejects(manager.installMineru({ index: null }, true), mode === 'failure' ? /ONNX verification failed/ : { name: 'AbortError' });
     assert.equal(fs.readFileSync(previous, 'utf8'), 'previous');
-    assert.equal(fs.existsSync(path.join(root, 'mineru.backup')), false);
-  } finally {
-    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test directory');
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+    assert.equal(fs.existsSync(backup), false);
+  });
+});
+
+test('cancelling optional MinerU model preloading reports the activated parser as installed', async t => {
+  const { manager, previous, backup, events } = managedInstallFixture(t);
+  manager.status = async () => ({
+    mineru: { executable: previous, kitExecutable: 'mineru-kit.exe' },
+    plan: { ollama: false, models: [], mineru: true, gpu: { index: null } }
+  });
+  manager.checkMineruRuntime = async () => ({ checked: true, directml: true });
+  const run = manager.run;
+  manager.run = async (command, args) => {
+    if (args[0] === 'models') {
+      assert.equal(fs.readFileSync(previous, 'utf8'), 'new');
+      assert.equal(fs.existsSync(backup), false);
+      manager.cancel();
+      throw new Error('model preloading stopped');
+    }
+    return run(command, args);
+  };
+  if (process.arch !== 'x64') return t.skip('Managed ONNX setup runs on x64');
+  const result = await manager.install({ components: { mineru: true }, repairMineru: true });
+  assert.equal(result.mineruExecutable, previous);
+  assert.equal(result.mineruBackend, 'auto');
+  assert.match(result.warning, /MinerU is installed.*preloading was cancelled/);
+  assert.equal(events.at(-1).phase, 'done');
 });

@@ -50,6 +50,7 @@ function setupPlan(status, requiredModels = [], config = {}) {
     ollama: !status.ollama.running && (components.ollama || components.models),
     models,
     mineru: components.mineru && (Boolean(config.repairMineru) || !status.mineru.compatible
+      || Boolean(status.mineru.kitExecutable && status.mineru.runtime?.checked === false)
       || Boolean(gpu.index && !status.mineru.kitExecutable && !status.mineru.runtime?.cuda)),
     gpu,
     components,
@@ -260,8 +261,11 @@ class SetupManager {
     }
   }
 
+  checkMineruRuntime(executable, kitExecutable) {
+    return mineruRuntime(executable, this.toolsRoot, { compatible: true, executable, kitExecutable }, this.controller.signal);
+  }
+
   async installMineru(gpu, useOnnx = process.arch === 'x64' && !gpu.index) {
-    const uv = await this.installUV();
     const final = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru'));
     const staging = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.installing'));
     const backup = ownedPath(this.toolsRoot, path.join(this.toolsRoot, 'mineru.backup'));
@@ -270,7 +274,7 @@ class SetupManager {
     if (fs.existsSync(backup)) {
       let finalWorks = false;
       if (fs.existsSync(final)) {
-        try { finalWorks = (await detectMineruExecutable(path.join(final, 'Scripts', 'mineru.exe'), this.toolsRoot)).compatible; }
+        try { finalWorks = (await mineruStatus(path.join(final, 'Scripts', 'mineru.exe'), this.toolsRoot)).runtime?.checked === true; }
         catch { /* Recover the last working installation after an interrupted activation. */ }
       }
       if (!finalWorks) {
@@ -279,6 +283,7 @@ class SetupManager {
       }
     }
     if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
+    const uv = await this.installUV();
     try {
       let managedPython = managedPythonPath(this.toolsRoot);
       if (!managedPython) {
@@ -314,28 +319,38 @@ class SetupManager {
       this.send('mineru', 'Activating the verified MinerU environment…');
       if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
       if (fs.existsSync(final)) fs.renameSync(final, backup);
+      const executable = path.join(final, 'Scripts', 'mineru.exe');
+      const kitExecutable = useOnnx ? path.join(final, 'Scripts', 'mineru-kit.exe') : '';
+      let runtime;
       try {
         fs.renameSync(staging, final);
-        const executable = path.join(final, 'Scripts', 'mineru.exe');
         await this.run(executable, versionArgs, 'mineru', 'Checking the active MinerU installation…', { env: environment });
-        if (useOnnx) await this.run(path.join(final, 'Scripts', 'mineru-kit.exe'), ['parse', '--help'], 'mineru', 'Checking the active ONNX parser…', { env: environment });
+        if (kitExecutable) await this.run(kitExecutable, ['parse', '--help'], 'mineru', 'Checking the active ONNX parser…', { env: environment });
+        this.send('mineru', 'Checking the active MinerU runtime and graphics backend…');
+        runtime = await this.checkMineruRuntime(executable, kitExecutable);
+        cancelled(this.controller.signal);
+        if (!runtime?.checked) throw new Error(runtime?.reason || 'MinerU runtime verification failed.');
       } catch (error) {
         if (fs.existsSync(final)) fs.rmSync(final, { recursive: true, force: true });
         if (fs.existsSync(backup)) fs.renameSync(backup, final);
         throw error;
       }
-      if (fs.existsSync(backup)) fs.rmSync(backup, { recursive: true, force: true });
-      const executable = path.join(final, 'Scripts', 'mineru.exe');
-      const runtime = await mineruRuntime(executable, this.toolsRoot);
       if (gpu.index && !useOnnx && !runtime.cuda) gpuWarning ||= 'MinerU installed, but PyTorch did not confirm CUDA. Parsing will use its available CPU path.';
+      const warnings = gpuWarning ? [gpuWarning] : [];
+      try { fs.rmSync(backup, { recursive: true, force: true }); }
+      catch { warnings.push('MinerU is installed. The previous environment could not be cleaned up.'); }
       const downloader = path.join(final, 'Scripts', useOnnx ? 'mineru-kit.exe' : 'mineru-models-download.exe');
       if (fs.existsSync(downloader)) {
         const args = useOnnx ? ['models', 'download', '--tier', 'basic', '--small-backend', 'onnx', '--source', 'auto']
           : ['--source', 'auto', '--model_type', 'pipeline'];
         try { await this.run(downloader, args, 'models', 'Preloading MinerU parsing models; this can take several GB…', { env: environment }); }
-        catch (error) { if (this.controller.signal.aborted) throw error; gpuWarning += `${gpuWarning ? ' ' : ''}MinerU model preloading did not finish; it will retry when a PDF is parsed.`; }
+        catch {
+          warnings.push(this.controller.signal.aborted
+            ? 'MinerU is installed. Model preloading was cancelled and will retry when a PDF is parsed.'
+            : 'MinerU model preloading did not finish; it will retry when a PDF is parsed.');
+        }
       }
-      return { executable, runtime, onnx: useOnnx, warning: gpuWarning };
+      return { executable, runtime, onnx: useOnnx, warning: warnings.join(' ') };
     } finally { if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true }); }
   }
 
@@ -365,8 +380,7 @@ class SetupManager {
         mineruCuda = Boolean(result.runtime?.cuda);
         mineruOnnx = Boolean(result.onnx);
         warning = result.warning;
-      }
-      cancelled(this.controller.signal);
+      } else cancelled(this.controller.signal);
       this.send('done', warning || 'Local AI setup is ready.');
       return components.mineru ? { mineruExecutable, mineruBackend: mineruCuda || mineruOnnx ? 'auto' : 'pipeline', warning } : { warning };
     } catch (error) {
