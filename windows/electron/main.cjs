@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -14,11 +14,17 @@ const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
 const { createOfficialLinkHandler } = require('./official-links.cjs');
+const { createOpenAICredentialStore, createOpenAIClient } = require('./openai.cjs');
+const developmentBuild = !app.isPackaged && process.env.NODE_ENV !== 'production';
 
 let window;
 let store;
 const mineruJobs = createMineruJobGuard();
 let setupManager = null;
+let openAICredentials = null;
+let openAIClient = null;
+let openAIConsent = false;
+let openAIRevision = 0;
 let activeBundle = null;
 let menuState = normalizeMenuState({});
 let closeReady = false;
@@ -26,7 +32,15 @@ let closeRequested = false;
 let quitAfterClose = false;
 let closeTimer = null;
 const requests = new Map();
+const openAIRequests = new Map();
 const modelPullManager = createModelPullManager({ pullModel: pullOllamaModel, emit: progress, isSetupBusy: () => Boolean(setupManager?.controller) });
+
+function revokeOpenAIConsent() {
+  openAIConsent = false;
+  openAIRevision += 1;
+  for (const controller of openAIRequests.values()) controller.abort();
+  openAIRequests.clear();
+}
 
 function finishClose() {
   closeReady = true;
@@ -163,6 +177,44 @@ function registerHandlers() {
     return (data.models || []).map(model => ({ name: model.name || model.model, sizeVram: model.size_vram || 0, size: model.size || 0 }));
   });
   ipcMain.handle('settings:save', (_event, settings) => store.saveSettings(settings));
+  ipcMain.handle('openai:key-status', () => ({ hasKey: openAICredentials.status() }));
+  ipcMain.handle('openai:key-save', (_event, key) => {
+    openAICredentials.save(key);
+    revokeOpenAIConsent();
+    return { hasKey: true, consent: false };
+  });
+  ipcMain.handle('openai:key-remove', () => {
+    openAICredentials.remove();
+    revokeOpenAIConsent();
+    return { hasKey: false, consent: false };
+  });
+  ipcMain.handle('openai:consent', (_event, enabled) => {
+    if (enabled !== true) { revokeOpenAIConsent(); return false; }
+    if (!openAICredentials.status()) throw new Error('Save an OpenAI API key in Settings > Models first.');
+    openAIRevision += 1;
+    openAIConsent = true;
+    return true;
+  });
+  ipcMain.handle('openai:models', async (_event, requestId) => {
+    if (typeof requestId !== 'string' || !requestId) throw new Error('Invalid OpenAI model request.');
+    const controller = new AbortController();
+    openAIRequests.set(requestId, controller);
+    try { return await openAIClient.listModels(openAICredentials.read(), controller.signal); }
+    finally { openAIRequests.delete(requestId); }
+  });
+  ipcMain.handle('openai:generate', async (_event, { model, prompt, system, requestId }) => {
+    if (!openAIConsent) throw new Error('Open Settings > Models to allow sending text to OpenAI for this session. Nothing was sent.');
+    if (typeof requestId !== 'string' || !requestId) throw new Error('Invalid OpenAI request.');
+    const revision = openAIRevision;
+    const controller = new AbortController();
+    openAIRequests.set(requestId, controller);
+    try {
+      const result = await openAIClient.generate({ apiKey: openAICredentials.read(), model, prompt, system, signal: controller.signal });
+      if (!openAIConsent || revision !== openAIRevision) throw new Error('Cancelled');
+      return result;
+    } finally { openAIRequests.delete(requestId); }
+  });
+  ipcMain.handle('openai:cancel', (_event, requestId) => { openAIRequests.get(requestId)?.abort(); });
   ipcMain.handle('glossary:save', (_event, glossary) => store.saveGlossary(glossary));
   ipcMain.handle('paper:load', (_event, id) => store.paper(safeId(id)));
   ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
@@ -338,7 +390,7 @@ function createWindow() {
   closeReady = false;
   cancelRendererClose();
   window = new BrowserWindow({
-    width: 1320, height: 820, minWidth: 980, minHeight: 620, title: 'PaperBridge',
+    width: 1320, height: 820, minWidth: 980, minHeight: 620, title: developmentBuild ? 'PaperBridge Dev' : 'PaperBridge',
     backgroundColor: '#F3EEE4',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
@@ -363,8 +415,11 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  app.setName('PaperBridge');
+  app.setName(developmentBuild ? 'PaperBridge Dev' : 'PaperBridge');
+  if (developmentBuild && !process.env.PAPERBRIDGE_WORKSPACE) app.setPath('userData', path.join(app.getPath('appData'), 'PaperBridge Dev'));
   store = createStore(process.env.PAPERBRIDGE_WORKSPACE || path.join(app.getPath('userData'), 'workspace'));
+  openAICredentials = createOpenAICredentialStore({ file: path.join(store.root, 'openai-key.bin'), safeStorage });
+  openAIClient = createOpenAIClient();
   setupManager = new SetupManager({
     toolsRoot: process.env.PAPERBRIDGE_TOOLS_ROOT || path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'PaperBridge', 'tools'),
     ollamaRequest,
@@ -381,7 +436,7 @@ app.on('before-quit', event => {
     requestRendererClose(true);
     return;
   }
-  setupManager?.cancel(); modelPullManager.cancel(); mineruJobs.cancel();
+  setupManager?.cancel(); modelPullManager.cancel(); mineruJobs.cancel(); revokeOpenAIConsent();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 

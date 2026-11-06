@@ -61,6 +61,21 @@ test('changing languages, translation model, or endpoint isolates outputs and re
   }
 });
 
+test('switching providers or translation style restores each saved output variant', async () => {
+  const { switchOutputSettings } = await outputCache;
+  const local = { ...settings, aiProvider: 'ollama', translationStyleGuide: '' };
+  const online = { ...settings, aiProvider: 'openai', openAITranslationModel: 'gpt-translate', openAISummaryModel: 'gpt-summary', openAIExplainModel: 'gpt-explain', openAIQuickLookupModel: 'gpt-quick', translationStyleGuide: 'Concise academic Chinese.' };
+  const blankOnline = switchOutputSettings(paperWithOutputs('LOCAL'), local, online);
+  assert.equal(blankOnline.blocks[1].translation, '');
+  assert.equal(blankOnline.summary, null);
+  const generatedOnline = applyOutputs(blankOnline, 'ONLINE');
+  const restoredLocal = switchOutputSettings(generatedOnline, online, local);
+  assertGeneratedOutputs(restoredLocal, 'LOCAL');
+  assertGeneratedOutputs(switchOutputSettings(restoredLocal, local, online), 'ONLINE');
+  const alternateStyle = { ...online, translationStyleGuide: 'Literal academic Chinese.' };
+  assert.equal(switchOutputSettings(generatedOnline, online, alternateStyle).blocks[1].translation, '');
+});
+
 test('source edits reject stale paragraph, summary, full translation and their annotations while unchanged paragraphs restore', async () => {
   const { switchOutputSettings } = await outputCache;
   const next = { ...settings, targetLanguage: 'German' };

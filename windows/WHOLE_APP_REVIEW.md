@@ -1,5 +1,17 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第十阶段：同步 macOS 1.10 provider 与导入反馈（2026-11-05）
+
+重新获取 GitHub 后，macOS 主分支从 1.9.1 `33cfb933` 前进到 1.10.0 `16e01ac`。Windows 分支已合入这两个上游提交，并新增 [20 项 1.10 增量映射](MAC_1_10_GAPS.md)。本阶段首先补齐影响最大的在线/本地 AI 边界：Models 可显式选择 Ollama 或 OpenAI，四种在线任务模型与四种本地模型互不覆盖；模型列表只在用户点击时通过 `GET /v1/models` 获取，也允许手输 ID，不会自动选择付费模型或自动从本地回退云端。
+
+OpenAI key 不进入 settings、paper workspace 或 export，而是由 Electron `safeStorage` 使用当前 Windows 账户 DPAPI 加密。每次 app session 都必须重新允许在线发送；切换 provider、替换/删除 key 或撤销授权会取消在线请求并阻止后续批次。固定官方 Responses API 请求使用 `store:false`、禁用重定向，并拒绝 partial、refusal、非 completed、空输出和畸形 JSON；服务错误不会把 response body、key 或论文文本带回 UI。Settings 明确展示所发送的提取文字范围、PDF/图片不上传、API 与 ChatGPT 分开计费、`store:false` 不等于零保留，并提供经过严格白名单的 key、usage 与 data controls 小入口。
+
+provider、对应任务模型、翻译方向和最多 2,000 字符 style guide 已进入输出 cache namespace；本地/在线切换与重启会恢复各自的段落译文、摘要、全文译稿、解释和对应标注，但不会恢复在线许可。普通、Markdown 与选区提示词同步 1.10：单词、短语、标题、标签或站点名均视为完整翻译单元，不索要额外上下文；system 指令加入最多 300 字符论文标题、匹配术语和可选 style guide。专用 Electron 流程用受控在线响应实际核对 model、title、style，切换到 Ollama 后结果消失，切回 OpenAI 及重启后在线译文恢复且授权保持 Paused。
+
+PDF 导入也同步 1.9.2/1.10：确认文件或拖入后，header、侧栏和正文立即显示新文件名、已耗时秒数、Cancel Import，以及从 MinerU 日志归一的 layout / formula / text 阶段和本阶段计数；旧论文只在导入完整成功后才被替换。延迟 MinerU Electron 回归验证取消后旧 bookmark、正文和 workspace 数量保持不变，随后到达的成功结果也不能写回。开发运行使用独立 `PaperBridge Dev` user-data，避免复用下载版工作区。
+
+本阶段通过 **109/109 单元测试**、生产构建、主 Electron 流程、OpenAI settings/provider/result-variant 专项流程和 import progress/cancel 专项流程。OpenAI 专项还在延迟多批请求中撤销授权，核对仅发送一次、后续批次停止且迟到结果丢弃；额度/权限类全局错误同样只请求首段即终止长队列。因此 1.10 增量映射达到 **20 对齐、0 部分、0 缺失**。没有使用真实 OpenAI key 或付费推理。
+
 ## 第九阶段：精确选区翻译保护（2026-11-05）
 
 对照 macOS `PaperReaderViewModel+Selection.swift` 后，Windows 补齐选区翻译的精确边界：翻译上下文围绕选中文字限制为 600 字符，解释上下文限制为 2400 字符；提示词用独立分隔符声明上下文只用于消歧、不可翻译，真正要翻译的选区另行标记。长度不超过 320 字符的选区若首次输出超过 `max(48, 选区长度 × 3)`，应用会显示 “Refining exact selection…” 并自动发送不含上下文的严格重译请求，避免模型把整段正文一起输出。缓存版本同步升级，旧的宽松结果不会被复用；原文与目标语言相同时直接返回选区，不浪费模型调用。

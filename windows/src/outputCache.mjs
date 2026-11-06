@@ -1,12 +1,14 @@
 // Keep results under the settings that produced them, as macOS workspaces do.
+import { activeAIModel, aiCacheNamespace } from './aiSettings.mjs';
+
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const sourceOf = block => [block.id, block.text, block.sourceMarkdown || ''];
 const paperSource = paper => paper.blocks.map(sourceOf);
-const direction = settings => [settings.ollamaBaseURL, settings.translationModel, settings.sourceLanguage, settings.targetLanguage];
+const direction = settings => [aiCacheNamespace(settings), activeAIModel(settings, 'translation'), settings.sourceLanguage, settings.targetLanguage];
 export const translationKey = settings => JSON.stringify([...direction(settings), settings.maxParagraphChars]);
 export const connectedKey = settings => JSON.stringify(direction(settings));
-export const summaryKey = settings => JSON.stringify([...direction(settings), settings.summaryModel]);
-export const explanationKey = (id, language, settings) => JSON.stringify([id, language, settings.ollamaBaseURL, settings.explainModel]);
+export const summaryKey = settings => JSON.stringify([...direction(settings), activeAIModel(settings, 'summary')]);
+export const explanationKey = (id, language, settings) => JSON.stringify([id, language, aiCacheNamespace(settings), activeAIModel(settings, 'explanation')]);
 
 export function migrateExplanations(paper, settings) {
   const results = {};

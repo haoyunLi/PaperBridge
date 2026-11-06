@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRightLeft, BookOpen, Cpu, Download, FileText, HardDrive, RefreshCw, Settings2, Square } from 'lucide-react';
 import SettingsModels from './SettingsModels.jsx';
+import OpenAISettings from './OpenAISettings.jsx';
 import './settings.css';
 
 const api = window.paperBridge;
@@ -14,7 +15,7 @@ function Group({ title, children }) {
 }
 
 export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData,
-  modelTools, hardwareTools, updates }) {
+  modelTools, openAITools, hardwareTools, updates }) {
   const [section, setSection] = useState('setup');
   const [parserCheck, setParserCheck] = useState(0);
   const [parser, setParser] = useState(null);
@@ -105,6 +106,8 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <Group title="What MinerU adds"><p>Structured reading order, headings, images, captions, tables and LaTeX formulas. MinerU is optional; its output and the original PDF remain stored locally.</p></Group>
       </>}
       {section === 'models' && <>
+        <Group title="AI provider"><label>AI provider<select value={settings.aiProvider || 'ollama'} disabled={locked} onChange={event => onSettings({ aiProvider: event.target.value })}><option value="ollama">Ollama (Local)</option><option value="openai">OpenAI (Online)</option></select></label><p>Ollama is the default. OpenAI requires your own API key, explicit task models, and permission for each session. PaperBridge never switches providers automatically.</p></Group>
+        {settings.aiProvider === 'openai' ? <OpenAISettings settings={settings} onSettings={onSettings} locked={locked} tools={openAITools} /> : <>
         <Group title="Ollama"><fieldset disabled={locked}><label>Ollama URL<input value={settings.ollamaBaseURL} onChange={event => onSettings({ ollamaBaseURL: event.target.value })} /></label><button className="button outline" onClick={onRefresh}><RefreshCw size={15} />Refresh models</button></fieldset>{ollamaError && <p className="settings-error" role="alert">{ollamaError}</p>}</Group>
         <Group title="Task models"><fieldset disabled={locked}><div className="settings-grid">{[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model'], ['quickLookupModel', 'Quick lookup model']].map(([key, label]) => <label key={key}>{label}<select value={settings[key] || settings.translationModel} onChange={event => onSettings({ [key]: event.target.value })}>{[...new Set([settings[key] || settings.translationModel, ...models])].map(value => <option key={value}>{value}</option>)}</select></label>)}</div></fieldset><p>Quick lookup handles selected-text translation and explanation. A smaller model can respond sooner.</p></Group>
         <Group title="Download another model"><p>Enter an Ollama model name, or browse the recommendations in Local AI.</p><div className="row"><input aria-label="Model to download" value={name} disabled={locked} placeholder="translategemma:4b" onChange={event => onName(event.target.value)} /><button className="button blue" disabled={locked} onClick={() => onDownload()}>Download model</button></div></Group>
@@ -113,15 +116,16 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
           <p>{mineruRuntime?.checked ? `MinerU Python: PyTorch ${mineruRuntime.torch}; CUDA ${mineruRuntime.cuda ? `available (${mineruRuntime.devices.join(', ')})` : 'unavailable'}.` : mineruRuntime?.reason || 'Check the MinerU Python environment to see its acceleration status.'}</p>
           {runningModels.length > 0 && <p>Ollama loaded: {runningModels.map(model => `${model.name} · ${(model.sizeVram / 1024 ** 3).toFixed(1)} GB VRAM`).join('; ')}</p>}
           {hardwareError && <p className="settings-error" role="alert">{hardwareError}</p>}
-        </Group>
+        </Group></>}
       </>}
       {section === 'reading' && <fieldset disabled={locked}>
         <Group title="Translation direction"><div className="settings-grid"><label>Source language<select value={settings.sourceLanguage} onChange={event => onSettings({ sourceLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label><label>Target language<select value={settings.targetLanguage} onChange={event => onSettings({ targetLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label></div><button className="button ghost" onClick={() => onSettings({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={15} />Swap languages</button></Group>
         <Group title="Translation chunking"><label>Maximum translation chunk<input type="range" min="500" max="6000" step="100" value={settings.maxParagraphChars} onChange={event => onSettings({ maxParagraphChars: Number(event.target.value) })} />{settings.maxParagraphChars} characters</label><p>Sets the maximum size of each translation request. Reader paragraphs remain visually intact.</p></Group>
+        <Group title="Translation style guide"><label>Optional translation instructions<textarea value={settings.translationStyleGuide || ''} maxLength={2000} placeholder="For example: concise academic Chinese; keep established English acronyms." onChange={event => onSettings({ translationStyleGuide: event.target.value.slice(0, 2000) })} /></label><p>{(settings.translationStyleGuide || '').length}/2,000 characters. Sent to the selected provider with translation requests. Do not include secrets.</p></Group>
         <Group title="Reading appearance"><div className="settings-grid"><label>Reader font size<input type="range" min="14" max="25" value={settings.fontSize} onChange={event => onSettings({ fontSize: Number(event.target.value) })} />{settings.fontSize}px</label><label>Line spacing<input type="range" min="1.3" max="2.2" step="0.1" value={settings.lineHeight} onChange={event => onSettings({ lineHeight: Number(event.target.value) })} />{settings.lineHeight}</label><label>Reading width<input type="range" min="560" max="1100" step="20" value={settings.readingWidth} onChange={event => onSettings({ readingWidth: Number(event.target.value) })} />{settings.readingWidth}px</label></div></Group>
       </fieldset>}
       {section === 'updates' && <Group title={`Windows updates · ${updates.version || 'unknown version'}`}><button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button><label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>{updates.status && <p role="status">{updates.status}</p>}<p>New versions open on the official GitHub release page. This unsigned preview does not install updates automatically.</p></Group>}
-      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data keeps original PDF copies.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Paper text and model requests stay on this PC. Downloads and update checks use the network. No cloud account is required.</p></Group></>}
+      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data keeps original PDF copies and the separately encrypted OpenAI key.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
     </div>
   </div>;
 }

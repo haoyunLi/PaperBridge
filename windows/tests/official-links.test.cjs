@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { officialOllamaUrl, createOfficialLinkHandler } = require('../electron/official-links.cjs');
+const { officialOllamaUrl, officialOpenAIUrl, createOfficialLinkHandler } = require('../electron/official-links.cjs');
 
 test('official links allow the Windows download and model tag pages only', () => {
   for (const url of ['https://ollama.com/download/windows', 'https://ollama.com/library/translategemma:4b',
@@ -16,13 +16,20 @@ test('official links allow the Windows download and model tag pages only', () =>
   }
 });
 
+test('official OpenAI links allow only key, usage and data-control pages', () => {
+  for (const url of ['https://platform.openai.com/api-keys', 'https://platform.openai.com/usage', 'https://developers.openai.com/api/docs/guides/your-data']) assert.equal(officialOpenAIUrl(url), url);
+  for (const url of ['http://platform.openai.com/api-keys', 'https://platform.openai.com/', 'https://platform.openai.com/api-keys?next=evil',
+    'https://platform.openai.com:443/usage', 'https://platform.openai.com.evil.test/usage', 'https://developers.openai.com/api/docs/guides/your-data#retention']) assert.equal(officialOpenAIUrl(url), null);
+});
+
 test('new-window handler opens allowed links externally and always denies an app popup', async () => {
   const opened = [];
   const handler = createOfficialLinkHandler(async url => opened.push(url));
   assert.deepEqual(handler({ url: 'https://ollama.com/library/translategemma:4b' }), { action: 'deny' });
+  assert.deepEqual(handler({ url: 'https://platform.openai.com/api-keys' }), { action: 'deny' });
   assert.deepEqual(handler({ url: 'https://other.example/' }), { action: 'deny' });
   await new Promise(resolve => setImmediate(resolve));
-  assert.deepEqual(opened, ['https://ollama.com/library/translategemma:4b']);
+  assert.deepEqual(opened, ['https://ollama.com/library/translategemma:4b', 'https://platform.openai.com/api-keys']);
 });
 
 test('browser launch failures are reported without an unhandled rejection', async () => {

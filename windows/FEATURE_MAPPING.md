@@ -4,6 +4,8 @@
 
 macOS 1.9.1 的 12 项新增行为单独记录在 [MAC_1_9_1_GAPS.md](MAC_1_9_1_GAPS.md)，当前为 **12 对齐、0 部分、0 缺失**。笔记可靠性、50 条 Back / Forward 与完整位置恢复，以及独立标题分类、紧凑双语翻译/重试、标注、解释和导出均有专项自动化证据；这里的 111 项历史统计不回写。
 
+macOS 1.9.2 / 1.10.0（`16e01ac`）的 PDF 导入反馈、可选 OpenAI provider、会话授权、加密 key、独立在线任务模型、结果变体、style guide 与新版提示词记录在 [1.10 增量映射](MAC_1_10_GAPS.md)：当前 **20 对齐、0 部分、0 缺失**。这里的 1.9 历史统计同样不回写。
+
 本轮 [全软件复查](WHOLE_APP_REVIEW.md)最初对比 `73951d9`，记录了修复及验证。macOS 主分支随后前进到 1.9.1 commit `33cfb933`；新增的 12 项行为在 [1.9.1 增量差距报告](MAC_1_9_1_GAPS.md)中单独跟踪，不回写这张 1.9 历史基线的 111 项统计。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。

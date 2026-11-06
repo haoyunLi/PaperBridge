@@ -2,6 +2,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const defaults = {
+  aiProvider: 'ollama',
+  openAITranslationModel: '',
+  openAISummaryModel: '',
+  openAIExplainModel: '',
+  openAIQuickLookupModel: '',
+  translationStyleGuide: '',
   ollamaBaseURL: 'http://localhost:11434',
   translationModel: 'translategemma:4b',
   summaryModel: 'translategemma:4b',
@@ -53,8 +59,15 @@ function createStore(root) {
   return {
     root,
     pdfPath,
-    settings() { return { ...defaults, ...readJson(path.join(root, 'settings.json'), {}) }; },
-    saveSettings(settings) { writeJson(path.join(root, 'settings.json'), { ...defaults, ...settings }); },
+    settings() {
+      const saved = readJson(path.join(root, 'settings.json'), {});
+      const { apiKey, openAIAPIKey, openAIConsent, isOpenAIOptInConfirmed, ...safe } = saved && typeof saved === 'object' ? saved : {};
+      return { ...defaults, ...safe, aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) };
+    },
+    saveSettings(settings) {
+      const { apiKey, openAIAPIKey, openAIConsent, isOpenAIOptInConfirmed, ...safe } = settings && typeof settings === 'object' ? settings : {};
+      writeJson(path.join(root, 'settings.json'), { ...defaults, ...safe, aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) });
+    },
     lastUpdateCheckAt() { return Number(readJson(path.join(root, 'updates.json'), {}).lastCheckAt || 0); },
     saveUpdateCheckAt(value) { writeJson(path.join(root, 'updates.json'), { lastCheckAt: value }); },
     updateCheckState() { return readJson(path.join(root, 'updates.json'), {}); },

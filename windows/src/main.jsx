@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
-import { translationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
+import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt } from './prompts.mjs';
 import { referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, parsedMarkdownBlocks } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
@@ -23,6 +23,8 @@ import SetupPanel from './SetupPanel.jsx';
 import Onboarding from './Onboarding.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import { modelSettingsPatch } from './modelCatalog.mjs';
+import { activeAIModel, aiCacheNamespace, translationInstructions, openAISetupMessage, isGlobalOpenAIError } from './aiSettings.mjs';
+import { mineruImportStage } from './importProgress.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
 import './style.css';
@@ -279,6 +281,10 @@ function TaskProgress({ busy, progress, failedCount }) {
   const done = total === null ? null : Math.max(0, Math.min(total, progress.done || 0));
   return <div className="task-progress" role="status" aria-live="polite"><div className="task-progress-heading"><strong>{busy.label}</strong><span>{total === null ? 'Working…' : `${done} of ${total} processed`}{failedCount > 0 ? ` · ${failedCount} failed` : ''}</span></div><progress aria-label="Task progress" {...(total === null ? {} : { max: total, value: done })} /></div>;
 }
+
+function ImportProgress({ item, elapsed, onCancel }) {
+  return <div className="import-progress-screen" role="status"><div className="import-progress-card"><FileText size={42} /><small>IMPORTING PDF</small><strong className="import-filename">{item.name}</strong><p>{item.stage}</p><strong>{elapsed}s elapsed</strong><div className="import-progress-bar"><span /></div><button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button><p className="import-preserve-note">Your previous paper, translations, notes, bookmarks, and reading position remain unchanged until this import succeeds.</p></div></div>;
+}
 function ScanNotice({ page = false, ocrReady = false, onParse, onSetup, onReader }) {
   return <div className="scan-notice" role="status"><AlertCircle size={20} /><div><strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{ocrReady ? 'MinerU OCR text is ready in Reader. The original PDF remains unchanged.' : 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.'}</p><div className="row">{ocrReady ? <button className="button blue" onClick={onReader}>Open OCR Reader</button> : <><button className="button blue" onClick={onParse}>Parse with MinerU</button><button className="button outline" onClick={onSetup}>Set up local AI</button>{onReader && <button className="button ghost" onClick={onReader}>Open Reader</button>}</>}</div></div></div>;
 }
@@ -436,11 +442,17 @@ function App() {
   const [modelDownloadMessage, setModelDownloadMessage] = useState('');
   const [modelDownloadError, setModelDownloadError] = useState('');
   const [ollamaError, setOllamaError] = useState('');
+  const [openAIState, setOpenAIState] = useState({ hasKey: false, consent: false, models: [], refreshing: false, saving: false, status: '', error: '' });
+  const openAIStateRef = useRef(openAIState);
+  openAIStateRef.current = openAIState;
+  const openAIRefreshId = useRef(null);
   const [status, setStatus] = useState('Open a PDF or try the practice paper.');
   const [error, setError] = useState('');
   const [workspaceSave, setWorkspaceSave] = useState({ status: 'idle', error: null });
   const [busy, setBusy] = useState(null);
   const [progress, setProgress] = useState(null);
+  const [pendingImport, setPendingImport] = useState(null);
+  const [importElapsed, setImportElapsed] = useState(0);
   const [search, setSearch] = useState('');
   const [librarySearch, setLibrarySearch] = useState('');
   const [libraryEdit, setLibraryEdit] = useState(null);
@@ -598,10 +610,15 @@ function App() {
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
     if (!loaded) throw new Error('Paper could not be loaded.');
-    loaded = { ...loaded, paragraphExplanations: migrateExplanations(loaded, loaded.taskSettings ? restorePaperSettings(settingsRef.current, loaded.taskSettings) : null) };
+    const savedTaskSettings = loaded.taskSettings ? restorePaperSettings(settingsRef.current, loaded.taskSettings) : null;
+    loaded = { ...loaded, paragraphExplanations: migrateExplanations(loaded, savedTaskSettings) };
     if (loaded.taskSettings) {
       const previous = settingsRef.current;
-      const restored = restorePaperSettings(previous, loaded.taskSettings);
+      const restoredFromPaper = restorePaperSettings(previous, loaded.taskSettings);
+      const restored = { ...restoredFromPaper, aiProvider: previous.aiProvider,
+        openAITranslationModel: previous.openAITranslationModel, openAISummaryModel: previous.openAISummaryModel,
+        openAIExplainModel: previous.openAIExplainModel, openAIQuickLookupModel: previous.openAIQuickLookupModel };
+      loaded = { ...switchOutputSettings(loaded, restoredFromPaper, restored), taskSettings: snapshotPaperSettings(restored) };
       settingsRef.current = restored; setSettings(restored);
       if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
     }
@@ -614,6 +631,10 @@ function App() {
     const taskChanged = Object.keys(change).some(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
     if (taskChanged && taskRef.current) cancelTask();
     const next = { ...previous, ...change };
+    if (change.aiProvider !== undefined && change.aiProvider !== previous.aiProvider) {
+      api.setOpenAIConsent(false).catch(() => {});
+      setOpenAIState(current => ({ ...current, consent: false, status: change.aiProvider === 'openai' ? 'OpenAI is selected but paused until you allow this session.' : 'Using local Ollama.', error: '' }));
+    }
     if (change.ollamaBaseURL !== undefined && change.ollamaBaseURL !== previous.ollamaBaseURL) {
       setModels([]); setRunningModels([]); setOllamaError('Refresh models to check this local endpoint.');
     }
@@ -740,6 +761,49 @@ function App() {
     try { const values = await api.listModels(config.ollamaBaseURL); if (isCurrent()) { setModels(values); setOllamaError(''); } return values; }
     catch (err) { if (isCurrent()) { setModels([]); setOllamaError(err.message); } return []; }
   };
+  async function refreshOpenAIKeyStatus() {
+    try {
+      const result = await api.openAIKeyStatus();
+      setOpenAIState(current => ({ ...current, hasKey: result.hasKey, error: '' }));
+    } catch (cause) { setOpenAIState(current => ({ ...current, hasKey: false, error: cause.message })); }
+  }
+  async function saveOpenAIKey(value) {
+    setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
+    try {
+      await api.saveOpenAIKey(value);
+      setOpenAIState(current => ({ ...current, hasKey: true, consent: false, models: [], saving: false, status: 'Key saved with Windows credential encryption. Refresh models to check access.', error: '' }));
+      return true;
+    } catch (cause) { setOpenAIState(current => ({ ...current, saving: false, error: cause.message })); return false; }
+  }
+  async function removeOpenAIKey() {
+    setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
+    try {
+      await api.removeOpenAIKey();
+      setOpenAIState(current => ({ ...current, hasKey: false, consent: false, models: [], saving: false, status: 'API key removed.', error: '' }));
+    } catch (cause) { setOpenAIState(current => ({ ...current, saving: false, error: cause.message })); }
+  }
+  async function setOpenAIConsent(enabled) {
+    if (!enabled && settingsRef.current?.aiProvider === 'openai' && taskRef.current) cancelTask();
+    setOpenAIState(current => ({ ...current, consent: enabled, error: '' }));
+    try {
+      const consent = await api.setOpenAIConsent(enabled);
+      setOpenAIState(current => ({ ...current, consent, error: '', status: consent ? 'OpenAI text access is enabled for this app session.' : 'OpenAI text access is paused.' }));
+    } catch (cause) { setOpenAIState(current => ({ ...current, consent: false, error: cause.message })); }
+  }
+  async function refreshOpenAIModels() {
+    if (openAIState.refreshing) return;
+    const requestId = crypto.randomUUID();
+    const previous = openAIRefreshId.current;
+    openAIRefreshId.current = requestId;
+    if (previous) api.cancelOpenAI(previous).catch(() => {});
+    setOpenAIState(current => ({ ...current, refreshing: true, error: '', status: 'Fetching model IDs only; no paper text is sent.' }));
+    try {
+      const values = await api.listOpenAIModels(requestId);
+      if (openAIRefreshId.current === requestId) setOpenAIState(current => ({ ...current, models: values, refreshing: false, status: `Found ${values.length} model IDs. Choose a text model that supports the Responses API.`, error: '' }));
+    } catch (cause) {
+      if (openAIRefreshId.current === requestId) setOpenAIState(current => ({ ...current, refreshing: false, status: 'Could not fetch models.', error: cause.message }));
+    } finally { if (openAIRefreshId.current === requestId) openAIRefreshId.current = null; }
+  }
   function useRecommendedModel(model) {
     if (pullRef.current || taskRef.current) return;
     try { updateSettings(modelSettingsPatch(settingsRef.current, model, models)); setModelDownloadError(''); setModelDownloadMessage(`${model.title} is selected for ${model.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`); }
@@ -787,13 +851,19 @@ function App() {
       const currentSettings = settingsRef.current;
       setReady(true);
       if (!(currentSettings.onboardingCompletedVersion >= ONBOARDING_VERSION)) setModal('onboarding');
+      refreshOpenAIKeyStatus();
       refreshModels(currentSettings);
       api.graphicsStatus().then(setHardware).catch(() => {});
       api.mineruRuntime(currentSettings.mineruExecutable).then(setMineruRuntime).catch(() => {});
     }).catch(err => setError(err.message));
-    const off = api.onProgress(data => { if (data.kind === 'setup') setSetupProgress(data); else if (data.kind === 'model') setPullProgress(data); else setStatus(data.status || 'MinerU is processing the PDF…'); });
+    const off = api.onProgress(data => { if (data.kind === 'setup') setSetupProgress(data); else if (data.kind === 'model') setPullProgress(data); else { const message = data.status || 'MinerU is processing the PDF…'; setStatus(message); setPendingImport(current => current ? { ...current, stage: mineruImportStage(message) } : current); } });
     return off;
   }, []);
+  useEffect(() => {
+    if (!pendingImport) { setImportElapsed(0); return undefined; }
+    const update = () => setImportElapsed(Math.max(0, Math.floor((Date.now() - pendingImport.startedAt) / 1000)));
+    update(); const timer = setInterval(update, 1000); return () => clearInterval(timer);
+  }, [pendingImport?.startedAt]);
   useEffect(() => { if (ready && settings) settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(settings)).catch(err => setError(err.message)); }, [settings, ready]);
   useEffect(() => {
     const dialog = modalRef.current;
@@ -945,13 +1015,16 @@ function App() {
 
   async function openFile() {
     if (taskRef.current) return;
-    const token = startTask('Opening PDF…');
+    let imported;
+    try { imported = await api.importPdf(); }
+    catch (err) { setError(err.message); return; }
+    if (!imported || taskRef.current) return;
+    const token = startTask(`Opening ${imported.name}…`);
+    setPendingImport({ name: imported.name, startedAt: Date.now(), stage: 'Preparing the selected PDF' });
     try {
-      const imported = await api.importPdf();
-      if (!imported) return;
       requireActiveTask(token);
       await ingestPdf(imported, token);
-    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
+    } catch (err) { if (!token.cancelled) setError(`Could not import ${imported.name}: ${err.message}`); } finally { setPendingImport(null); endTask(token); }
   }
   async function dropPdf(event) {
     const files = [...event.dataTransfer.files];
@@ -962,13 +1035,15 @@ function App() {
     const file = files.find(item => /\.pdf$/i.test(item.name));
     if (!file) { setError('Drop a PDF file to open it.'); return; }
     const token = startTask('Opening dropped PDF…');
+    setPendingImport({ name: file.name, startedAt: Date.now(), stage: 'Reading the selected file' });
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       requireActiveTask(token);
       const imported = await api.importPdfBytes({ name: file.name, bytes });
       requireActiveTask(token);
+      setPendingImport(current => current ? { ...current, name: imported.name, stage: 'Preparing the selected PDF' } : current);
       await ingestPdf(imported, token);
-    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
+    } catch (err) { if (!token.cancelled) setError(`Could not import ${file.name}: ${err.message}`); } finally { setPendingImport(null); endTask(token); }
   }
   async function ingestPdf(imported, token) {
       requireActiveTask(token);
@@ -980,17 +1055,20 @@ function App() {
       let mineruMarkdown = '';
       let warning = '';
       if (mode !== 'pdfOnly') {
+        setPendingImport(current => current ? { ...current, stage: 'Checking MinerU availability' } : current);
         const mineru = await api.mineruStatus(settings.mineruExecutable);
         requireActiveTask(token);
         if (mineru.compatible) {
           setBusy({ label: 'MinerU is reconstructing the paper…' });
+          setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
           try { mineruMarkdown = await api.extractMineru({ id: imported.id, executable: mineru.executable, backend: settings.mineruBackend }); }
           catch (cause) { requireActiveTask(token); if (mode === 'mineruOnly') throw cause; warning = `MinerU failed: ${cause.message}. Using the selectable PDF text layer.`; }
         } else if (mode === 'mineruOnly') throw new Error('MinerU-only mode requires a working MinerU 3.x installation. Open Local AI setup.');
       }
       requireActiveTask(token);
       setBusy({ label: 'Reading PDF text layer…' });
-      const pdfBlocks = await extractPdf(pdf, (done, total) => { requireActiveTask(token); setProgress({ done, total }); }, () => requireActiveTask(token));
+      setPendingImport(current => current ? { ...current, stage: 'Reading selectable PDF text' } : current);
+      const pdfBlocks = await extractPdf(pdf, (done, total) => { requireActiveTask(token); setProgress({ done, total }); setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current); }, () => requireActiveTask(token));
       requireActiveTask(token);
       const mineruBlocks = mineruMarkdown ? parsedMarkdownBlocks(mineruMarkdown) : [];
       const useMineru = mineruBlocks.length > 0;
@@ -1024,10 +1102,19 @@ function App() {
   async function generate(model, prompt, system, token, format) {
     requireActiveTask(token);
     const requestId = crypto.randomUUID(); token.ids.add(requestId);
-    try { const answer = await api.generate({ baseURL: settings.ollamaBaseURL, model, prompt, system, requestId, format }); requireActiveTask(token); return answer; }
+    try {
+      let answer;
+      if (settingsRef.current.aiProvider === 'openai') {
+        if (!openAIStateRef.current.consent) throw new Error('Open Settings > Models to allow sending text to OpenAI for this session. Nothing was sent.');
+        if (!openAIStateRef.current.hasKey) throw new Error('Save an OpenAI API key in Settings > Models.');
+        if (!String(model || '').trim()) throw new Error('Choose an OpenAI model for this task in Settings > Models.');
+        answer = await api.generateOpenAI({ model, prompt, system, requestId });
+      } else answer = await api.generate({ baseURL: settingsRef.current.ollamaBaseURL, model, prompt, system, requestId, format });
+      requireActiveTask(token); return answer;
+    }
     finally { token.ids.delete(requestId); }
   }
-  function cancelTask() { const token = taskRef.current; if (!token) return; token.cancelled = true; for (const id of token.ids) api.cancel(id).catch(() => {}); api.cancelMineru().catch(() => {}); taskRef.current = null; setBusy(null); setProgress(null); if (token.kind === 'selection') setSelectionLookup({ status: 'Quick lookup cancelled.', error: '' }); setStatus('Task cancelled. Completed work was saved.'); }
+  function cancelTask() { const token = taskRef.current; if (!token) return; token.cancelled = true; for (const id of token.ids) { api.cancel(id).catch(() => {}); api.cancelOpenAI(id).catch(() => {}); } api.cancelMineru().catch(() => {}); setPendingImport(null); taskRef.current = null; setBusy(null); setProgress(null); if (token.kind === 'selection') setSelectionLookup({ status: 'Quick lookup cancelled.', error: '' }); setStatus('Task cancelled. Completed work was saved.'); }
   function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) { return glossary.filter(term => term.sourceLanguage === from && term.targetLanguage === to && text.toLowerCase().includes(term.source.toLowerCase())).slice(0, 24); }
   async function translateBlocks(ids) {
     if (!paperRef.current || busy || taskRef.current) return;
@@ -1038,7 +1125,11 @@ function App() {
     if (!queue.length) { setStatus('This range is already complete.'); endTask(token); return; }
     translationQueueRef.current = { token, queue, next: 0 };
     try {
-      if (settings.sourceLanguage !== settings.targetLanguage && !models.includes(settings.translationModel)) throw new Error(`Install ${settings.translationModel} in Ollama first.`);
+      const config = settingsRef.current;
+      const translationModel = activeAIModel(config, 'translation');
+      const setupMessage = config.sourceLanguage === config.targetLanguage ? '' : openAISetupMessage(config, openAIStateRef.current.consent, openAIStateRef.current.hasKey, 'translation');
+      if (setupMessage) throw new Error(setupMessage);
+      if (config.aiProvider !== 'openai' && config.sourceLanguage !== config.targetLanguage && !models.includes(translationModel)) throw new Error(`Install ${translationModel} in Ollama first.`);
       for (let index = 0; index < queue.length; index++) {
         if (token.cancelled) break;
         const block = queue[index];
@@ -1046,12 +1137,12 @@ function App() {
         setBusy({ label: `Translating block ${block.id} · ${index + 1} of ${queue.length}` }); setProgress({ done: index, total: queue.length });
         try {
           const protectedBlock = block.sourceMarkdown ? protectMarkdown(block.sourceMarkdown) : null;
-          const parts = chunkText(protectedBlock?.text || block.text, Number(settings.maxParagraphChars) || 1800);
+          const parts = chunkText(protectedBlock?.text || block.text, Number(config.maxParagraphChars) || 1800);
           const translated = [];
-          for (const part of parts) translated.push(settings.sourceLanguage === settings.targetLanguage ? part : await generate(settings.translationModel, protectedBlock ? markdownTranslationPrompt(part, settings.sourceLanguage, settings.targetLanguage, matchingTerms(part)) : translationPrompt(part, settings.sourceLanguage, settings.targetLanguage, matchingTerms(part)), translationSystem(settings.targetLanguage), token));
+          for (const part of parts) translated.push(config.sourceLanguage === config.targetLanguage ? part : await generate(translationModel, protectedBlock ? markdownTranslationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)) : translationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)), translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token));
           const output = protectedBlock ? restoreMarkdown(translated.join('\n'), protectedBlock.tokens) : translated.join(' ');
           if (!token.cancelled) updateBlock(block.id, { translation: output, translationMarkdown: protectedBlock ? output : null, status: 'ok', error: '' });
-        } catch (err) { if (token.cancelled) break; updateBlock(block.id, { status: 'failed', error: err.message }); }
+        } catch (err) { if (token.cancelled) break; if (config.aiProvider === 'openai' && isGlobalOpenAIError(err.message)) throw err; updateBlock(block.id, { status: 'failed', error: err.message }); }
         setProgress({ done: index + 1, total: queue.length });
       }
       if (!token.cancelled) setStatus(`Translation pass finished. ${paperRef.current.blocks.filter(block => block.status === 'ok' && !block.resource && !references.has(block.id)).length} blocks saved.`);
@@ -1069,13 +1160,14 @@ function App() {
     if (!selection || busy || taskRef.current) return;
     const block = paperRef.current.blocks.find(item => item.id === selection.id);
     const fullContext = isPdfScope(selection.scope) ? selection.context || '' : (selection.kind === 'translation' ? block?.translation : block?.text) || selection.context || '';
-    const model = settings.quickLookupModel || (kind === 'translate' ? settings.translationModel : settings.explainModel);
-    const from = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
-    const to = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
+    const config = settingsRef.current;
+    const model = activeAIModel(config, 'quickLookup');
+    const from = selection.kind === 'translation' ? config.targetLanguage : config.sourceLanguage;
+    const to = selection.kind === 'translation' ? config.sourceLanguage : config.targetLanguage;
     const context = selectionContext(fullContext, selection.text, kind === 'translate' ? 600 : 2400);
     const terms = matchingTerms(selection.text, from, to);
     const selectedKey = selectionIdentity(selection);
-    const cacheKey = JSON.stringify([paperRef.current.id, kind, selectionTranslationCacheVersion, selectedKey, fullContext, from, to, model, settings.ollamaBaseURL, explanationLanguage, terms]);
+    const cacheKey = JSON.stringify([paperRef.current.id, kind, selectionTranslationCacheVersion, selectedKey, fullContext, from, to, model, aiCacheNamespace(config), explanationLanguage, terms]);
     if (lookupCache.current.has(cacheKey)) { setSelectionResults(current => ({ ...current, [kind]: lookupCache.current.get(cacheKey) })); setSelectionLookup({ status: 'Using cached quick lookup.', error: '' }); return; }
     setSelectionLookup({ status: '', error: '' });
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
@@ -1083,10 +1175,10 @@ function App() {
     try {
       let output;
       if (kind === 'translate') {
-        output = from === to ? selection.text : await generate(model, selectionTranslationPrompt(selection.text, context, from, to, terms), translationSystem(to), token);
+        output = from === to ? selection.text : await generate(model, selectionTranslationPrompt(selection.text, context, from, to, terms), translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to)), token);
         if (isLikelyOverexpandedSelection(output, selection.text)) {
           setBusy({ label: 'Refining exact selection…' });
-          output = await generate(model, strictSelectionTranslationPrompt(selection.text, from, to, terms), translationSystem(to), token);
+          output = await generate(model, strictSelectionTranslationPrompt(selection.text, from, to, terms), translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to)), token);
         }
       } else output = await generate(model, explainPrompt(selection.text, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
       if (!token.cancelled && selectionIdentity(selectionRef.current) === selectedKey) { lookupCache.current.set(cacheKey, output); setSelectionResults(current => ({ ...current, [kind]: output })); setSelectionLookup({ status: kind === 'translate' ? 'Selection translated.' : 'Selection explained.', error: '' }); }
@@ -1104,7 +1196,7 @@ function App() {
     if (!block || busy || taskRef.current) return;
     const token = startTask(`Explaining block ${id}…`);
     try {
-      const output = await generate(settings.explainModel, explainPrompt(block.text, block.text, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
+      const output = await generate(activeAIModel(settingsRef.current, 'explanation'), explainPrompt(block.text, block.text, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
       if (!token.cancelled) {
         const settingsKey = explanationKey(id, explanationLanguage, settings);
         const result = { id, language: explanationLanguage, source: block.text, output, settingsKey };
@@ -1118,6 +1210,9 @@ function App() {
     if (!paperRef.current.blocks.some(block => !block.heading && !block.resource)) { setError('No readable text to summarize. Use MinerU OCR first.'); return; }
     const token = startTask('Summarizing paper…');
     try {
+      const config = settingsRef.current;
+      const summaryModel = activeAIModel(config, 'summary');
+      const translationModel = activeAIModel(config, 'translation');
       const references = referenceBlockIds(paperRef.current.blocks);
       const source = paperRef.current.blocks.filter(block => !block.heading && !block.resource && !references.has(block.id));
       const batches = []; let batch = []; let length = 0;
@@ -1134,7 +1229,7 @@ function App() {
           for (const id of candidates[index] || []) {
             const block = byId.get(id);
             if (!block) continue;
-            const answer = await generate(settings.summaryModel, summaryQuotePrompt(claims[index].text, id, block.text), 'Select only an exact supporting quote from the supplied paragraph, or return NONE.', token);
+            const answer = await generate(summaryModel, summaryQuotePrompt(claims[index].text, id, block.text), 'Select only an exact supporting quote from the supplied paragraph, or return NONE.', token);
             const quote = answer.trim().replace(/^["“‘]|["”’]$/g, '');
             if (quote.length >= 20 && quote.length <= 500 && block.text.includes(quote) && (!allowed || allowed.has(`${id}|${quote}`))) {
               claims[index] = { ...claims[index], sources: [{ paragraphID: id, quote }] };
@@ -1147,19 +1242,19 @@ function App() {
       for (let i = 0; i < batches.length; i++) {
         if (token.cancelled) return;
         setBusy({ label: `Summarizing part ${i + 1} of ${batches.length}` }); setProgress({ done: i, total: batches.length + 1 });
-        const response = await generate(settings.summaryModel, summaryPrompt(batches[i], settings.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
+        const response = await generate(summaryModel, summaryPrompt(batches[i], config.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
         partials.push(response);
         const claims = parseSummaryClaims(response, paperRef.current.blocks, null, batches[i].map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
         validatedPartials.push(...await withExactQuotes(response, claims, batches[i]));
         setProgress({ done: i + 1, total: batches.length + 1 });
       }
-      const merged = partials.length === 1 ? partials[0] : await generate(settings.summaryModel, mergeSummaryPrompt(validatedPartials, settings.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
+      const merged = partials.length === 1 ? partials[0] : await generate(summaryModel, mergeSummaryPrompt(validatedPartials, config.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
       const allowedSources = partials.length === 1 ? null : validatedPartials.flatMap(claim => claim.sources);
       const claims = partials.length === 1 ? validatedPartials : await withExactQuotes(merged, parseSummaryClaims(merged, paperRef.current.blocks, allowedSources), source, allowedSources);
       if (!claims.length) throw new Error('The summary model returned no usable claims; the saved summary was not replaced.');
       const sourceSummary = claimsMarkdown(claims);
-      const targetSummary = settings.sourceLanguage === settings.targetLanguage ? sourceSummary : await generate(settings.translationModel, translationPrompt(sourceSummary, settings.sourceLanguage, settings.targetLanguage), translationSystem(settings.targetLanguage), token);
-      if (!token.cancelled) { commitPaper(current => ({ ...current, summary: { source: sourceSummary, target: targetSummary, claims, sourceLanguage: settings.sourceLanguage, targetLanguage: settings.targetLanguage } })); setStatus('Summary saved. Only exact-match source quotations are linked.'); }
+      const targetSummary = config.sourceLanguage === config.targetLanguage ? sourceSummary : await generate(translationModel, translationPrompt(sourceSummary, config.sourceLanguage, config.targetLanguage), translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token);
+      if (!token.cancelled) { commitPaper(current => ({ ...current, summary: { source: sourceSummary, target: targetSummary, claims, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } })); setStatus('Summary saved. Only exact-match source quotations are linked.'); }
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   async function fullTranslation(force = false) {
@@ -1167,6 +1262,8 @@ function App() {
     if (!paperRef.current.blocks.some(block => !block.heading && !block.resource)) { setError('No readable text to translate. Use MinerU OCR first.'); return; }
     const token = startTask('Translating full paper…');
     try {
+      const config = settingsRef.current;
+      const translationModel = activeAIModel(config, 'translation');
       const blocks = paperRef.current.blocks;
       const references = referenceBlockIds(blocks);
       const previous = paperRef.current.connectedBlocks || [];
@@ -1178,7 +1275,7 @@ function App() {
         setBusy({ label: `Translating full paper · ${i + 1} of ${blocks.length}` }); setProgress({ done: i, total: blocks.length });
         let output = source;
         let status = 'ok';
-        if (!references.has(block.id) && !block.resource && settings.sourceLanguage !== settings.targetLanguage) {
+        if (!references.has(block.id) && !block.resource && config.sourceLanguage !== config.targetLanguage) {
           const saved = previous[i];
           if (!force && saved?.source === source && saved?.status === 'ok') output = saved.output;
           else {
@@ -1188,11 +1285,11 @@ function App() {
               const context = outputs.slice(-2).map(item => item.output).join('\n\n').slice(-800);
               const translated = [];
               for (const part of parts) {
-                const prompt = block.sourceMarkdown ? markdownTranslationPrompt(part, settings.sourceLanguage, settings.targetLanguage, matchingTerms(part)) : translationPrompt(part, settings.sourceLanguage, settings.targetLanguage, matchingTerms(part));
-                translated.push(await generate(settings.translationModel, `${context ? `Previous translated context for terminology only:\n${context}\n\n` : ''}${prompt}`, translationSystem(settings.targetLanguage), token));
+                const prompt = block.sourceMarkdown ? markdownTranslationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)) : translationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
+                translated.push(await generate(translationModel, `${context ? `Previous translated context for terminology only:\n${context}\n\n` : ''}${prompt}`, translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token));
               }
               output = protectedBlock ? restoreMarkdown(translated.join('\n'), protectedBlock.tokens) : translated.join(' ');
-            } catch (cause) { if (token.cancelled) return; status = 'failed'; setStatus(`Full translation block ${block.id} failed: ${cause.message}. Original text retained.`); }
+            } catch (cause) { if (token.cancelled) return; if (config.aiProvider === 'openai' && isGlobalOpenAIError(cause.message)) throw cause; status = 'failed'; setStatus(`Full translation block ${block.id} failed: ${cause.message}. Original text retained.`); }
           }
         }
         outputs.push({ id: block.id, source, output, status });
@@ -1572,19 +1669,19 @@ function App() {
   }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), translatableCount > 0, checkingUpdates]);
 
   if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
-  return <div data-display-mode={displayMode} style={readingAppearance} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''}`}>
+  return <div data-display-mode={displayMode} style={readingAppearance} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''} ${pendingImport ? 'importing' : ''}`}>
     <aside className="sidebar" inert={Boolean(modal)}>
       <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
       <div className="sidebar-scroll">
         <div className="side-group"><div className="side-label">SOURCE</div><button className="side-primary" onClick={openFile}><FilePlus2 size={16} /> Open PDF</button><button className="side-action" onClick={() => setModal('paste')}><FileText size={15} /> Paste Text</button><button className="side-action" onClick={loadPractice}><BookOpen size={15} /> Try a Practice Paper</button></div>
         <div className="side-group"><div className="side-label">LIBRARY <button title="Open library" onClick={() => setModal('library')}><Library size={15} /></button></div><input className="side-search" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.blockCount} blocks</small></button>)}</div>
-        {paper && <><div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Blocks</span><b>{paper.blocks.length}</b></div><div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div><div className="side-group"><div className="side-label">OUTLINE</div>{outline.slice(0, 60).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}><span>{short(block.text, 48)}</span><small>{block.page || block.id}</small></button>)}{!outline.length && <p className="side-hint">No headings detected.</p>}</div><div className="side-group"><div className="side-label">BOOKMARKS</div>{paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}>{short(block.text, 52)}</button>)}</div></>}
+        {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <><div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Blocks</span><b>{paper.blocks.length}</b></div><div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div><div className="side-group"><div className="side-label">OUTLINE</div>{outline.slice(0, 60).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}><span>{short(block.text, 48)}</span><small>{block.page || block.id}</small></button>)}{!outline.length && <p className="side-hint">No headings detected.</p>}</div><div className="side-group"><div className="side-label">BOOKMARKS</div>{paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}>{short(block.text, 52)}</button>)}</div></>}
       </div>
       <div className="sidebar-footer"><button onClick={() => setModal('setup')}><Download size={16} /> Local AI setup</button><button onClick={() => setModal('settings')}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
     </aside>
     <main className="workspace" inert={Boolean(modal)}>
-      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" onClick={() => setSidebar(!sidebar)}>{sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1>{paper?.name || 'PaperBridge'}</h1><p>{paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${ollamaError ? 'offline' : ''}`} title={ollamaError || 'Local Ollama is available'}>● {ollamaError ? 'Ollama unavailable' : 'Ollama Ready'}</div><button className="icon-button" title="Toggle inspector" onClick={() => { if (inspector) void finishNoteEditing(); setInspector(!inspector); }}>{inspector ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
-      {paper && <div className="header-tools"><nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item => <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav><div className="toolbar-actions">{busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : <button className="button coral" disabled={!translatableCount || translatedCount === translatableCount} onClick={() => translateBlocks(paper.blocks.map(block => block.id))}><Languages size={16} /> {translatedCount ? 'Resume Translation' : 'Translate Paper'}</button>}<button className="button ghost" onClick={() => setModal('more')}>More ···</button></div></div>}
+      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" onClick={() => setSidebar(!sidebar)}>{sidebar ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsed}s elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaError ? 'Ollama unavailable' : 'Ollama Ready'}</div><button className="icon-button" title="Toggle inspector" disabled={Boolean(pendingImport)} onClick={() => { if (inspector) void finishNoteEditing(); setInspector(!inspector); }}>{inspector ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
+      {paper && !pendingImport && <div className="header-tools"><nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item => <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav><div className="toolbar-actions">{busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : <button className="button coral" disabled={!translatableCount || translatedCount === translatableCount} onClick={() => translateBlocks(paper.blocks.map(block => block.id))}><Languages size={16} /> {translatedCount ? 'Resume Translation' : 'Translate Paper'}</button>}<button className="button ghost" onClick={() => setModal('more')}>More ···</button></div></div>}
       </header>
       {(error || updateInfo?.status === 'available' || busy || paper && workspaceSave.status !== 'idle') && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
@@ -1597,6 +1694,7 @@ function App() {
         </div>}
       </div>}
       <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll}>
+        {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => setModal('setup')}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className="content-column">
@@ -1637,6 +1735,7 @@ function App() {
         />}
         {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
         {paper && tab === 'Full Translation' && <div className="content-column"><div className="section-heading"><div><h2>Connected full translation</h2><p>A separate document-wide pass for consistent terminology</p></div><button className="button coral" disabled={!!busy || !paper.blocks.some(block => !block.heading && !block.resource)} onClick={() => fullTranslation(!!paper.connectedTranslation)}><Languages size={16} /> {paper.connectedTranslation ? 'Regenerate' : 'Translate full paper'}</button></div>{paper.connectedStale && <Notice tone="error">The source changed after this translation. Regenerate to update it.</Notice>}{paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown></article> : <Empty title={paper.blocks.length ? "No full translation yet" : "No readable text yet"} body={paper.blocks.length ? "This optional pass translates longer passages with context. The bilingual reader remains available separately." : "Use MinerU OCR from Paper or Original before translating this PDF."} />}</div>}
+        </>}
       </div>
     </main>
     <aside className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · PAGE ${selection.page}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote>{short(selection.text, 350)}</blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={() => setModal('range')}>Choose translation range</button><button className="inspector-link" onClick={() => setModal('export')}>Export Markdown</button><button className="inspector-link" onClick={() => setModal('settings')}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
@@ -1650,6 +1749,7 @@ function App() {
         modelTools={{ models, ollamaError, pulling, cancelling: cancellingPull, progress: pullProgress, message: modelDownloadMessage, error: modelDownloadError,
           name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
+        openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => `${term.source} ${term.target}`.toLowerCase().includes(glossarySearch.toLowerCase())).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} onClick={() => setGlossary(current => current.filter((_, at) => at !== index))}><Trash2 size={16} /></button></div>)}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
@@ -1664,7 +1764,7 @@ function App() {
         <button disabled={!!busy || !unfinishedTranslationIds.length} onClick={() => { setModal(''); translateBlocks(unfinishedTranslationIds); }}>All unfinished blocks <small>{unfinishedTranslationIds.length} blocks</small></button>
       </div>}
 
-      {modal === 'clearData' && <><p>This removes saved papers, translations, bookmarks, notes, terminology, and settings. Original PDF copies remain in the local workspace.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => setModal('settings')}>Cancel</button></div></>}
+      {modal === 'clearData' && <><p>This removes saved papers, translations, bookmarks, notes, terminology, and settings. Original PDF copies and the separately encrypted OpenAI API key remain; remove the key under Models. Text already sent online cannot be recalled.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => setModal('settings')}>Cancel</button></div></>}
       {modal === 'export' && <div className="menu-list"><button onClick={exportBundle}><Download size={17} /> Export portable Markdown bundle</button>{[['original', 'Original Markdown'], ['translated', 'Translated Markdown'], ['bilingual', 'Bilingual Markdown'], ['analysis', 'Summary, sources and notes'], ...(paper.connectedTranslation ? [['full', 'Full Translation Markdown']] : [])].map(([kind, label]) => <button key={kind} onClick={() => exportMarkdown(kind)}><Download size={17} /> {label}</button>)}</div>}
     </div></div></div>}
   </div>;

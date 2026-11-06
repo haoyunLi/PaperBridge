@@ -51,3 +51,11 @@ test('short overexpanded selection translations request a strict retry', async (
   assert.equal(isLikelyOverexpandedSelection('concise translation', 'short phrase'), false);
   assert.equal(isLikelyOverexpandedSelection('x'.repeat(1000), 's'.repeat(321)), false);
 });
+
+test('translation prompts treat short items as complete and never request more context', async () => {
+  const { translationSystem, selectionTranslationSystem, translationPrompt, markdownTranslationPrompt } = await import('../src/prompts.mjs');
+  for (const prompt of [translationSystem('Chinese'), selectionTranslationSystem('Chinese'), translationPrompt('Abstract', 'English', 'Chinese'), markdownTranslationPrompt('# Methods', 'English', 'Chinese')]) {
+    assert.match(prompt, /complete translation unit|complete academic item|complete academic Markdown item/);
+    assert.match(prompt, /(?:Do not|never) ask for more context/i);
+  }
+});
