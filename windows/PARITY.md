@@ -1,6 +1,6 @@
 # macOS ↔ Windows 0.2 parity summary
 
-The [111-item feature mapping](FEATURE_MAPPING.md) remains the detailed macOS 1.9 (`73951d9`) baseline: **43 aligned, 68 partial, 0 missing**. The [whole-app review](WHOLE_APP_REVIEW.md) records subsequent Windows fixes and verification. macOS 1.9.1 (`33cfb933`) is tracked in the [12-item incremental report](MAC_1_9_1_GAPS.md), and the latest macOS 1.10.0 (`16e01ac`) provider/import/prompt changes are tracked in the [20-item 1.10 report](MAC_1_10_GAPS.md): **20 aligned, 0 partial, 0 missing**. The [AMD device report](AMD_DEVICE_TEST.md) records real RX 7800 XT translation, installation, a 15-page MinerU paper import, and OCR of an image-only PDF. These implementation states do not establish complete Mac device parity or coverage of every complex paper, online model, and GPU.
+The [111-item feature mapping](FEATURE_MAPPING.md) remains the detailed macOS 1.9 (`73951d9`) baseline with **43 aligned, 68 partial, 0 missing**. The [whole-app review](WHOLE_APP_REVIEW.md) records subsequent Windows fixes and verification. macOS 1.9.1 (`33cfb933`) is tracked in the [12-item incremental report](MAC_1_9_1_GAPS.md). The [1.10 report](MAC_1_10_GAPS.md) records **21 aligned behaviors** for macOS 1.10.0 (`16e01ac`). The [AMD device report](AMD_DEVICE_TEST.md) records RX 7800 XT translation and quick lookup, installation, a 15-page MinerU paper import, and OCR of an image-only PDF.
 
 | Area | Current Windows state | Highest-impact gap |
 | --- | --- | --- |

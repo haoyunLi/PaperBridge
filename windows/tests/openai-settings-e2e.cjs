@@ -79,6 +79,29 @@ async function run() {
     assert.match(requests[0].system, /Document title.*Welcome to PaperBridge/);
     assert.match(requests[0].system, /Use concise academic Chinese/);
 
+    await app.evaluate(({ ipcMain }) => {
+      globalThis.__paperBridgeOpenAIRequests = [];
+      ipcMain.removeHandler('openai:generate');
+      ipcMain.handle('openai:generate', (_event, payload) => {
+        globalThis.__paperBridgeOpenAIRequests.push(payload);
+        return 'expanded context '.repeat(12);
+      });
+    });
+    await firstBlock.locator('.source-text').evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    const inspector = page.locator('.inspector');
+    await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+    await inspector.getByRole('alert').filter({ hasText: 'The model expanded the selection instead of translating it. Retry with another model.' }).waitFor();
+    assert.equal(await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests.length), 1, 'One selection click must not trigger a billable retry');
+    assert.equal(await inspector.locator('.inspector-result.translate').count(), 0, 'An overexpanded OpenAI answer must not be displayed as a translation');
+    await page.keyboard.press('Escape');
+
     // Revoking online consent while a multi-block pass is waiting must cancel
     // the renderer task and prevent the next paragraph from being submitted.
     await app.evaluate(({ ipcMain }) => {
@@ -131,7 +154,15 @@ async function run() {
     await firstBlock.getByText('在线测试译文', { exact: true }).waitFor();
     await app.close(); app = null;
 
+    const legacyId = 'a'.repeat(64);
+    fs.writeFileSync(path.join(workspace, 'papers', `${legacyId}.json`), JSON.stringify({
+      id: legacyId, name: 'Legacy local paper', type: 'text', updatedAt: new Date().toISOString(),
+      taskSettings: { translationModel: 'legacy-local-model', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' },
+      position: { tab: 'Reader', block: 1 },
+      blocks: [{ id: 1, text: 'This paper predates provider settings.', translation: '旧版本地译文', status: 'ok' }]
+    }));
     await launch();
+    const legacyBlock = page.locator('#block-1');
     assert.equal(await page.locator('.service').textContent(), '● OpenAI Paused');
     await openModels();
     await page.getByText('Key saved for this Windows account', { exact: true }).waitFor();
@@ -140,20 +171,35 @@ async function run() {
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-1').getByText('在线测试译文', { exact: true }).waitFor();
+    await page.locator('.library-row').getByText('Legacy local paper', { exact: true }).click();
+    await legacyBlock.getByText('This paper predates provider settings.', { exact: true }).waitFor();
+    await legacyBlock.getByText('Translation pending', { exact: false }).waitFor();
     await openModels();
+    await page.getByLabel('AI provider').selectOption('ollama');
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await legacyBlock.getByText('旧版本地译文', { exact: true }).waitFor();
+    await openModels();
+    await page.getByLabel('AI provider').selectOption('openai');
+    await page.getByLabel('I allow this text to be sent to OpenAI for this session').check();
+    await page.getByText('OpenAI text access is enabled for this app session.', { exact: true }).waitFor();
+    // Omitting the request ID safely probes the real main-process gate before
+    // any network call. The error changes only when the gate is closed.
+    const probeConsent = () => page.evaluate(() => window.paperBridge.generateOpenAI({}).catch(error => error.message));
+    assert.match(await probeConsent(), /Invalid OpenAI request/);
     await page.getByRole('tab', { name: 'Local Data', exact: true }).click();
     await page.getByRole('button', { name: 'Remove all saved PaperBridge data…', exact: true }).click();
     await page.getByRole('button', { name: 'Remove saved data', exact: true }).click();
     await page.getByRole('dialog').waitFor({ state: 'detached' });
     await waitFor(() => JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json'), 'utf8')).aiProvider === 'ollama', 'local settings reset');
     assert.equal(fs.existsSync(keyFile), true, 'Clearing workspaces must retain the separately managed API key');
+    assert.match(await probeConsent(), /Nothing was sent/, 'Clearing workspaces must revoke main-process online consent');
     await openModels();
     await page.getByLabel('AI provider').selectOption('openai');
     await page.getByText('Key saved for this Windows account', { exact: true }).waitFor();
     await page.getByRole('button', { name: 'Remove key', exact: true }).click();
     await page.getByText('No saved API key', { exact: true }).waitFor();
     assert.equal(fs.existsSync(keyFile), false);
-    console.log('OpenAI settings verified: DPAPI key, explicit models, consent cancellation, fatal-error queue stop, variants, restart pause, data-clear retention and key removal.');
+    console.log('OpenAI settings verified: DPAPI key, explicit models, single-request selection, consent cancellation, quota stop, legacy variants, restart and data-clear revocation.');
   } finally {
     if (app) await app.close().catch(() => {});
   }

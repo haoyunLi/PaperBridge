@@ -59,3 +59,11 @@ Ollama 的服务日志将 RX 7800 XT 识别为 `ROCm gfx1101`，并跳过集成�
 这次图像型 PDF 的真实提取与翻译约 **40.7 秒**：`pdfBlocks=0`、`mineruBlocks=5`，Reader 获得中文译文；`autoDetectedMineru=true`。Ollama `/api/ps` 再次得到 `modelBytes = modelVramBytes = 2,875,656,764`，说明翻译模型在 RX 7800 XT 的 AMD GPU 显存中完整加载。自动测试同时验证 Settings 的硬件重新检测、九张推荐卡、四个任务模型和下载跨分页取消/恢复。
 
 当前自动回归为 **83/83 单元测试**；真实 NSIS 最终包还完成了首装、应用内保存论文/高亮/笔记、同版本重装后恢复、卸载并保留论文数据。NSIS、portable 与 unpacked 主程序仍为 `NotSigned`。这些新增证据解决了“本机自动发现是否真的用于 OCR”和“真实安装器是否保留数据”，不扩大到 NVIDIA CUDA、其它 AMD 卡或复杂扫描件质量。
+
+## macOS 1.10 对齐后的设备复测（2026-11-06 UTC）
+
+当前 Windows 构建通过 `npm run test:live`。用真实 Reader 选中 `fictional practice document`，TranslateGemma 4B 只返回“虚构的练习文档”。同次测试覆盖段落翻译、段落解释、全文译稿及重启恢复。摘要有 6 条来源摘录逐字匹配原段落。统计段的译文保留数值和引用，但对照组与显著性符号的关系仍需人工核对。
+
+Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报告模型大小与显存占用均为 2,875,656,764 字节（2.68 GiB）。热模型短段实测约 121–124 输出 token/秒，首次统计段请求耗时 4.62 秒。
+
+本轮 `test:live-ocr` 在启动前发现本机私有工具目录缺少 MinerU，真实 OCR 仍需重新安装后复测。当前构建的 `test:import-progress-e2e` 使用受控 MinerU 响应，通过了文件名、阶段计数、取消及旧论文保护检查。

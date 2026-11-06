@@ -610,12 +610,13 @@ function App() {
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
     if (!loaded) throw new Error('Paper could not be loaded.');
-    const savedTaskSettings = loaded.taskSettings ? restorePaperSettings(settingsRef.current, loaded.taskSettings) : null;
-    loaded = { ...loaded, paragraphExplanations: migrateExplanations(loaded, savedTaskSettings) };
-    if (loaded.taskSettings) {
-      const previous = settingsRef.current;
-      const restoredFromPaper = restorePaperSettings(previous, loaded.taskSettings);
-      const restored = { ...restoredFromPaper, aiProvider: previous.aiProvider,
+    const previous = settingsRef.current;
+    const hasTaskSettings = Boolean(loaded.taskSettings);
+    // Workspaces saved before provider support contain local results.
+    const restoredFromPaper = restorePaperSettings({ ...previous, aiProvider: 'ollama', translationStyleGuide: '' }, loaded.taskSettings);
+    loaded = { ...loaded, paragraphExplanations: migrateExplanations(loaded, hasTaskSettings ? restoredFromPaper : null) };
+    if (hasTaskSettings || previous.aiProvider === 'openai') {
+      const restored = { ...(hasTaskSettings ? restoredFromPaper : previous), aiProvider: previous.aiProvider,
         openAITranslationModel: previous.openAITranslationModel, openAISummaryModel: previous.openAISummaryModel,
         openAIExplainModel: previous.openAIExplainModel, openAIQuickLookupModel: previous.openAIQuickLookupModel };
       loaded = { ...switchOutputSettings(loaded, restoredFromPaper, restored), taskSettings: snapshotPaperSettings(restored) };
@@ -623,7 +624,7 @@ function App() {
       if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
     }
     resetReadingHistory();
-    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(loaded.taskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`);
+    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1); setStatus(hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`);
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
   const updateSettings = change => {
@@ -1177,6 +1178,8 @@ function App() {
       if (kind === 'translate') {
         output = from === to ? selection.text : await generate(model, selectionTranslationPrompt(selection.text, context, from, to, terms), translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to)), token);
         if (isLikelyOverexpandedSelection(output, selection.text)) {
+          // Require another user action before sending another paid request.
+          if (config.aiProvider === 'openai') throw new Error('The model expanded the selection instead of translating it. Retry with another model.');
           setBusy({ label: 'Refining exact selection…' });
           output = await generate(model, strictSelectionTranslationPrompt(selection.text, from, to, terms), translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to)), token);
         }
@@ -1382,10 +1385,12 @@ function App() {
     finally { if (token) endTask(token); setModal(''); }
   }
   async function clearSavedData() {
-    if (busy) return;
+    if (taskRef.current) return;
     try {
       if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
       await settingsSaveChain.current;
+      openAIRefreshId.current = null;
+      setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
       await api.clearData();
       const data = await api.bootstrap();
       resetReadingHistory();

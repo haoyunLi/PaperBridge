@@ -93,6 +93,7 @@ async function run() {
   }));
   const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let uiTranslation = '';
+  let uiSelection = '';
   let uiExplanation = '';
   let uiSummary = '';
   let uiFullTranslation = '';
@@ -113,6 +114,28 @@ async function run() {
     await page.getByLabel('Reading mode').selectOption('bilingual');
     await page.screenshot({ path: path.join(artifacts, 'live-amd-reader.png') });
     console.log(`PaperBridge Reader translation: ${uiTranslation}`);
+    await page.locator('#block-2 .source-text').evaluate(element => {
+      const phrase = 'fictional practice document';
+      const node = element.firstChild;
+      const offset = node.textContent.indexOf(phrase);
+      if (offset < 0) throw new Error('The practice selection fixture changed');
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + phrase.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    const inspector = page.locator('.inspector');
+    await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+    const selectionResult = inspector.locator('.inspector-result.translate p');
+    await selectionResult.waitFor({ timeout: 120000 });
+    uiSelection = await selectionResult.innerText();
+    assert.match(uiSelection, /[\u3400-\u9fff]/);
+    assert.ok(uiSelection.length <= 32, 'Short selection unexpectedly includes surrounding text');
+    console.log(`PaperBridge selection translation: ${uiSelection}`);
+    await page.keyboard.press('Escape');
     await page.locator('.block').nth(1).locator('button[title="Explain full paragraph"]').click();
     await page.locator('.paragraph-explanation p').waitFor({ timeout: 60000 });
     uiExplanation = await page.locator('.paragraph-explanation p').innerText();
@@ -147,7 +170,7 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     assert.equal(await page.locator('.block').nth(1).locator('.translation-text.done').innerText(), uiTranslation);
   } finally { await restarted.close(); }
-  const report = { at: new Date().toISOString(), gpu, samples: results, uiTranslation, uiExplanation, uiSummary, uiFullTranslation, verifiedSourceCount: verifiedSources.length };
+  const report = { at: new Date().toISOString(), gpu, samples: results, uiTranslation, uiSelection, uiExplanation, uiSummary, uiFullTranslation, verifiedSourceCount: verifiedSources.length };
   fs.writeFileSync(path.join(artifacts, 'live-local-report.json'), JSON.stringify(report, null, 2));
   console.log(`Live test report: ${path.join(artifacts, 'live-local-report.json')}`);
 }

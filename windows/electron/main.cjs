@@ -219,7 +219,10 @@ function registerHandlers() {
   ipcMain.handle('paper:load', (_event, id) => store.paper(safeId(id)));
   ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
   ipcMain.handle('paper:save', (_event, paper) => { store.savePaper(paper); return store.list(); });
-  ipcMain.handle('paper:clear-data', () => store.clearData());
+  ipcMain.handle('paper:clear-data', () => {
+    revokeOpenAIConsent();
+    store.clearData();
+  });
   ipcMain.handle('pdf:import', async () => {
     const result = await dialog.showOpenDialog(window, { title: 'Open paper', properties: ['openFile'], filters: [{ name: 'PDF documents', extensions: ['pdf'] }] });
     if (result.canceled) return null;
