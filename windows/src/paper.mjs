@@ -43,7 +43,7 @@ export function qualityIssues(blocks, excluded = new Set()) {
     else if (/\b(?:in case of|where we|such as|given by|defined as)\s*$/i.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';
     else if (/^[\d\s.,()[\]+=×÷−*/^_]+$/.test(value)) reason = 'Possible detached number, equation fragment, or plot label. Check the original before merging.';
     else if (value.length > 100 && !/[.!?。！？:：;；]["'”’）)\]]*\s*$/.test(value)) reason = 'No sentence-ending punctuation was found. This can be valid near a formula; check the source.';
-    return reason ? [{ id: block.id, reason }] : [];
+    return reason ? [{ id: block.id, reason, excerpt: Array.from(value).slice(-160).join('') }] : [];
   });
 }
 

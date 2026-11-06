@@ -686,10 +686,31 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect,
   </div>;
 }
 
-function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
+function ReaderQualityWarning({ issue, structured, busy, onEdit, onCompare }) {
+  return <div className="quality-warning" onClick={event => event.stopPropagation()}>
+    <p><AlertCircle size={15} aria-hidden="true" />{issue.reason}</p>
+    <div className="row">
+      <button className="button outline" disabled={structured || !!busy} onClick={onEdit}>Edit or Split</button>
+      <button className="button outline" onClick={onCompare}>Compare Original</button>
+    </div>
+    {structured && <p>MinerU controls these blocks. Review the original or edit an exported Markdown copy to keep the linked assets together.</p>}
+  </div>;
+}
+
+function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedOverview, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
   const entries = readingMap(paper.blocks);
+  const qualityKey = JSON.stringify([paperArticleSource(paper).mode, 'quality']);
   return <div className="content-column">
-    {issues.length > 0 && <div className="quality-list"><h3>Extraction check · {issues.length} possible issue(s)</h3>{issues.slice(0, 20).map(issue => <button key={issue.id} onClick={() => navigate(issue.id)}>Review block {issue.id}: {issue.reason}</button>)}</div>}
+    {issues.length > 0 && <details className="quality-list" open={expandedOverview.has(qualityKey)}
+      onToggle={event => { if (event.currentTarget.open) expandedOverview.add(qualityKey); else expandedOverview.delete(qualityKey); }}>
+      <summary>Check {issues.length} possible extraction {issues.length === 1 ? 'issue' : 'issues'}</summary>
+      <p>Review these suggestions against the source. Equations, headings, and captions can end without a period.</p>
+      {issues.slice(0, 40).map(issue => <div className="quality-item" key={issue.id}>
+        <div><strong>Block {issue.id}</strong><p>{issue.reason}</p><blockquote>{issue.excerpt}</blockquote></div>
+        <button className="button outline" onClick={() => navigate(issue.id, { mode: 'bilingual' })}>Review block {issue.id}</button>
+      </div>)}
+      {issues.length > 40 && <p>Showing the first 40 suggestions. Each affected Reader block shows its own warning.</p>}
+    </details>}
     <section className="reading-guide">
       <div className="reading-guide-heading"><h2>Find your way into the paper.</h2><p>A map of detected sections with exact source excerpts. No model is used, and these passages are not an AI summary.</p></div>
       <div className="reading-guide-actions"><button className="button blue" disabled={!paragraphCount} onClick={onReader}>Start Reading</button><button className="button outline" onClick={onOriginal}>View Original</button><span>{translatedCount} / {paragraphCount} translated</span></div>
@@ -697,7 +718,7 @@ function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect
       <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID)}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
       <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
     </section>
-    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedEvidence} />
+    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedOverview} />
   </div>;
 }
 
@@ -821,7 +842,7 @@ function App() {
   const [glossaryError, setGlossaryError] = useState('');
   const [library, setLibrary] = useState([]);
   const [paper, setPaper] = useState(null);
-  const expandedEvidence = useMemo(() => new Set(), [paper?.id]);
+  const expandedOverview = useMemo(() => new Set(), [paper?.id]);
   const paperRef = useRef(null);
   const [tab, setTab] = useState('Paper');
   const [displayMode, setDisplayMode] = useState('bilingual');
@@ -1027,6 +1048,11 @@ function App() {
     if (!paperRef.current || target === tab) return;
     recordReadingJump();
     setTab(target);
+  }
+  function compareOriginal(page) {
+    navigateToTab('Paper');
+    changeDisplayMode('source');
+    if (page) changeFacsimilePage(page);
   }
   function changeFacsimilePage(number) {
     setPageNumber(number);
@@ -2240,7 +2266,7 @@ function App() {
     catch (cause) { setGlossaryError(`Could not remove the term: ${cause.message}`); }
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
-  function navigate(id, { revealSource = false, quote } = {}) {
+  function navigate(id, { revealSource = false, quote, mode: requestedMode } = {}) {
     const block = paperRef.current?.blocks.find(block => block.id === id);
     if (!block || (quote && !block.text.includes(quote))) return;
     if (!quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
@@ -2252,7 +2278,7 @@ function App() {
         return;
       }
     }
-    const mode = revealSource && displayMode === 'translation' ? 'bilingual' : displayMode;
+    const mode = requestedMode ?? (revealSource && displayMode === 'translation' ? 'bilingual' : displayMode);
     recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.displayMode === mode);
     setBlockNavigation(null);
     searchOrigin.current = null; setSearch(''); setActiveBlock(id); setDisplayMode(mode); setTab('Reader');
@@ -2472,7 +2498,8 @@ function App() {
   const outline = useMemo(() => paper?.blocks.filter(block => block.heading) || [], [paper]);
   const sections = useMemo(() => sectionRanges(paper?.blocks || []), [paper]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
-  const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper, referenceIDs]);
+  const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper?.blocks, referenceIDs]);
+  const extractionIssuesById = useMemo(() => new Map(extractionIssues.map(issue => [issue.id, issue])), [extractionIssues]);
   const filteredLibrary = library.filter(item => `${item.name} ${(item.tags || []).join(' ')}`.toLowerCase().includes(librarySearch.toLowerCase()));
   const visibleBlocks = paper?.blocks.filter(block => !search || `${block.text} ${block.translation}`.toLowerCase().includes(search.toLowerCase())) || [];
   const paragraphExplanation = cachedExplanation(paper, activeBlock, explanationLanguage, settings);
@@ -2564,7 +2591,12 @@ function App() {
             </div>
           </>}
         </div>}
-        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => {
+          const issue = extractionIssuesById.get(block.id);
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>
+          {issue && edit?.id !== block.id && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => setEdit({ id: block.id, text: block.text })} onCompare={() => compareOriginal(block.page)} />}
+          {edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
+        })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView
           key={paper.id}
           paper={paper}
@@ -2584,7 +2616,7 @@ function App() {
           onSetup={() => setModal('setup')}
           onReader={openPdfReader}
         />}
-        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedEvidence={expandedEvidence} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading">
             <div><h2>Connected full translation</h2><p>{structuredFull

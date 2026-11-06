@@ -119,10 +119,10 @@ async function run() {
   const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
     summaryModel: 'translategemma:4b', autoCheckUpdates: false, onboardingCompletedVersion: 1 };
   const filler = ' Supporting detail keeps this reading surface tall enough to exercise exact scroll restoration.'.repeat(10);
-  const texts = ['Abstract', `Opening context.${filler}`, 'Methods', `Unique evidence phrase supports the history target.${filler}`, 'Results', `Result details remain available.${filler}`, 'Discussion', `Discussion details remain available.${filler}`, 'Conclusion', `Closing context remains available.${filler}`];
-  const blocks = texts.map((text, index) => ({ id: index + 1, text, heading: index % 2 === 0, translation: '', status: 'pending', bookmark: [4, 6].includes(index + 1), notes: [], highlights: [] }));
+  const texts = ['Abstract', `Opening context.${filler}`, 'Methods', `Unique evidence phrase supports the history target.${filler}`, 'Results', `Result details remain available.${filler} Measures such as`, 'Discussion', `Discussion details remain available.${filler}`, 'Conclusion', `Closing context remains available.${filler}`];
+  const blocks = texts.map((text, index) => ({ id: index + 1, text, page: index < 5 ? 1 : 2, heading: index % 2 === 0, translation: '', status: 'pending', bookmark: [4, 6].includes(index + 1), notes: [], highlights: [] }));
   const mineruBlocks = blocks.map(block => {
-    const text = block.heading ? `MinerU section ${block.id}` : `Structured passage ${block.id}.${filler}`;
+    const text = block.heading ? `MinerU section ${block.id}` : `Structured passage ${block.id}.${filler}${block.id === 6 ? ' Metric defined as' : ''}`;
     return { ...block, text, sourceMarkdown: block.heading ? `# ${text}` : text, bookmark: false };
   });
   const quote = 'Unique evidence phrase supports the history target.';
@@ -232,6 +232,13 @@ async function run() {
     await page.locator('[data-view-scope="summarySource"]').getByText('Distinct MinerU summary', { exact: true }).waitFor();
     assert.equal(await page.locator('.evidence-claim[open]').count(), 0, 'MinerU evidence has its own disclosures');
     await saveViewNote(page, 'summarySource', 'Distinct MinerU summary', 'MinerU summary note');
+    await page.locator('.quality-list summary').click();
+    await page.getByRole('button', { name: 'Review block 6', exact: true }).click();
+    const structuredWarning = page.locator('#block-6 .quality-warning');
+    await structuredWarning.getByText(/MinerU controls these blocks/).waitFor();
+    assert.equal(await structuredWarning.getByRole('button', { name: 'Edit or Split' }).isDisabled(), true);
+    await back.click();
+    await page.locator('.quality-list[open]').waitFor();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const structuredQuote = 'MinerU section 7\nStructured passage 8.';
     await page.evaluate(() => {
@@ -324,6 +331,35 @@ async function run() {
     assert.equal(await page.getByText('PDF full draft note', { exact: true }).count(), 0);
     await back.click();
     await waitFor(() => readPaper().sourceMode === 'pdf', 'restored PDF variant before structure repair');
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.getByLabel('Paper display mode').selectOption('source');
+    const pdfToolbar = page.locator('.pdf-toolbar');
+    await pdfToolbar.getByText(/of 2/).waitFor();
+    const previousPage = pdfToolbar.getByRole('button', { name: 'Previous page' });
+    if (await previousPage.isEnabled()) await previousPage.click();
+    await pdfToolbar.getByText(/page 1 of 2/).waitFor();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    const quality = page.locator('.quality-list');
+    assert.equal(await quality.getAttribute('open'), null, 'the PDF quality list is independent from MinerU');
+    await quality.locator('summary').press('Enter');
+    assert.equal(await quality.locator('blockquote').innerText(), texts[5].slice(-160));
+    await quality.getByRole('button', { name: 'Review block 6', exact: true }).click();
+    const warning = page.locator('#block-6 .quality-warning');
+    await warning.getByText(/This phrase appears unfinished/).waitFor();
+    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
+    await warning.getByRole('button', { name: 'Compare Original', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' &&
+      document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of 2') && document.querySelector('.textLayer[data-page="2"]'));
+    await back.click();
+    await warning.waitFor();
+    await warning.getByRole('button', { name: 'Edit or Split', exact: true }).click();
+    const qualityEditor = page.locator('#block-6 .edit-area');
+    assert.equal(await qualityEditor.getByRole('textbox', { name: 'Paragraph source' }).inputValue(), texts[5]);
+    await qualityEditor.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await back.click();
+    await page.locator('.quality-list[open]').waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-4 button[title="Edit source"]').click();
     await page.locator('#block-4 .edit-area textarea').fill(`${blocks[3].text} Revised.`);
@@ -339,7 +375,7 @@ async function run() {
     assert.equal(await back.isDisabled(), true, 'opening another paper must clear Back');
     assert.equal(await forward.isDisabled(), true, 'opening another paper must clear Forward');
     await page.screenshot({ path: path.join(artifacts, 'reading-history.png') });
-    console.log('Reading history checks passed: PDF text and MinerU source swaps, Back/Forward, busy retry, search/scroll/page restoration, native shortcuts and paper isolation.');
+    console.log('Reading history checks passed: PDF text and MinerU source swaps, Back/Forward, extraction review, busy retry, search/scroll/page restoration, native shortcuts and paper isolation.');
   } catch (error) {
     await page?.screenshot({ path: path.join(artifacts, 'reading-history-failure.png') }).catch(() => {});
     throw error;

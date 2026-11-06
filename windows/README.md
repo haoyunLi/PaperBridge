@@ -2,9 +2,9 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-Download the Windows x64 development preview from the [Windows 0.2.6 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.6). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
+Download the Windows x64 development preview from the [Windows 0.2.7 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.7). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
 
-Version 0.2.6 opens the saved OCR Reader from a scanned PDF page, packages HTML figures and linked MinerU attachments, and recovers the previous managed parser when a repair is interrupted before verification. Cancelling optional model preloading keeps the verified parser installed.
+Version 0.2.7 adds expandable summary evidence and a bilingual layout that fits the window. Verified citations follow paragraph edits and open the quoted source text. Expand the extraction check in Overview to review suspicious passages, edit a Reader block, or compare it with the original PDF.
 
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.
 
