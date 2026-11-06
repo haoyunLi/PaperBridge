@@ -233,11 +233,15 @@ async function run() {
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 1);
     await page.locator('.inspector textarea').fill('Keep this source passage.');
     await page.getByRole('button', { name: 'Save note' }).click();
+    const readerNoteQuote = await page.locator('.inspector blockquote').textContent();
+    await page.waitForFunction(quote => [...(CSS.highlights.get('paperbridge-note') || [])]
+      .some(range => range.toString() === quote && range.startContainer.parentElement.closest('.source-text')), readerNoteQuote);
     await page.locator('.inspector .highlight.teal').click();
     assert.equal(await page.locator('.block').nth(1).locator('mark.mark-teal').count(), 1, 'Changing color should replace the existing highlight');
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 1, 'One selection should have one highlight color');
     await page.locator('.inspector').getByRole('button', { name: 'Remove Highlight', exact: true }).click();
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 0);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size), 1);
     assert.match(await page.locator('.block').nth(1).locator('.block-notes').innerText(), /Keep this source passage/);
     await page.locator('.inspector-title button[title="Undo last highlight or note change"]').click();
     assert.equal(await page.locator('.block').nth(1).locator('mark').count(), 1);
@@ -245,6 +249,7 @@ async function run() {
     assert.equal(await page.locator('.block').nth(1).locator('mark.mark-amber').count(), 1);
     await page.locator('.undo-button').click();
     assert.equal(await page.locator('.block').nth(1).locator('.block-notes').count(), 0);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0);
     await page.screenshot({ path: path.join(artifacts, 'reader.png') });
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.getByRole('heading', { name: 'Find your way into the paper.', exact: true }).waitFor();
@@ -346,10 +351,12 @@ async function run() {
     await page.locator('.inspector textarea').fill('This note belongs to the exact PDF inside Paper.');
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size), 1);
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])].map(range => range.toString()).join()), 'Abstract');
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('.textLayer[data-page="1"] span').length > 0, null, { timeout: 10000 });
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size || 0), 0);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0);
     await page.screenshot({ path: path.join(artifacts, 'original-pdf.png') });
     await page.evaluate(() => {
       const span = [...document.querySelectorAll('.textLayer[data-page="1"] span')].find(item => item.textContent.includes('Abstract'));
@@ -612,9 +619,11 @@ async function run() {
     await reopenedPage.locator('.inspector blockquote').getByText(crossPageQuote, { exact: true }).waitFor();
     assert.equal(await reopenedPage.getByLabel('Note for selected passage').inputValue(), crossPageNote);
     await reopenedPage.waitForFunction(anchors => {
-      const highlight = [...(CSS.highlights.get('paperbridge-amber') || [])];
-      return anchors.every(anchor => highlight.some(range => range.toString() === anchor.text
-        && range.startContainer.parentElement.closest('.textLayer')?.dataset.page === String(anchor.page)));
+      return ['paperbridge-amber', 'paperbridge-note'].every(name => {
+        const ranges = [...(CSS.highlights.get(name) || [])];
+        return anchors.every(anchor => ranges.some(range => range.toString() === anchor.text
+          && range.startContainer.parentElement.closest('.textLayer')?.dataset.page === String(anchor.page)));
+      });
     }, crossAnchors);
     const blankPath = path.join(artifacts, 'scan-no-text.pdf');
     fs.writeFileSync(blankPath, samplePdf(true));

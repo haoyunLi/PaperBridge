@@ -21,6 +21,15 @@ async function selectFormula(paragraph) {
   });
 }
 
+async function waitForNoteUnderline(page, selector, quote) {
+  await page.waitForFunction(({ selector, quote }) => [...(CSS.highlights.get('paperbridge-note') || [])].some(range => {
+    if (!range.startContainer.parentElement?.closest(selector)) return false;
+    const fragment = range.cloneContents();
+    fragment.querySelectorAll('.katex-mathml, [data-selection-ignore]').forEach(node => node.remove());
+    return fragment.textContent === quote;
+  }), { selector, quote });
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
@@ -113,6 +122,7 @@ async function run() {
     await page.locator('.inspector textarea').fill('Paper formula selection');
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size), 1);
+    await waitForNoteUnderline(page, '[data-paper-block-id="2"] [data-paper-kind="source"]', formulaQuote);
     await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.blocks[1].notes.some(item => item.body === 'Paper formula selection'), id);
     const formulaSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8')).blocks[1];
     for (const item of [...formulaSaved.notes, ...formulaSaved.highlights]) {
@@ -135,12 +145,15 @@ async function run() {
     await page.locator('.inspector textarea').fill('The third occurrence belongs to block seven.');
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size), 1);
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])]
+      .find(range => range.startContainer.parentElement.closest('[data-paper-block-id="7"]'))?.startOffset), 14);
     const previewSaved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.deepEqual(previewSaved.blocks[6].highlights.map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'paper', text: 'repeat', offset: 14 }]);
     assert.equal(previewSaved.blocks[6].notes[0].offset, 14);
     assert.equal(previewSaved.blocks[6].notes[0].scope, 'paper');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-teal')?.size || 0), 0);
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0);
     assert.equal(await page.locator('#block-2 .source-text sup').count(), 1);
     assert.equal(await page.locator('#block-2 .translation-text sup').count(), 1);
     assert.equal(await page.locator('#block-3 .source-text table td').count(), 2);
@@ -160,6 +173,7 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
     await page.locator('.inspector textarea').fill('Author marker is preserved.');
     await page.getByRole('button', { name: 'Save note' }).click();
+    await waitForNoteUnderline(page, '#block-2 .source-text', 'Vaswani∗');
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.deepEqual(saved.blocks[1].highlights.filter(item => item.scope === 'reader').map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'reader', text: 'Vaswani∗', offset: 7 }]);
     assert.equal(saved.blocks[1].notes.find(item => item.scope === 'reader').body, 'Author marker is preserved.');
@@ -182,6 +196,7 @@ async function run() {
     await page.locator('.inspector .highlight.coral').click();
     await page.locator('.inspector textarea').fill('Translation wording is saved.');
     await page.getByRole('button', { name: 'Save note' }).click();
+    await waitForNoteUnderline(page, '#block-2 .translation-text', '阿什什');
     await page.getByLabel('Reading mode').selectOption('source');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Translation wording is saved.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === '阿什什');
@@ -226,12 +241,14 @@ async function run() {
     await page.locator('.inspector .highlight.coral').click();
     await page.locator('.inspector textarea').fill('Full translation formula selection');
     await page.getByRole('button', { name: 'Save note' }).click();
+    await waitForNoteUnderline(page, '[data-view-scope="fullTranslation"]', formulaQuote);
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     for (const side of ['summarySource', 'summaryTarget']) {
       assert.equal(await selectFormula(page.locator(`[data-view-scope="${side}"] p`)), formulaQuote);
       await page.locator('.inspector .highlight.coral').click();
       await page.locator('.inspector textarea').fill(`Formula in ${side}`);
       await page.getByRole('button', { name: 'Save note' }).click();
+      await waitForNoteUnderline(page, `[data-view-scope="${side}"]`, formulaQuote);
     }
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await app.evaluate(({ ipcMain }) => {
@@ -327,6 +344,7 @@ async function run() {
     }, { crossQuote, crossNote });
     assert.equal(await page.getByLabel('Paper display mode').inputValue(), 'bilingual');
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
+    await waitForNoteUnderline(page, '[data-view-scope="paperArticle"]', crossQuote);
     await page.getByLabel('Back to previous reading location').click();
     assert.equal(await page.getByLabel('Reading mode').inputValue(), 'translation');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
@@ -344,6 +362,9 @@ async function run() {
     await reopened.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
     await reopened.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
     assert.equal(await reopened.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);
+    assert.equal(await reopened.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])]
+      .some(range => range.startContainer.parentElement.closest('[data-paper-block-id="1"]') &&
+        range.endContainer.parentElement.closest('[data-paper-block-id="2"]'))), false);
     await reopened.waitForFunction(async ({ id, crossNote, crossQuote }) => {
       const record = (await window.paperBridge.loadPaper(id))?.viewNotes.find(item => item.body === crossNote);
       return record?.needsReview && record.text === crossQuote;

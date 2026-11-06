@@ -20,6 +20,7 @@
 ::highlight(paperbridge-teal){background:#dce9ff;color:#073c91}
 ::highlight(paperbridge-blue){background:#dce9ff;color:#073c91}
 ::highlight(paperbridge-coral){background:#fde6df;color:#8a251d}
+::highlight(paperbridge-note){text-decoration:underline 2px #0a59d6;text-underline-offset:3px}
 .evidence-claim{border-top:1px solid #e9e0d6;padding:13px 0}
 .evidence-claim strong{font-size:12px;color:#122033}
 .evidence-claim p,.evidence-claim small{font-size:12px;color:#56606c;line-height:1.5;margin:7px 0}

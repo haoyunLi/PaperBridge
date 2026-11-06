@@ -76,12 +76,14 @@ async function run() {
     await selectText(page, '#block-1 .source-text', 'Alpha passage');
     const textarea = page.getByPlaceholder('What should you remember?');
     assert.equal(await textarea.inputValue(), '', 'review-needed note must not populate a new editing session');
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0, 'review-needed note must stay out of the text');
 
     const exactBody = '  first draft with spaces  \n';
     await textarea.fill(exactBody);
     await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), '350 ms note autosave');
     await page.locator('.save-status.saved').waitFor();
     assert.equal(readPaper().blocks[0].highlights.length, 1);
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])][0]?.toString()), 'Alpha passage');
     await textarea.blur();
 
     await textarea.fill('edit one');
@@ -99,6 +101,7 @@ async function run() {
     await textarea.fill('');
     await waitFor(() => !readPaper().blocks[0].notes.some(item => !item.needsReview && item.text === 'Alpha passage'), 'empty-body note removal');
     assert.equal(readPaper().blocks[0].highlights.length, 1, 'clearing a note must retain its highlight');
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])].map(range => range.toString()).join()), 'Beta control');
     assert.equal(readPaper().blocks[0].notes.some(item => item.id === 'stale' && item.needsReview), true, 'review record remains isolated');
 
     await textarea.fill('flush this exact body on close');

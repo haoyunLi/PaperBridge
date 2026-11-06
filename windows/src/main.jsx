@@ -49,16 +49,19 @@ const markdownSchema = {
 };
 const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeKatex];
 const richHighlights = new Map();
-const highlightColors = ['amber', 'teal', 'blue', 'coral'];
+const annotationStyles = ['amber', 'teal', 'blue', 'coral', 'note'];
 const currentHighlightColors = ['amber', 'teal', 'coral'];
 
 function safeMarkdownUrl(url, key) { return key === 'src' && /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(url) ? url : defaultUrlTransform(url); }
 function refreshRichHighlights() {
   if (!CSS.highlights) return;
-  for (const color of highlightColors) {
-    const ranges = [...richHighlights.values()].flatMap(entry => entry[color] || []);
-    if (ranges.length) CSS.highlights.set(`paperbridge-${color}`, new Highlight(...ranges));
-    else CSS.highlights.delete(`paperbridge-${color}`);
+  for (const style of annotationStyles) {
+    const ranges = [...richHighlights.values()].flatMap(entry => entry[style]);
+    if (ranges.length) {
+      const highlight = new Highlight(...ranges);
+      if (style === 'note') highlight.priority = 1;
+      CSS.highlights.set(`paperbridge-${style}`, highlight);
+    } else CSS.highlights.delete(`paperbridge-${style}`);
   }
 }
 function hiddenSelectionText(node) {
@@ -76,7 +79,7 @@ function domText(root, visibleOnly) {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node.textContent;
   return text;
 }
-function markdownHighlightRanges(root, highlights) {
+function annotationRanges(root, annotations) {
   const walker = textWalker(root, true);
   const nodes = [];
   let node;
@@ -85,36 +88,37 @@ function markdownHighlightRanges(root, highlights) {
     nodes.at(-1).end = nodes.at(-1).start + node.textContent.length;
   }
   const text = nodes.map(item => item.node.textContent).join('');
-  const result = { amber: [], teal: [], blue: [], coral: [] };
-  for (const highlight of highlights) {
-    if (!result[highlight.color] || !highlight.text || highlight.needsReview) continue;
-    const first = text.indexOf(highlight.text);
-    const displayAt = Number.isInteger(highlight.displayOffset) && text.slice(highlight.displayOffset, highlight.displayOffset + highlight.text.length) === highlight.text ? highlight.displayOffset : -1;
-    const at = highlight.renderedAnchor ? renderedAnchorOffset(text, highlight)
-      : displayAt >= 0 ? displayAt : text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : null;
+  const result = Object.fromEntries(annotationStyles.map(style => [style, []]));
+  for (const item of annotations) {
+    const style = item.color || (typeof item.body === 'string' && item.body.trim() ? 'note' : null);
+    if (!Object.hasOwn(result, style) || !item.text || item.needsReview) continue;
+    const first = text.indexOf(item.text);
+    const displayAt = Number.isInteger(item.displayOffset) && text.slice(item.displayOffset, item.displayOffset + item.text.length) === item.text ? item.displayOffset : -1;
+    const at = item.renderedAnchor ? renderedAnchorOffset(text, item)
+      : displayAt >= 0 ? displayAt : text.slice(item.offset, item.offset + item.text.length) === item.text ? item.offset : first >= 0 && first === text.lastIndexOf(item.text) ? first : null;
     if (at === null) continue;
     const start = nodes.find(item => item.end > at);
-    const end = nodes.find(item => item.end >= at + highlight.text.length);
+    const end = nodes.find(node => node.end >= at + item.text.length);
     if (!start || !end) continue;
     const range = document.createRange();
     range.setStart(start.node, at - start.start);
-    range.setEnd(end.node, at + highlight.text.length - end.start);
-    result[highlight.color].push(range);
+    range.setEnd(end.node, at + item.text.length - end.start);
+    result[style].push(range);
   }
   return result;
 }
-function useRichHighlights(host, content, highlights) {
+function useRichAnnotations(host, content, annotations) {
   const highlightKey = useRef({});
   useEffect(() => {
-    if (!highlights?.length || !host.current || !CSS.highlights) return;
-    richHighlights.set(highlightKey.current, markdownHighlightRanges(host.current, highlights));
+    if (!annotations?.length || !host.current || !CSS.highlights) return;
+    richHighlights.set(highlightKey.current, annotationRanges(host.current, annotations));
     refreshRichHighlights();
     return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
-  }, [host, content, highlights]);
+  }, [host, content, annotations]);
 }
-function Markdown({ children, highlights }) {
+function Markdown({ children, annotations }) {
   const host = useRef(null);
-  useRichHighlights(host, children, highlights);
+  useRichAnnotations(host, children, annotations);
   return <div ref={host} data-markdown-host><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
 }
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
@@ -189,6 +193,13 @@ function markdownViewLabel(scope) {
 function validBlockAnchor(block, item, kind) { return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), blockMarkdown(block, kind)); }
 function blockAnnotationScope(item) { return item?.scope === 'paper' ? 'paper' : 'reader'; }
 function blockAnnotationsFor(items, scope) { return (items || []).filter(item => blockAnnotationScope(item) === scope); }
+function viewAnnotations(paper, scope) {
+  return [...(paper.viewHighlights || []), ...(paper.viewNotes || [])]
+    .filter(item => item.scope === scope && validViewAnchor(paper, item));
+}
+function pdfAnnotationsFor(paper, scope) {
+  return [...(paper.pdfHighlights || []), ...(paper.pdfNotes || [])].filter(item => pdfAnnotationScope(item) === scope);
+}
 function displayHighlightColor(color) { return color === 'blue' ? 'teal' : color; }
 function highlightColorName(color) { return color === 'teal' ? 'Cobalt' : `${color[0].toUpperCase()}${color.slice(1)}`; }
 function highlightMatchesSelection(item, selection) {
@@ -250,6 +261,25 @@ function withHighlight(text, highlights = []) {
   nodes.push(text.slice(cursor));
   return nodes;
 }
+function PlainText({ as: Element = 'div', children, highlights, notes, ...attributes }) {
+  const host = useRef(null);
+  const content = withHighlight(children, highlights);
+  useRichAnnotations(host, content, notes);
+  return <Element ref={host} {...attributes}>{content}</Element>;
+}
+function BlockPassage({ block, kind, scope, structured = true, ...attributes }) {
+  const translation = kind === 'translation';
+  const text = translation ? block.translation : block.text;
+  const markdown = structured && blockMarkdown(block, kind);
+  const highlights = blockAnnotationsFor(translation ? block.translationHighlights : block.highlights, scope);
+  const notes = blockAnnotationsFor(block.notes, scope)
+    .filter(item => (item.kind || 'source') === kind && validBlockAnchor(block, item, kind));
+  if (markdown) return <div {...attributes}><Markdown annotations={[...highlights, ...notes]}>{markdown}</Markdown></div>;
+  if (scope === 'paper') return <div {...attributes}>
+    <PlainText as={block.heading ? 'h3' : 'p'} highlights={highlights} notes={notes}>{text}</PlainText>
+  </div>;
+  return <PlainText highlights={highlights} notes={notes} {...attributes}>{text}</PlainText>;
+}
 async function sha256(value) { const bytes = new TextEncoder().encode(value); return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join(''); }
 
 function usePdfDocument(paper) {
@@ -269,7 +299,7 @@ function usePdfDocument(paper) {
   return loaded?.id === id ? loaded : { pdf: null, error: '' };
 }
 
-function PdfSheet({ pdf, number, width, facsimile, highlights, onSize, onReady }) {
+function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const highlightKey = useRef({});
@@ -315,17 +345,19 @@ function PdfSheet({ pdf, number, width, facsimile, highlights, onSize, onReady }
   }, [pdf, number, width, facsimile, onSize, onReady]);
   useEffect(() => {
     const root = layer.current;
-    if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights) return;
-    const valid = (highlights || []).flatMap(item => item.needsReview ? [] : pdfAnchors(item).flatMap(anchor =>
-      anchor.page === number && root.textContent.slice(anchor.offset, anchor.offset + anchor.text.length) === anchor.text
-        ? [{ ...anchor, color: item.color }]
+    if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights || !annotations?.length) return;
+    const text = root.textContent;
+    const valid = annotations.flatMap(item => item.needsReview ? [] : pdfAnchors(item).flatMap(anchor =>
+      anchor.page === number && text.slice(anchor.offset, anchor.offset + anchor.text.length) === anchor.text
+        ? [{ ...anchor, color: item.color, body: item.body }]
         : []
     ));
+    if (!valid.length) return;
     const key = highlightKey.current;
-    richHighlights.set(key, markdownHighlightRanges(root, valid));
+    richHighlights.set(key, annotationRanges(root, valid));
     refreshRichHighlights();
     return () => { richHighlights.delete(key); refreshRichHighlights(); };
-  }, [highlights, number, rendered]);
+  }, [annotations, number, rendered]);
   return <div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? 'Original PDF page ' + number : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}</div>;
 }
 
@@ -380,7 +412,7 @@ function capturePdfRange(host, range) {
     anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
 }
 
-function PdfView({ paper, scope, pageNumber, position, restoreToken, highlights, selected, navigation, onPage, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader }) {
+function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader }) {
   const { pdf, error } = usePdfDocument(paper);
   const scroller = useRef(null);
   const activePage = useRef(0);
@@ -534,7 +566,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, highlights,
         const mounted = number >= start - 1 && number <= end + 1 ||
           number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
         return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
-          {mounted && <PdfSheet pdf={pdf} number={number} width={width} highlights={highlights} onSize={onSize} onReady={onReady} />}
+          {mounted && <PdfSheet pdf={pdf} number={number} width={width} annotations={annotations} onSize={onSize} onReady={onReady} />}
         </div>;
       })}
     </div>}
@@ -589,8 +621,8 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect 
     <div className="section-heading"><div><h2>Paper summary</h2><p>Verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !canSummarize} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
       {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
-      <article className="summary-card" data-view-scope="summarySource" onMouseUp={event => onSelect(event, 'summarySource', 'source')}><small>{paper.summary.sourceLanguage}</small><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'summarySource' && validViewAnchor(paper, item))}>{paper.summary.source}</Markdown></article>
-      <article className="summary-card translated" data-view-scope="summaryTarget" onMouseUp={event => onSelect(event, 'summaryTarget', 'translation')}><small>{paper.summary.targetLanguage}</small><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'summaryTarget' && validViewAnchor(paper, item))}>{paper.summary.target}</Markdown></article>
+      <article className="summary-card" data-view-scope="summarySource" onMouseUp={event => onSelect(event, 'summarySource', 'source')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
+      <article className="summary-card translated" data-view-scope="summaryTarget" onMouseUp={event => onSelect(event, 'summaryTarget', 'translation')}><small>{paper.summary.targetLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summaryTarget')}>{paper.summary.target}</Markdown></article>
       <div className="source-links"><h3>Check the Sources</h3>
         {claims ? claims.map((claim, index) => <div className="evidence-claim" key={index}>
           <strong>Claim {index + 1}: {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</strong>
@@ -621,16 +653,10 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
   const host = useRef(null);
   const { mode: sourceMode, structured } = paperArticleSource(paper);
   const blocks = paper.blocks;
-  const articleHighlights = useMemo(() => (paper.viewHighlights || []).filter(item =>
-    item.scope === 'paperArticle' && item.displayMode === displayMode && item.sourceMode === sourceMode), [paper.viewHighlights, displayMode, sourceMode]);
-  useRichHighlights(host, blocks, articleHighlights);
-  const renderText = (block, kind) => {
-    const translation = kind === 'translation';
-    const markdown = translation ? block.translationMarkdown : block.sourceMarkdown;
-    const text = translation ? block.translation : block.text;
-    const highlights = blockAnnotationsFor(translation ? block.translationHighlights : block.highlights, 'paper');
-    return structured && markdown ? <Markdown highlights={highlights}>{markdown}</Markdown> : block.heading ? <h3>{withHighlight(text, highlights)}</h3> : <p>{withHighlight(text, highlights)}</p>;
-  };
+  const articleAnnotations = useMemo(() => [...(paper.viewHighlights || []), ...(paper.viewNotes || [])].filter(item =>
+    item.scope === 'paperArticle' && item.displayMode === displayMode && item.sourceMode === sourceMode && !item.needsReview),
+  [paper.viewHighlights, paper.viewNotes, displayMode, sourceMode]);
+  useRichAnnotations(host, blocks, articleAnnotations);
   const select = event => {
     const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
     const start = range?.startContainer?.nodeType === Node.ELEMENT_NODE ? range.startContainer : range?.startContainer?.parentElement;
@@ -643,10 +669,12 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
       const unavailable = displayMode === 'translation' && !translated && !sourceOnly;
       return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
         {(displayMode !== 'translation' || sourceOnly || unavailable) && <>
-          <div className={unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source">{renderText(block, 'source')}</div>{'\n'}
+          <BlockPassage block={block} kind="source" scope="paper" structured={structured}
+            className={unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
         </>}
         {displayMode !== 'source' && !sourceOnly && (translated
-          ? <><div className="paper-preview-translation" data-paper-kind="translation">{renderText(block, 'translation')}</div>{'\n'}</>
+          ? <><BlockPassage block={block} kind="translation" scope="paper" structured={structured}
+            className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>
           : displayMode === 'bilingual' && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>)}
       </section>;
     })}
@@ -2335,7 +2363,7 @@ function App() {
             pageNumber={pageNumber}
             position={paper.position?.scrollByTab?.[pdfScrollKey('paperPdf', pageNumber)] || 0}
             restoreToken={readingRestoration.current}
-            highlights={(paper.pdfHighlights || []).filter(item => pdfAnnotationScope(item) === 'paperPdf')}
+            annotations={pdfAnnotationsFor(paper, 'paperPdf')}
             selected={selection?.scope === 'paperPdf' ? selection : null}
             navigation={pdfNavigation?.scope === 'paperPdf' ? pdfNavigation : null}
             onPage={(...args) => changePdfPage('paperPdf', ...args)}
@@ -2354,7 +2382,7 @@ function App() {
             </div>
           </>}
         </div>}
-        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><div className="source-text" data-block-id={block.id} data-kind="source">{block.sourceMarkdown ? <Markdown highlights={blockAnnotationsFor(block.highlights, 'reader')}>{block.sourceMarkdown}</Markdown> : withHighlight(block.text, blockAnnotationsFor(block.highlights, 'reader'))}</div>{!block.resource && !referenceIDs.has(block.id) && <div className={`translation-text ${block.status === 'ok' ? 'done' : ''}`} data-block-id={block.id} data-kind="translation">{block.status === 'ok' ? (block.translationMarkdown ? <Markdown highlights={blockAnnotationsFor(block.translationHighlights, 'reader')}>{block.translationMarkdown}</Markdown> : withHighlight(block.translation, blockAnnotationsFor(block.translationHighlights, 'reader'))) : block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-top"><div><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="row"><select className="reader-mode-select" aria-label="Reading mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><input ref={searchRef} className="search" placeholder="Search paper  Ctrl+F" value={search} onChange={event => changeSearch(event.target.value)} /><button className="icon-button" title="Focus reading" onClick={toggleFocus}><Focus size={18} /></button></div></div><div className="reader-list" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>{edit?.id === block.id ? <div className="edit-area"><textarea value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>)}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => setModal('setup')} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div>{undo.length > 0 && <button className="undo-button" onClick={undoLastChange}><Undo2 size={16} /> Undo last change</button>}</div>}
         {paper && tab === 'Original' && <PdfView
           key={paper.id}
           paper={paper}
@@ -2362,7 +2390,7 @@ function App() {
           pageNumber={pageNumber}
           position={paper.position?.scrollByTab?.[pdfScrollKey('pdf', pageNumber)] || 0}
           restoreToken={readingRestoration.current}
-          highlights={(paper.pdfHighlights || []).filter(item => pdfAnnotationScope(item) === 'pdf')}
+          annotations={pdfAnnotationsFor(paper, 'pdf')}
           selected={selection?.scope === 'pdf' ? selection : null}
           navigation={pdfNavigation?.scope !== 'paperPdf' ? pdfNavigation : null}
           onPage={(...args) => changePdfPage('pdf', ...args)}
@@ -2391,7 +2419,7 @@ function App() {
             {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
             {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation"
               onMouseUp={event => captureViewSelection(event, 'fullTranslation', 'translation')}>
-              <Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'fullTranslation' && validViewAnchor(paper, item))}>{paper.connectedTranslation}</Markdown>
+              <Markdown annotations={viewAnnotations(paper, 'fullTranslation')}>{paper.connectedTranslation}</Markdown>
             </article> : <Empty title={paper.blocks.length ? 'No full translation yet' : 'No readable text yet'} body={!paper.blocks.length
               ? 'Use MinerU OCR from Paper or Original before translating this PDF.'
               : structuredFull ? 'The full draft reuses completed Reader blocks and translates the remaining text in document order.'

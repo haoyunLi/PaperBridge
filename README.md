@@ -14,7 +14,7 @@
   &nbsp;·&nbsp;
   <a href="https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.1"><strong>Download for Windows (preview)</strong></a>
+  <a href="https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2"><strong>Download for Windows (preview)</strong></a>
   &nbsp;·&nbsp;
   <a href="#build-from-source"><strong>Build from Source</strong></a>
 </p>
@@ -116,7 +116,7 @@ Each changed local JSON save retains one readable `.backup` beside it and automa
 ### Install the ready-made Mac app
 
 1. [Download PaperBridge.dmg](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), open it, and drag PaperBridge into Applications.
-2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. A separate [Windows preview](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.1) has x64 installer and portable downloads.
+2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. A separate [Windows preview](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2) has x64 installer and portable downloads.
 3. Choose your route below. The setup guide can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
 | What you want to do | What to install |
