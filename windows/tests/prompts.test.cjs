@@ -44,12 +44,26 @@ test('selection translation keeps a bounded context separate from the exact requ
   assert.doesNotMatch(strictSelectionTranslationPrompt(selected, 'English', 'Chinese'), /CONTEXT_DO_NOT_TRANSLATE/);
 });
 
-test('short overexpanded selection translations request a strict retry', async () => {
+test('the length guard flags excessive output for short selections', async () => {
   const { isLikelyOverexpandedSelection, selectionTranslationCacheVersion } = await import('../src/prompts.mjs');
-  assert.equal(selectionTranslationCacheVersion, 'selection-translation-v2');
+  assert.equal(selectionTranslationCacheVersion, 'selection-translation-v3');
   assert.equal(isLikelyOverexpandedSelection('x'.repeat(49), 'short phrase'), true);
   assert.equal(isLikelyOverexpandedSelection('concise translation', 'short phrase'), false);
   assert.equal(isLikelyOverexpandedSelection('x'.repeat(1000), 's'.repeat(321)), false);
+});
+
+test('translation context requires a unique selection spanning complete sentences', async () => {
+  const { spansCompleteSentences } = await import('../src/prompts.mjs');
+  const context = 'Deeper networks are hard to train. We present a residual learning framework for training deeper models. We evaluate it on ImageNet.';
+  assert.equal(spansCompleteSentences('train. We present a residual learning framework', context), false);
+  assert.equal(spansCompleteSentences('framework for training deeper models.', context), false);
+  assert.equal(spansCompleteSentences('We present a residual learning framework', context), false);
+  assert.equal(spansCompleteSentences('We present a residual learning framework\nfor training deeper models.', context), true);
+  assert.equal(spansCompleteSentences('Deeper networks are hard to train. We present a residual learning framework for training deeper models.', context), true);
+  assert.equal(spansCompleteSentences('我们验证了结果。', '我们提出了新方法。我们验证了结果。研究仍有局限。'), true);
+  assert.equal(spansCompleteSentences('We evaluated it.', 'We evaluated it. The comparison found no difference. We evaluated it.'), false);
+  assert.equal(spansCompleteSentences('Abstract', 'Abstract'), false);
+  assert.equal(spansCompleteSentences('Unmatched quote.', context), false);
 });
 
 test('translation prompts treat short items as complete and never request more context', async () => {

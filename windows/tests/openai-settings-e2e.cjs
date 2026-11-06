@@ -87,9 +87,10 @@ async function run() {
         return 'expanded context '.repeat(12);
       });
     });
-    await firstBlock.locator('.source-text').evaluate(element => {
+    await page.locator('#block-2 .source-text').evaluate(element => {
       const range = document.createRange();
-      range.selectNodeContents(element);
+      range.setStart(element.firstChild, 0);
+      range.setEnd(element.firstChild, element.textContent.indexOf('.') + 1);
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
@@ -98,7 +99,9 @@ async function run() {
     const inspector = page.locator('.inspector');
     await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
     await inspector.getByRole('alert').filter({ hasText: 'The model expanded the selection instead of translating it. Retry with another model.' }).waitFor();
-    assert.equal(await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests.length), 1, 'One selection click must not trigger a billable retry');
+    const selectionRequests = await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests);
+    assert.equal(selectionRequests.length, 1, 'One selection click must not trigger a billable retry');
+    assert.match(selectionRequests[0].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
     assert.equal(await inspector.locator('.inspector-result.translate').count(), 0, 'An overexpanded OpenAI answer must not be displayed as a translation');
     await page.keyboard.press('Escape');
 

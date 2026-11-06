@@ -10,7 +10,7 @@ Preserve paragraph breaks, scientific meaning, named entities, gene symbols, uni
 ${terminologyPrompt(terms)}
 Paper excerpt:
 ${text}`;
-export const selectionTranslationCacheVersion = 'selection-translation-v2';
+export const selectionTranslationCacheVersion = 'selection-translation-v3';
 export const omitInlineImageData = text => String(text || '').replace(/data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+/gi, '[local image]');
 export const selectionContext = (context, selection, maximumLength) => {
   const source = String(context || '');
@@ -23,6 +23,21 @@ export const selectionContext = (context, selection, maximumLength) => {
   const start = Math.max(0, location - Math.floor(availableContext / 2));
   return source.slice(start, Math.min(source.length, start + limit));
 };
+const sentenceSegmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+export function spansCompleteSentences(selection, context) {
+  const quote = selection.trim().replace(/\s+/g, ' ');
+  const reference = context.trim().replace(/\s+/g, ' ');
+  const start = reference.indexOf(quote);
+  if (!quote || start < 0 || reference === quote || start !== reference.lastIndexOf(quote)) return false;
+  const end = start + quote.length;
+  let startsAtBoundary = false;
+  for (const { index, segment } of sentenceSegmenter.segment(reference)) {
+    if (index === start) startsAtBoundary = true;
+    if (index + segment.trimEnd().length === end) return startsAtBoundary;
+    if (index >= end) break;
+  }
+  return false;
+}
 export const selectionTranslationPrompt = (selection, context, source, target, terms = []) => `Translate exactly and only the selected text from ${source} into ${target}.
 The reference context appears first and may be used only to resolve ambiguity. DO NOT translate or output the context.
 ${terminologyPrompt(terms)}

@@ -9,7 +9,7 @@ import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
-import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
+import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
@@ -1336,7 +1336,8 @@ function App() {
     const model = activeAIModel(config, 'quickLookup');
     const from = selection.kind === 'translation' ? config.targetLanguage : config.sourceLanguage;
     const to = selection.kind === 'translation' ? config.sourceLanguage : config.targetLanguage;
-    const context = selectionContext(omitInlineImageData(fullContext), quote, kind === 'translate' ? 600 : 2400);
+    const sourceContext = omitInlineImageData(fullContext);
+    const context = selectionContext(sourceContext, quote, kind === 'translate' ? 600 : 2400);
     const terms = kind === 'translate' ? matchingTerms(quote, from, to) : [];
     const selectedKey = selectionIdentity(selection);
     const cacheKey = JSON.stringify([paperRef.current.id, kind, selectionTranslationCacheVersion, selectedKey, quote, fullContext, from, to, model, aiCacheNamespace(config), explanationLanguage, terms]);
@@ -1345,16 +1346,22 @@ function App() {
     const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
     token.kind = 'selection'; token.selectionKey = selectedKey;
     try {
-      let output;
-      if (kind === 'translate') {
-        output = from === to ? quote : await generate(model, selectionTranslationPrompt(quote, context, from, to, terms), translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to)), token);
-        if (isLikelyOverexpandedSelection(output, quote)) {
-          // Require another user action before sending another paid request.
-          if (config.aiProvider === 'openai') throw new Error('The model expanded the selection instead of translating it. Retry with another model.');
+      let output = quote;
+      if (kind === 'translate' && from !== to) {
+        const withContext = context.includes(quote) && spansCompleteSentences(quote, sourceContext);
+        const strict = strictSelectionTranslationPrompt(quote, from, to, terms);
+        const prompt = withContext ? selectionTranslationPrompt(quote, context, from, to, terms) : strict;
+        const system = translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to));
+        output = await generate(model, prompt, system, token);
+        // Only a contextual local request has a distinct, non-billable fallback.
+        if (withContext && config.aiProvider !== 'openai' && isLikelyOverexpandedSelection(output, quote)) {
           setBusy({ label: 'Refining exact selection…' });
-          output = await generate(model, strictSelectionTranslationPrompt(quote, from, to, terms), translationInstructions(config, to, paperRef.current.name, selectionTranslationSystem(to)), token);
+          output = await generate(model, strict, system, token);
         }
-      } else output = await generate(model, explainPrompt(quote, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
+        if (isLikelyOverexpandedSelection(output, quote)) throw new Error('The model expanded the selection instead of translating it. Retry with another model.');
+      } else if (kind === 'explain') {
+        output = await generate(model, explainPrompt(quote, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
+      }
       if (!token.cancelled && selectionIdentity(selectionRef.current) === selectedKey) { lookupCache.current.set(cacheKey, output); setSelectionResults(current => ({ ...current, [kind]: output })); setSelectionLookup({ status: kind === 'translate' ? 'Selection translated.' : 'Selection explained.', error: '' }); }
     } catch (err) { if (!token.cancelled) { setSelectionLookup({ status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
   }

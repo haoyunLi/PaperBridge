@@ -157,7 +157,7 @@ async function run() {
     await page.locator('.inspector').waitFor({ state: 'hidden' });
     await page.evaluate(() => {
       const node = document.querySelector('.document-preview p').firstChild;
-      const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, 12);
+      const range = document.createRange(); range.setStart(node, 0); range.setEnd(node, node.textContent.indexOf('.') + 1);
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       node.parentElement.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
@@ -171,11 +171,11 @@ async function run() {
     await page.screenshot({ path: path.join(artifacts, 'quick-selection-980x620.png') });
     await page.setViewportSize({ width: 1320, height: 820 });
     const selectionRequestStart = generateRequests.length;
-    forcedGenerateResponses.push('x'.repeat(80), '精确选区译文');
+    forcedGenerateResponses.push('x'.repeat(300), '精确选区译文');
     await quickSelection.getByRole('button', { name: 'Translate', exact: true }).click();
     await quickSelection.locator('.selection-lookup-message').getByText('Selection translated.', { exact: true }).waitFor();
     await quickSelection.getByText('精确选区译文', { exact: true }).waitFor();
-    assert.equal(generateRequests.length - selectionRequestStart, 2, 'An overexpanded short selection should run one strict retry');
+    assert.equal(generateRequests.length - selectionRequestStart, 2, 'An overexpanded complete sentence should run one strict retry');
     assert.match(generateRequests[selectionRequestStart].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
     assert.match(generateRequests[selectionRequestStart].prompt, /PAPERBRIDGE_SELECTION_TRANSLATE_ONLY/);
     assert.doesNotMatch(generateRequests[selectionRequestStart + 1].prompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
@@ -419,14 +419,22 @@ async function run() {
     assert.equal(multilineAnchor, 'PaperBridge extraction.It uses');
     await page.locator('.inspector blockquote').getByText(multilineQuote, { exact: true }).waitFor();
     const pdfRequests = generateRequests.length;
+    forcedGenerateResponses.push('x'.repeat(200));
+    await page.locator('.inspector').getByRole('button', { name: 'Translate', exact: true }).click();
+    await page.locator('.inspector').getByRole('alert').filter({ hasText: 'The model expanded the selection instead of translating it.' }).waitFor();
+    assert.equal(generateRequests.length - pdfRequests, 1, 'A strict request should not repeat itself');
+    assert.equal(await page.locator('.inspector .inspector-result.translate').count(), 0);
     await page.locator('.inspector').getByRole('button', { name: 'Translate', exact: true }).click();
     await page.locator('.inspector').getByText('Selection translated.', { exact: true }).waitFor();
     const pdfPrompt = generateRequests[pdfRequests].prompt;
     assert.ok(pdfPrompt.includes('<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>\n' + multilineQuote + '\n<<<END_PAPERBRIDGE_SELECTION>>>'));
     assert.ok(!pdfPrompt.includes(multilineAnchor));
+    assert.doesNotMatch(pdfPrompt, /PAPERBRIDGE_CONTEXT_DO_NOT_TRANSLATE/);
+    assert.equal(generateRequests[pdfRequests + 1].prompt, pdfPrompt);
     await page.locator('.inspector').getByRole('button', { name: 'Explain', exact: true }).click();
     await page.locator('.inspector').getByText('Selection explained.', { exact: true }).waitFor();
-    assert.ok(generateRequests[pdfRequests + 1].prompt.includes('Selected text:\n' + multilineQuote + '\n'));
+    assert.ok(generateRequests[pdfRequests + 2].prompt.includes('Selected text:\n' + multilineQuote + '\n'));
+    assert.match(generateRequests[pdfRequests + 2].prompt, /Surrounding paragraph:/);
     await page.locator('.inspector .highlight.coral').click();
     await page.locator('.inspector textarea').fill(multilineNote);
     await page.getByRole('button', { name: 'Save note' }).click();
