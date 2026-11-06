@@ -30,6 +30,8 @@ PDF import shows the selected filename, elapsed time, and MinerU layout, formula
 
 On a scanned page in Paper or Original, **Open OCR Reader** opens the saved MinerU text. If the paper is showing the PDF text layer, the button switches to MinerU. Use Back to return to the original page and reading source.
 
+**Export portable Markdown bundle** includes figures in Markdown and HTML tables, plus available files linked from the saved MinerU output. The Markdown uses relative links to the exported files, and the result reports how many local references could not be included.
+
 ## Build and run
 
 Requirements: Windows 10 or later, Node.js 20.19+ or 22.12+, and npm. From this folder:

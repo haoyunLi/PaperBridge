@@ -20,6 +20,9 @@ test('MinerU Markdown keeps figures and tables separate from translatable captio
     '',
     '$$E=mc^2$$',
     '',
+    '<IMG src="images/panel.png" alt="Observed score > 42">',
+    'Figure 2: Summary of outcomes.',
+    '',
     '```python',
     'print(42)',
     '```'
@@ -27,10 +30,12 @@ test('MinerU Markdown keeps figures and tables separate from translatable captio
   const blocks = parsedMarkdownBlocks(markdown);
   assert.deepEqual(blocks.map(block => [block.heading, block.resource]), [
     [true, false], [false, false], [false, true], [false, false],
-    [false, false], [false, true], [false, true], [false, true]
+    [false, false], [false, true], [false, true], [false, true], [false, false], [false, true]
   ]);
   assert.equal(blocks[3].text, 'Figure 1: Architecture.');
   assert.equal(blocks[4].text, 'Table 1: Scores.');
+  assert.equal(blocks[7].text, '[Figure]');
+  assert.equal(blocks[8].text, 'Figure 2: Summary of outcomes.');
   assert.equal(anchorText(blocks[1], 'source'), 'Ashish Vaswani∗ measured the result.');
 });
 
@@ -177,6 +182,52 @@ test('portable bundle writes real image assets and the unchanged original PDF', 
     assert.equal(fs.readFileSync(path.join(result.folder, 'original.pdf')).compare(original), 0);
     assert.equal(fs.readFileSync(path.join(result.folder, 'assets', `${digest}.png`)).compare(image), 0);
     assert.match(fs.readFileSync(path.join(result.folder, 'Original.md'), 'utf8'), new RegExp(`assets/${digest}\\.png`));
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('portable bundles keep HTML images, retained MinerU files and link fragments and report missing assets', () => {
+  const { writeBundle } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-assets-'));
+  try {
+    const source = path.join(parent, 'parsed');
+    fs.mkdirSync(source);
+    fs.writeFileSync(path.join(source, 'support data.csv'), 'a,b\n1,2');
+    fs.writeFileSync(path.join(source, 'legacy.png'), 'older image');
+    fs.writeFileSync(path.join(parent, 'private.csv'), 'outside parser output');
+    fs.mkdirSync(path.join(parent, 'outside'));
+    fs.writeFileSync(path.join(parent, 'outside', 'escape.csv'), 'outside via link');
+    fs.symlinkSync(path.join(parent, 'outside'), path.join(source, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+    const pdf = path.join(parent, 'scan.pdf');
+    fs.writeFileSync(pdf, 'exact original');
+    const image = `data:image/png;base64,${Buffer.from('embedded image').toString('base64')}`;
+    const content = [
+      `![Figure](${image} "Caption title")`,
+      `<table><tr><td><img src='${image}' alt="Embedded cell"><img src="legacy.png"></td></tr></table>`,
+      '[Data](<support data.csv> "Supplement") and [Second link](support%20data.csv#row-1).',
+      '[Original](./original.pdf#page=2) [Remote](https://example.org/image.png) [Section](#results)',
+      '![Missing](figures/gone.png) [Missing again](figures/gone.png#figure)',
+      '[Outside](%2E%2E/private.csv)',
+      '[Linked outside](linked/escape.csv)',
+      '```html\n<img src="in-a-code-example.png">\n```'
+    ].join('\n\n');
+    const bundle = writeBundle(parent, { name: 'Scan.pdf', type: 'pdf', sourceMode: 'mineru' }, [{ name: 'Original', content }], pdf, source);
+    assert.equal(bundle.assets, 3);
+    assert.deepEqual(bundle.missingAssetPaths, ['../private.csv', 'figures/gone.png', 'linked/escape.csv']);
+    const exported = fs.readFileSync(path.join(bundle.folder, 'Original.md'), 'utf8');
+    const embedded = exported.match(/!\[Figure\]\((assets\/\w+\.png) "Caption title"\)/)?.[1];
+    const legacy = exported.match(/alt="Embedded cell"><img src="(assets\/local-\w+\.png)"/)?.[1];
+    const csv = exported.match(/\[Data\]\(<(assets\/local-\w+\.csv)> "Supplement"\)/)?.[1];
+    assert.ok(embedded && legacy && csv);
+    assert.ok(exported.includes(`<img src='${embedded}' alt="Embedded cell">`));
+    assert.ok(exported.includes(`[Second link](${csv}#row-1)`));
+    assert.ok(exported.includes('[Original](original.pdf#page=2) [Remote](https://example.org/image.png) [Section](#results)'));
+    assert.ok(exported.includes('```html\n<img src="in-a-code-example.png">\n```'));
+    for (const [file, expected] of [[embedded, 'embedded image'], [legacy, 'older image'], [csv, 'a,b\n1,2'], ['original.pdf', 'exact original']]) {
+      assert.equal(fs.readFileSync(path.join(bundle.folder, file), 'utf8'), expected);
+    }
   } finally {
     if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
     fs.rmSync(parent, { recursive: true, force: true });

@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { rewriteAssetUrls, localAssetReference, assetFile } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
 const facsimileHeadings = new Map([
   ['original', 'Extracted source text'],
@@ -23,22 +24,43 @@ function uniqueFolder(parent, name) {
   throw new Error('Could not create a unique export folder.');
 }
 
-function writeBundle(parent, paper, documents, pdfPath) {
+function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
   if (!Array.isArray(documents) || !documents.length) throw new Error('No Markdown documents to export.');
   const folder = uniqueFolder(parent, `${safeName(paper.name)}-PaperBridge`);
   const assets = path.join(folder, 'assets');
-  const assetNames = new Map();
-  function externalize(markdown) {
-    return String(markdown || '').replace(/!\[([^\]]*)\]\(data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)\)/gi, (_full, alt, type, encoded) => {
+  const assetNames = new Set();
+  const missing = new Set();
+  const originalPdf = paper.type === 'pdf' && Boolean(pdfPath && fs.existsSync(pdfPath));
+  const source = assetDirectory ? fs.realpathSync(assetDirectory) : null;
+  function saveAsset(name, write) {
+    if (!assetNames.has(name)) {
+      fs.mkdirSync(assets, { recursive: true });
+      write(path.join(assets, name));
+      assetNames.add(name);
+    }
+    return `assets/${name}`;
+  }
+  function externalize(url, kind) {
+    const embedded = kind === 'image' && /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(url);
+    if (embedded) {
+      const [, type, encoded] = embedded;
       const bytes = Buffer.from(encoded, 'base64');
       const digest = crypto.createHash('sha256').update(bytes).digest('hex');
       const ext = type.toLowerCase() === 'jpeg' ? 'jpg' : type.toLowerCase();
-      const name = `${digest}.${ext}`;
-      if (!assetNames.has(name)) { fs.mkdirSync(assets, { recursive: true }); fs.writeFileSync(path.join(assets, name), bytes); assetNames.set(name, true); }
-      return `![${alt}](assets/${name})`;
-    });
+      return saveAsset(`${digest}.${ext}`, file => fs.writeFileSync(file, bytes));
+    }
+    if (paper.sourceMode !== 'mineru' && !source) return url;
+    const reference = localAssetReference(url);
+    if (!reference) return url;
+    const { relative, suffix } = reference;
+    if (originalPdf && /^(?:\.\/)?original\.pdf$/i.test(relative)) return `original.pdf${suffix}`;
+    const asset = assetFile(source, relative);
+    if (!asset) { missing.add(relative); return url; }
+    const digest = crypto.createHash('sha256').update(asset.file).digest('hex');
+    const extension = path.extname(asset.file).toLowerCase();
+    const name = `local-${digest}${/^\.[a-z0-9]{1,12}$/.test(extension) ? extension : ''}`;
+    return saveAsset(name, file => fs.copyFileSync(asset.file, file)) + suffix;
   }
-  const originalPdf = paper.type === 'pdf' && Boolean(pdfPath && fs.existsSync(pdfPath));
   const used = new Set(originalPdf ? ['original pages.md'] : []);
   const facsimileDocuments = [];
   for (const document of documents) {
@@ -46,13 +68,13 @@ function writeBundle(parent, paper, documents, pdfPath) {
     let name = `${stem}.md`;
     for (let i = 2; used.has(name.toLowerCase()); i++) name = `${stem}-${i}.md`;
     used.add(name.toLowerCase());
-    fs.writeFileSync(path.join(folder, name), externalize(document.content), 'utf8');
+    fs.writeFileSync(path.join(folder, name), rewriteAssetUrls(document.content, externalize, { includeLinks: true }), 'utf8');
     if (originalPdf && paper.facsimile && facsimileHeadings.has(document.kind)) {
       facsimileDocuments.push({ name, heading: facsimileHeadings.get(document.kind) });
     }
   }
   if (originalPdf) fs.copyFileSync(pdfPath, path.join(folder, 'original.pdf'));
-  return { folder, documents: documents.length, assets: assetNames.size, originalPdf, facsimileDocuments };
+  return { folder, documents: documents.length, assets: assetNames.size, missingAssetPaths: [...missing].sort(), originalPdf, facsimileDocuments };
 }
 
 function pageImageName(pageNumber) {

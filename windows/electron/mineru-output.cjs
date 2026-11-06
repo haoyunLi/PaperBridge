@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { rewriteAssetUrls, localAssetReference, assetFile } = require('./markdown-assets.cjs');
 
 function findMineruMarkdown(folder, preferredStem) {
   if (!fs.existsSync(folder)) return null;
@@ -28,21 +29,16 @@ const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/
 
 function readMineruMarkdown(file) {
   const directory = fs.realpathSync(path.dirname(file));
-  const prefix = `${directory}${path.sep}`;
-  return fs.readFileSync(file, 'utf8').replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (markup, alt, uri) => {
-    let relative = uri.replace(/^<|>$/g, '');
-    try { relative = decodeURIComponent(relative); } catch { /* Literal percent signs are valid in local filenames. */ }
-    if (/^(?:https?:|data:|file:)/i.test(relative)) return markup;
-    const candidate = path.resolve(directory, relative);
-    const mime = imageTypes[path.extname(candidate).toLowerCase()];
-    if (!mime || !candidate.startsWith(prefix)) return markup;
+  return rewriteAssetUrls(fs.readFileSync(file, 'utf8'), url => {
+    const reference = localAssetReference(url);
+    if (!reference) return url;
+    const mime = imageTypes[path.extname(reference.relative).toLowerCase()];
+    if (!mime) return url;
+    const asset = assetFile(directory, reference.relative);
     try {
-      const resolved = fs.realpathSync(candidate);
-      if (!resolved.startsWith(prefix)) return markup;
-      const stat = fs.statSync(resolved);
-      if (stat.isFile() && stat.size <= 8_000_000) return `![${alt}](data:${mime};base64,${fs.readFileSync(resolved).toString('base64')})`;
+      if (asset && asset.size <= 8_000_000) return `data:${mime};base64,${fs.readFileSync(asset.file).toString('base64')}`;
     } catch { /* An unavailable figure must not prevent reading the extracted text. */ }
-    return markup;
+    return url;
   });
 }
 

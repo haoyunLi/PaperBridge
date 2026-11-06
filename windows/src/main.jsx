@@ -1998,7 +1998,7 @@ function App() {
     token.kind = 'bundleExport';
     try {
       const result = await api.exportBundle({
-        paper: { id: paper.id, name: paper.name, type: paper.type, facsimile: pdfFacsimile },
+        paper: { id: paper.id, name: paper.name, type: paper.type, sourceMode: paper.sourceMode, facsimile: pdfFacsimile },
         documents: markdownDocuments(paper)
       });
       if (!result) return;
@@ -2045,7 +2045,8 @@ function App() {
           finally { await pdf?.loadingTask.destroy(); }
         }
       }
-      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}`);
+      const missingAssets = result.missingAssetPaths?.length;
+      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}${missingAssets ? `. ${missingAssets} referenced local asset(s) could not be included.` : ''}`);
     } catch (cause) { setError(`Bundle export incomplete: ${cause.message}`); }
     finally { endTask(token); setModal(''); }
   }

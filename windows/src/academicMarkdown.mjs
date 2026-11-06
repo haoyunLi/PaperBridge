@@ -32,9 +32,12 @@ export function anchorText(block, kind) {
   return (kind === 'translation' ? block?.translationMarkdown : block?.sourceMarkdown) ? readableHtml(value || '') : value || '';
 }
 
+const htmlImage = /<img\b(?:[^"'>]|"[^"]*"|'[^']*')*>/gi;
+
 function plainText(markdown) {
   return readableHtml(markdown
     .replace(/!\[[^\]]*\]\([^)]+\)/g, '[Figure]')
+    .replace(htmlImage, '[Figure]')
     .replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\$[^$\n]+\$|\\\([^\n]*?\\\)/g, '[Formula]')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
@@ -47,7 +50,7 @@ function segmentKind(lines, index) {
   if (/^(?:```|~~~)/.test(value)) return 'code';
   if (/^(?:\$\$|\\\[)/.test(value)) return 'formula';
   if (/^<(?:table|figure|details|div|p|pre)\b/i.test(value)) return value.toLowerCase().startsWith('<table') ? 'table' : 'html';
-  if (/^!\[[^\]]*\]\([^\n]+\)\s*$/.test(value)) return 'image';
+  if (/^!\[[^\]]*\]\([^\n]+\)\s*$/.test(value) || /^<img\b/i.test(value) && !value.replace(htmlImage, '').trim()) return 'image';
   if (/^#{1,6}\s+/.test(value)) return 'heading';
   if (/^\|.+\|\s*$/.test(value) && /^\|?\s*[:\- ]+\|/.test(lines[index + 1]?.trim() || '')) return 'table';
   if (/^(?:[-+*]|\d+[.)])\s+/.test(value)) return 'list';

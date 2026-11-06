@@ -4,6 +4,7 @@ const path = require('node:path');
 const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 const { clickTextOffset } = require('./reading-caret.cjs');
+const { readMineruMarkdown } = require('../electron/mineru-output.cjs');
 
 async function selectFormula(paragraph) {
   await paragraph.locator('.katex-html').waitFor();
@@ -42,17 +43,26 @@ async function run() {
   const figure = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=';
   const formula = 'A stack of $N = 6$ identical layers.';
   const translated = '阿什什<sup>∗</sup>报告了一个测量结果。 ' + formula;
-  const parts = [
+  const resourceDirectory = path.join(workspace, 'mineru', id, 'paper', 'auto');
+  fs.mkdirSync(path.join(resourceDirectory, 'images'), { recursive: true });
+  fs.mkdirSync(path.join(resourceDirectory, 'data'), { recursive: true });
+  const figureBytes = Buffer.from(figure.split(',')[1], 'base64');
+  fs.writeFileSync(path.join(resourceDirectory, 'images', 'table cell.png'), figureBytes);
+  const measurements = 'trial,score\n1,42\n';
+  fs.writeFileSync(path.join(resourceDirectory, 'data', 'measurements.csv'), measurements);
+  const output = path.join(resourceDirectory, 'paper.md');
+  fs.writeFileSync(output, [
     '# Research title',
     'Ashish Vaswani<sup>∗</sup> reported a measured result. ' + formula,
-    '<table><thead><tr><th>Method</th><th>Score</th></tr></thead><tbody><tr><td>Attention</td><td>42</td></tr></tbody></table>',
+    '<table><thead><tr><th>Method</th><th>Score</th></tr></thead><tbody><tr><td>Attention</td><td>42<img src="images/table%20cell.png" alt="Table panel"></td></tr></tbody></table>',
     `![Figure](${figure})`,
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
     'A paragraph whose previous translation failed.',
     'Repeat repeat repeat.',
     '## References',
-    '[1] Reference entry remains in the original language.'
-  ];
+    '[1] Reference entry remains in the original language. [Measurements](data/measurements.csv#rows) [Missing appendix](data/missing.csv)'
+  ].join('\n\n'));
+  const parts = readMineruMarkdown(output).split('\n\n');
   const blocks = parts.map((sourceMarkdown, index) => ({
     id: index + 1, sourceMarkdown, text: sourceMarkdown.replace('$N = 6$', '[Formula]'), heading: index === 0,
     resource: index === 2 || index === 3, status: index === 1 ? 'ok' : index === 5 ? 'failed' : 'pending',
@@ -110,8 +120,10 @@ async function run() {
     assert.equal(await page.locator('.document-preview [data-paper-kind="source"] sup').count(), 1);
     assert.equal(await page.locator('.document-preview [data-paper-kind="translation"] sup').count(), 1);
     assert.equal(await page.locator('.document-preview table td').allInnerTexts().then(cells => cells.join(',')), 'Attention,42');
-    assert.equal(await page.locator('.document-preview img[src^="data:image/png"]').count(), 1);
-    assert.equal(await page.locator('.document-preview img[src^="data:image/png"]').evaluate(img => img.naturalWidth), 1);
+    await page.waitForFunction(() => {
+      const images = [...document.querySelectorAll('.document-preview img[src^="data:image/png"]')];
+      return images.length === 2 && images.every(image => image.naturalWidth === 1);
+    });
     assert.equal(await page.locator('.document-preview script').count(), 0);
     assert.equal(await page.locator('.document-preview [onerror]').count(), 0);
     assert.equal(await page.evaluate(() => window.__paperbridgeUnsafe), undefined);
@@ -229,7 +241,7 @@ async function run() {
     assert.match(await draft.innerText(), /A paragraph whose previous translation failed/);
     assert.match(await draft.innerText(), /Reference entry remains in the original language/);
     assert.equal(await draft.locator('table td').count(), 2);
-    assert.equal(await draft.locator('img[src^="data:image/png"]').count(), 1);
+    assert.equal(await draft.locator('img[src^="data:image/png"]').count(), 2);
     assert.equal(requests.length, 4, 'Only unfinished text blocks should be submitted');
     for (const input of requests) {
       assert.doesNotMatch(input, /Ashish Vaswani|data:image|iVBORw0K|Reference entry|<table>/);
@@ -430,7 +442,25 @@ async function run() {
       const highlights = block?.highlights.filter(item => item.scope === 'reader' && item.text === 'Vaswani∗');
       return highlights?.length === 1 && highlights[0].color === 'teal' && highlights[0].offset === 'Changed '.length;
     }, id);
-    console.log('Markdown rendering, displaced and ambiguous annotations, and shared full translation, retry, and export verified.');
+    await reopened.getByRole('button', { name: 'Paper', exact: true }).click();
+    await reopened.waitForFunction(() => document.querySelector('.document-preview table img[alt="Table panel"]')?.naturalWidth === 1);
+    const exports = path.join(workspace, 'exports');
+    fs.mkdirSync(exports);
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, exports);
+    await reopened.getByRole('button', { name: 'More ···', exact: true }).click();
+    await reopened.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await reopened.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
+    await reopened.getByText(/1 referenced local asset\(s\) could not be included/).waitFor();
+    const bundle = path.join(exports, fs.readdirSync(exports)[0]);
+    const original = fs.readFileSync(path.join(bundle, 'Original.md'), 'utf8');
+    const panel = original.match(/<img src="(assets\/[a-f0-9]+\.png)" alt="Table panel">/)?.[1];
+    const data = original.match(/\[Measurements\]\((assets\/local-[a-f0-9]+\.csv)#rows\)/)?.[1];
+    assert.ok(panel && data);
+    assert.ok(original.includes(`![Figure](${panel})`), 'HTML and Markdown figures share one copy of the same bytes');
+    assert.ok(original.includes('[Missing appendix](data/missing.csv)'));
+    assert.deepEqual(fs.readFileSync(path.join(bundle, panel)), figureBytes);
+    assert.equal(fs.readFileSync(path.join(bundle, data), 'utf8'), measurements);
+    console.log('Markdown rendering, annotations, shared translation and portable export of HTML figures and supplementary files verified.');
   } finally {
     await app?.close();
     await new Promise(resolve => ollama.close(resolve));

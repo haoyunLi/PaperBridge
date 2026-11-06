@@ -224,7 +224,10 @@ function registerHandlers() {
     if (!Array.isArray(documents) || documents.length > 8 || documents.some(item => typeof item.name !== 'string' || typeof item.content !== 'string')) throw new Error('Invalid Markdown bundle.');
     const result = await dialog.showOpenDialog(window, { title: 'Choose export folder', properties: ['openDirectory', 'createDirectory'] });
     if (result.canceled) return null;
-    const bundle = writeBundle(result.filePaths[0], { name: paper.name, type: paper.type, facsimile: paper.facsimile === true }, documents, store.pdfPath(paper.id));
+    const sourceMode = paper.sourceMode === 'mineru' ? 'mineru' : undefined;
+    const markdown = sourceMode && findMineruMarkdown(path.join(store.root, 'mineru', paper.id), 'paper');
+    const bundle = writeBundle(result.filePaths[0], { name: paper.name, type: paper.type, sourceMode, facsimile: paper.facsimile === true },
+      documents, store.pdfPath(paper.id), markdown ? path.dirname(markdown) : null);
     const { facsimileDocuments, ...report } = bundle;
     activeBundle = bundle.originalPdf ? { id: paper.id, folder: bundle.folder, facsimileDocuments, renderedPages: new Set() } : null;
     return { ...report, maximumPreviewPages };
