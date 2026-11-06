@@ -52,13 +52,17 @@ function updateNotes(notes, selection, body, makeId, extra = {}) {
   const current = notes || [];
   const existing = current.find(item => matches(selection, item));
   if (body === '') return existing ? current.filter(item => item !== existing) : current;
+  const display = {
+    ...(selection.displayOffset == null ? {} : { displayOffset: selection.displayOffset }),
+    ...(pdfScopes.has(selection.scope) && selection.quote != null ? { quote: selection.quote } : {})
+  };
   if (existing) {
-    if (existing.body === body && (selection.displayOffset == null || existing.displayOffset === selection.displayOffset)) return current;
-    return current.map(item => item === existing ? { ...item, body, ...(selection.displayOffset == null ? {} : { displayOffset: selection.displayOffset }) } : item);
+    if (existing.body === body && Object.entries(display).every(([key, value]) => existing[key] === value)) return current;
+    return current.map(item => item === existing ? { ...item, body, ...display } : item);
   }
   return [...current, {
     id: makeId(), text: selection.text, offset: selection.offset, body,
-    ...(selection.displayOffset == null ? {} : { displayOffset: selection.displayOffset }),
+    ...display,
     ...extra
   }];
 }

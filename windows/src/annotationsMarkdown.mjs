@@ -8,7 +8,7 @@ export function annotationsMarkdown(paper) {
   function append(list, label, item, source) {
     const exact = Number.isInteger(item.offset) && source?.slice(item.offset, item.offset + item.text.length) === item.text;
     const review = item.needsReview || (source !== undefined && !exact) ? ' · source changed, review needed' : '';
-    list.push(`### ${label}${item.color ? ` · ${item.color}` : ''}${review}\n\n> ${quote(item.text)}${item.body ? `\n\n${item.body}` : ''}`);
+    list.push(`### ${label}${item.color ? ` · ${item.color}` : ''}${review}\n\n> ${quote(item.quote ?? item.text)}${item.body ? `\n\n${item.body}` : ''}`);
   }
   for (const block of paper.blocks) {
     if (block.bookmark) bookmarks.push(`- Block ${block.id}${block.page ? ` · page ${block.page}` : ''}: ${block.text}`);
