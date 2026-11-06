@@ -157,6 +157,7 @@ async function run() {
     const forward = page.getByRole('button', { name: 'Forward in reading history', exact: true });
     assert.equal(await back.isDisabled(), true);
     await page.evaluate(() => { const host = document.querySelector('.main-scroll'); host.scrollTop = 360; host.dispatchEvent(new Event('scroll')); });
+    await page.locator('.evidence-claim summary').click();
     const sourceLink = page.getByRole('button', { name: 'Read original block 4 →', exact: true });
     await sourceLink.scrollIntoViewIfNeeded();
     const summaryOffset = await page.locator('.main-scroll').evaluate(element => element.scrollTop);
@@ -167,6 +168,7 @@ async function run() {
     await page.locator('.sidebar .outline-row').filter({ hasText: 'Unique evidence phrase' }).click();
     await back.click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
+    await sourceLink.waitFor();
     await page.waitForFunction(expected => Math.abs((document.querySelector('.main-scroll')?.scrollTop || 0) - expected) < 12, summaryOffset);
     await forward.click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
@@ -228,6 +230,7 @@ async function run() {
     assert.equal(await page.getByText('PDF full draft note', { exact: true }).count(), 0);
     await page.getByRole('button', { name: 'Generate summary', exact: true }).click();
     await page.locator('[data-view-scope="summarySource"]').getByText('Distinct MinerU summary', { exact: true }).waitFor();
+    assert.equal(await page.locator('.evidence-claim[open]').count(), 0, 'MinerU evidence has its own disclosures');
     await saveViewNote(page, 'summarySource', 'Distinct MinerU summary', 'MinerU summary note');
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const structuredQuote = 'MinerU section 7\nStructured passage 8.';

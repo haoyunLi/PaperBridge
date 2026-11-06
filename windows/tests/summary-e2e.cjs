@@ -71,7 +71,10 @@ async function run() {
     app = await launch();
     let page = await app.firstWindow();
     const readTail = async block => {
-      await page.getByRole('button', { name: `Read original block ${block} →`, exact: true }).click();
+      const label = `Read original block ${block} →`;
+      const claim = page.locator('.evidence-claim').filter({ hasText: label });
+      if (await claim.getAttribute('open') === null) await claim.locator('summary').click();
+      await claim.getByRole('button', { name: label, exact: true }).click();
       await page.waitForFunction(({ block, tail }) => {
         const selection = window.getSelection();
         if (selection?.toString() !== tail || !document.querySelector(`#block-${block} .source-text`)?.contains(selection.anchorNode)) return false;
@@ -94,6 +97,18 @@ async function run() {
     const summaries = page.locator('.summary-card');
     assert.match(await summaries.first().innerText(), /Final limitation/);
     assert.equal(await summaries.last().locator('li').count(), 4);
+    await page.getByText(/AI-generated summary\. Source links show where quotations appear\./).waitFor();
+    await page.setViewportSize({ width: 1800, height: 850 });
+    const wideSource = await summaries.first().boundingBox();
+    const wideTarget = await summaries.last().boundingBox();
+    assert.equal(wideSource.y, wideTarget.y);
+    assert.ok(wideTarget.x >= wideSource.x + wideSource.width);
+    await page.setViewportSize({ width: 1000, height: 800 });
+    const narrowSource = await summaries.first().boundingBox();
+    const narrowTarget = await summaries.last().boundingBox();
+    assert.equal(narrowSource.x, narrowTarget.x);
+    assert.ok(narrowTarget.y >= narrowSource.y + narrowSource.height);
+    await page.setViewportSize({ width: 1320, height: 850 });
     const excerpts = requests.filter(item => item.kind === 'excerpt');
     assert.equal(excerpts.length, 4);
     assert.ok(excerpts.every(item => item.payload.length <= 6000 && !item.payload.includes(references) && !item.payload.includes('Earlier calibration.')));
@@ -108,6 +123,19 @@ async function run() {
     assert.ok(requests.every(item => item.model === (item.kind === 'translation' ? translationModel : summaryModel)));
     assert.equal(requests.filter(item => item.kind === 'translation').length, 4);
     assert.equal(await page.locator('.evidence-claim button').count(), 2, 'Only the original validated citations survive rolling merges');
+    const verified = page.locator('.evidence-claim').filter({ hasText: opening });
+    const unverified = page.locator('.evidence-claim').filter({ hasText: 'Retained context' });
+    assert.equal(await page.locator('.evidence-claim[open]').count(), 0);
+    assert.equal(await verified.getByText(opening, { exact: true }).isVisible(), false);
+    await verified.locator('summary').press('Enter');
+    await verified.getByText(opening, { exact: true }).waitFor();
+    assert.equal(await unverified.getAttribute('open'), null);
+    await unverified.locator('summary').click();
+    await unverified.getByText('Check the original paper independently before treating this claim as evidence.').waitFor();
+    assert.equal(await unverified.getByRole('button').count(), 0);
+    await verified.locator('summary').press('Space');
+    await verified.getByText(opening, { exact: true }).waitFor({ state: 'hidden' });
+    assert.notEqual(await unverified.getAttribute('open'), null);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByLabel('Reading mode').selectOption('translation');
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
@@ -145,13 +173,14 @@ async function run() {
     page = await app.firstWindow();
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.getByText(staleNotice).waitFor();
+    assert.equal(await page.locator('.evidence-claim[open]').count(), 0);
     await readTail(3);
     await app.close(); app = null;
     const paperDir = path.join(workspace, 'papers');
     const file = fs.readdirSync(paperDir).find(name => /^[a-f\d]{64}\.json$/.test(name));
     const saved = JSON.parse(fs.readFileSync(path.join(paperDir, file), 'utf8'));
     assert.deepEqual(saved.summary.claims.flatMap(item => item.sources), [{ paragraphID: 1, quote: opening }, { paragraphID: 3, quote: tail }]);
-    console.log('Summary verified: bounded excerpts, early merges, batch-specific citations, cancelled regeneration, and exact source navigation after split, undo, and restart.');
+    console.log('Summary verified: responsive language panels, keyboard disclosures, batch-specific citations, cancelled regeneration, and exact source navigation after split, undo, and restart.');
   } finally {
     held?.destroy();
     await app?.close();

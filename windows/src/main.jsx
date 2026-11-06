@@ -658,26 +658,35 @@ function ScanNotice({ page = false, ocrReady = false, onParse, onSetup, onReader
   return <div className="scan-notice" role="status"><AlertCircle size={20} /><div><strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{ocrReady ? 'MinerU OCR text is ready in Reader. The original PDF remains unchanged.' : 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.'}</p><div className="row">{ocrReady ? <button className="button blue" onClick={onReader}>Open OCR Reader</button> : <><button className="button blue" onClick={onParse}>Parse with MinerU</button><button className="button outline" onClick={onSetup}>Set up local AI</button>{onReader && <button className="button ghost" onClick={onReader}>Open Reader</button>}</>}</div></div></div>;
 }
 
-function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect }) {
+function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence }) {
   const claims = revalidateSummaryClaims(paper.summary?.claims, paper.blocks);
+  const { mode: sourceMode } = paperArticleSource(paper);
   return <div className="summary-view">
     <div className="section-heading"><div><h2>Paper summary</h2><p>Verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !canSummarize} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
       {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
-      <article className="summary-card" data-view-scope="summarySource" tabIndex={0} aria-label="Source summary text" onMouseUp={event => onSelect(event.currentTarget, 'summarySource')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
-      <article className="summary-card translated" data-view-scope="summaryTarget" tabIndex={0} aria-label="Translated summary text" onMouseUp={event => onSelect(event.currentTarget, 'summaryTarget')}><small>{paper.summary.targetLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summaryTarget')}>{paper.summary.target}</Markdown></article>
-      <div className="source-links"><h3>Check the Sources</h3>
-        {claims ? claims.map((claim, index) => <div className="evidence-claim" key={index}>
-          <strong>Claim {index + 1}: {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</strong>
-          <p>{claim.text}</p>
-          {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID, { revealSource: true, quote: source.quote })}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
-        </div>) : <p>This saved summary predates exact source links. Its claims have not been validated.</p>}
+      <p className="summary-evidence-note">AI-generated summary. Source links show where quotations appear. Verify research findings and the model’s interpretation against the original paper.</p>
+      <div className="summary-panels">
+        <article className="summary-card" data-view-scope="summarySource" tabIndex={0} aria-label="Source summary text" onMouseUp={event => onSelect(event.currentTarget, 'summarySource')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
+        <article className="summary-card translated" data-view-scope="summaryTarget" tabIndex={0} aria-label="Translated summary text" onMouseUp={event => onSelect(event.currentTarget, 'summaryTarget')}><small>{paper.summary.targetLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summaryTarget')}>{paper.summary.target}</Markdown></article>
       </div>
+      {claims?.length ? <section className="source-links" aria-label="Check the Sources">
+        <h3>Check the Sources</h3>
+        {claims.map((claim, index) => {
+          const key = JSON.stringify([sourceMode, index, claim.text]);
+          return <details className="evidence-claim" key={key} open={expandedEvidence.has(key)}
+            onToggle={event => { if (event.currentTarget.open) expandedEvidence.add(key); else expandedEvidence.delete(key); }}>
+            <summary>Claim {index + 1} · {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</summary>
+            <p>{claim.text}</p>
+            {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID, { revealSource: true, quote: source.quote })}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
+          </details>;
+        })}
+      </section> : <p className="summary-evidence-note">This saved summary has no verified source links.</p>}
     </> : <Empty title={paper.blocks.length ? 'No summary yet' : 'No readable text yet'} body={paper.blocks.length ? 'Generate a source and target language summary using your local model. Exact source quotations are linked only after validation.' : 'Use MinerU OCR from Paper or Original before summarizing this PDF.'} />}
   </div>;
 }
 
-function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
+function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
   const entries = readingMap(paper.blocks);
   return <div className="content-column">
     {issues.length > 0 && <div className="quality-list"><h3>Extraction check · {issues.length} possible issue(s)</h3>{issues.slice(0, 20).map(issue => <button key={issue.id} onClick={() => navigate(issue.id)}>Review block {issue.id}: {issue.reason}</button>)}</div>}
@@ -688,7 +697,7 @@ function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect
       <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID)}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
       <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
     </section>
-    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} />
+    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedEvidence} />
   </div>;
 }
 
@@ -812,6 +821,7 @@ function App() {
   const [glossaryError, setGlossaryError] = useState('');
   const [library, setLibrary] = useState([]);
   const [paper, setPaper] = useState(null);
+  const expandedEvidence = useMemo(() => new Set(), [paper?.id]);
   const paperRef = useRef(null);
   const [tab, setTab] = useState('Paper');
   const [displayMode, setDisplayMode] = useState('bilingual');
@@ -2574,7 +2584,7 @@ function App() {
           onSetup={() => setModal('setup')}
           onReader={openPdfReader}
         />}
-        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedEvidence={expandedEvidence} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading">
             <div><h2>Connected full translation</h2><p>{structuredFull

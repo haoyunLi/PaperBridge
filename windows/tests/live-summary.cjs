@@ -55,7 +55,9 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByLabel('Reading mode').selectOption('translation');
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
-    await page.getByRole('button', { name: /Read original block/ }).first().click();
+    const evidence = page.locator('.evidence-claim').filter({ hasText: 'Read original block' }).first();
+    await evidence.locator('summary').click();
+    await evidence.getByRole('button', { name: /Read original block/ }).first().click();
     await page.locator(`#block-${sources[0].paragraphID}.current`).waitFor();
     assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
     const loaded = await fetch(new URL('/api/ps', baseURL)).then(response => response.json());
