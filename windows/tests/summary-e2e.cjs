@@ -1,0 +1,127 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const http = require('node:http');
+const path = require('node:path');
+const { _electron: electron } = require('playwright-core');
+
+async function run() {
+  const root = path.resolve(__dirname, '..');
+  const artifacts = path.join(root, 'test-artifacts');
+  fs.mkdirSync(artifacts, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'summary-e2e-'));
+  const summaryModel = 'summary-test:latest';
+  const translationModel = 'translation-test:latest';
+  const opening = 'The team calibrated each sensor before collecting the baseline measurements.';
+  const tail = 'At the end of the study the test failed under low visibility conditions.';
+  const unvalidated = 'The appendix reported a separate measurement without a confidence interval.';
+  const longParagraph = `${'Repeated measurements reproduced the control. '.repeat(340)}${tail} ${unvalidated}`;
+  const references = 'This reference entry must never be sent to the summary model.';
+  const requests = [];
+  let held;
+  let regenerate = '';
+  let translated = 0;
+  const claim = (text, paragraphID, quote) => ({ text, sources: paragraphID ? [{ paragraphID, quote }] : [] });
+  const ollama = http.createServer(async (request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: summaryModel }, { model: translationModel }] }));
+    if (request.url === '/api/ps') return response.end('{"models":[]}');
+    if (request.url !== '/api/generate') { response.statusCode = 404; return response.end('{}'); }
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    const { prompt, model, options } = JSON.parse(body);
+    const payload = prompt.slice(prompt.indexOf('\n\n') + 2);
+    let answer;
+    if (prompt.startsWith('Summarize this academic paper excerpt')) {
+      requests.push({ kind: 'excerpt', model, payload, options });
+      if (regenerate === 'cutoff') return response.end('{"response":"Incomplete replacement","done":true,"done_reason":"length"}');
+      if (regenerate === 'hold') { held = response; return; }
+      answer = { claims: [
+        claim('', 2, tail),
+        payload.includes(opening) ? claim('Opening procedure', 'P1', 'Model paraphrase') : claim('A measurement was repeated'),
+        payload.includes(tail) ? claim('Final limitation', 2, tail) : claim('Reject evidence from a different excerpt', 2, tail),
+        claim('Method detail'), claim('Study context')
+      ] };
+    } else if (prompt.startsWith('Consolidate these partial summary claims')) {
+      const candidates = JSON.parse(payload).claims;
+      requests.push({ kind: 'merge', model, candidates, options });
+      answer = { claims: [
+        candidates.find(item => item.text === 'Opening procedure'),
+        candidates.find(item => item.text === 'Final limitation') || claim('Interim result'),
+        claim('Do not add a new citation during consolidation', 2, unvalidated),
+        claim('Retained context')
+      ] };
+    } else if (prompt.startsWith('Claim:')) {
+      requests.push({ kind: 'quote', model, prompt });
+      answer = prompt.startsWith('Claim: Opening procedure') ? opening : tail;
+    } else {
+      requests.push({ kind: 'translation', model, prompt });
+      answer = `摘要译文 ${++translated}`;
+    }
+    response.end(JSON.stringify({ response: typeof answer === 'string' ? answer : JSON.stringify(answer), done: true }));
+  });
+  await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
+    onboardingCompletedVersion: 1, autoCheckUpdates: false, summaryModel, translationModel,
+    ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
+  }));
+  let app;
+  try {
+    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    const page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await page.locator('.paste-area').fill([opening, longParagraph, 'References', references].join('\n\n'));
+    await page.getByRole('button', { name: 'Open text', exact: true }).click();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('button', { name: 'Generate summary' }).click();
+    await page.getByText('Summary saved. Only exact-match source quotations are linked.', { exact: true }).waitFor();
+    const summaries = page.locator('.summary-card');
+    assert.match(await summaries.first().innerText(), /Final limitation/);
+    assert.equal(await summaries.last().locator('li').count(), 4);
+    const excerpts = requests.filter(item => item.kind === 'excerpt');
+    assert.equal(excerpts.length, 4);
+    assert.ok(excerpts.every(item => item.payload.length <= 6000 && !item.payload.includes(references)));
+    assert.match(excerpts.at(-1).payload, /\[P2\][\s\S]*low visibility conditions/);
+    const merges = requests.filter(item => item.kind === 'merge');
+    assert.equal(merges.length, 3);
+    assert.ok(requests.indexOf(merges[0]) < requests.indexOf(excerpts[2]), 'Consolidation must happen before the next source excerpt');
+    assert.ok(merges.every(item => item.candidates.length <= 12));
+    assert.ok([...excerpts, ...merges].every(item => item.options.num_predict === 2048));
+    assert.ok(merges[0].candidates.every(item => item.sources.every(source => source.quote !== tail)), 'An exact quote in the same paragraph but outside the current excerpt is not evidence');
+    assert.ok(requests.every(item => item.model === (item.kind === 'translation' ? translationModel : summaryModel)));
+    assert.equal(requests.filter(item => item.kind === 'translation').length, 4);
+    assert.equal(await page.locator('.evidence-claim button').count(), 2, 'Only the original validated citations survive rolling merges');
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('button', { name: 'Read original block 2 →', exact: true }).click();
+    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
+    assert.match(await page.locator('#block-2.current .source-text').innerText(), /low visibility conditions/);
+
+    regenerate = 'cutoff';
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    await page.getByText(/The summary response was cut off/).waitFor();
+    assert.match(await summaries.first().innerText(), /Final limitation/);
+    regenerate = 'hold';
+    await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
+    for (let attempt = 0; attempt < 100 && !held; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+    assert.ok(held, 'A replacement request must be in flight before testing Stop');
+    await page.getByRole('button', { name: 'Stop', exact: true }).click();
+    held.end('{"response":"Discard late replacement","done":true}');
+    await page.getByText('Task cancelled. Completed work was saved.').waitFor();
+    assert.match(await summaries.first().innerText(), /Final limitation/);
+    await app.close(); app = null;
+    const paperDir = path.join(workspace, 'papers');
+    const file = fs.readdirSync(paperDir).find(name => /^[a-f\d]{64}\.json$/.test(name));
+    const saved = JSON.parse(fs.readFileSync(path.join(paperDir, file), 'utf8'));
+    assert.deepEqual(saved.summary.claims.flatMap(item => item.sources), [{ paragraphID: 1, quote: opening }, { paragraphID: 2, quote: tail }]);
+    console.log('Summary verified: bounded excerpts, early merges, batch-specific citations, one translation per claim, source navigation, and cancelled regeneration.');
+  } finally {
+    held?.destroy();
+    await app?.close();
+    ollama.closeAllConnections();
+    await new Promise(resolve => ollama.close(resolve));
+  }
+}
+
+run().catch(error => { console.error(error); process.exitCode = 1; });

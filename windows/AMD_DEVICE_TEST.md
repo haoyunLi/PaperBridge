@@ -93,3 +93,9 @@ Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报
 ## 已有 AMD 译稿与原页的便携导出（2026-11-06）
 
 重开上述已翻译的 15 页论文工作区副本，在 Full Translation 中翻到第 3 页并检查实际渲染。通过桌面界面导出便携包，核对全文稿引用 15 张真实 PNG、宽高均超过 500 像素，译文正文与已保存结果一致，导出的 PDF 和工作区原 PDF 字节一致。此轮复用已有 AMD 译稿。
+
+## 长文摘要与逐批证据（2026-11-06）
+
+复用 15 页论文的 DirectML 导入工作区副本，在界面切换为 PDF 文字层后生成双语摘要。初次用 TranslateGemma 4B 兼做摘要时，Ollama 报告响应触及上下文上限，应用保留了原工作区。Windows 现在对本地 JSON 摘要限制 2,048 个输出 token，并在截断时提示选择不同的摘要模型。
+
+复跑需先完成 DirectML 版的 `test:live-mineru`，在本机 Ollama 下载 `qwen3:4b-instruct` 与 `translategemma:4b`，再运行 `npm run test:live-summary`。该测试复制源工作区，可用 `PAPERBRIDGE_LIVE_SUMMARY_WORKSPACE`、`PAPERBRIDGE_LIVE_SUMMARY_MODEL`、`PAPERBRIDGE_LIVE_MODEL` 和 `PAPERBRIDGE_LIVE_OLLAMA` 指定工作区、两个模型与回环地址。

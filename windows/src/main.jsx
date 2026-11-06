@@ -10,7 +10,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { openPdf, extractPdf } from './pdf.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
+import { referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, splitBlockAt, reflowBlock, mergeBlocks, editedBlock } from './paper.mjs';
 import { anchorText, parsedMarkdownBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -309,10 +309,10 @@ function ScanNotice({ page = false, ocrReady = false, onParse, onSetup, onReader
   return <div className="scan-notice" role="status"><AlertCircle size={20} /><div><strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{ocrReady ? 'MinerU OCR text is ready in Reader. The original PDF remains unchanged.' : 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.'}</p><div className="row">{ocrReady ? <button className="button blue" onClick={onReader}>Open OCR Reader</button> : <><button className="button blue" onClick={onParse}>Parse with MinerU</button><button className="button outline" onClick={onSetup}>Set up local AI</button>{onReader && <button className="button ghost" onClick={onReader}>Open Reader</button>}</>}</div></div></div>;
 }
 
-function SummaryView({ paper, busy, summarize, navigate, onSelect }) {
+function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect }) {
   const claims = revalidateSummaryClaims(paper.summary?.claims, paper.blocks);
   return <div className="summary-view">
-    <div className="section-heading"><div><h2>Paper summary</h2><p>Generated locally · verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !paper.blocks.some(block => !block.heading && !block.resource)} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
+    <div className="section-heading"><div><h2>Paper summary</h2><p>Verify each claim against the original</p></div><button className="button blue" disabled={!!busy || !canSummarize} onClick={summarize}><Sparkles size={16} /> {paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
       {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
       <article className="summary-card" data-view-scope="summarySource" onMouseUp={event => onSelect(event, 'summarySource', 'source')}><small>{paper.summary.sourceLanguage}</small><Markdown highlights={(paper.viewHighlights || []).filter(item => item.scope === 'summarySource' && validViewAnchor(paper, item))}>{paper.summary.source}</Markdown></article>
@@ -321,14 +321,14 @@ function SummaryView({ paper, busy, summarize, navigate, onSelect }) {
         {claims ? claims.map((claim, index) => <div className="evidence-claim" key={index}>
           <strong>Claim {index + 1}: {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</strong>
           <p>{claim.text}</p>
-          {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID)}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
+          {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID, { revealSource: true })}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
         </div>) : <p>This saved summary predates exact source links. Its claims have not been validated.</p>}
       </div>
     </> : <Empty title={paper.blocks.length ? 'No summary yet' : 'No readable text yet'} body={paper.blocks.length ? 'Generate a source and target language summary using your local model. Exact source quotations are linked only after validation.' : 'Use MinerU OCR from Paper or Original before summarizing this PDF.'} />}
   </div>;
 }
 
-function OverviewView({ paper, busy, summarize, navigate, onSelect, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
+function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect, issues, onOriginal, onReader, translatedCount, paragraphCount }) {
   const entries = readingMap(paper.blocks);
   return <div className="content-column">
     {issues.length > 0 && <div className="quality-list"><h3>Extraction check · {issues.length} possible issue(s)</h3>{issues.slice(0, 20).map(issue => <button key={issue.id} onClick={() => navigate(issue.id)}>Review block {issue.id}: {issue.reason}</button>)}</div>}
@@ -339,7 +339,7 @@ function OverviewView({ paper, busy, summarize, navigate, onSelect, issues, onOr
       <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID)}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
       <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
     </section>
-    <SummaryView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={onSelect} />
+    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} />
   </div>;
 }
 
@@ -1267,55 +1267,80 @@ function App() {
     } catch (cause) { if (!token.cancelled) setError(cause.message); } finally { endTask(token); }
   }
   async function summarize() {
-    if (!paperRef.current || busy || taskRef.current) return;
-    if (!paperRef.current.blocks.some(block => !block.heading && !block.resource)) { setError('No readable text to summarize. Use MinerU OCR first.'); return; }
+    const current = paperRef.current;
+    if (!current || busy || taskRef.current) return;
+    const source = summarySourceBlocks(current.blocks);
+    if (!source.length) { setError('No readable body text to summarize. For a scanned PDF, use MinerU OCR first.'); return; }
     const token = startTask('Summarizing paper…');
     try {
       const config = settingsRef.current;
       const summaryModel = activeAIModel(config, 'summary');
       const translationModel = activeAIModel(config, 'translation');
-      const references = referenceBlockIds(paperRef.current.blocks);
-      const source = paperRef.current.blocks.filter(block => !block.heading && !block.resource && !references.has(block.id));
-      const batches = []; let batch = []; let length = 0;
-      for (const block of source) { if (length + block.text.length > 6000 && batch.length) { batches.push(batch); batch = []; length = 0; } batch.push(block); length += block.text.length; }
-      if (batch.length) batches.push(batch);
-      const partials = [];
-      const validatedPartials = [];
-      async function withExactQuotes(response, claims, eligible, allowedSources = null) {
-        const candidates = summarySourceCandidates(response, eligible);
-        const allowed = allowedSources && new Set(allowedSources.map(item => `${item.paragraphID}|${item.quote}`));
-        const byId = new Map(eligible.map(block => [block.id, block]));
-        for (let index = 0; index < claims.length; index++) {
-          if (token.cancelled || claims[index].sources.length) continue;
-          for (const id of candidates[index] || []) {
-            const block = byId.get(id);
-            if (!block) continue;
-            const answer = await generate(summaryModel, summaryQuotePrompt(claims[index].text, id, block.text), 'Select only an exact supporting quote from the supplied paragraph, or return NONE.', token);
+      const sameLanguage = config.sourceLanguage === config.targetLanguage;
+      const roles = sameLanguage ? ['summary'] : ['summary', 'translation'];
+      if (config.aiProvider === 'openai') {
+        for (const role of roles) {
+          const setupMessage = openAISetupMessage(config, openAIStateRef.current.consent, openAIStateRef.current.hasKey, role);
+          if (setupMessage) throw new Error(setupMessage);
+        }
+      } else {
+        const available = await api.listModels(config.ollamaBaseURL);
+        requireActiveTask(token);
+        for (const role of roles) {
+          const model = activeAIModel(config, role);
+          if (!available.includes(model)) throw new Error(`Install ${model || `a ${role} model`} in Ollama first.`);
+        }
+      }
+
+      const batches = summarySourceBatches(source);
+      const system = 'You are a careful academic paper assistant. Return only the requested JSON.';
+      let claims = [];
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        setBusy({ label: `Summarizing part ${i + 1} of ${batches.length}` }); setProgress({ done: i, total: batches.length + 1 });
+        const response = await generate(summaryModel, summaryPrompt(batch, config.sourceLanguage), system, token, 'json');
+        const partial = parseSummaryClaims(response, batch);
+        const candidates = summarySourceCandidates(response, batch);
+        for (const [index, claim] of partial.entries()) {
+          if (claim.sources.length) continue;
+          const excerpts = batch.filter(block => candidates[index]?.includes(block.id));
+          for (const { id, text } of excerpts) {
+            const answer = await generate(summaryModel, summaryQuotePrompt(claim.text, id, text), 'Select only an exact supporting quote from the supplied passage, or return NONE.', token);
             const quote = answer.trim().replace(/^["“‘]|["”’]$/g, '');
-            if (quote.length >= 20 && quote.length <= 500 && block.text.includes(quote) && (!allowed || allowed.has(`${id}|${quote}`))) {
-              claims[index] = { ...claims[index], sources: [{ paragraphID: id, quote }] };
+            if (quote.length >= 20 && quote.length <= 500 && text.includes(quote)) {
+              claim.sources = [{ paragraphID: id, quote }];
               break;
             }
           }
         }
-        return claims;
-      }
-      for (let i = 0; i < batches.length; i++) {
-        if (token.cancelled) return;
-        setBusy({ label: `Summarizing part ${i + 1} of ${batches.length}` }); setProgress({ done: i, total: batches.length + 1 });
-        const response = await generate(summaryModel, summaryPrompt(batches[i], config.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
-        partials.push(response);
-        const claims = parseSummaryClaims(response, paperRef.current.blocks, null, batches[i].map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
-        validatedPartials.push(...await withExactQuotes(response, claims, batches[i]));
+        claims.push(...partial);
+        if (claims.length > 6) {
+          setBusy({ label: `Consolidating claims through part ${i + 1} of ${batches.length}` });
+          const response = await generate(summaryModel, mergeSummaryPrompt(claims, config.sourceLanguage), system, token, 'json');
+          claims = parseSummaryClaims(response, source, claims.flatMap(claim => claim.sources));
+          if (!claims.length) throw new Error('The summary model returned no usable consolidated claims; the saved summary was not replaced.');
+        }
         setProgress({ done: i + 1, total: batches.length + 1 });
       }
-      const merged = partials.length === 1 ? partials[0] : await generate(summaryModel, mergeSummaryPrompt(validatedPartials, config.sourceLanguage), 'You are a careful academic paper assistant. Return only the requested JSON.', token, 'json');
-      const allowedSources = partials.length === 1 ? null : validatedPartials.flatMap(claim => claim.sources);
-      const claims = partials.length === 1 ? validatedPartials : await withExactQuotes(merged, parseSummaryClaims(merged, paperRef.current.blocks, allowedSources), source, allowedSources);
       if (!claims.length) throw new Error('The summary model returned no usable claims; the saved summary was not replaced.');
       const sourceSummary = claimsMarkdown(claims);
-      const targetSummary = config.sourceLanguage === config.targetLanguage ? sourceSummary : await generate(translationModel, translationPrompt(sourceSummary, config.sourceLanguage, config.targetLanguage), translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token);
-      if (!token.cancelled) { commitPaper(current => ({ ...current, summary: { source: sourceSummary, target: targetSummary, claims, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } })); setStatus('Summary saved. Only exact-match source quotations are linked.'); }
+      let targetSummary = sourceSummary;
+      if (!sameLanguage) {
+        const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
+        const translations = [];
+        for (const [index, claim] of claims.entries()) {
+          setBusy({ label: `Translating summary claim ${index + 1} of ${claims.length}` });
+          const { text, tokens } = protectMarkdown(claim.text);
+          const prompt = translationPrompt(text, config.sourceLanguage, config.targetLanguage, matchingTerms(text, config.sourceLanguage, config.targetLanguage));
+          const answer = await generate(translationModel, prompt, instructions, token);
+          if (!answer.trim()) throw new Error('The summary translation was empty; the saved summary was not replaced.');
+          translations.push({ text: restoreMarkdown(answer.trim(), tokens) });
+        }
+        targetSummary = claimsMarkdown(translations);
+      }
+      requireActiveTask(token);
+      commitPaper(paper => ({ ...paper, summary: { source: sourceSummary, target: targetSummary, claims, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } }));
+      setStatus('Summary saved. Only exact-match source quotations are linked.');
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   async function fullTranslation(force = false) {
@@ -1624,11 +1649,12 @@ function App() {
     return true;
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
-  function navigate(id) {
+  function navigate(id, { revealSource = false } = {}) {
     if (!paperRef.current?.blocks.some(block => block.id === id)) return;
-    recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id);
-    searchOrigin.current = null; setSearch(''); setActiveBlock(id); setTab('Reader');
-    commitPaper(current => ({ ...current, position: { ...current.position, block: id } }));
+    const mode = revealSource && displayMode === 'translation' ? 'bilingual' : displayMode;
+    recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.displayMode === mode);
+    searchOrigin.current = null; setSearch(''); setActiveBlock(id); setDisplayMode(mode); setTab('Reader');
+    commitPaper(current => ({ ...current, position: { ...current.position, block: id, displayMode: mode } }));
     setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
   function navigateBlockAnnotation(blockId, item, kind, recordType) {
@@ -1761,6 +1787,7 @@ function App() {
   const translatedCount = paper?.blocks.filter(block => block.status === 'ok' && !block.resource && !referenceIDs.has(block.id)).length || 0;
   const failedCount = paper?.blocks.filter(block => block.status === 'failed' && !block.resource && !referenceIDs.has(block.id)).length || 0;
   const translatableCount = paper?.blocks.filter(block => !block.resource && !referenceIDs.has(block.id)).length || 0;
+  const canSummarize = useMemo(() => summarySourceBlocks(paper?.blocks || []).length > 0, [paper?.blocks]);
   const activeSelectionHighlights = selectionHighlights(paper, selection);
   const activeHighlightColor = activeSelectionHighlights.length ? displayHighlightColor(activeSelectionHighlights[0].color) : '';
   const readingAppearance = { '--reader-font': `${settings?.fontSize || 17}px`, '--reader-line': settings?.lineHeight || 1.6, '--reader-width': `${settings?.readingWidth || 920}px` };
@@ -1777,14 +1804,15 @@ function App() {
     : structuredFull ? 'Update from Reader' : plainUnfinished.length ? 'Resume unfinished batches' : 'Regenerate';
   const menuReady = ready && modal !== 'onboarding';
   const menuBusy = Boolean(busy || onboardingBusy);
-  const canPrimaryTask = translatableCount > 0 && (tab === 'Summary' ? !paper.summary || paper.summary.stale : tab === 'Full Translation' ? fullTranslationNeedsWork : translatedCount < translatableCount);
+  const canPrimaryTask = tab === 'Summary' ? canSummarize && (!paper.summary || paper.summary.stale)
+    : translatableCount > 0 && (tab === 'Full Translation' ? fullTranslationNeedsWork : translatedCount < translatableCount);
   const canUndo = undo.length > 0 && (!menuBusy || undo.at(-1)?.type !== 'structure');
   useEffect(() => {
     api.updateMenuState({ ready: menuReady, hasPaper: Boolean(paper), busy: menuBusy, hasSelection: Boolean(selection), canUndo,
       canGoBack: readingHistoryState.back > 0, canGoForward: readingHistoryState.forward > 0,
-      canPrimaryTask: Boolean(canPrimaryTask), canSummarize: translatableCount > 0, canFullTranslation: translatableCount > 0,
+      canPrimaryTask: Boolean(canPrimaryTask), canSummarize, canFullTranslation: translatableCount > 0,
       canLookupSelection: Boolean(selection) && !menuBusy, canExport: Boolean(paper), checkingUpdates }).catch(cause => setError(cause.message));
-  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), translatableCount > 0, checkingUpdates]);
+  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, translatableCount > 0, checkingUpdates]);
 
   if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
   return <div data-display-mode={displayMode} style={readingAppearance} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''} ${pendingImport ? 'importing' : ''}`}>
@@ -1854,7 +1882,7 @@ function App() {
           onSetup={() => setModal('setup')}
           onReader={() => navigateToTab('Reader')}
         />}
-        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} issues={extractionIssues} onOriginal={() => { changeDisplayMode('source'); navigateToTab('Paper'); }} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading">
             <div><h2>Connected full translation</h2><p>{structuredFull

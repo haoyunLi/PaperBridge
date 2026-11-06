@@ -70,12 +70,35 @@ test('summary source links require an exact quote in a real source block', async
   const blocks = [{ id: 7, text: passage }];
   const quote = 'improved response time in the tested sample';
   const output = JSON.stringify({ claims: [{ text: 'A supported claim', sources: [{ paragraphID: 7, quote }, { paragraphID: 99, quote }, { paragraphID: 7, quote: 'invented source quotation here' }] }] });
-  const claims = parseSummaryClaims(output, blocks, null, `[P7]\n${passage}`);
+  const claims = parseSummaryClaims(output, blocks);
   assert.deepEqual(claims[0].sources, [{ paragraphID: 7, quote }]);
   assert.deepEqual(parseSummaryClaims('Model wrote plain text [7].', blocks)[0].sources, []);
-  assert.deepEqual(parseSummaryClaims(output, blocks, [], `[P7]\n${passage}`)[0].sources, []);
+  assert.deepEqual(parseSummaryClaims(output, blocks, [])[0].sources, []);
   assert.deepEqual(summarySourceCandidates(JSON.stringify({ claims: [{ text: 'A claim', sources: [{ paragraphID: 'P7' }, { paragraphID: 'P99' }] }] }), blocks), [[7]]);
   assert.deepEqual(summarySourceCandidates('unstructured summary', blocks), []);
+});
+
+test('summary excerpts keep original paragraph IDs and whole Unicode characters under the tagged limit', async () => {
+  const { summarySourceBlocks, summarySourceBatches, parseSummaryClaims } = await import('../src/paper.mjs');
+  const tail = 'The last trial showed a clear limitation.';
+  const long = `${'文'.repeat(5994)}😀${'字'.repeat(6040)}${tail}`;
+  const source = summarySourceBlocks([
+    { id: 1, heading: true, text: 'Introduction' },
+    { id: 2, text: long },
+    { id: 3, resource: true, text: 'Image' },
+    { id: 4, heading: true, text: 'References' },
+    { id: 5, text: 'Excluded citation.' },
+    { id: 6, heading: true, text: 'Appendix' },
+    { id: 7, text: 'The appendix remains eligible.' }
+  ]);
+  assert.deepEqual(source.map(block => block.id), [2, 7]);
+  const batches = summarySourceBatches(source);
+  assert.equal(batches.flat().filter(block => block.id === 2).map(block => block.text).join(''), long);
+  assert.ok(batches.every(batch => batch.map(({ id, text }) => `[P${id}]\n${text}`).join('\n\n').length <= 6000));
+  assert.ok(batches.flat().every(block => !/[\uD800-\uDBFF]$|^[\uDC00-\uDFFF]/.test(block.text)));
+  const response = JSON.stringify({ claims: [{ text: 'Limitation', sources: [{ paragraphID: 'P2', quote: tail }] }] });
+  assert.deepEqual(parseSummaryClaims(response, batches[0])[0].sources, []);
+  assert.deepEqual(parseSummaryClaims(response, batches.at(-1))[0].sources, [{ paragraphID: 2, quote: tail }]);
 });
 
 test('portable bundle writes real image assets and the unchanged original PDF', () => {

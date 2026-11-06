@@ -44,46 +44,86 @@ export function qualityIssues(blocks, excluded = new Set()) {
   });
 }
 
-export function parseSummaryClaims(output, blocks, allowedSources = null, providedText = null) {
+export function summarySourceBlocks(blocks) {
+  const references = referenceBlockIds(blocks);
+  return blocks.filter(block => !block.heading && !block.resource && !references.has(block.id) && block.text?.trim());
+}
+
+export function summarySourceBatches(blocks) {
+  const batches = [];
+  let batch = [];
+  let length = 0;
+  for (const { id, text } of blocks) {
+    const labelLength = `[P${id}]\n`.length;
+    const maxText = 6000 - labelLength;
+    for (let start = 0; start < text.length;) {
+      let end = Math.min(start + maxText, text.length);
+      if (end < text.length) {
+        const excerpt = text.slice(start, end);
+        const sentence = [...excerpt.matchAll(/[.!?](?=\s)|[。！？]/g)].at(-1);
+        const space = excerpt.search(/\s\S*$/);
+        if (sentence && sentence.index >= maxText / 2) end = start + sentence.index + 1;
+        else if (space >= maxText / 2) end = start + space + 1;
+        if (/[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+      }
+      const piece = text.slice(start, end).trim();
+      start = end;
+      if (!piece) continue;
+      const size = labelLength + piece.length;
+      if (length && length + 2 + size > 6000) {
+        batches.push(batch);
+        batch = [];
+        length = 0;
+      }
+      length += (batch.length ? 2 : 0) + size;
+      batch.push({ id, text: piece });
+    }
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
+}
+
+function summaryRecords(value) {
+  try {
+    const parsed = JSON.parse(value.slice(value.indexOf('{'), value.lastIndexOf('}') + 1));
+    if (Array.isArray(parsed?.claims)) return parsed.claims.slice(0, 6).filter(claim => typeof claim?.text === 'string' && claim.text.trim());
+  } catch { /* unstructured result remains readable, without validated links */ }
+  return null;
+}
+
+function summarySourceId(source) {
+  const id = source?.paragraphID;
+  return typeof id === 'string' && /^P?\d+$/i.test(id) ? Number(id.replace(/^P/i, '')) : id;
+}
+
+export function parseSummaryClaims(output, blocks, allowedSources = null) {
   const trimmed = String(output || '').trim();
   if (!trimmed) return [];
-  const first = trimmed.indexOf('{');
-  const last = trimmed.lastIndexOf('}');
-  let parsed;
-  try { parsed = JSON.parse(trimmed.slice(first, last + 1)); } catch { /* unstructured result remains readable, without validated links */ }
-  if (!Array.isArray(parsed?.claims)) return [{ text: trimmed.slice(0, 3000), sources: [] }];
-  const byId = new Map(blocks.map(block => [block.id, block]));
+  const records = summaryRecords(trimmed);
+  if (!records) return [{ text: trimmed.slice(0, 3000), sources: [] }];
+  const byId = Map.groupBy(blocks, block => block.id);
   const allowed = allowedSources && new Set(allowedSources.map(source => `${source.paragraphID}|${source.quote}`));
-  return parsed.claims.slice(0, 6).flatMap(claim => {
-    const text = String(claim?.text || '').trim().slice(0, 1200);
-    if (!text) return [];
+  return records.map(claim => {
+    const text = claim.text.trim().slice(0, 1200);
     const seen = new Set();
-    const sources = (Array.isArray(claim.sources) ? claim.sources : []).filter(source => {
-      const id = source?.paragraphID;
+    const sources = (Array.isArray(claim.sources) ? claim.sources : []).flatMap(source => {
+      const paragraphID = summarySourceId(source);
       const quote = source?.quote;
-      const key = `${id}|${quote}`;
-      if (!Number.isInteger(id) || typeof quote !== 'string' || quote.length < 20 || quote.length > 500 || seen.has(key)) return false;
-      if (!byId.get(id)?.text.includes(quote) || (allowed && !allowed.has(key))) return false;
-      if (providedText && (!providedText.includes(`[P${id}]\n`) || !providedText.includes(quote))) return false;
+      const key = `${paragraphID}|${quote}`;
+      if (!Number.isInteger(paragraphID) || typeof quote !== 'string' || quote.length < 20 || quote.length > 500 || seen.has(key)) return [];
+      if (!byId.get(paragraphID)?.some(block => block.text.includes(quote)) || (allowed && !allowed.has(key))) return [];
       seen.add(key);
-      return true;
-    }).slice(0, 2).map(source => ({ paragraphID: source.paragraphID, quote: source.quote }));
-    return [{ text, sources }];
+      return [{ paragraphID, quote }];
+    }).slice(0, 2);
+    return { text, sources };
   });
 }
 
 export function summarySourceCandidates(output, eligibleBlocks) {
-  const trimmed = String(output || '').trim();
-  const first = trimmed.indexOf('{');
-  const last = trimmed.lastIndexOf('}');
-  let parsed;
-  try { parsed = JSON.parse(trimmed.slice(first, last + 1)); } catch { return []; }
-  if (!Array.isArray(parsed?.claims)) return [];
+  const records = summaryRecords(String(output || '').trim()) || [];
   const eligible = new Set(eligibleBlocks.map(block => block.id));
-  return parsed.claims.slice(0, 6).map(claim => (Array.isArray(claim.sources) ? claim.sources : [])
-    .map(source => source?.paragraphID)
-    .map(id => typeof id === 'string' && /^P?\d+$/i.test(id) ? Number(id.replace(/^P/i, '')) : id)
-    .filter(id => Number.isInteger(id) && eligible.has(id)).slice(0, 2));
+  return records.map(claim => [...new Set((Array.isArray(claim.sources) ? claim.sources : [])
+    .map(summarySourceId).filter(id => Number.isInteger(id) && eligible.has(id)))].slice(0, 2));
 }
 
 export function claimsMarkdown(claims) {

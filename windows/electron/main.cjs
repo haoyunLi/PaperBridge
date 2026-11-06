@@ -284,11 +284,16 @@ function registerHandlers() {
     try {
       const response = await ollamaRequest(baseURL, 'api/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}), options: { temperature: 0.1 } }),
+        body: JSON.stringify({
+          model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}),
+          options: { temperature: 0.1, ...(format === 'json' ? { num_predict: 2048 } : {}) }
+        }),
         signal: controller.signal
       });
       const data = await response.json();
-      if (data.done === false || data.done_reason === 'length') throw new Error('Model response was cut off. Try a smaller paragraph.');
+      if (data.done === false || data.done_reason === 'length') {
+        throw new Error(format === 'json' ? 'The summary response was cut off. Choose a different summary model in Settings and try again.' : 'Model response was cut off. Try a smaller paragraph.');
+      }
       if (data.error) throw new Error(data.error);
       if (!data.response?.trim()) throw new Error('Ollama returned an empty response.');
       return data.response.trim();
