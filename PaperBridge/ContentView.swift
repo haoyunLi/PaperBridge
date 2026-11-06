@@ -10,6 +10,7 @@ struct ContentView: View {
     @ObservedObject var viewModel: PaperReaderViewModel
     var onShowGettingStarted: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openSettings) private var openSettings
     @State private var isDropTargeted = false
     @State private var isPasteTextExpanded = false
     @State private var hasAppeared = false
@@ -105,7 +106,10 @@ struct ContentView: View {
             } else {
                 detail
                     .frame(minWidth: 600, maxWidth: .infinity, maxHeight: .infinity)
-                    .inspector(isPresented: $viewModel.isInspectorPresented) {
+                    .inspector(isPresented: Binding(
+                        get: { viewModel.pendingImport == nil && viewModel.isInspectorPresented },
+                        set: { if viewModel.pendingImport == nil { viewModel.isInspectorPresented = $0 } }
+                    )) {
                         SelectionInspectorView(viewModel: viewModel)
                             .inspectorColumnWidth(min: 280, ideal: 330, max: 420)
                     }
@@ -118,7 +122,7 @@ struct ContentView: View {
             detail
                 .frame(minHeight: 320, maxHeight: .infinity)
 
-            if viewModel.isInspectorPresented {
+            if viewModel.isInspectorPresented && viewModel.pendingImport == nil {
                 Divider()
 
                 SelectionInspectorView(viewModel: viewModel, placement: .bottomDrawer)
@@ -144,8 +148,17 @@ struct ContentView: View {
                         .padding(.vertical, 5).contentShape(Rectangle())
                 }
                 .buttonStyle(.bordered)
+                .disabled(viewModel.pendingImport != nil)
 
-                if let paper = viewModel.loadedPaper {
+                if let pending = viewModel.pendingImport {
+                    SidebarCard(title: "Opening Document", icon: "doc.richtext") {
+                        Text(pending.filename)
+                            .font(.callout.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("The outline will appear when parsing is complete.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else if let paper = viewModel.loadedPaper {
                     DisclosureGroup("Document & Import", isExpanded: $isDocumentDetailsExpanded) {
                         sourceCard
                         documentCard(paper)
@@ -366,7 +379,21 @@ struct ContentView: View {
     }
 
     private var localStatusCard: some View {
-        SidebarCard(title: "Local Engine", icon: "cpu") {
+        SidebarCard(title: viewModel.aiProviderLabel, icon: viewModel.settings.aiProvider == .ollama ? "cpu" : "cloud") {
+            if viewModel.settings.aiProvider == .openAI {
+                Text(viewModel.isOpenAIOptInConfirmed ? "Text analysis uses OpenAI. API usage is billed to your account." : "Online analysis is paused. Enable it in Settings > Models.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(viewModel.settings.activeTranslationModel.isEmpty ? "No translation model selected" : viewModel.settings.activeTranslationModel)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(2)
+                Button("Open AI Settings") {
+                    viewModel.isAISettingsRequested = true
+                    openSettings()
+                }
+                    .buttonStyle(.borderless)
+            } else {
             HStack {
                 OllamaStatusBadge(
                     isRefreshing: viewModel.isRefreshingModels,
@@ -388,6 +415,7 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
             }
 
             Divider()
@@ -438,7 +466,9 @@ struct ContentView: View {
         ZStack {
             PaperBridgeBackground()
 
-            if viewModel.loadedPaper == nil {
+            if let pending = viewModel.pendingImport {
+                importWorkspace(pending)
+            } else if viewModel.loadedPaper == nil {
                 emptyState
             } else {
                 workspace
@@ -490,6 +520,57 @@ struct ContentView: View {
         }
     }
 
+    private func importWorkspace(_ pending: PendingDocumentImport) -> some View {
+        VStack(spacing: 0) {
+            workspaceHeader
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    Label("OPENING YOUR PAPER", systemImage: "doc.text.magnifyingglass")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PaperBridgeTheme.accent)
+                    Text(pending.filename)
+                        .font(.system(size: 28, weight: .semibold, design: .serif))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                    SurfaceCard {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack(alignment: .top, spacing: 12) {
+                                ProgressView().controlSize(.small)
+                                Text(viewModel.statusMessage)
+                                    .font(.headline)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("documentImportStage")
+                            }
+                            ProgressView().progressViewStyle(.linear)
+                            TimelineView(.periodic(from: pending.startedAt, by: 1)) { context in
+                                let seconds = max(0, Int(context.date.timeIntervalSince(pending.startedAt)))
+                                Text("Elapsed \(seconds / 60)m \(seconds % 60)s")
+                                    .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                            }
+                            Text("Layout, formula, and text recognition can take several minutes, especially on the first run. This step prepares the document; translation has not started.")
+                                .font(.callout).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    HStack(alignment: .top, spacing: 16) {
+                        Button("Cancel Import", action: viewModel.cancelCurrentTask)
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                        if let previous = viewModel.loadedPaper {
+                            Text("Your previous paper, \(previous.name), is kept. Cancel to return to it.")
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .frame(maxWidth: 680, alignment: .leading)
+                .padding(32)
+                .frame(maxWidth: .infinity, alignment: .center)
+            }
+        }
+    }
+
     private var workspaceHeader: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack(alignment: .center, spacing: 14) {
@@ -521,14 +602,16 @@ struct ContentView: View {
                             .fill(PaperBridgeTheme.translation)
                             .frame(width: 5, height: 26)
 
-                        Text(viewModel.loadedPaper?.name ?? "Untitled Paper")
+                        Text(viewModel.pendingImport?.filename ?? viewModel.loadedPaper?.name ?? "Untitled Paper")
                             .font(.system(size: 25, weight: .semibold, design: .serif))
                             .foregroundStyle(PaperBridgeTheme.ink)
                             .lineLimit(1)
+                            .help(viewModel.pendingImport?.filename ?? viewModel.loadedPaper?.name ?? "")
                     }
 
                     Text(
-                        "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
+                        viewModel.pendingImport != nil ? "Opening PDF · Local document processing" :
+                        "\(viewModel.settings.sourceLanguage.displayName) → \(viewModel.settings.targetLanguage.displayName) · \(viewModel.aiProviderLabel) · \(viewModel.loadedPaper?.extractionEngine?.displayName ?? "Local parser") · \(viewModel.paragraphResults.count) blocks"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -568,24 +651,27 @@ struct ContentView: View {
                 .buttonStyle(.bordered)
                 .help("Show or hide Research Inspector")
             }
+            .disabled(viewModel.pendingImport != nil)
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    workspaceModePicker
-                    Spacer()
-                    primaryActions
-                }
+            if viewModel.pendingImport == nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        workspaceModePicker
+                        Spacer()
+                        primaryActions
+                    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    workspaceModePicker
-                    primaryActions
+                    VStack(alignment: .leading, spacing: 10) {
+                        workspaceModePicker
+                        primaryActions
+                    }
                 }
-            }
-            if let message = viewModel.primarySetupMessage {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let message = viewModel.primarySetupMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(.horizontal, 20)
@@ -640,15 +726,23 @@ struct ContentView: View {
         .frame(maxWidth: 540)
     }
 
+    private func showAISetup() {
+        if viewModel.settings.aiProvider == .openAI {
+            viewModel.isAISettingsRequested = true
+            openSettings()
+        }
+        else { onShowGettingStarted() }
+    }
+
     @ViewBuilder
     private var primaryActions: some View {
         HStack(spacing: 8) {
             Button {
-                if viewModel.primarySetupMessage != nil { onShowGettingStarted() }
+                if viewModel.primarySetupMessage != nil { showAISetup() }
                 else { viewModel.performPrimaryWorkspaceAction() }
             } label: {
                 Label(
-                    viewModel.primarySetupMessage == nil ? primaryWorkspaceActionTitle : "Set Up Local AI",
+                    viewModel.primarySetupMessage == nil ? primaryWorkspaceActionTitle : (viewModel.settings.aiProvider == .ollama ? "Set Up Local AI" : "Set Up OpenAI"),
                     systemImage: primaryWorkspaceActionIcon
                 )
             }
@@ -1145,12 +1239,12 @@ struct ContentView: View {
                 } else {
                     generationEmptyState(
                         title: "AI Summary (Optional)",
-                        description: "Use a local summary model for a shorter source/target-language overview. Model output can be wrong; use the source map above to verify it.",
+                        description: "Use your selected AI provider for a shorter source/target-language overview. Model output can be wrong; use the source map above to verify it.",
                         icon: "list.bullet.rectangle",
                         buttonTitle: viewModel.primarySetupMessage == nil ? "Generate Summary" : "Set Up Summary",
                         isEnabled: viewModel.canSummarize,
                         action: {
-                            if viewModel.primarySetupMessage != nil { onShowGettingStarted() }
+                            if viewModel.primarySetupMessage != nil { showAISetup() }
                             else { viewModel.generateSummaries() }
                         }
                     )
@@ -1869,7 +1963,7 @@ struct ContentView: View {
                 color: PaperBridgeTheme.warning
             )
 
-            Text("Paper analysis stays on this Mac")
+            Text("Local by default · Optional OpenAI analysis in Settings")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PaperBridgeTheme.accentDark)
                 .padding(.horizontal, 20)

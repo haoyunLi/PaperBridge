@@ -83,6 +83,7 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var progressValue = 0.0
     @Published var isProgressIndeterminate = false
     @Published var isBusy = false
+    @Published private(set) var pendingImport: PendingDocumentImport?
     @Published var errorMessage: String?
     @Published var isImporterPresented = false
     @Published var isExporterPresented = false
@@ -91,6 +92,18 @@ final class PaperReaderViewModel: ObservableObject {
     @Published var isRefreshingModels = false
     @Published var modelRefreshError: String?
     @Published var isOllamaReachable = false
+    @Published var hasOpenAIAPIKey = false
+    @Published var isAISettingsRequested = false
+    @Published var openAIModels: [String] = []
+    @Published var isRefreshingOpenAIModels = false
+    @Published var openAIStatus = "Save an API key, then fetch available models."
+    @Published var openAIError: String?
+    // Consent is deliberately session-only, never encoded in a workspace.
+    @Published var isOpenAIOptInConfirmed = false {
+        didSet {
+            if oldValue && !isOpenAIOptInConfirmed { cancelOpenAIRequests() }
+        }
+    }
     @Published var ollamaInstallation = OllamaInstallationStatus(applicationURL: nil)
     @Published var isInstallingOllama = false
     @Published var ollamaInstallProgress: Double?
@@ -141,7 +154,12 @@ final class PaperReaderViewModel: ObservableObject {
     private var positionSaveTask: Task<Void, Never>?
 
     let ollamaClient: OllamaClient
-    let minerUService = MinerUService()
+    let openAIClient: OpenAIClient
+    let apiKeyStore: APIKeyStoring
+    var openAIModelRefreshTask: Task<Void, Never>?
+    var openAIModelRefreshID = UUID()
+    var openAICredentialRevision = UUID()
+    let minerUService: MinerUService
     let localToolInstaller = LocalToolInstaller()
     let workspaceStore: WorkspaceStore
     private let markdownBundleExporter = MarkdownBundleExporter()
@@ -154,6 +172,7 @@ final class PaperReaderViewModel: ObservableObject {
     var minerUInstallTask: Task<Void, Never>?
     private var paragraphUndoStack: [ParagraphEditSnapshot] = []
     var selectionTask: Task<Void, Never>?
+    var selectionRunID: UUID?
 
     private var extractedPaperCache: [String: PaperDocument] = [:]
     private var chunkTranslationCache: [String: String] = [:]
@@ -165,9 +184,14 @@ final class PaperReaderViewModel: ObservableObject {
     var selectionLookupCache: [String: String] = [:]
     private var isRestoringWorkspace = false
 
-    init(workspaceStore: WorkspaceStore = WorkspaceStore(), ollamaClient: OllamaClient = OllamaClient()) {
+    init(workspaceStore: WorkspaceStore = WorkspaceStore(), ollamaClient: OllamaClient = OllamaClient(),
+         minerUService: MinerUService = MinerUService(), openAIClient: OpenAIClient = OpenAIClient(),
+         apiKeyStore: APIKeyStoring = OpenAIKeychainStore()) {
         self.workspaceStore = workspaceStore
         self.ollamaClient = ollamaClient
+        self.openAIClient = openAIClient
+        self.apiKeyStore = apiKeyStore
+        self.minerUService = minerUService
         workspaceStore.onSaveStatus = { [weak self] error in
             Task { @MainActor [weak self] in self?.workspaceSaveError = error }
         }
@@ -196,6 +220,9 @@ final class PaperReaderViewModel: ObservableObject {
         isInspectorPresented = workspace.isInspectorPresented
 
         paragraphResults = Self.makeParagraphResults(for: workspace.paper)
+        for variant in workspaceStore.loadAIVariants(checksum: workspace.paper.checksum) {
+            seedOutputCaches(from: variant, for: workspace.paper)
+        }
         seedOutputCaches(from: workspace, for: workspace.paper)
         restoreCachedOutputsIfAvailable(for: workspace.paper)
 
@@ -203,6 +230,7 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     deinit {
+        openAIModelRefreshTask?.cancel()
         noteSaveTask?.cancel()
         positionSaveTask?.cancel()
         activeTask?.cancel()
@@ -230,16 +258,20 @@ final class PaperReaderViewModel: ObservableObject {
 
     var translationSetupMessage: String? {
         if settings.sourceLanguage == settings.targetLanguage { return nil }
+        if settings.aiProvider == .openAI { return openAISetupMessage(model: settings.activeTranslationModel) }
         if !isOllamaReachable { return "Open Ollama to translate. Source reading, highlights, and notes work without AI." }
-        if !isModelInstalled(settings.translationModel) { return "Install or select \(settings.translationModel) in Local AI settings to translate." }
+        if !isModelInstalled(settings.activeTranslationModel) { return "Install or select \(settings.activeTranslationModel) in Local AI settings to translate." }
         return nil
     }
 
     var primarySetupMessage: String? {
         guard canPerformPrimaryWorkspaceAction else { return nil }
         if workspaceMode == .summary {
+            if settings.aiProvider == .openAI {
+                return openAISetupMessage(model: settings.activeSummaryModel) ?? translationSetupMessage
+            }
             if !isOllamaReachable { return "AI summaries are optional. Open Ollama and choose a summary model, or use the source reading map now." }
-            if !isModelInstalled(settings.summaryModel) { return "Install or select a summary model. The reading map below needs no model." }
+            if !isModelInstalled(settings.activeSummaryModel) { return "Install or select a summary model. The reading map below needs no model." }
         }
         return translationSetupMessage
     }
@@ -527,6 +559,8 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func clearSavedData() {
+        isOpenAIOptInConfirmed = false
+        pendingImport = nil
         noteSaveTask?.cancel()
         noteSaveTask = nil
         isNoteSavePending = false
@@ -687,6 +721,8 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func cancelCurrentTask() {
+        let wasImporting = pendingImport != nil
+        pendingImport = nil
         activeTask?.cancel()
         activeTaskID = nil
         translationRunID = nil
@@ -696,7 +732,7 @@ final class PaperReaderViewModel: ObservableObject {
         activeTask = nil
         isBusy = false
         isProgressIndeterminate = false
-        statusMessage = "The current task was cancelled."
+        statusMessage = wasImporting ? "Import cancelled. No saved documents were changed." : "The current task was cancelled."
         progressValue = 0
         persistWorkspace()
     }
@@ -736,9 +772,14 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     func loadPDF(from url: URL, asNewCopy: Bool = false) {
-        startTask(initialStatus: "Loading PDF...") {
-            let paper = try await self.readPaper(from: url, asNewCopy: asNewCopy)
+        guard !isBusy else { return }
+        persistWorkspace()
+        let pending = PendingDocumentImport(filename: url.lastPathComponent)
+        pendingImport = pending
+        startTask(initialStatus: "Reading the selected PDF...") {
+            let paper = try await self.readPaper(from: url, asNewCopy: asNewCopy, importID: pending.id)
             try Task.checkCancellation()
+            guard self.pendingImport?.id == pending.id else { return }
             self.applyLoadedPaper(paper)
         }
     }
@@ -769,7 +810,7 @@ final class PaperReaderViewModel: ObservableObject {
 
         let requestedIDs = Set(paragraphIDs ?? paragraphResults.map(\.id))
         guard !requestedIDs.isEmpty, !isBusy else { return }
-        startTask(initialStatus: "Checking Ollama model...") {
+        startTask(initialStatus: "Checking \(settings.aiProvider.displayName) model...") {
             let runID = UUID()
             self.translationRunID = runID
             self.isTranslatingParagraphs = true
@@ -807,9 +848,9 @@ final class PaperReaderViewModel: ObservableObject {
             }
 
             if settings.sourceLanguage != settings.targetLanguage {
-                try await self.ollamaClient.ensureModelAvailable(
-                    baseURL: settings.ollamaBaseURL,
-                    model: settings.translationModel
+                try await self.ensureAIModelAvailable(
+                    settings: settings,
+                    model: settings.activeTranslationModel
                 )
             }
 
@@ -881,9 +922,9 @@ final class PaperReaderViewModel: ObservableObject {
 
             if let segments = paper.markdownSegments, !segments.isEmpty {
                 if settings.sourceLanguage != settings.targetLanguage {
-                    try await self.ollamaClient.ensureModelAvailable(
-                        baseURL: settings.ollamaBaseURL,
-                        model: settings.translationModel
+                    try await self.ensureAIModelAvailable(
+                        settings: settings,
+                        model: settings.activeTranslationModel
                     )
                 }
 
@@ -965,9 +1006,9 @@ final class PaperReaderViewModel: ObservableObject {
                 return
             }
 
-            try await self.ollamaClient.ensureModelAvailable(
-                baseURL: settings.ollamaBaseURL,
-                model: settings.translationModel
+            try await self.ensureAIModelAvailable(
+                settings: settings,
+                model: settings.activeTranslationModel
             )
 
             let batches = TextProcessing.buildTextBatches(
@@ -1030,9 +1071,9 @@ final class PaperReaderViewModel: ObservableObject {
         startTask(initialStatus: "Retrying paragraph \(paragraphID)...") {
             let settings = self.settings
             if settings.sourceLanguage != settings.targetLanguage {
-                try await self.ollamaClient.ensureModelAvailable(
-                    baseURL: settings.ollamaBaseURL,
-                    model: settings.translationModel
+                try await self.ensureAIModelAvailable(
+                    settings: settings,
+                    model: settings.activeTranslationModel
                 )
             }
 
@@ -1069,7 +1110,7 @@ final class PaperReaderViewModel: ObservableObject {
         startTask(initialStatus: "Checking summary model...") {
             let settings = self.settings
             let cacheKey = Hashing.sha256(
-                "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.summaryModel)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)"
+                "\(paper.checksum)|\(settings.aiCacheNamespace)|\(settings.activeSummaryModel)|\(settings.activeTranslationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)"
             )
 
             if let cached = self.summaryCache[cacheKey], cached.claims != nil {
@@ -1080,14 +1121,14 @@ final class PaperReaderViewModel: ObservableObject {
                 return
             }
 
-            try await self.ollamaClient.ensureModelAvailable(
-                baseURL: settings.ollamaBaseURL,
-                model: settings.summaryModel
+            try await self.ensureAIModelAvailable(
+                settings: settings,
+                model: settings.activeSummaryModel
             )
             if settings.sourceLanguage != settings.targetLanguage {
-                try await self.ollamaClient.ensureModelAvailable(
-                    baseURL: settings.ollamaBaseURL,
-                    model: settings.translationModel
+                try await self.ensureAIModelAvailable(
+                    settings: settings,
+                    model: settings.activeTranslationModel
                 )
             }
 
@@ -1099,9 +1140,9 @@ final class PaperReaderViewModel: ObservableObject {
                 try Task.checkCancellation()
                 self.statusMessage = "Summarizing batch \(index + 1) of \(batches.count)"
 
-                let partial = try await self.ollamaClient.generate(
-                    baseURL: settings.ollamaBaseURL,
-                    model: settings.summaryModel,
+                let partial = try await self.generateAI(
+                    settings: settings,
+                    model: settings.activeSummaryModel,
                     prompt: SummaryEvidence.prompt(batch, language: settings.sourceLanguage),
                     systemPrompt: PromptLibrary.summarySystemPrompt
                 )
@@ -1111,8 +1152,8 @@ final class PaperReaderViewModel: ObservableObject {
                 // Bound the rolling summary instead of sending a whole long paper back to the model.
                 if claims.count > 6 {
                     let candidates = claims
-                    let merged = try await self.ollamaClient.generate(
-                        baseURL: settings.ollamaBaseURL, model: settings.summaryModel,
+                    let merged = try await self.generateAI(
+                        settings: settings, model: settings.activeSummaryModel,
                         prompt: SummaryEvidence.prompt(SummaryEvidence.serialized(candidates),
                                                        language: settings.sourceLanguage, merging: true),
                         systemPrompt: PromptLibrary.summarySystemPrompt)
@@ -1170,7 +1211,7 @@ final class PaperReaderViewModel: ObservableObject {
             let settings = self.settings
             let language = self.explanationLanguage
             let cacheKey = Hashing.sha256(
-                "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.explainModel)|\(selectedParagraph.id)|\(language.rawValue)"
+                "\(paper.checksum)|\(settings.aiCacheNamespace)|\(settings.activeExplainModel)|\(selectedParagraph.id)|\(language.rawValue)"
             )
 
             if let cached = self.explanationCache[cacheKey] {
@@ -1181,12 +1222,12 @@ final class PaperReaderViewModel: ObservableObject {
                 return
             }
 
-            try await self.ollamaClient.ensureModelAvailable(baseURL: settings.ollamaBaseURL, model: settings.explainModel)
+            try await self.ensureAIModelAvailable(settings: settings, model: settings.activeExplainModel)
 
             self.statusMessage = "Explaining paragraph \(selectedParagraph.id)"
-            let explanation = try await self.ollamaClient.generate(
-                baseURL: settings.ollamaBaseURL,
-                model: settings.explainModel,
+            let explanation = try await self.generateAI(
+                settings: settings,
+                model: settings.activeExplainModel,
                 prompt: PromptLibrary.explanationPrompt(for: selectedParagraph.original, language: language),
                 systemPrompt: PromptLibrary.explainSystemPrompt
             )
@@ -1455,17 +1496,19 @@ final class PaperReaderViewModel: ObservableObject {
     private func startTask(initialStatus: String, operation: @escaping @MainActor () async throws -> Void) {
         guard !isBusy else { return }
         let taskID = UUID()
+        let importingFilename = pendingImport?.filename
         activeTaskID = taskID
         errorMessage = nil
         isBusy = true
         statusMessage = initialStatus
         progressValue = 0
-        isProgressIndeterminate = false
+        isProgressIndeterminate = pendingImport != nil
 
         activeTask = Task { [weak self] in
             guard let self else { return }
             defer {
                 if self.activeTaskID == taskID {
+                    self.pendingImport = nil
                     self.activeTask = nil
                     self.activeTaskID = nil
                 }
@@ -1488,7 +1531,12 @@ final class PaperReaderViewModel: ObservableObject {
                 self.isBusy = false
                 self.progressValue = 0
                 self.isProgressIndeterminate = false
-                self.presentError(error.localizedDescription)
+                if let importingFilename {
+                    self.presentError("Could not open \(importingFilename).\n\n\(error.localizedDescription)")
+                    self.statusMessage = "Could not open \(importingFilename). No saved documents were changed."
+                } else {
+                    self.presentError(error.localizedDescription)
+                }
                 self.persistWorkspace()
             }
         }
@@ -1519,6 +1567,9 @@ final class PaperReaderViewModel: ObservableObject {
         isParagraphEditorPresented = false
         paragraphSearchText = ""
         loadedPaper = paper
+        for variant in workspaceStore.loadAIVariants(checksum: paper.checksum) {
+            seedOutputCaches(from: variant, for: paper)
+        }
         positionSaveTask?.cancel()
         readingPositions = [:]
         activeTextSelection = nil
@@ -1533,8 +1584,15 @@ final class PaperReaderViewModel: ObservableObject {
 
         if let saved {
             let appearance = settings.readingAppearance
+            let currentAI = settings
             settings = saved.settings
             settings.readingAppearance = appearance
+            // Opening an old paper must not silently select a cloud provider or a paid model.
+            settings.aiProvider = currentAI.aiProvider
+            settings.openAITranslationModel = currentAI.openAITranslationModel
+            settings.openAISummaryModel = currentAI.openAISummaryModel
+            settings.openAIExplainModel = currentAI.openAIExplainModel
+            settings.openAIQuickLookupModel = currentAI.openAIQuickLookupModel
             readingPositions = saved.readingPositions ?? [:]
             annotations = saved.annotations
             bookmarkedParagraphIDs = saved.bookmarkedParagraphIDs
@@ -1569,7 +1627,12 @@ final class PaperReaderViewModel: ObservableObject {
         statusMessage = status
     }
 
-    private func readPaper(from url: URL, asNewCopy: Bool = false) async throws -> PaperDocument {
+    private func updateImportStatus(_ message: String, importID: UUID) {
+        guard !Task.isCancelled, pendingImport?.id == importID else { return }
+        statusMessage = message
+    }
+
+    private func readPaper(from url: URL, asNewCopy: Bool = false, importID: UUID) async throws -> PaperDocument {
         let hasAccess = url.startAccessingSecurityScopedResource()
         defer {
             if hasAccess {
@@ -1585,6 +1648,7 @@ final class PaperReaderViewModel: ObservableObject {
         } catch {
             throw ReaderError.failedToReadFile(error.localizedDescription)
         }
+        try Task.checkCancellation()
 
         let checksum = asNewCopy ? Hashing.sha256(Hashing.sha256(data) + UUID().uuidString) : Hashing.sha256(data)
         if let saved = workspaceStore.loadWorkspace(checksum: checksum) {
@@ -1599,8 +1663,7 @@ final class PaperReaderViewModel: ObservableObject {
 
         let fileName = url.lastPathComponent + (asNewCopy ? " (new extraction)" : "")
         if settings.pdfExtractionMode != .pdfKitOnly {
-            statusMessage = "MinerU is reconstructing document layout, formulas, tables, and images..."
-            isProgressIndeterminate = true
+            updateImportStatus("Starting MinerU and loading local recognition models...", importID: importID)
 
             do {
                 let extraction = try await minerUService.extract(
@@ -1608,33 +1671,38 @@ final class PaperReaderViewModel: ObservableObject {
                     originalFilename: fileName,
                     checksum: checksum,
                     configuredPath: settings.minerUExecutablePath,
-                    backend: settings.minerUBackend
+                    backend: settings.minerUBackend,
+                    onProgress: { [weak self] message in
+                        await self?.updateImportStatus(message, importID: importID)
+                    }
                 )
                 try Task.checkCancellation()
-                isProgressIndeterminate = false
-                let paper = try Self.buildPaper(
-                    fromMinerUMarkdown: extraction.markdown,
-                    resourceDirectory: extraction.resourceDirectoryURL,
-                    name: fileName,
-                    checksum: checksum
-                )
+                updateImportStatus("Preparing paragraphs, figures, tables, and formulas for reading...", importID: importID)
+                let paper = try await Task.detached(priority: .userInitiated) {
+                    try Self.buildPaper(
+                        fromMinerUMarkdown: extraction.markdown,
+                        resourceDirectory: extraction.resourceDirectoryURL,
+                        name: fileName,
+                        checksum: checksum
+                    )
+                }.value
+                try Task.checkCancellation()
                 extractedPaperCache[extractionCacheKey] = paper
                 return paper
             } catch is CancellationError {
-                isProgressIndeterminate = false
                 throw CancellationError()
             } catch {
-                isProgressIndeterminate = false
+                try Task.checkCancellation()
                 if settings.pdfExtractionMode == .minerUOnly {
                     throw error
                 }
 
-                statusMessage = "MinerU could not parse this PDF. Using the model-free PDFKit facsimile..."
                 let paper = try await readWithPDFKit(
                     data: data,
                     fileName: fileName,
                     checksum: checksum,
-                    fallbackWarning: error.localizedDescription
+                    fallbackWarning: error.localizedDescription,
+                    importID: importID
                 )
                 extractedPaperCache[extractionCacheKey] = paper
                 return paper
@@ -1645,7 +1713,8 @@ final class PaperReaderViewModel: ObservableObject {
             data: data,
             fileName: fileName,
             checksum: checksum,
-            fallbackWarning: nil
+            fallbackWarning: nil,
+            importID: importID
         )
 
         extractedPaperCache[extractionCacheKey] = paper
@@ -1656,11 +1725,13 @@ final class PaperReaderViewModel: ObservableObject {
         data: Data,
         fileName: String,
         checksum: String,
-        fallbackWarning: String?
+        fallbackWarning: String?,
+        importID: UUID
     ) async throws -> PaperDocument {
-        statusMessage = "PDFKit is preserving the original pages without OCR..."
-        isProgressIndeterminate = true
-        defer { isProgressIndeterminate = false }
+        updateImportStatus(fallbackWarning == nil
+            ? "PDFKit is preserving the original pages without OCR..."
+            : "MinerU was unavailable or could not parse this PDF. PDFKit is preserving the original pages instead...",
+            importID: importID)
 
         var archive: PDFVisualArchive?
         var warnings = [fallbackWarning].compactMap { $0 }
@@ -1690,7 +1761,8 @@ final class PaperReaderViewModel: ObservableObject {
             warnings.append(error.localizedDescription)
         }
 
-        statusMessage = "Extracting the PDF's selectable text layer without OCR..."
+        try Task.checkCancellation()
+        updateImportStatus("Extracting the PDF's selectable text layer without OCR...", importID: importID)
         let extractionWarning = warnings.isEmpty ? nil : warnings.joined(separator: " ")
         return try await Task.detached(priority: .userInitiated) {
             try Self.buildPaper(
@@ -1726,7 +1798,7 @@ final class PaperReaderViewModel: ObservableObject {
         try Task.checkCancellation()
         let terms = terminologyPrompt(for: paragraph.original, from: settings.sourceLanguage, to: settings.targetLanguage)
         let cacheKey = Hashing.sha256(
-            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)|\(paragraph.sourceMarkdown ?? paragraph.original)|\(terms)"
+            "\(settings.aiCacheNamespace)|\(settings.activeTranslationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)|\(paragraph.sourceMarkdown ?? paragraph.original)|\(terms)|\(loadedPaper?.name ?? "")"
         )
         if let cached = paragraphTranslationCache[cacheKey] {
             return cached
@@ -1756,17 +1828,15 @@ final class PaperReaderViewModel: ObservableObject {
                 for chunk in chunks {
                     try Task.checkCancellation()
                     translatedChunks.append(
-                        try await ollamaClient.generate(
-                            baseURL: settings.ollamaBaseURL,
-                            model: settings.translationModel,
+                        try await generateAI(
+                            settings: settings,
+                            model: settings.activeTranslationModel,
                             prompt: PromptLibrary.markdownTranslationPrompt(
                                 for: chunk,
                                 from: settings.sourceLanguage,
                                 to: settings.targetLanguage
                             ),
-                            systemPrompt: PromptLibrary.translationSystemPrompt(
-                                targetLanguage: settings.targetLanguage
-                            ) + terms
+                            systemPrompt: translationInstructions(settings: settings) + terms
                         )
                     )
                 }
@@ -1774,6 +1844,7 @@ final class PaperReaderViewModel: ObservableObject {
                 throw CancellationError()
             } catch {
                 try Task.checkCancellation()
+                try stopOnGlobalAIError(error, settings: settings)
                 return ParagraphTranslationSnapshot(
                     translation: "",
                     translationMarkdown: nil,
@@ -1823,6 +1894,7 @@ final class PaperReaderViewModel: ObservableObject {
             throw CancellationError()
         } catch {
             try Task.checkCancellation()
+            try stopOnGlobalAIError(error, settings: settings)
             return ParagraphTranslationSnapshot(
                 translation: "",
                 translationMarkdown: nil,
@@ -1851,21 +1923,21 @@ final class PaperReaderViewModel: ObservableObject {
 
         let terms = terminologyPrompt(for: chunk, from: settings.sourceLanguage, to: settings.targetLanguage)
         let cacheKey = Hashing.sha256(
-            "\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(chunk)|\(terms)"
+            "\(settings.aiCacheNamespace)|\(settings.activeTranslationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(chunk)|\(terms)|\(loadedPaper?.name ?? "")"
         )
         if let cached = chunkTranslationCache[cacheKey] {
             return cached
         }
 
-        let translation = try await ollamaClient.generate(
-            baseURL: settings.ollamaBaseURL,
-            model: settings.translationModel,
+        let translation = try await generateAI(
+            settings: settings,
+            model: settings.activeTranslationModel,
             prompt: PromptLibrary.translationPrompt(
                 for: chunk,
                 from: settings.sourceLanguage,
                 to: settings.targetLanguage
             ),
-            systemPrompt: PromptLibrary.translationSystemPrompt(targetLanguage: settings.targetLanguage) + terms
+            systemPrompt: translationInstructions(settings: settings) + terms
         )
 
         chunkTranslationCache[cacheKey] = translation
@@ -1901,21 +1973,23 @@ final class PaperReaderViewModel: ObservableObject {
             onStatusChange("Generating connected full translation \(index + 1) of \(effectiveBatches.count)")
 
             do {
-                let translation = try await self.ollamaClient.generate(
-                    baseURL: settings.ollamaBaseURL,
-                    model: settings.translationModel,
+                let translation = try await self.generateAI(
+                    settings: settings,
+                    model: settings.activeTranslationModel,
                     prompt: PromptLibrary.connectedTranslationPrompt(
                         for: batch,
                         from: settings.sourceLanguage,
                         to: settings.targetLanguage
                     ),
-                    systemPrompt: PromptLibrary.translationSystemPrompt(targetLanguage: settings.targetLanguage)
+                    systemPrompt: self.translationInstructions(settings: settings)
                         + self.terminologyPrompt(for: batch, from: settings.sourceLanguage, to: settings.targetLanguage)
                 )
                 translatedBatches.append(translation)
             } catch is CancellationError {
                 throw CancellationError()
             } catch {
+                try Task.checkCancellation()
+                try stopOnGlobalAIError(error, settings: settings)
                 failedBatchCount += 1
                 translatedBatches.append("[Connected translation failed for batch \(index + 1)] \(error.localizedDescription)")
             }
@@ -2236,21 +2310,40 @@ final class PaperReaderViewModel: ObservableObject {
     }
 
     private func handleSettingsChange(from oldSettings: AppSettings) {
+        if settings.aiProvider != oldSettings.aiProvider {
+            if isBusy { cancelCurrentTask() }
+            selectionTask?.cancel()
+            isSelectionLookupBusy = false
+            isOpenAIOptInConfirmed = false
+        }
         guard let paper = loadedPaper else { return }
 
-        let endpointChanged = settings.ollamaBaseURL != oldSettings.ollamaBaseURL
+        let endpointChanged = settings.aiCacheNamespace != oldSettings.aiCacheNamespace
         let directionChanged =
             settings.sourceLanguage != oldSettings.sourceLanguage ||
             settings.targetLanguage != oldSettings.targetLanguage
         let paragraphTranslationChanged =
             endpointChanged ||
             directionChanged ||
-            settings.translationModel != oldSettings.translationModel ||
+            settings.activeTranslationModel != oldSettings.activeTranslationModel ||
             settings.maxParagraphChars != oldSettings.maxParagraphChars
         let connectedTranslationChanged =
             endpointChanged ||
             directionChanged ||
-            settings.translationModel != oldSettings.translationModel
+            settings.activeTranslationModel != oldSettings.activeTranslationModel
+
+        if paragraphTranslationChanged || settings.activeSummaryModel != oldSettings.activeSummaryModel ||
+            settings.activeExplainModel != oldSettings.activeExplainModel {
+            let snapshot = workspaceSnapshot(for: paper, settings: oldSettings)
+            if snapshot.paragraphResults.contains(where: { $0.status == .ok }) || snapshot.summaries != nil ||
+                snapshot.connectedTranslation != nil || !snapshot.explanationText.isEmpty {
+                // Archive outputs under their original provider before the active workspace changes.
+                let variantKey = [translationCacheKey(for: paper, settings: oldSettings),
+                                  oldSettings.activeSummaryModel, oldSettings.activeExplainModel].joined(separator: "|")
+                workspaceStore.saveAIVariant(snapshot, key: variantKey)
+                seedOutputCaches(from: snapshot, for: paper)
+            }
+        }
 
         if paragraphTranslationChanged {
             paragraphResults = Self.makeParagraphResults(for: paper)
@@ -2260,17 +2353,17 @@ final class PaperReaderViewModel: ObservableObject {
             connectedTranslation = nil
         }
 
-        if connectedTranslationChanged || settings.summaryModel != oldSettings.summaryModel {
+        if connectedTranslationChanged || settings.activeSummaryModel != oldSettings.activeSummaryModel {
             summaries = nil
         }
 
-        if endpointChanged || settings.explainModel != oldSettings.explainModel {
+        if endpointChanged || settings.activeExplainModel != oldSettings.activeExplainModel {
             explanationText = ""
         }
 
         if endpointChanged ||
             directionChanged ||
-            settings.quickLookupModel != oldSettings.quickLookupModel {
+            settings.activeQuickLookupModel != oldSettings.activeQuickLookupModel {
             selectionTask?.cancel()
             selectionTranslation = ""
             selectionExplanation = ""
@@ -2284,13 +2377,13 @@ final class PaperReaderViewModel: ObservableObject {
 
     private func translationCacheKey(for paper: PaperDocument, settings: AppSettings) -> String {
         Hashing.sha256(
-            "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)"
+            "\(paper.checksum)|\(settings.aiCacheNamespace)|\(settings.activeTranslationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|\(settings.maxParagraphChars)"
         )
     }
 
     private func connectedTranslationCacheKey(for paper: PaperDocument, settings: AppSettings) -> String {
         Hashing.sha256(
-            "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|connected|rich-v2:\(paper.hasStructuredMarkdown):\(paper.hasFacsimileMarkdown)"
+            "\(paper.checksum)|\(settings.aiCacheNamespace)|\(settings.activeTranslationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)|connected|rich-v2:\(paper.hasStructuredMarkdown):\(paper.hasFacsimileMarkdown)"
         )
     }
 
@@ -2304,7 +2397,7 @@ final class PaperReaderViewModel: ObservableObject {
         connectedTranslation = connectedTranslationCache[connectedKey]
 
         let summaryKey = Hashing.sha256(
-            "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.summaryModel)|\(settings.translationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)"
+            "\(paper.checksum)|\(settings.aiCacheNamespace)|\(settings.activeSummaryModel)|\(settings.activeTranslationModel)|\(settings.sourceLanguage.rawValue)|\(settings.targetLanguage.rawValue)"
         )
         summaries = summaryCache[summaryKey]
 
@@ -2317,19 +2410,29 @@ final class PaperReaderViewModel: ObservableObject {
         guard workspace.paragraphResults.map(\.original) == paper.paragraphs,
               workspace.paper.sourceMarkdown == paper.sourceMarkdown else { return }
         let saved = workspace.settings
-        paperTranslationCache[translationCacheKey(for: paper, settings: saved)] = workspace.paragraphResults
+        let key = translationCacheKey(for: paper, settings: saved)
+        if let prior = paperTranslationCache[key] {
+            paperTranslationCache[key] = workspace.paragraphResults.map { result in
+                if result.status == .pending, let completed = prior.first(where: { $0.id == result.id && $0.original == result.original && $0.status == .ok }) {
+                    return completed
+                }
+                return result
+            }
+        } else {
+            paperTranslationCache[key] = workspace.paragraphResults
+        }
         if let result = workspace.connectedTranslation {
             connectedTranslationCache[connectedTranslationCacheKey(for: paper, settings: saved)] = result
         }
         if let result = workspace.summaries {
             let key = Hashing.sha256(
-                "\(paper.checksum)|\(saved.ollamaBaseURL)|\(saved.summaryModel)|\(saved.translationModel)|\(saved.sourceLanguage.rawValue)|\(saved.targetLanguage.rawValue)"
+                "\(paper.checksum)|\(saved.aiCacheNamespace)|\(saved.activeSummaryModel)|\(saved.activeTranslationModel)|\(saved.sourceLanguage.rawValue)|\(saved.targetLanguage.rawValue)"
             )
             summaryCache[key] = result
         }
         if let paragraphID = workspace.selectedParagraphID, !workspace.explanationText.isEmpty {
             let key = Hashing.sha256(
-                "\(paper.checksum)|\(saved.ollamaBaseURL)|\(saved.explainModel)|\(paragraphID)|\(workspace.explanationLanguage.rawValue)"
+                "\(paper.checksum)|\(saved.aiCacheNamespace)|\(saved.activeExplainModel)|\(paragraphID)|\(workspace.explanationLanguage.rawValue)"
             )
             explanationCache[key] = workspace.explanationText
         }
@@ -2338,7 +2441,7 @@ final class PaperReaderViewModel: ObservableObject {
     private func restoreCachedExplanationIfAvailable(for paper: PaperDocument) {
         guard let selectedParagraphID else { return }
         let cacheKey = Hashing.sha256(
-            "\(paper.checksum)|\(settings.ollamaBaseURL)|\(settings.explainModel)|\(selectedParagraphID)|\(explanationLanguage.rawValue)"
+            "\(paper.checksum)|\(settings.aiCacheNamespace)|\(settings.activeExplainModel)|\(selectedParagraphID)|\(explanationLanguage.rawValue)"
         )
         if let cachedExplanation = explanationCache[cacheKey] {
             explanationText = cachedExplanation
@@ -2458,8 +2561,22 @@ final class PaperReaderViewModel: ObservableObject {
         noteSaveTask = nil
         isNoteSavePending = false
 
-        let workspace = PersistedWorkspace(
-            settings: settings,
+        let workspace = workspaceSnapshot(for: paper, settings: settings)
+        let requestID = UUID()
+        workspaceSaveRequestID = requestID
+        isWorkspaceSaving = true
+        workspaceStore.saveWorkspace(workspace) { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self, self.workspaceSaveRequestID == requestID else { return }
+                self.isWorkspaceSaving = false
+                self.workspaceSaveError = error
+            }
+        }
+    }
+
+    private func workspaceSnapshot(for paper: PaperDocument, settings snapshotSettings: AppSettings) -> PersistedWorkspace {
+        PersistedWorkspace(
+            settings: snapshotSettings,
             paper: paper,
             paragraphResults: paragraphResults,
             connectedTranslation: connectedTranslation,
@@ -2474,16 +2591,6 @@ final class PaperReaderViewModel: ObservableObject {
             isInspectorPresented: isInspectorPresented,
             readingPositions: readingPositions
         )
-        let requestID = UUID()
-        workspaceSaveRequestID = requestID
-        isWorkspaceSaving = true
-        workspaceStore.saveWorkspace(workspace) { [weak self] error in
-            Task { @MainActor [weak self] in
-                guard let self, self.workspaceSaveRequestID == requestID else { return }
-                self.isWorkspaceSaving = false
-                self.workspaceSaveError = error
-            }
-        }
     }
 
     func flushPendingSaves() {

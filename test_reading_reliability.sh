@@ -7,6 +7,7 @@ SOURCES=("$PROJECT_DIR"/PaperBridge/Services/*.swift)
 SOURCES=("${SOURCES[@]:#*/AppUpdateController.swift}")
 xcrun swiftc -module-cache-path "${TMPDIR:-/tmp}/paperbridge_swift_module_cache" \
   "$PROJECT_DIR/Tests/ReadingReliabilityRegression.swift" \
+  "$PROJECT_DIR/Tests/OpenAIIntegrationRegression.swift" \
   "$PROJECT_DIR/PaperBridge/Models.swift" \
   "$PROJECT_DIR"/PaperBridge/PaperReaderViewModel*.swift \
   "$PROJECT_DIR"/PaperBridge/Utilities/*.swift \

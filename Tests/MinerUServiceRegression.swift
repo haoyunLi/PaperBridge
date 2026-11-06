@@ -3,6 +3,14 @@ import Foundation
 @main
 struct MinerUServiceRegression {
     static func main() async throws {
+        require(MinerUService.progressMessage(in: "\u{1B}[32mLayout Predict: 50%|#| 8/17\r\u{0}\u{0}MFR Predict: 10%|#| 12/120\u{1B}[0m")
+                == "MinerU: Recognizing formulas (12/120)...", "Progress did not handle CR, ANSI, or NULs")
+        require(MinerUService.progressMessage(in: "OCR-rec Predict: 100%|#| 83/83\nCompleted batch 1/1\nunknown tail")
+                == "MinerU: Finishing document reconstruction...", "Final reconstruction stage was not recognized")
+        require(MinerUService.progressMessage(in: "OCR-det ch: 50%|#| 123/246")
+                == "MinerU: Locating text (123/246)...", "OCR detection count was lost")
+        require(MinerUService.progressMessage(in: "unrecognized backend output") == nil,
+                "Unknown log output should not invent progress")
         let fileManager = FileManager.default
         let testRoot = fileManager.temporaryDirectory.appendingPathComponent(
             "paperbridge-mineru-regression-" + UUID().uuidString,

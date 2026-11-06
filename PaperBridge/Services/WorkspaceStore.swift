@@ -97,6 +97,37 @@ final class WorkspaceStore {
         }
     }
 
+    func saveAIVariant(_ workspace: PersistedWorkspace, key: String) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            do {
+                let directory = self.aiVariantsURL(checksum: workspace.paper.checksum)
+                try self.fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+                try self.encode(workspace, to: directory.appendingPathComponent(Hashing.sha256(key) + ".json"))
+            } catch { self.onSaveStatus?(error.localizedDescription) }
+        }
+    }
+
+    func loadAIVariants(checksum: String) -> [PersistedWorkspace] {
+        queue.sync {
+            let urls = (try? fileManager.contentsOfDirectory(at: aiVariantsURL(checksum: checksum),
+                includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+            return urls.filter { $0.pathExtension == "json" }
+                .sorted {
+                    let first = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                    let second = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                    return first < second
+                }
+                .compactMap { decode(PersistedWorkspace.self, from: $0) }
+                .filter { $0.paper.checksum == checksum }
+        }
+    }
+
+    private func aiVariantsURL(checksum: String) -> URL {
+        rootURL.appendingPathComponent("AIVariants", isDirectory: true)
+            .appendingPathComponent(Hashing.sha256(checksum), isDirectory: true)
+    }
+
     func saveSettings(_ settings: AppSettings) {
         queue.async { [weak self] in
             guard let self else { return }

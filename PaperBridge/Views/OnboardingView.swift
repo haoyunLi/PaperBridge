@@ -106,7 +106,7 @@ struct OnboardingView: View {
 
             Spacer()
 
-            Label("Documents stay on this Mac", systemImage: "lock.fill")
+            Label("Local by default · OpenAI is opt-in", systemImage: "lock.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(PaperBridgeTheme.accentDark)
                 .fixedSize(horizontal: false, vertical: true)

@@ -63,7 +63,7 @@ struct SettingsView: View {
                 }
             }
             .id(selectedSection)
-            .disabled(viewModel.isBusy)
+            .disabled(viewModel.isBusy && selectedSection != .models)
             .transition(.opacity)
             .animation(.easeOut(duration: 0.16), value: selectedSection)
             .padding(18)
@@ -74,6 +74,14 @@ struct SettingsView: View {
         .task {
             viewModel.refreshLocalSetupStatus()
         }
+        .onAppear {
+            showRequestedAISettings()
+        }
+        .onChange(of: viewModel.isAISettingsRequested) { _, isRequested in
+            if isRequested {
+                showRequestedAISettings()
+            }
+        }
         .alert(
             "Remove all saved PaperBridge data?",
             isPresented: $isClearConfirmationPresented
@@ -83,7 +91,7 @@ struct SettingsView: View {
                 viewModel.clearSavedData()
             }
         } message: {
-            Text("This removes saved papers, translations, summaries, highlights, notes, and settings from this Mac. Original PDF files are not changed.")
+            Text("This removes saved papers, translations, summaries, highlights, notes, and settings from this Mac. Original PDF files are not changed. The OpenAI API key remains in Keychain; remove it separately under Models > OpenAI. Text already sent to OpenAI cannot be recalled.")
         }
     }
 
@@ -129,22 +137,35 @@ struct SettingsView: View {
                 Text("PaperBridge")
                     .font(.system(size: 21, weight: .semibold, design: .serif))
                     .foregroundStyle(PaperBridgeTheme.ink)
-                Text("Local models, document parsing, reading, updates, and privacy")
+                Text("AI providers, document parsing, reading, updates, and privacy")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            Label("Local only", systemImage: "lock.fill")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(PaperBridgeTheme.accentDark)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    PaperBridgeTheme.accentSoft,
-                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+            VStack(alignment: .trailing, spacing: 6) {
+                Label(
+                    viewModel.aiProviderLabel,
+                    systemImage: viewModel.settings.aiProvider == .ollama ? "lock.fill" : "network"
                 )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PaperBridgeTheme.accentDark)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        PaperBridgeTheme.accentSoft,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    )
+
+                if viewModel.isOpenAIOptInConfirmed {
+                    Button("Revoke OpenAI Consent") {
+                        viewModel.isOpenAIOptInConfirmed = false
+                    }
+                    .font(.caption)
+                    .help("Stop active OpenAI requests and require consent before sending more text. Already sent text cannot be recalled.")
+                }
+            }
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 12)
@@ -161,7 +182,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("Set up everything without Terminal")
                             .font(.headline)
-                        Text("PaperBridge installs local tools only for your macOS user. Papers and model requests stay on this Mac.")
+                        Text("These optional tools run on this Mac and are installed only for your macOS user. Ollama requests stay local. OpenAI is a separate, opt-in online provider under Models; it sends text to OpenAI, not PDF files or images.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -232,7 +253,7 @@ struct SettingsView: View {
                 }
             }
 
-            Section("2. Translation Models · Required for Translation") {
+            Section("2. Translation Models · For Local Translation") {
                 Text("Choose one TranslateGemma size. 4B is fastest, while 12B and 27B trade more disk and memory for stronger translation quality.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -295,7 +316,7 @@ struct SettingsView: View {
             }
 
             Section("4. Explanation Models · Optional") {
-                Text("These general models are fully optional. When selected, they power whole-paper summaries, paragraph explanations, and selected-text lookup. Translation continues to use TranslateGemma.")
+                Text("These general models are fully optional. With Ollama selected, they power whole-paper summaries, paragraph explanations, and selected-text lookup. Local translation uses your selected translation model. OpenAI has separate task models under Models.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -422,6 +443,36 @@ struct SettingsView: View {
     }
 
     private var modelsTab: some View {
+        VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("AI provider", selection: settingBinding(\.aiProvider)) {
+                    Text(AIProvider.ollama.displayName).tag(AIProvider.ollama)
+                    Text(AIProvider.openAI.displayName).tag(AIProvider.openAI)
+                }
+                .pickerStyle(.segmented)
+                .disabled(viewModel.isBusy || viewModel.isSelectionLookupBusy)
+
+                Text("Ollama is the default. OpenAI requires your API key, chosen models, and consent for this session. PaperBridge never switches providers automatically.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .background(
+                PaperBridgeTheme.surface,
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+
+            if viewModel.settings.aiProvider == .ollama {
+                localModelsForm
+                    .disabled(viewModel.isBusy || viewModel.isSelectionLookupBusy)
+            } else {
+                OpenAISettingsView(viewModel: viewModel)
+            }
+        }
+    }
+
+    private var localModelsForm: some View {
         Form {
             Section("Ollama") {
                 HStack {
@@ -501,9 +552,28 @@ struct SettingsView: View {
                     )
                 }
 
-                Text("Long natural paragraphs stay visually intact. This limit only controls the smaller requests sent to Ollama.")
+                Text("Long natural paragraphs stay visually intact. This limit controls the smaller requests sent to the selected AI provider. With OpenAI enabled, full translation and summary can send the full extracted paper text in multiple batches.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section("Translation Style Guide · Optional") {
+                TextField(
+                    "Preferred terminology, tone, or formatting",
+                    text: Binding(
+                        get: { viewModel.settings.translationStyleGuide },
+                        set: { viewModel.settings.translationStyleGuide = String($0.prefix(2000)) }
+                    ),
+                    axis: .vertical
+                )
+                .lineLimit(3...6)
+                .disabled(viewModel.isSelectionLookupBusy)
+
+                Text("\(viewModel.settings.translationStyleGuide.count)/2,000 characters. Sent with translation instructions to the selected provider. Do not include secrets. Leave empty to use the default instructions.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -525,19 +595,33 @@ struct SettingsView: View {
                         .foregroundStyle(PaperBridgeTheme.accent)
                 }
 
-                Text("No workspace data is uploaded. Ollama requests stay on localhost.")
+                Text("Workspace recovery is local, not a cloud backup. Ollama requests stay on localhost. If you choose OpenAI and consent, requested text and relevant context are sent to OpenAI; PDF files and images are not uploaded.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Section("Privacy") {
+                Text("OpenAI selection requests include selected text, nearby context, the paper title, and matching saved terminology. Full translation and summary send the full extracted text in batches. API usage is paid separately from ChatGPT. There is no automatic cloud fallback.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("The OpenAI API key is stored in the local macOS Keychain (iCloud synchronization disabled), never in app settings or exports. Normal Mac backup or migration can include the Keychain. Manage or remove the key under Models > OpenAI. Responses API requests use store: false, which does not guarantee zero retention; OpenAI's data policies still apply.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Link("OpenAI data controls", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
+
                 Button("Remove All Saved PaperBridge Data", role: .destructive) {
                     isClearConfirmationPresented = true
                 }
 
-                Text("Original PDF files are never removed by this action.")
+                Text("Original PDF files and the Keychain API key are not removed by this action. Remove the key separately under Models > OpenAI. Clearing local data cannot recall text already sent to OpenAI.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -562,7 +646,7 @@ struct SettingsView: View {
             isInstalled: viewModel.isModelInstalled(model.id),
             isSelected: viewModel.isModelSelected(model),
             isDownloading: isDownloading,
-            isDisabled: !viewModel.isOllamaReachable || (viewModel.isLocalSetupBusy && !isDownloading),
+            isDisabled: viewModel.isSelectionLookupBusy || !viewModel.isOllamaReachable || (viewModel.isLocalSetupBusy && !isDownloading),
             progress: isDownloading ? viewModel.modelDownloadProgress : nil,
             status: viewModel.modelDownloadStatus,
             error: viewModel.lastModelDownloadID == model.id ? viewModel.modelDownloadError : nil,
@@ -612,6 +696,12 @@ struct SettingsView: View {
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
+    }
+
+    private func showRequestedAISettings() {
+        guard viewModel.isAISettingsRequested else { return }
+        selectedSection = .models
+        viewModel.isAISettingsRequested = false
     }
 
     private func settingBinding<Value>(
