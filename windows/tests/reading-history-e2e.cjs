@@ -112,7 +112,7 @@ async function run() {
     await page.locator('.sidebar .outline-row').filter({ hasText: 'Unique evidence phrase' }).click();
     await back.click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
-    assert.ok(Math.abs(await page.locator('.main-scroll').evaluate(element => element.scrollTop) - summaryOffset) < 12, 'Back should restore Summary scroll');
+    await page.waitForFunction(expected => Math.abs((document.querySelector('.main-scroll')?.scrollTop || 0) - expected) < 12, summaryOffset);
     await forward.click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
 
