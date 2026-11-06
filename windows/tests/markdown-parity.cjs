@@ -292,8 +292,8 @@ async function run() {
       }, { quote: formulaQuote, note });
     }
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'A moved summary phrase' }).locator('button').first().click();
-    await page.waitForFunction(() => window.getSelection()?.toString() === 'identical layers');
-    assert.equal(await page.locator('.inspector textarea').inputValue(), 'A moved summary phrase');
+    await page.waitForFunction(() => window.getSelection()?.toString() === 'identical layers' &&
+      document.querySelector('.inspector textarea')?.value === 'A moved summary phrase');
     await page.locator('.inspector textarea').fill('Edited the moved summary phrase.');
     await page.getByRole('button', { name: 'Save note' }).click();
     await page.waitForFunction(async paperId => {
