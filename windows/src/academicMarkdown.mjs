@@ -4,15 +4,14 @@ export function usesSharedMarkdown(paper) {
   return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
 }
 
+export function completedBlockTranslation(block, references) {
+  return !block.resource && !references.has(block.id) && block.status === 'ok'
+    ? block.translationMarkdown || block.translation || '' : '';
+}
+
 export function withSharedMarkdownTranslation(paper) {
   const references = referenceBlockIds(paper.blocks);
-  const markdown = paper.blocks.map(block => {
-    if (!block.resource && !references.has(block.id) && block.status === 'ok') {
-      const translation = block.translationMarkdown || block.translation;
-      if (translation) return translation;
-    }
-    return block.sourceMarkdown || block.text;
-  }).join('\n\n');
+  const markdown = paper.blocks.map(block => completedBlockTranslation(block, references) || block.sourceMarkdown || block.text).join('\n\n');
   return { ...paper, connectedTranslation: markdown, connectedBlocks: [], connectedBatchVersion: null, connectedShared: true, connectedStale: false };
 }
 

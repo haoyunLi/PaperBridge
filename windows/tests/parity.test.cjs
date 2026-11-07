@@ -164,6 +164,39 @@ test('summary excerpts keep original paragraph IDs and whole Unicode characters 
   assert.deepEqual(parseSummaryClaims(response, batches.at(-1))[0].sources, [{ paragraphID: 2, quote: tail }]);
 });
 
+test('structured Markdown editions preserve the source, unfinished passages, and ready translations', async () => {
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const blocks = [
+    { id: 1, sourceMarkdown: '# Study', heading: true, status: 'ok', translationMarkdown: '# Étude' },
+    { id: 2, sourceMarkdown: 'A completed paragraph.', status: 'ok', translationMarkdown: 'Une phrase.\n\nUne autre phrase.' },
+    { id: 3, sourceMarkdown: 'A paragraph awaiting translation.', status: 'pending' },
+    { id: 4, sourceMarkdown: 'A paragraph awaiting retry.', status: 'failed', error: 'Model timed out', translation: 'Stale output' },
+    { id: 5, sourceMarkdown: '![Figure](images/plot.png)', resource: true, status: 'ok', translation: 'Wrong figure' }
+  ];
+  const mineruMarkdown = blocks.map(block => block.sourceMarkdown).join('\n\n\n');
+  const paper = { name: 'Study', sourceMode: 'mineru', mineruMarkdown, blocks, connectedTranslation: 'An older saved draft' };
+  const docs = Object.fromEntries(markdownDocuments(paper, 'French').map(document => [document.kind, document.content]));
+  assert.equal(docs.original, mineruMarkdown);
+  assert.match(docs.translated, /^# Étude\n\nUne phrase\./);
+  assert.match(docs.translated, /A paragraph awaiting translation\.\n\nA paragraph awaiting retry\.\n\n!\[Figure\]\(images\/plot\.png\)$/);
+  assert.doesNotMatch(docs.translated, /Stale output|Wrong figure|Untranslated block/);
+  assert.match(docs.bilingual, /^# Study\n\n# Étude[\s\S]*> \*\*French translation\*\*\n>\n> Une phrase\.\n>\n> Une autre phrase\./);
+  assert.equal(docs.full, docs.translated);
+  assert.equal(markdownDocuments(paper, 'French', 'full')[0].content, 'An older saved draft');
+  assert.match(docs.analysis, /\[Translation failed\] Model timed out/);
+});
+
+test('PDF text bundle retains the original passage when a translation is unavailable', async () => {
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const blocks = [{ id: 1, text: 'Translated paragraph.', status: 'ok', translation: 'Une traduction.' },
+    { id: 2, text: 'Pending paragraph.', status: 'pending' }];
+  const paper = { name: 'Article.pdf', type: 'pdf', sourceMode: 'pdf', blocks };
+  const docs = Object.fromEntries(markdownDocuments(paper, 'French').map(document => [document.kind, document.content]));
+  assert.equal(docs.translated, 'Une traduction.\n\nPending paragraph.');
+  assert.match(docs.bilingual, /Pending paragraph\.\n\n> \*\*French translation\*\*\n>\n> \[Translation unavailable\]/);
+  assert.match(markdownDocuments(paper, 'French', 'translated')[0].content, /\[Untranslated block 2\]/);
+});
+
 test('portable bundle writes real image assets and the unchanged original PDF', () => {
   const { writeBundle } = require('../electron/bundle.cjs');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-'));

@@ -10,6 +10,10 @@ Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. 
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
 
+On the development branch, **File > Export Markdown or Bundle**, **Ctrl+Shift+E**, and the export action under **More** open the appropriate save dialog. PDF and MinerU papers export to a folder with Markdown and referenced assets. Pasted text exports an analysis file with the source passages, saved translations, summary, evidence and annotations. **More > Export Options** still offers the separate Markdown editions and the portable bundle.
+
+In a MinerU bundle, the original edition uses the stored MinerU Markdown. Translated and bilingual editions keep original wording wherever translation is unfinished and retain figures, equations and reference links. A saved structured full draft is exported using the current paragraph translations. PDF text bundles preserve the source passage when its translation is unavailable.
+
 Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF text import, including scans and MinerU fallback. The import screen shows progress and lets you cancel without replacing the open paper. Portable Markdown export reuses completed pages across restarts and regenerates missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
 
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.

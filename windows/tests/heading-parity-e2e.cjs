@@ -183,7 +183,7 @@ async function run() {
     });
     for (const label of ['Translated Markdown', 'Bilingual Markdown']) {
       await page.getByRole('button', { name: 'More ···', exact: true }).click();
-      await page.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+      await page.locator('.modal').getByRole('button', { name: 'Export Options…', exact: true }).click();
       await page.locator('.modal').getByRole('button', { name: label, exact: true }).click();
       await page.locator('.modal').waitFor({ state: 'detached' });
     }

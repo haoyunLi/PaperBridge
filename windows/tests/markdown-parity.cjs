@@ -281,7 +281,7 @@ async function run() {
       ipcMain.handle('markdown:export', (_event, document) => { globalThis.__sharedMarkdownExport = document.content; return 'fixture.md'; });
     });
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
-    await page.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Options…', exact: true }).click();
     await page.getByRole('button', { name: 'Full Translation Markdown', exact: true }).click();
     await page.getByText('Exported fixture.md', { exact: true }).waitFor();
     const exported = await app.evaluate(() => globalThis.__sharedMarkdownExport);
@@ -356,7 +356,7 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
 
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
-    await page.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Options…', exact: true }).click();
     await page.getByRole('button', { name: 'Summary, sources and notes', exact: true }).click();
     await page.getByText('Exported fixture.md', { exact: true }).waitFor();
     const crossExport = await app.evaluate(() => globalThis.__sharedMarkdownExport);
@@ -448,8 +448,7 @@ async function run() {
     fs.mkdirSync(exports);
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, exports);
     await reopened.getByRole('button', { name: 'More ···', exact: true }).click();
-    await reopened.locator('.modal').getByRole('button', { name: 'Export Markdown', exact: true }).click();
-    await reopened.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
+    await reopened.locator('.modal').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
     await reopened.getByText(/1 referenced local asset\(s\) could not be included/).waitFor();
     const bundle = path.join(exports, fs.readdirSync(exports)[0]);
     const original = fs.readFileSync(path.join(bundle, 'Original.md'), 'utf8');
@@ -460,6 +459,15 @@ async function run() {
     assert.ok(original.includes('[Missing appendix](data/missing.csv)'));
     assert.deepEqual(fs.readFileSync(path.join(bundle, panel)), figureBytes);
     assert.equal(fs.readFileSync(path.join(bundle, data), 'utf8'), measurements);
+    const translatedFile = fs.readFileSync(path.join(bundle, 'Translated.md'), 'utf8');
+    const bilingualFile = fs.readFileSync(path.join(bundle, 'Bilingual.md'), 'utf8');
+    assert.equal(fs.readFileSync(path.join(bundle, 'Full Translation.md'), 'utf8'), translatedFile);
+    assert.match(bilingualFile, /> \*\*Simplified Chinese translation\*\*\n>\n> /);
+    for (const edition of [translatedFile, bilingualFile]) {
+      assert.ok(edition.includes(`![Figure](${panel})`));
+      assert.ok(edition.includes(`[Measurements](${data}#rows)`));
+      assert.ok(edition.includes('$N = 6$'));
+    }
     console.log('Markdown rendering, annotations, shared translation and portable export of HTML figures and supplementary files verified.');
   } finally {
     await app?.close();

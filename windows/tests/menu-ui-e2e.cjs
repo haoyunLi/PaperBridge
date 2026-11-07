@@ -134,6 +134,14 @@ async function run() {
     generationRequests[1].end(JSON.stringify({ response: '菜单状态回归测试译文。', done: true }));
     await page.locator('#block-2 .translation-text.done').waitFor();
     await expectMenus({ openPdf: true, export: true, primaryTask: false, generateSummary: true, generateFullTranslation: true });
+    const analysisPath = path.join(workspace, 'analysis.md');
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+      dialog.showOpenDialog = async () => { throw new Error('Plain text should use a file chooser, not a directory chooser.'); };
+    }, analysisPath);
+    await clickMenu('export');
+    await page.getByText(`Exported ${analysisPath}`, { exact: true }).waitFor();
+    assert.match(fs.readFileSync(analysisPath, 'utf8'), /This paper studies deterministic menu state transitions\.[\s\S]*菜单状态回归测试译文。/);
     await page.keyboard.press('Escape');
     await expectMenus({ translateSelection: false, explainSelection: false, highlightSelection: false });
 
@@ -153,7 +161,7 @@ async function run() {
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.locator('.onboarding-modal').waitFor({ state: 'detached' });
     await expectMenus({ summary: true, export: true, generateSummary: true });
-    console.log('Live renderer changes drove native menus for empty/imported papers, selection, highlight/undo, delayed translation, and Getting Started.');
+    console.log('Live renderer changes drove native menus, including direct analysis export, selection, highlight/undo, delayed translation, and Getting Started.');
   } finally {
     await app?.close();
     ollama.closeAllConnections();

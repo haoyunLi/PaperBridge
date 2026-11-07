@@ -109,7 +109,7 @@ async function run() {
     const destination = path.join(workspace, 'translated.md');
     await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath }); }, destination);
     await page.getByRole('button', { name: 'More' }).click();
-    await page.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+    await page.locator('.modal-body').getByRole('button', { name: 'Export Options…', exact: true }).click();
     await page.getByRole('button', { name: 'Translated Markdown', exact: true }).click();
     await page.getByText('Exported ' + destination, { exact: true }).waitFor();
     const exported = fs.readFileSync(destination, 'utf8');

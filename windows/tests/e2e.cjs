@@ -141,9 +141,13 @@ async function run() {
     await page.keyboard.press('Control+Shift+l');
     await page.getByRole('heading', { name: 'Paper Library' }).waitFor();
     await page.locator('.modal-head .icon-button').click();
+    const shortcutExport = path.join(workspace, 'shortcut-analysis.md');
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: file });
+    }, shortcutExport);
     await page.keyboard.press('Control+Shift+e');
-    await page.getByRole('heading', { name: 'Export Markdown' }).waitFor();
-    await page.locator('.modal-head .icon-button').click();
+    await page.getByText(`Exported ${shortcutExport}`, { exact: true }).waitFor();
+    assert.match(fs.readFileSync(shortcutExport, 'utf8'), /## Paragraphs\n\n### Paragraph 1[\s\S]*\[Translation unavailable\]/);
     await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.find(item => item.label === 'Paper').submenu.items.find(item => item.label === 'Saved Terminology').click());
     await page.getByRole('heading', { name: 'Saved Terminology' }).waitFor();
     await page.locator('.modal-head .icon-button').click();
@@ -611,8 +615,7 @@ async function run() {
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
     const exportBundle = async (target = page) => {
       await target.getByRole('button', { name: 'More' }).click();
-      await target.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
-      await target.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
+      await target.locator('.modal-body').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
     };
     const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
     const beforeExport = new Set(bundleFolders());
