@@ -1,5 +1,13 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第六十二阶段：发布 Windows 0.2.15 并验证升级（2026-11-07 UTC）
+
+[0.2.15 安装版与便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.15)已公开，包含第 58–61 阶段的 1800 像素原页预览、可调侧栏、固定 Reader 工具栏、搜索位置修复、段落卡片和阅读外观兼容。[发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42331297845)通过 169 项单元测试、24 套桌面回归和打包启动检查。
+
+下载后的两个 EXE 均与 GitHub 及附带 SHA-256 文件一致，Authenticode 状态仍为 NotSigned。公开便携版打开保存的真实 Attention Is All You Need 论文和既有 AMD 译文，验证语言标签、默认外观、模式切换与搜索恢复。本轮没有重新评测模型翻译质量。
+
+实际安装 0.2.14 后显示 0.2.15 更新提示；用公开安装包升级后，论文、笔记和高亮恢复，旧字号 17、行高 28.9px、宽度 860 保持一致。测试卸载后隔离工作区的数据和设置仍在。安装回归已增加跨版本阅读外观保留断言。GitHub 首页的安装版、便携版与设置指南链接均更新到 0.2.15。
+
 ## 第六十一阶段：段落卡片与阅读外观（2026-11-07 UTC）
 
 普通 Reader 段落按 Mac 当前源码增加 ORIGINAL/TRANSLATION 及语言标签、双语分隔线、零补齐编号、等待/失败状态，使用 18px 内边距、14px 圆角、完整选中描边及 14px/10px 译文内框。待翻译段落可以直接 Translate Paragraph 或 Set Up Translation。紧凑标题保留现有布局，标签位于正文选区外，已有笔记/高亮锚点继续作用于原文字。

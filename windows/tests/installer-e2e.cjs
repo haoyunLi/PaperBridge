@@ -247,7 +247,13 @@ async function run() {
   const profile = safePath(path.join(fixture, 'profile'), artifacts);
   const tools = safePath(path.join(fixture, 'tools'), artifacts);
   fs.mkdirSync(workspace);
-  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ...defaults, autoCheckUpdates: false, onboardingCompletedVersion: 1, ollamaBaseURL: 'http://127.0.0.1:9' }));
+  const initialSettings = { ...defaults, autoCheckUpdates: false, onboardingCompletedVersion: 1, ollamaBaseURL: 'http://127.0.0.1:9' };
+  if (compareVersions(fromVersion, '0.2.15') < 0) {
+    Object.assign(initialSettings, { fontSize: 17, lineHeight: 1.7, readingWidth: 860 });
+    delete initialSettings.lineSpacing;
+    delete initialSettings.legacyAppearanceRanges;
+  }
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify(initialSettings));
   const report = { ...plan, startedAt: new Date().toISOString(), stages: [] };
   const record = (stage, details = {}) => { report.stages.push({ stage, at: new Date().toISOString(), ...details }); fs.writeFileSync(path.join(fixture, 'report.json'), JSON.stringify(report, null, 2)); console.log(stage); };
   let app;
@@ -315,6 +321,11 @@ async function run() {
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text').waitFor();
+    const readingAppearance = () => page.locator('#block-2 .source-text').evaluate(node => ({
+      fontSize: getComputedStyle(node).fontSize, lineHeight: getComputedStyle(node).lineHeight,
+      width: getComputedStyle(document.querySelector('.reader-list')).maxWidth
+    }));
+    const originalAppearance = await readingAppearance();
     await page.evaluate(() => {
       const source = document.querySelector('#block-2 .source-text');
       const text = document.createTreeWalker(source, NodeFilter.SHOW_TEXT).nextNode();
@@ -363,6 +374,8 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text mark').waitFor();
     await page.locator('#block-2 .block-notes').getByText(note, { exact: false }).waitFor();
+    assert.deepEqual(await readingAppearance(), originalAppearance, `${lifecycle} must preserve saved reading appearance`);
+    record('Upgraded app preserved reading appearance', { appearance: originalAppearance });
     await app.close(); app = null;
     await waitForNoPaperBridgeProcesses('reinstalled app processes to exit before uninstall');
     const beforeUninstall = hash(paperFile());
