@@ -216,6 +216,7 @@ function registerHandlers() {
   ipcMain.handle('glossary:save', (_event, glossary) => store.saveGlossary(glossary));
   ipcMain.handle('paper:load', (_event, id) => store.paper(safeId(id)));
   ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
+  ipcMain.handle('paper:update-library-metadata', (_event, payload) => store.updateLibraryMetadata(payload));
   ipcMain.handle('paper:save', (event, paper) => {
     store.savePaper(paper);
     const pending = pendingMineruResults.get(paper.mineruResourceId);

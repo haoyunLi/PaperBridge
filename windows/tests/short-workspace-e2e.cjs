@@ -154,7 +154,9 @@ async function run() {
     }));
     assert.ok(controls.every(r => r.left >= -1 && r.right <= r.width + 1 && r.top >= 0 && r.bottom <= r.height + 1), JSON.stringify(controls));
     await page.keyboard.press('Control+f');
-    assert.equal(await search.evaluate(node => document.activeElement === node), true);
+    // Find defers focus until Reader has rendered; the key event completing is
+    // not evidence that its scheduled focus callback has already executed.
+    await waitFor(() => search.evaluate(node => document.activeElement === node), 'Ctrl+F focuses the short-viewport search');
     await search.fill('Unique short viewport destination');
     await waitFor(async () => await page.locator('.reader-list > .block').count() === 1, 'short viewport search filtering');
     assert.equal(await page.locator('#block-4').count(), 1);

@@ -184,34 +184,51 @@ async function run() {
     await waitFor(() => trigger().evaluate(node => node === document.activeElement), 'Escape restores actions focus');
 
     // A library-label operation started before the editor must not replace it
-    // when its asynchronous load/save completes after the old dialog is closed.
+    // when its index-only metadata save completes after the old dialog closes.
     await page.getByRole('button', { name: 'Paper Library', exact: true }).click();
     await page.getByRole('button', { name: `Edit label for ${other.name}`, exact: true }).click();
     await page.getByLabel('Tags, separated by commas', { exact: true }).fill('background-label');
+    const otherBodyFiles = () => [paperFile(otherId), `${paperFile(otherId)}.backup`]
+      .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
+    const beforeLabelBody = otherBodyFiles();
     await app.evaluate(({ ipcMain }) => {
-      const original = ipcMain._invokeHandlers.get('paper:load');
-      ipcMain.removeHandler('paper:load');
+      const original = ipcMain._invokeHandlers.get('paper:update-library-metadata');
+      if (!original) throw new Error('The real library metadata IPC must be registered');
+      ipcMain.removeHandler('paper:update-library-metadata');
       let hold = true;
-      ipcMain.handle('paper:load', (event, paperId) => {
-        if (!hold) return original(event, paperId);
+      ipcMain.handle('paper:update-library-metadata', (event, payload) => {
+        if (!hold) return original(event, payload);
         hold = false;
         return new Promise((resolve, reject) => {
-          globalThis.__finishEditorLabelLoad = () => Promise.resolve(original(event, paperId)).then(resolve, reject);
+          globalThis.__finishEditorLabelSave = () => {
+            delete globalThis.__finishEditorLabelSave;
+            return Promise.resolve().then(() => original(event, payload)).then(resolve, reject);
+          };
         });
       });
     });
-    await page.getByRole('button', { name: 'Save label', exact: true }).click();
-    await waitFor(() => app.evaluate(() => typeof globalThis.__finishEditorLabelLoad === 'function'), 'held library-label load');
-    await page.keyboard.press('Escape');
-    await openEditor();
-    await source().fill(draft);
-    await app.evaluate(() => globalThis.__finishEditorLabelLoad());
-    await waitFor(() => readPaper(otherId).tags?.includes('background-label'), 'late label save finished');
-    await frames();
-    assert.equal(await dialog().isVisible(), true);
-    assert.equal(await source().inputValue(), draft, 'late library completion preserves the active paragraph draft');
-    assert.deepEqual(readPaper().blocks, baseline);
-    assert.deepEqual(readPaper(otherId).blocks, otherBaseline);
+    try {
+      await page.getByRole('button', { name: 'Save label', exact: true }).click();
+      await waitFor(() => app.evaluate(() => typeof globalThis.__finishEditorLabelSave === 'function'), 'held library metadata save');
+      await page.keyboard.press('Escape');
+      await openEditor();
+      await source().fill(draft);
+      await app.evaluate(() => globalThis.__finishEditorLabelSave());
+      await waitFor(() => JSON.parse(fs.readFileSync(path.join(workspace, 'library-index.json'), 'utf8'))
+        .entries[otherId].tags.includes('background-label'), 'late index-only label save finished');
+      await frames();
+      assert.equal(await dialog().isVisible(), true);
+      assert.equal(await source().inputValue(), draft, 'late library completion preserves the active paragraph draft');
+      assert.deepEqual(readPaper().blocks, baseline);
+      assert.deepEqual(readPaper(otherId).blocks, otherBaseline);
+      assert.deepEqual(otherBodyFiles(), beforeLabelBody, 'Metadata save must not rewrite the other paper, backup, updatedAt or legacy fields');
+      const labeled = await page.evaluate(paperId => window.paperBridge.loadPaper(paperId), otherId);
+      assert.deepEqual(labeled.tags, ['background-label'], 'Paper loading overlays the saved index label without a body rewrite');
+      assert.equal(labeled.name, other.name);
+    } finally {
+      // A failed assertion must not leave quit waiting on this test's held save.
+      await app.evaluate(() => globalThis.__finishEditorLabelSave?.()).catch(error => console.error(error));
+    }
     await page.keyboard.press('Escape');
     await dialog().waitFor({ state: 'hidden' });
 
@@ -341,7 +358,7 @@ async function run() {
     const result = { passed: true, workspace, requests: requests.length, checked: [
       'dialog focus, grapheme count, IME and blank-save guard', 'Enter newline and Ctrl+Enter save',
       'Cancel, Escape and outside clicks retain saved text', 'native commands and background library cannot replace draft',
-      'late library-label completion cannot replace the active editor',
+      'late index-only library-label completion preserves editor draft and exact other-paper bytes',
       'long text scroll at 980x620 and 200% zoom', 'split annotation migration and selective translation invalidation',
       'undo preserves newer unrelated output', 'restart annotations and translations',
       'MinerU preflight cannot replace an active editor', 'isolated data reset closes erased drafts and releases commands'

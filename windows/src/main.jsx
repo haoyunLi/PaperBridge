@@ -851,7 +851,7 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
   </article>;
 }
 
-function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLibraryEdit }) {
+function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLibraryEdit, persistenceWarning }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
   async function openItem(id) {
@@ -866,14 +866,41 @@ function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLib
   }
   return <>
     <p>Saved on this PC with each paper’s translations, notes, bookmarks, and reading position.</p>
+    {persistenceWarning && <div role="alert"><Notice tone="error">{persistenceWarning}</Notice></div>}
     <input placeholder="Search titles and tags" value={query} onChange={event => setQuery(event.target.value)} />
-    {items.map(item => <div className="library-entry" key={item.id}>
-      <button className="modal-list-row" disabled={busy || opening} onClick={() => openItem(item.id)}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.translatedCount ?? 0}/{item.blockCount} translated{item.lastOpened ? ` · Opened ${new Date(item.lastOpened).toLocaleDateString()}` : ''}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
+    {items.map(item => <div className="library-entry" key={item.id} data-workspace-available={item.workspaceAvailable !== false}>
+      <button className="modal-list-row" disabled={busy || opening} onClick={() => openItem(item.id)}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.workspaceAvailable === false ? 'Saved workspace unavailable · Reimport the original' : `${item.translatedCount ?? 0}/${item.blockCount} translated`}{item.lastOpened ? ` · Opened ${new Date(item.lastOpened).toLocaleDateString()}` : ''}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
       <button className="icon-button" aria-label={`Edit label for ${item.name}`} onClick={() => { setLibraryEdit({ id: item.id, name: item.name, tags: (item.tags || []).join(', ') }); setModal('libraryLabel'); }}><Pencil size={16} /></button>
     </div>)}
     {!items.length && <p>{query.trim() ? 'No matching papers. Try another title or tag.' : 'No saved papers. Open a PDF or paste text to begin.'}</p>}
     {busy && <p>Finish or stop the current task before opening another paper.</p>}
     {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
+  </>;
+}
+
+function LibraryLabelEditor({ item, onSave, onSaved, onCancel }) {
+  const [title, setTitle] = useState(item.name);
+  const [tags, setTags] = useState(item.tags);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  async function save() {
+    if (saving || !title.trim()) return;
+    setSaving(true); setError('');
+    try {
+      await onSave(item.id, title, tags);
+      if (mounted.current) onSaved();
+    } catch (cause) {
+      if (mounted.current) setError(cause.message);
+    } finally { if (mounted.current) setSaving(false); }
+  }
+  return <>
+    <p>Only the library label changes; the original PDF stays unchanged. Labels remain available even when a saved workspace cannot be read.</p>
+    <label>Title<input value={title} disabled={saving} onChange={event => setTitle(event.target.value)} /></label>
+    <label>Tags, separated by commas<input value={tags} disabled={saving} onChange={event => setTags(event.target.value)} /></label>
+    {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
+    <div className="row"><button className="button blue" disabled={saving || !title.trim()} onClick={save}>{saving ? 'Saving…' : 'Save label'}</button><button className="button outline" onClick={onCancel}>Cancel</button></div>
   </>;
 }
 
@@ -1021,6 +1048,9 @@ function App() {
   const [search, setSearch] = useState('');
   const [librarySearch, setLibrarySearch] = useState('');
   const [libraryEdit, setLibraryEdit] = useState(null);
+  const [libraryPersistenceWarning, setLibraryPersistenceWarning] = useState('');
+  const libraryMetadataSaveChain = useRef(Promise.resolve());
+  const libraryMetadataRequest = useRef(0);
   const [glossarySearch, setGlossarySearch] = useState('');
   const [selection, setSelection] = useState(null);
   const [lookupCache, setLookupCache] = useState(() => new Map());
@@ -1293,7 +1323,7 @@ function App() {
     if (!await finishNoteEditing()) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
-    if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained.');
+    if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained; try importing the original again.');
     if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
     // Capture the saved output's language before missing task settings are filled
     // from the current global configuration. Unknown historical output stays so.
@@ -1648,6 +1678,7 @@ function App() {
   useEffect(() => {
     api.bootstrap().then(async data => {
       settingsRef.current = data.settings; setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library);
+      setLibraryPersistenceWarning(data.libraryPersistenceWarning || '');
       if (data.library.length) {
         try { await loadPaper(data.library.some(item => item.id === data.lastPaperId) ? data.lastPaperId : data.library[0].id); }
         catch (cause) { setError(cause.message); }
@@ -1726,6 +1757,15 @@ function App() {
     return () => clearInterval(timer);
   }, [ready, settings?.autoCheckUpdates]);
   useEffect(() => { if (modal === 'glossary') setGlossaryError(''); }, [modal]);
+  useEffect(() => {
+    if (modal !== 'library') return;
+    let active = true;
+    api.bootstrap().then(data => {
+      if (!active) return;
+      setLibrary(data.library); setLibraryPersistenceWarning(data.libraryPersistenceWarning || '');
+    }).catch(cause => { if (active) setLibraryPersistenceWarning(`Could not refresh the paper library: ${cause.message}`); });
+    return () => { active = false; };
+  }, [modal]);
   useEffect(() => { if (paperRef.current && paperRef.current.position?.tab !== tab) commitPaper(current => ({ ...current, position: { ...current.position, tab } })); }, [tab]);
   useEffect(() => { if (paperRef.current && !focus && paperRef.current.inspectorOpen !== inspector) commitPaper(current => ({ ...current, inspectorOpen: inspector })); }, [inspector, paper?.id, focus]);
   useEffect(() => {
@@ -1809,6 +1849,9 @@ function App() {
     window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
   }, []);
   useEffect(() => api.onPrepareClose(async () => {
+    // Wait for an in-flight metadata write; a previously failed label draft can
+    // still be discarded by closing its editor or the application.
+    await libraryMetadataSaveChain.current.catch(() => {});
     try { await glossarySave.current; }
     catch { api.closeCancelled(); return; }
     const saved = await finishNoteEditing();
@@ -2601,6 +2644,8 @@ function App() {
       if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
       await settingsSaveChain.current;
       await glossarySave.current?.catch(() => {});
+      await libraryMetadataSaveChain.current.catch(() => {});
+      libraryMetadataRequest.current++;
       openAIRefreshId.current = null;
       setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
       await api.clearData();
@@ -2608,7 +2653,7 @@ function App() {
       const data = await api.bootstrap();
       resetReadingHistory();
       cancelParagraphEdit();
-      paperRef.current = null; setPaper(null); setLibrary([]); setGlossary([]); settingsRef.current = data.settings; setSettings(data.settings);
+      paperRef.current = null; setPaper(null); setLibrary([]); setLibraryPersistenceWarning(''); setGlossary([]); settingsRef.current = data.settings; setSettings(data.settings);
       modelRefreshId.current++;
       setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
       void refreshModels(data.settings);
@@ -2617,18 +2662,21 @@ function App() {
       setModal(''); setStatus('Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
     } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
   }
-  async function saveLibraryLabel() {
-    if (!libraryEdit?.name.trim()) return;
-    try {
-      const saved = await api.loadPaper(libraryEdit.id);
-      if (!saved) throw new Error('This paper could not be loaded.');
-      const label = libraryLabel(libraryEdit.name, libraryEdit.tags);
-      if (paperRef.current?.id === saved.id) {
-        commitPaper(current => ({ ...current, ...label }));
-        if (!await saveQueue.current.flush()) throw new Error('Could not save the library label. Retry the workspace save.');
-      } else setLibrary(await api.savePaper({ ...saved, ...label }));
-      setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null);
-    } catch (cause) { setError(cause.message); }
+  async function saveLibraryLabel(id, title, tags) {
+    const label = libraryLabel(title, tags);
+    const request = ++libraryMetadataRequest.current;
+    const pending = libraryMetadataSaveChain.current.catch(() => {}).then(() =>
+      api.updateLibraryMetadata({ id, title: label.libraryTitle, tags: label.tags }));
+    libraryMetadataSaveChain.current = pending;
+    const items = await pending;
+    if (request !== libraryMetadataRequest.current) return;
+    setLibrary(items);
+    if (paperRef.current?.id === id) {
+      // Library metadata is independently durable. Do not rewrite or recreate a
+      // damaged workspace merely to change its label, including an open paper.
+      const next = { ...paperRef.current, ...label };
+      paperRef.current = next; setPaper(next);
+    }
   }
   function captureSelection() {
     const selected = window.getSelection();
@@ -3179,7 +3227,7 @@ function App() {
             {outline.map(section => <button className="outline-row" key={section.id} data-paragraph-id={section.id} aria-current={activeBlock === section.id ? 'location' : undefined} title={section.title} onClick={() => navigate(section.id)}><span className="outline-title">{section.title}</span><small aria-label={`Paragraph ${section.id}`}>{section.id}</small></button>)}
           </nav>
         </>}
-        <div className="side-group recent-papers"><div className="side-label">RECENT PAPERS</div><input className="side-search" aria-label="Search papers or tags" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.blockCount} blocks</small></button>)}</div>
+        <div className="side-group recent-papers"><div className="side-label">RECENT PAPERS</div><input className="side-search" aria-label="Search papers or tags" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.workspaceAvailable === false ? 'Workspace unavailable' : `${item.blockCount} blocks`}</small></button>)}</div>
         <div className="sidebar-footer"><button onClick={() => openSetup()}><Download size={16} /> Local AI setup</button><button onClick={() => openSettings()}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
       </div>
     </aside>
@@ -3196,6 +3244,7 @@ function App() {
       </header>
       {(error || updateInfo?.status === 'available' || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
+        {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {updateInfo?.status === 'available' && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setUpdateInfo(null)}>Later</button></div>}
         {busy && <TaskProgress busy={busy} progress={progress} status={status} />}
         {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
@@ -3319,8 +3368,8 @@ function App() {
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
-      {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} />}
-      {modal === 'libraryLabel' && libraryEdit && <><p>Only the library label changes; the original PDF stays unchanged.</p><label>Title<input value={libraryEdit.name} onChange={event => setLibraryEdit({ ...libraryEdit, name: event.target.value })} /></label><label>Tags, separated by commas<input value={libraryEdit.tags} onChange={event => setLibraryEdit({ ...libraryEdit, tags: event.target.value })} /></label><div className="row"><button className="button blue" disabled={!libraryEdit.name.trim()} onClick={saveLibraryLabel}>Save label</button><button className="button outline" onClick={() => setModal('library')}>Cancel</button></div></>}
+      {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
+      {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}
       {modal === 'more' && <div className="menu-list"><button onClick={openTranslationRange}><Languages size={17} /> Translation Range</button><button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf'}><FileText size={17} /> Parse with MinerU</button><button onClick={reextractAsNew} disabled={paper?.type !== 'pdf' || !!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button><button disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}><Download size={17} /> {defaultExportLabel}</button><button disabled={!canExport || !!busy} onClick={() => setModal('export')}><FileText size={17} /> Export Options…</button><button onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button><button onClick={() => openSettings()}><Settings2 size={17} /> Settings</button></div>}
       {modal === 'range' && <div className="menu-list">
         <button disabled={!!busy || !abstractConclusionIds.length} onClick={() => { setModal(''); translateBlocks(abstractConclusionIds); }}>Abstract & Conclusion <small>{abstractConclusionIds.length} blocks</small></button>

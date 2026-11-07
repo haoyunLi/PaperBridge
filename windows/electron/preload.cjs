@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   clearData: () => ipcRenderer.invoke('paper:clear-data'),
   loadPaper: id => ipcRenderer.invoke('paper:load', id),
   markPaperOpened: id => ipcRenderer.invoke('paper:mark-opened', id),
+  updateLibraryMetadata: payload => ipcRenderer.invoke('paper:update-library-metadata', payload),
   saveSettings: settings => ipcRenderer.invoke('settings:save', settings),
   openAIKeyStatus: () => ipcRenderer.invoke('openai:key-status'),
   saveOpenAIKey: key => ipcRenderer.invoke('openai:key-save', key),
