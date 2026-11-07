@@ -61,6 +61,51 @@ test('PDF lines split at headings and preserve page provenance', async () => {
   assert.equal(blocks[1].page, 3);
 });
 
+test('new pasted text uses Mac single-line and multiline spaced-hyphen passes', async () => {
+  const { blocksFromText, cleanLine, joinPdfText } = await import('../src/text.mjs');
+  const source = 'The natu- ral mea- sure lets our model out- perform the baseline and supports re- search.';
+  assert.equal(blocksFromText(source)[0].text, 'The natural measure lets our model outperform the baseline and supports research.');
+  assert.equal(blocksFromText('We compare a well- known model- based method with T- cell data and end- to-end training.')[0].text,
+    'We compare a well-known model-based method with T-cell data and end-to-end training.');
+  assert.equal(blocksFromText('A chain inter- national- based model.')[0].text, 'A chain international- based model.');
+  assert.equal(blocksFromText('A chain inter- national- based model.\nMore evidence.')[0].text,
+    'A chain international-based model. More evidence.');
+  assert.equal(blocksFromText('Abstract\n\nA chain inter- national- based model.')[1].text, 'A chain international-based model.');
+  assert.equal(blocksFromText('Re- sults')[0].heading, true);
+  assert.equal(blocksFromText('Re- sults\nMore evidence about the observations.')[0].heading, false);
+  // Generic cleanup and manual joins do not normalize already saved source.
+  assert.equal(cleanLine('Legacy re- sults'), 'Legacy re- sults');
+  assert.equal(joinPdfText('Legacy re- sults', 'stay bound to notes.'), 'Legacy re- sults stay bound to notes.');
+});
+
+test('PDF item reconstruction repairs spaced fragments without changing line geometry', async () => {
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const item = (str, x, width) => ({ str, transform: [12, 0, 0, 12, x, 720], width, height: 12 });
+  const lines = pageLines({ items: [
+    item('We report re-', 42, 72), item(' ', 114, 3), item('sults from an attention-', 117, 125),
+    item(' ', 242, 3), item('based model.', 245, 72)
+  ] }, [0, 0, 612, 792]);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].text, 'We report results from an attention-based model.');
+  assert.deepEqual({ x: lines[0].x, y: lines[0].y, width: lines[0].width, height: lines[0].height },
+    { x: 42, y: 720, width: 275, height: 12 });
+  assert.equal(blocksFromLines(lines, 3)[0].text, lines[0].text);
+  assert.equal(blocksFromLines(lines, 3)[0].page, 3);
+});
+
+test('import stages preserve ICU whitespace boundaries and remove soft hyphens at the Mac stage', async () => {
+  const { blocksFromLines, blocksFromText, finishExtractedPdfText } = await import('../src/text.mjs');
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const source = 'Boundary re-\ufeffsults and re-\u0085sults plus re- sults\u00ad.';
+  const lines = pageLines({ items: [{ str: source, transform: [12, 0, 0, 12, 42, 720], width: 400, height: 12 }] }, [0, 0, 612, 792]);
+  const paragraph = blocksFromLines(lines, 1)[0].text;
+  assert.equal(paragraph, 'Boundary re-\ufeffsults and results plus re- sults\u00ad.');
+  assert.equal(finishExtractedPdfText(paragraph), 'Boundary re-\ufeffsults and results plus results.');
+  assert.equal(blocksFromText(source)[0].text, 'Boundary re-\ufeffsults and results plus re- sults\u00ad.');
+  assert.equal(blocksFromText(source + '\nMore evidence.')[0].text, 'Boundary re-\ufeffsults and results plus results. More evidence.');
+});
+
 test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
   const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
   const item = (str, x, y, width, vertical = false) => ({

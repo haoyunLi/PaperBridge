@@ -1,3 +1,5 @@
+import { normalizeExtractedLine } from './text.mjs';
+
 function textRows(items, left, bottom, width) {
   const rows = [];
   for (const [index, item] of items.entries()) {
@@ -28,7 +30,7 @@ function lineFromItems(items, y, vertical) {
     text += item.text;
     end = Math.max(end, item.end);
   }
-  return { text, y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  return { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
 }
 
 function splitAtGutter(items, mid, tolerance) {

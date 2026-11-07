@@ -1,6 +1,6 @@
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { blocksFromLines } from './text.mjs';
+import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
 import { pageLines, pdfReadingGroups } from './pdfLayout.mjs';
 
@@ -63,5 +63,11 @@ export async function extractPdf(pdf, onPage, checkActive) {
       blocks.push(...blocksFromLines(group, pageNumber, blocks.length + 1, true));
     }
   }
-  return stitchPageBlocks(blocks);
+  // Match the final Mac postProcessParagraphs and buildPaper/cleanExtractedText
+  // passes after page stitching. Each pass is non-overlapping, not a fixed point.
+  // Only newly extracted text is normalized; saved blocks/annotation offsets
+  // and the original PDF bytes are never sent through this import pipeline.
+  return stitchPageBlocks(blocks).map(block => ({
+    ...block, text: finishExtractedPdfText(block.text)
+  }));
 }

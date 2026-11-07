@@ -8,6 +8,8 @@ Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. 
 
 **Reading Appearance** in the paper toolbar updates text size, line spacing, and reading width in the text views. New workspaces and **Reset Appearance** use size 16, 5 pixels of extra line spacing, and width 920, matching the macOS defaults. Existing Windows font sizes, widths and proportional spacing remain unchanged across updates and restarts. **Use extra spacing** switches proportional spacing to a fixed extra gap. Reselect a passage to show its existing translation and explanation for the current session.
 
+The development branch also repairs spaced fragments such as `re- sults` in newly imported PDF text and pasted text, following the macOS rules and keeping compounds such as `model-based`. Existing saved text and annotation positions stay unchanged. This improvement is not yet included in the public 0.2.15 executables.
+
 Version 0.2.15 adds original/translation language labels, bilingual dividers, full selected-card outlines and direct translation/setup buttons to Reader paragraphs. Compact headings keep their separate layout. Existing highlights and notes stay anchored to the passage text.
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.

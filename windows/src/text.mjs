@@ -1,3 +1,5 @@
+import { compoundSuffixes, repairSpacedHyphenation } from './spacedHyphenation.mjs';
+
 const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|acknowledg(?:e)?ments|摘要|引言|方法|结果|讨论|结论)\s*$/i;
 const leadingNamedSection = /^(?:(?:\d+(?:\.\d+)*)\s+)?(?:abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|experiments?|evaluation|results?|discussion|conclusions?|appendix|acknowledg(?:e)?ments)(?:[.:])?\s+/i;
 const pdfCaption = /^(?:figure|fig\.|table)\s+\d+[.:]/i;
@@ -23,12 +25,20 @@ export function cleanLine(value) {
   return value.replace(/\u00ad/g, '').replace(/\s+/g, ' ').trim();
 }
 
-const compoundSuffixes = new Set([
-  'aware', 'based', 'cell', 'class', 'dependent', 'defined', 'dimensional', 'domain', 'driven', 'free',
-  'level', 'like', 'making', 'order', 'range', 'related', 'resolution', 'reviewed', 'scale', 'source',
-  'space', 'specific', 'stage', 'step', 'supervised', 'term', 'time', 'to', 'trained', 'tuning',
-  'validation', 'wise', 'known'
-]);
+export function normalizeExtractedLine(value) {
+  const singleLine = value.replace(/\t/g, ' ').replace(/\p{White_Space}*\n\p{White_Space}*/gu, ' ');
+  return trimExtractedWhitespace(repairSpacedHyphenation(singleLine).replace(/\p{White_Space}{2,}/gu, ' '));
+}
+
+function trimExtractedWhitespace(value) {
+  return value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+}
+
+export function finishExtractedPdfText(value) {
+  // Mac postProcessParagraphs, then buildPaper's cleanExtractedText. The latter
+  // removes soft hyphens before its final line-normalization pass.
+  return normalizeExtractedLine(repairSpacedHyphenation(value).replace(/\u00ad/g, ''));
+}
 
 export function joinPdfText(left, right) {
   const previous = left.match(/(?:^|\s)(\p{L}+(?:[-‐]\p{L}+)*)[-‐]$/u)?.[1];
@@ -39,26 +49,32 @@ export function joinPdfText(left, right) {
 }
 
 export function blocksFromText(text) {
-  return text.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map(part => {
-    const raw = part.trim();
-    const value = raw.split('\n').map(cleanLine).filter(Boolean).join(' ');
+  let input = text.replace(/\r\n?/g, '\n');
+  // Mac's multiline import normalizes each physical line before the final
+  // paragraph pass; a single-line paste only receives the paragraph pass.
+  const multiline = input.includes('\n');
+  if (multiline) input = input.replace(/\u00ad/g, '');
+  return input.split(/\n\s*\n/).map(part => {
+    const raw = trimExtractedWhitespace(part);
+    const lines = raw.split('\n').map(line => multiline ? normalizeExtractedLine(line) : line).filter(Boolean);
+    const value = trimExtractedWhitespace(repairSpacedHyphenation(lines.join(' ')));
     return value ? { raw, value } : null;
   }).filter(Boolean)
-    .map(({ raw, value }, index) => ({ id: index + 1, text: value, page: null, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] }));
+    .map(({ raw, value }, index) => ({ id: index + 1, text: value, page: null, heading: isHeading(raw.includes('\n') ? raw : value), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] }));
 }
 
 export function joinLines(lines) {
   let text = '';
   for (const line of lines) {
-    const value = cleanLine(line.text || line);
+    const value = trimExtractedWhitespace(line.text || line);
     if (!value) continue;
     text = text ? joinPdfText(text, value) : value;
   }
-  return text.trim();
+  return trimExtractedWhitespace(text.replace(/[\t ]{2,}/g, ' '));
 }
 
 export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = false) {
-  const sorted = [...lines].filter(line => cleanLine(line.text));
+  const sorted = lines.map(line => ({ ...line, text: normalizeExtractedLine(line.text) })).filter(line => line.text);
   if (!preserveOrder) sorted.sort((a, b) => b.y - a.y || a.x - b.x);
   const blocks = [];
   let group = [];
