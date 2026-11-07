@@ -12,6 +12,8 @@ The development branch also repairs spaced fragments such as `re- sults` in newl
 
 The branch now groups paragraph editing, merging, sentence reflow and explicit retranslation in the **Paragraph actions** menu. The lightbulb opens the paragraph in Research Inspector; choose **Explain full paragraph** there to generate an explanation. Headings use separate **Translate Heading** and **Heading actions** controls, with fixed 21/19-pixel source/translation typography and wrapping layouts. These changes are also pending the next public Windows release.
 
+**Edit or Split** now opens a **Repair Paragraph** dialog. Insert blank lines to split the text, then choose **Save** or press **Ctrl+Enter**. **Cancel** or **Escape** keeps the saved source unchanged. The dialog protects its draft from background commands and delayed callbacks. Reopened papers also show **Saved on this PC** without changing their content timestamps. These changes are pending the next release.
+
 Version 0.2.15 adds original/translation language labels, bilingual dividers, full selected-card outlines and direct translation/setup buttons to Reader paragraphs. Compact headings keep their separate layout. Existing highlights and notes stay anchored to the passage text.
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.

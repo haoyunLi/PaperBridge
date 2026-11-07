@@ -1,0 +1,64 @@
+.paragraph-editor {
+  width: min(700px, calc(100vw - 32px));
+  height: min(500px, calc(100dvh - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 24px;
+  border: 1px solid #cfc6b8;
+  border-radius: 16px;
+  background: #f3eee4;
+  color: #122033;
+  box-shadow: 0 18px 70px #12203340;
+  overflow: hidden;
+  font: 14px/1.4 "Segoe UI", Arial, sans-serif;
+}
+.paragraph-editor::backdrop { background: #12203366; }
+.paragraph-editor-body { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 18px; height: 100%; min-height: 0; }
+.paragraph-editor-header { display: flex; align-items: flex-start; gap: 14px; }
+.paragraph-editor-icon { display: grid; place-items: center; flex: none; width: 48px; height: 48px; color: #0a59d6; background: #dce9ff; border-radius: 14px; }
+.paragraph-editor-header h2 { margin: 0 0 5px; font: 700 21px/1.25 "Segoe UI", Arial, sans-serif; }
+.paragraph-editor-header p { margin: 0; color: #56606c; }
+.paragraph-editor textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid #cfc6b8;
+  border-radius: 12px;
+  background: #fffdf8;
+  color: #122033;
+  font: 15px/calc(1.2em + 5px) Georgia, "Times New Roman", serif;
+  resize: none;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.paragraph-editor textarea:focus-visible { outline: 2px solid #0a59d6; outline-offset: 1px; }
+.paragraph-editor-footer { display: flex; align-items: center; gap: 14px; }
+.paragraph-editor-details { flex: 1; min-width: 0; color: #56606c; font-size: 12px; }
+.paragraph-editor-details p { margin: 0 0 4px; }
+.paragraph-editor-shortcut { color: #66707a; font-size: 11px; }
+.paragraph-editor-buttons { display: flex; flex: none; gap: 8px; }
+.paragraph-editor-buttons button:focus-visible { outline: 2px solid #0a59d6; outline-offset: 2px; }
+@media (max-width: 560px), (max-height: 480px) {
+  .paragraph-editor { padding: 16px; }
+  .paragraph-editor-body { gap: 12px; }
+  .paragraph-editor-header { gap: 10px; }
+  .paragraph-editor-icon { width: 40px; height: 40px; border-radius: 11px; }
+  .paragraph-editor-header h2 { font-size: 18px; }
+  .paragraph-editor-header p { font-size: 12px; }
+  .paragraph-editor-footer { gap: 8px; }
+  .paragraph-editor-details { font-size: 11px; }
+}
+@media (max-width: 380px) {
+  .paragraph-editor { padding: 12px; }
+  .paragraph-editor-icon { display: none; }
+  .paragraph-editor-footer { flex-wrap: wrap; }
+  .paragraph-editor-buttons { margin-left: auto; }
+}
+@media (forced-colors: active) {
+  .paragraph-editor { border-color: CanvasText; background: Canvas; color: CanvasText; box-shadow: none; }
+  .paragraph-editor textarea { background: Field; color: FieldText; border-color: ButtonText; }
+  .paragraph-editor textarea:focus-visible, .paragraph-editor-buttons button:focus-visible { outline-color: Highlight; }
+}

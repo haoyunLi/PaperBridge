@@ -20,7 +20,7 @@ function paper(id, name, text, updatedAt) {
     id, name, type: 'text', createdAt: '2026-01-01T00:00:00.000Z', updatedAt,
     blocks: [{ id: 1, text: 'Abstract', heading: true, translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] },
       { id: 2, text, heading: false, translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] }],
-    tags: [], summary: null, connectedTranslation: '', extraction: 'Pasted text',
+    tags: [], summary: null, connectedTranslation: '', extraction: 'Pasted text', inspectorOpen: true,
     position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
   };
 }
@@ -50,6 +50,9 @@ async function run() {
     let page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Last opened B' }).waitFor({ timeout: 20000 });
+    await page.locator('.save-status.idle').getByText('Saved on this PC', { exact: true }).waitFor();
+    assert.equal(JSON.parse(fs.readFileSync(path.join(papersDir, `${paperBId}.json`), 'utf8')).updatedAt, b.updatedAt,
+      'showing saved state on a clean reopen must not manufacture a content write');
     assert.match(await page.locator('.document-preview').innerText(), /Paper B is the last paper opened/);
     await page.locator('.library-row').first().getByText('Last opened B').waitFor();
 

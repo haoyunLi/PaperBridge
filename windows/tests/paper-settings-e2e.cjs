@@ -247,8 +247,8 @@ async function run() {
     await waitForSavedExplanation(page);
     await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
-    await page.locator('#block-2 .edit-area textarea').fill('Paper A revised text invalidates the old explanation.');
-    await page.locator('#block-2 .edit-area').getByRole('button', { name: 'Save edit' }).click();
+    await page.getByRole('dialog', { name: 'Repair Paragraph 2', exact: true }).getByRole('textbox', { name: 'Paragraph source' }).fill('Paper A revised text invalidates the old explanation.');
+    await page.getByRole('dialog', { name: 'Repair Paragraph 2', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
     await page.locator('.undo-button').click();
     await waitForSavedExplanation(page);
@@ -258,9 +258,9 @@ async function run() {
     await page.locator('#block-2 button[title="Bookmark"]').click();
     await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
-    const editor = page.locator('#block-2 .edit-area');
+    const editor = page.getByRole('dialog', { name: 'Repair Paragraph 2', exact: true });
     await editor.locator('textarea').fill(`${original.text}\n\nA new paragraph with a\nmanual line break.`);
-    await editor.getByRole('button', { name: 'Save edit' }).click();
+    await editor.getByRole('button', { name: 'Save', exact: true }).click();
     await page.locator('#block-3 .source-text').getByText('A new paragraph with a manual line break.', { exact: true }).waitFor();
     await waitFor(() => readPaper(textA).blocks.slice(1).length === 2 && readPaper(textA).blocks.slice(1).every(block => block.bookmark && block.status === 'pending'), 'separate saved paragraphs and bookmarks');
     await page.locator('.undo-button').click();

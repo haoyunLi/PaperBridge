@@ -277,8 +277,7 @@ async function run() {
     await waitFor(() => readPaper().blocks[1].translationHighlights?.some(item => item.text === translationQuote), 'saved translated highlight');
     const beforeEdit = readPaper().blocks[1];
     await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
-    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
-    await page.getByRole('button', { name: 'Reflow at full sentences', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reflow at Full Sentences', exact: true }).click();
     const sourceHighlight = page.locator('.annotation-row').filter({ hasText: sourceQuote });
     const translatedHighlight = page.locator('.annotation-row').filter({ hasText: translationQuote });
     await translatedHighlight.getByText(/source changed, review needed/).waitFor();
@@ -296,7 +295,7 @@ async function run() {
     await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.getByLabel('Paragraph source').fill('The passage was rewritten to describe a different research mechanism.');
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Repair Paragraph 2', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     await sourceHighlight.getByText(/source changed, review needed/).waitFor();
     await translatedHighlight.getByText(/source changed, review needed/).waitFor();
     await waitFor(() => readPaper().blocks[1].highlights?.[0]?.id === beforeEdit.highlights[0].id && readPaper().blocks[1].highlights[0].needsReview, 'edit retains the original highlight with its original ID');

@@ -8,6 +8,7 @@ export default function ReaderBlockActions({ block, busy, structured, isFirst, i
   const triggerId = `${menuId}-trigger`;
   const trigger = useRef(null);
   const menu = useRef(null);
+  const menuGeneration = useRef(0);
   const focusLastItem = useRef(false);
   const typeahead = useRef({ value: '', at: 0 });
   const [open, setOpen] = useState(false);
@@ -19,6 +20,7 @@ export default function ReaderBlockActions({ block, busy, structured, isFirst, i
   function positionMenu() {
     const popup = menu.current, button = trigger.current;
     if (!popup?.matches(':popover-open') || !button) return;
+    delete popup.dataset.positioned;
     const margin = 8, gap = 5;
     const width = window.innerWidth, height = window.innerHeight;
     popup.style.maxHeight = `${Math.max(0, height - margin * 2)}px`;
@@ -31,6 +33,7 @@ export default function ReaderBlockActions({ block, busy, structured, isFirst, i
       : above >= margin ? above : Math.max(margin, Math.min(below, height - bounds.height - margin));
     popup.style.left = `${left}px`;
     popup.style.top = `${top}px`;
+    popup.dataset.positioned = 'true';
   }
 
   function closeMenu(restoreFocus = true) {
@@ -119,13 +122,20 @@ export default function ReaderBlockActions({ block, busy, structured, isFirst, i
         }
       }}><CircleEllipsis size={17} aria-hidden="true" /></button>
     <div ref={menu} id={menuId} className="reader-actions-menu" popover="auto" role="menu" aria-labelledby={triggerId} tabIndex={-1}
-      onKeyDown={handleMenuKey} onToggle={event => {
-        const next = event.newState === 'open';
+      onKeyDown={handleMenuKey} onBeforeToggle={event => {
+        // Native toggle events are queued. Hide synchronously before opening so
+        // a reopened menu cannot paint coordinates from an earlier viewport.
+        delete event.currentTarget.dataset.positioned;
+        menuGeneration.current += 1;
+      }} onToggle={event => {
+        const popup = event.currentTarget;
+        const generation = menuGeneration.current;
+        const next = popup.matches(':popover-open');
         setOpen(next);
         if (next) {
           positionMenu();
           requestAnimationFrame(() => {
-            if (!menu.current?.matches(':popover-open')) return;
+            if (menu.current !== popup || menuGeneration.current !== generation || !popup.matches(':popover-open')) return;
             positionMenu();
             const items = menuItems();
             ((focusLastItem.current ? items.at(-1) : items[0]) || menu.current)?.focus({ preventScroll: true });

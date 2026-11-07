@@ -129,6 +129,7 @@ async function run() {
     await openMenu(1);
     assert.equal(await action('Merge with Previous').isDisabled(), true);
     await block(3).getByRole('button', { name: 'Heading actions', exact: true }).click();
+    await page.getByRole('menu').waitFor();
     assert.equal(await page.getByRole('menu').count(), 1, 'opening another menu closes the previous one');
     assert.equal(await action('Explain Heading').isVisible(), true);
     assert.equal(await action('Reflow at Full Sentences').count(), 0);
@@ -226,7 +227,7 @@ async function run() {
     for (const number of [1, 3, 7]) {
       assert.equal(await block(number).getByRole('button', { name: number === 3 ? 'Heading actions' : 'Paragraph actions', exact: true }).isDisabled(), true);
     }
-    assert.equal(await page.locator('.edit-area').count(), 0);
+    assert.equal(await page.getByRole('dialog', { name: /^Repair Paragraph/ }).count(), 0);
     const heldCount = requests.length;
     await block(4).getByRole('button', { name: 'Explain full paragraph', exact: true }).click();
     await page.locator('.paragraph-explanation').getByText('FULL PARAGRAPH EXPLANATION · BLOCK 4', { exact: true }).waitFor();
@@ -248,8 +249,9 @@ async function run() {
     await waitFor(() => readPaper().blocks[0].status === 'ok', 'failed paragraph retry recovered');
 
     await bodyAction(1, 'Edit or Split...');
-    await block(1).getByRole('textbox', { name: 'Paragraph source', exact: true }).waitFor();
-    await block(1).getByRole('button', { name: 'Cancel', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: 'Repair Paragraph 1', exact: true });
+    await editor.getByRole('textbox', { name: 'Paragraph source', exact: true }).waitFor();
+    await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
     const beforeStructure = readPaper().blocks.map(item => ({ id: item.id, text: item.text }));
     await bodyAction(1, 'Merge with Next');
     await waitFor(() => readPaper().blocks.length === beforeStructure.length - 1, 'direct merge from action menu');

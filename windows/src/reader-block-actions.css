@@ -5,6 +5,7 @@
 .reader-heading-translate:hover:not(:disabled) { background: #dce9ff; }
 .reader-block-actions > button:focus-visible { outline: 2px solid #0a59d6; outline-offset: 2px; }
 .reader-actions-menu {
+  visibility: hidden;
   position: fixed;
   inset: auto;
   margin: 0;
@@ -19,6 +20,7 @@
   box-shadow: 0 6px 22px #12203330;
   font: 12px/1.4 "Segoe UI", sans-serif;
 }
+.reader-actions-menu[data-positioned="true"] { visibility: visible; }
 .reader-actions-menu::backdrop { background: transparent; }
 .reader-actions-menu > button {
   display: block;

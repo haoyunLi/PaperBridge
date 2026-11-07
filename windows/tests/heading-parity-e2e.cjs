@@ -160,8 +160,9 @@ async function run() {
     await page.locator('.paragraph-explanation').getByText('This heading introduces the paper summary.', { exact: true }).waitFor();
     await page.locator('#block-1').getByRole('button', { name: 'Heading actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split', exact: true }).click();
-    await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Split', exact: true }).waitFor();
-    await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Cancel', exact: true }).click();
+    const headingEditor = page.getByRole('dialog', { name: 'Repair Paragraph 1', exact: true });
+    assert.equal(await headingEditor.getByRole('textbox', { name: 'Paragraph source', exact: true }).inputValue(), 'Abstract');
+    await headingEditor.getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Late Paper block remains annotatable.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && window.getSelection()?.toString() === 'Fixed resource 14');
     await page.getByLabel('Paper display mode').selectOption('source');

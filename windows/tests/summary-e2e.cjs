@@ -87,7 +87,7 @@ async function run() {
       await page.locator('#block-1').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
       await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
       await page.getByRole('textbox', { name: 'Paragraph source' }).fill(`${opening}\n\nAn additional introductory paragraph.`);
-      await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Repair Paragraph 1', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     };
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));

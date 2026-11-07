@@ -356,7 +356,7 @@ async function run() {
     await back.click();
     await warning.waitFor();
     await warning.getByRole('button', { name: 'Edit or Split', exact: true }).click();
-    const qualityEditor = page.locator('#block-6 .edit-area');
+    const qualityEditor = page.getByRole('dialog', { name: 'Repair Paragraph 6', exact: true });
     assert.equal(await qualityEditor.getByRole('textbox', { name: 'Paragraph source' }).inputValue(), texts[5]);
     await qualityEditor.getByRole('button', { name: 'Cancel', exact: true }).click();
     await back.click();
@@ -364,8 +364,8 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-4').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
-    await page.locator('#block-4 .edit-area textarea').fill(`${blocks[3].text} Revised.`);
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Repair Paragraph 4', exact: true }).getByRole('textbox', { name: 'Paragraph source' }).fill(`${blocks[3].text} Revised.`);
+    await page.getByRole('dialog', { name: 'Repair Paragraph 4', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     assert.equal(await back.isDisabled(), true, 'a structure repair must clear Back');
     assert.equal(await forward.isDisabled(), true, 'a structure repair must clear Forward');
 

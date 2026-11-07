@@ -205,7 +205,7 @@ async function run() {
     await page.locator('#block-3').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.getByRole('textbox', { name: 'Paragraph source', exact: true }).fill('Unique search destination repaired. The study documents corrected source text.');
-    await page.getByRole('button', { name: 'Save edit', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Repair Paragraph 3', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     await waitFor(async () => await search().inputValue() === '' && (await firstBlock()) === 'block-3', 'source edit clears filter and reveals repaired block');
     await search().fill('Unique search destination');
     await undo.click();
