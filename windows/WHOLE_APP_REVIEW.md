@@ -6,6 +6,8 @@
 
 159 项单元测试通过，覆盖相同原稿与不同的同名 CSV、两套页码元数据、原稿损坏、资源丢失和旧路径歧义。RX 7800 XT 真机用 MinerU 4.1.7 对同一份两页 ResNet 扫描件分别执行 DirectML 和 CPU 兼容解析。两个结果各有 3 张引用图和 35 条页码提示，均与各自导出或恢复结果逐项相符。取消再次解析后仍使用最近接受的结果，重启后再导出一致。
 
+GitHub 发布通过 159 项单元测试、23 套桌面回归与打包启动检查。公开安装版和便携版的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开便携版从保存的解析结果恢复 35 条页码提示。0.2.12 安装版显示更新，升到 0.2.13 后恢复论文、高亮和笔记。测试卸载后保留隔离工作区，GitHub 首页下载入口已更新。 [Windows 0.2.13](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.13) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42324167113)
+
 ## 第五十四阶段：默认 Markdown 导出与结构化译稿（2026-11-07 UTC）
 
 对照 macOS 1.10.0 的 File 命令、快捷键和 More 入口。Windows 的 File、Ctrl+Shift+E、More 与检查器现在根据文档直接打开对应保存对话框。PDF 与结构化 MinerU 保存便携包，纯文本保存包含段落原译文、全文译稿、摘要、证据与标注的分析文件。More > Export Options 提供单文件及便携包选项。

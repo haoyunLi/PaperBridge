@@ -156,7 +156,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G02 | 导出逐段译文 Markdown | MinerU 及 PDF 便携译稿在未完成和失败的位置保留原文，结构化译稿保留原有资源与参考文献。 | 部分 | 单元测试覆盖正常、未完成、失败和资源段落。Windows 保留既有文件名和单文件选项。 |
 | G03 | 导出双语 Markdown | 结构化译文以标明目标语言的块引用接在原文后，标题保留 Markdown 层级。双语文件继续包含书签、高亮和笔记。 | 部分 | 已核对公式、HTML 表格图、引用和带片段的补充文件链接。更复杂布局仍待并排验收。 |
 | G04 | 导出摘要/笔记/证据 Markdown | 纯文本默认导出分析文件，包含段落原文和译文、全文译稿、摘要、证据、书签和注释。视图、原译文侧、页码、换段和需复核状态保留。 | 部分 | 默认文件保存和导出内容已回归。证据与注释还保留 Windows 的视图标签。 |
-| G05 | 资源 bundle、原 PDF、便携页面图片和全文译稿 | 文件菜单、Ctrl+Shift+E 和 More 直接打开对应的保存对话框。PDF 与 MinerU 默认导出便携包，文本默认保存单文件。MinerU 附件来自保存的解析结果，包内含原 PDF、前 120 页 PNG 和全文译稿。 | 部分 | 已验证 15 页论文、两页扫描、121 页上限及跨重启复用。真机切换 DirectML 和 CPU 后逐一核对图像，桌面测试覆盖两次同名附件、迟到结果和旧目录的唯一匹配。更多复杂文档仍待 Mac 并排验收。 |
+| G05 | 资源 bundle、原 PDF、便携页面图片和全文译稿 | 文件菜单、Ctrl+Shift+E 和 More 直接打开对应的保存对话框。PDF 与 MinerU 默认导出便携包，文本默认保存单文件。MinerU 附件来自保存的解析结果，包内含原 PDF、前 120 页 PNG 和全文译稿。 | 部分 | 已验证 15 页论文、两页扫描、121 页上限及跨重启复用。真机切换 DirectML 和 CPU 后逐一核对图像，桌面测试覆盖两次同名附件、迟到结果和旧目录的唯一匹配。MinerU 4.x ZIP 内的非图像附件仍需保留。 |
 | G06 | 首次启动分步引导；可重新打开 | 首次启动六步 Getting Started：Ollama、翻译模型、MinerU、解释模型及就绪检查；Settings 与 Help 可重开，可跳过并记录完成状态 | 部分 | 六步、跨启动页码恢复、跳过/重开、忙时焦点和关闭锁、保存去重、练习文档及 980×620/1320×820 布局已通过 Electron 验证；仍需更多 DPI 和 Mac 实机并排对照。 |
 | G07 | 自动检测/启动/安装 Ollama | AI 任务可直达本地检测和安装，默认只选 Ollama 与任务模型。自定义地址不可达时进入 Models 检查。通用 Setup 仍可单独选择 MinerU | 部分 | AMD 真机验证缺模型检测和选择已安装替代模型。安装及组件选择有 Electron 回归，其他硬件仍待验收。 |
 | G08 | 自动发现、下载并选择模型 | 六步引导及 Settings > Local AI 都提供 TranslateGemma 4B/12B/27B 和六个可选助手模型卡片、内存建议、下载/选择/取消；下载状态跨设置分页保持可见 | 部分 | 九张卡、角色继承、四任务模型、下载取消/重试、跨论文/端点迟到结果隔离及重启恢复已通过 Electron 回归；12B/27B 等大模型仍需实际下载及更多内存配置验证。 |
@@ -165,8 +165,8 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G11 | 后台下载及进度、取消 | 引导与 SetupPanel 显示进度及取消。验证阶段退出或中断可恢复旧版；已验证的新版可保留。检测会避开其他实例正在修复的环境。 | 部分 | AMD 真机验证正常退出、预下载取消及验证前后强制终止，随后用 DirectML 解析双页扫描。整机断电和其他设备仍待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单。Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E/F/S 及旧 Ctrl+L。菜单项随论文、任务、选区和更新检查状态动态启停。 | 部分 | 单元和 Electron 覆盖空白页、论文、选区、忙碌任务、专注与左侧栏、撤销及重开引导。其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
-| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 公开安装版 0.2.10 检测到 0.2.11，安装新版后显示已是当前版本。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 两个 0.2.11 下载均通过 SHA-256 核对。0.2.10 检测到更新并升级，保留论文和标注。0.2.11 便携版通过 AMD 翻译、PDF 缩放、专注和重启恢复。发布包当前未签名。 |
+| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 公开安装版 0.2.12 检测到 0.2.13，安装新版后显示已是当前版本。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 0.2.13 的两个公开下载均通过 SHA-256 核对。0.2.12 检测到更新并升级，保留论文和标注。0.2.13 便携版恢复了 MinerU 的原页定位。发布包当前未签名。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 
