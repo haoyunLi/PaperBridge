@@ -32,7 +32,7 @@ async function run() {
   if (!workspace.startsWith(artifacts + path.sep)) throw new Error('Unexpected import test workspace');
   fs.rmSync(workspace, { recursive: true, force: true }); fs.mkdirSync(workspace, { recursive: true });
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: 'mineruOnly' }));
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   const page = await app.firstWindow();
   const drop = async (name, text) => page.evaluate(({ name, bytes }) => {
     const file = new File([new Uint8Array(bytes)], name, { type: 'application/pdf' });
@@ -94,9 +94,49 @@ async function run() {
     await page.getByRole('heading', { name: 'delayed-import.pdf', exact: true }).waitFor();
     await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
     assert.equal(await page.locator('.import-progress-card').getByText(/previous paper.*remain unchanged/i).isVisible(), true);
+
+    // A long import must not trap the user behind the narrow-window sidebar.
+    // Resize the actual isolated Electron window, not just screenshot coordinates.
+    const previousWindow = await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      const previous = { contentSize: window.getContentSize(), minimumSize: window.getMinimumSize(), zoom: window.webContents.getZoomFactor() };
+      window.setMinimumSize(0, 0);
+      window.webContents.setZoomFactor(1);
+      window.setContentSize(780, 620);
+      return previous;
+    });
+    await page.waitForFunction(() => Math.abs(innerWidth - 780) <= 2 && Math.abs(innerHeight - 620) <= 2);
+    const sidebar = page.locator('#document-sidebar');
+    const closeSidebar = page.getByRole('button', { name: 'Close Document Sidebar', exact: true });
+    const cancelImport = page.getByRole('button', { name: 'Cancel Import', exact: true });
+    assert.equal(await closeSidebar.isEnabled(), true, 'Importing must still allow closing the overlaid sidebar');
+    await closeSidebar.click();
+    await sidebar.waitFor({ state: 'hidden' });
+    assert.equal(await cancelImport.evaluate(node => document.activeElement === node), true,
+      'Closing the sidebar during import returns keyboard focus to Cancel Import');
+    assert.equal(await page.locator('.app').evaluate(node => node.classList.contains('importing')), true,
+      'Hiding navigation must not cancel the active parsing task');
+    assert.equal(await page.getByRole('heading', { name: 'delayed-import.pdf', exact: true }).isVisible(), true);
+    assert.equal(await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).isVisible(), true);
+    assert.equal(await app.evaluate(() => globalThis.__mineruImports.length), 1, 'The same held MinerU request remains active');
+    const whileSidebarClosed = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    assert.equal(whileSidebarClosed.id, before.id);
+    assert.deepEqual(whileSidebarClosed.blocks, before.blocks, 'Sidebar dismissal must preserve the old source, translation and bookmark data');
+    assert.equal(whileSidebarClosed.blocks[0].bookmark, true);
+    assert.equal(fs.readdirSync(path.join(workspace, 'papers')).filter(name => name.endsWith('.json')).length, 1);
+
     await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
     await page.locator('.import-progress-screen').waitFor({ state: 'detached' });
     await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Show Document Sidebar', exact: true }).click();
+    await sidebar.waitFor({ state: 'visible' });
+    assert.equal(await closeSidebar.isVisible(), true, 'The sidebar can be reopened after cancellation');
+    await app.evaluate(({ BrowserWindow }, previous) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.setMinimumSize(...previous.minimumSize);
+      window.webContents.setZoomFactor(previous.zoom);
+      window.setContentSize(...previous.contentSize);
+    }, previousWindow);
     await drop('strict-empty.pdf', 'A strict import must keep the previous paper.');
     await page.getByRole('heading', { name: 'strict-empty.pdf', exact: true }).waitFor();
     await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
@@ -213,7 +253,7 @@ async function run() {
     assert.equal(await app.evaluate(() => globalThis.__mineruStatusCalls), probes, 'PDF-only imports should not probe MinerU');
     await page.locator('.library-row').filter({ hasText: /^fallback\.pdf/ }).click();
     await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
-    console.log('Import verified: strict and fallback modes, PDF-only page preparation, and accepted MinerU resources isolated from rejected or stale output.');
+    console.log('Import verified: narrow sidebar dismissal preserves the active parser and old annotations, Cancel Import focus and reopening, strict and fallback modes, PDF-only page preparation, and accepted MinerU resources isolated from rejected or stale output.');
   } finally { await app.close().catch(() => {}); }
 }
 

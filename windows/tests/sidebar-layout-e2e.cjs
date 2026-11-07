@@ -54,6 +54,7 @@ async function run() {
   let minimumWidthBrand;
   let phase = 'launch';
   const samples = [];
+  const overlayChecks = [];
   const rendererErrors = [];
   const fail = (error, label) => {
     failure ||= error;
@@ -75,12 +76,19 @@ async function run() {
     try { fs.writeFileSync(path.join(workspace, filename), JSON.stringify(state, null, 2)); }
     catch (error) { console.error(`[sidebar-layout] Cannot save diagnostics: ${error.message}`); }
   };
+  const captureNative = async name => {
+    const png = await bounded(`${phase}: native client screenshot`, app.evaluate(async ({ BrowserWindow }) =>
+      (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64')), 10000);
+    fs.writeFileSync(path.join(workspace, name), Buffer.from(png, 'base64'));
+  };
   try {
-    app = await electron.launch({ args: ['.'], cwd: root,
+    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
-    page = await app.firstWindow();
+    page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.on('pageerror', error => { rendererErrors.push(error.message); console.error(`Sidebar renderer error: ${error.stack || error}`); });
     page.setDefaultTimeout(15000);
+    assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomFactor()), 1,
+      'the isolated Chromium profile starts at 100% zoom');
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1);
       const hardware = { adapters: [], cudaDriver: null, cudaVersion: null, totalMemoryGB: 16 };
@@ -102,12 +110,84 @@ async function run() {
     const sidebar = page.locator('#document-sidebar');
     const scroll = sidebar.locator('.sidebar-scroll');
     const library = sidebar.getByRole('button', { name: 'Paper Library', exact: true });
+    const closeSidebar = sidebar.getByRole('button', { name: 'Close Document Sidebar', exact: true });
+    const showSidebar = page.getByRole('button', { name: 'Show Document Sidebar', exact: true });
+    const nativeZoom = async zoom => {
+      cdp ||= await page.context().newCDPSession(page);
+      await bounded('clear viewport emulation', cdp.send('Emulation.clearDeviceMetricsOverride'), 3000);
+      await bounded('resize native client and set zoom', app.evaluate(({ BrowserWindow }, zoom) => {
+        const window = BrowserWindow.getAllWindows()[0];
+        window.setContentSize(980, 620); window.webContents.setZoomFactor(zoom);
+      }, zoom), 3000);
+      await page.waitForFunction(zoom => Math.abs(innerWidth - 980 / zoom) <= 1 &&
+        Math.abs(innerHeight - 620 / zoom) <= 1, zoom);
+    };
+    const mouseCenter = async (button, label) => {
+      await button.waitFor({ state: 'visible' });
+      assert.equal(await button.isEnabled(), true, `${label} is enabled`);
+      const box = await button.boundingBox();
+      assert.ok(box && box.width > 0 && box.height > 0, `${label} has a visible hit target`);
+      const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+      const hit = await bounded('mouse target hit test', page.evaluate(point => ({ width: innerWidth, height: innerHeight,
+        label: document.elementFromPoint(point.x, point.y)?.closest('button')?.getAttribute('aria-label') }), point), 3000);
+      assert.ok(point.x >= 0 && point.x < hit.width && point.y >= 0 && point.y < hit.height, JSON.stringify({ box, hit }));
+      assert.equal(hit.label, label, `${label} must receive a real mouse click at its center`);
+      await bounded(`${label}: mouse click`, page.mouse.click(point.x, point.y), 5000);
+    };
+    const sidebarState = () => bounded('sidebar and reading state', page.evaluate(() => ({
+      draft: document.querySelector('.sidebar-paste textarea')?.value,
+      sidebarScroll: document.querySelector('.sidebar-scroll').scrollTop,
+      paperId: document.querySelector('.main-scroll')?.dataset.readingPaperId || '',
+      readerScroll: document.querySelector('.main-scroll')?.scrollTop || 0,
+      selected: document.querySelector('.document-outline [aria-current="location"]')?.dataset.paragraphId || null
+    })), 3000);
+    const assertPreserved = async before => {
+      const after = await sidebarState();
+      assert.equal(after.draft, before.draft, 'closing or focusing never clears the paste draft');
+      assert.equal(after.paperId, before.paperId, 'the selected document remains open');
+      assert.equal(after.selected, before.selected, 'the selected outline paragraph remains current');
+      assert.ok(Math.abs(after.sidebarScroll - before.sidebarScroll) <= 1, `sidebar scroll is retained: ${JSON.stringify({ before, after })}`);
+      assert.ok(Math.abs(after.readerScroll - before.readerScroll) <= 1, `reading scroll is retained: ${JSON.stringify({ before, after })}`);
+      return after;
+    };
+    const closeWithMouse = async () => {
+      const fixed = await closeSidebar.evaluate(button => {
+        const box = button.getBoundingClientRect(), host = document.querySelector('.sidebar-scroll').getBoundingClientRect();
+        return { outsideScroll: !button.closest('.sidebar-scroll'), top: box.top, bottom: box.bottom,
+          scrollTop: host.top, scrollBottom: host.bottom, viewportHeight: innerHeight };
+      });
+      assert.equal(fixed.outsideScroll, true, 'the close control stays outside the scrolling sidebar content');
+      assert.ok(fixed.top >= 0 && fixed.bottom <= fixed.scrollTop + 1 && fixed.scrollBottom <= fixed.viewportHeight + 1, JSON.stringify(fixed));
+      await mouseCenter(closeSidebar, 'Close Document Sidebar');
+      await sidebar.waitFor({ state: 'hidden' });
+      await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Show Document Sidebar');
+    };
+    const closeAndReopen = async label => {
+      const before = await sidebarState();
+      await closeWithMouse();
+      await mouseCenter(showSidebar, 'Show Document Sidebar');
+      await sidebar.waitFor({ state: 'visible' });
+      overlayChecks.push({ label, before, after: await assertPreserved(before) });
+    };
     const emptyOrder = await sidebar.evaluate(host => {
       const library = host.querySelector('.sidebar-library-button');
       const source = host.querySelector('.side-primary');
       return Boolean(source && (library.compareDocumentPosition(source) & Node.DOCUMENT_POSITION_FOLLOWING));
     });
     assert.equal(emptyOrder, true, 'The empty sidebar must show Paper Library before Source, like macOS');
+    assert.equal(await closeSidebar.isVisible(), false, 'wide windows use the ordinary header sidebar switch');
+    phase = 'empty welcome at native 980x620 and 200% zoom';
+    await nativeZoom(2);
+    await sidebar.locator('.sidebar-paste > summary').click();
+    const emptyDraft = 'An unimported welcome draft survives closing the sidebar.';
+    await sidebar.getByRole('textbox', { name: 'Paste text', exact: true }).fill(emptyDraft);
+    await sidebar.locator('.sidebar-footer').getByRole('button', { name: 'Saved Terminology', exact: true }).scrollIntoViewIfNeeded();
+    assert.ok(await scroll.evaluate(host => host.scrollTop > 0), 'the empty sidebar is scrolled down before closing');
+    await closeAndReopen('empty welcome after scrolling to footer');
+    assert.equal(await page.locator('.welcome').isVisible(), true);
+    await captureNative('sidebar-welcome-overlay-zoom200.png');
+    await nativeZoom(1);
+    assert.equal(await closeSidebar.isVisible(), false);
     await library.click();
     await page.getByRole('dialog').waitFor();
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
@@ -179,20 +259,17 @@ async function run() {
     // Restore the ordinary 264px width using the same accessible control before the existing zoom cases.
     for (let step = 0; step < 3; step++) await sidebarSplitter.press('ArrowRight');
     await waitFor(async () => await sidebarSplitter.getAttribute('aria-valuenow') === '264', 'keyboard restores the standard sidebar width');
+    const loadedDraft = 'An unimported draft stays with the workspace while reading the saved document.';
+    await sidebar.locator('.document-details > summary').click();
+    await sidebar.locator('.sidebar-paste > summary').click();
+    await sidebar.getByRole('textbox', { name: 'Paste text', exact: true }).fill(loadedDraft);
+    await sidebar.locator('.document-details > summary').click();
     for (const zoom of [1, 2]) {
       phase = `sidebar ${zoom * 100}% zoom`;
       console.log(`Checking sidebar at 980x620 with ${zoom * 100}% zoom`);
-      if (zoom === 2) {
-        // Clear Playwright emulation so this is a genuine 980x620 Electron client at 200% page zoom.
-        cdp = await page.context().newCDPSession(page);
-        await cdp.send('Emulation.clearDeviceMetricsOverride');
-        await app.evaluate(({ BrowserWindow }) => {
-          const window = BrowserWindow.getAllWindows()[0];
-          window.setContentSize(980, 620);
-          window.webContents.setZoomFactor(2);
-        });
-        await page.waitForFunction(() => innerWidth >= 489 && innerWidth <= 491 && innerHeight >= 309 && innerHeight <= 311);
-      }
+      // Use the real native client for both samples, with no Playwright viewport emulation.
+      await nativeZoom(zoom);
+      assert.equal(await closeSidebar.isVisible(), zoom === 2, 'the in-sidebar close button is limited to overlay widths');
       await scroll.evaluate(host => { host.scrollTop = 0; });
       const top = await sidebar.locator('.brand').boundingBox();
       await visibleWithinSidebar(library);
@@ -219,6 +296,34 @@ async function run() {
       assert.ok(top.y - bottom.y > 100, 'The brand must scroll away instead of reserving a fixed header');
       assert.equal(await sidebar.locator('.brand').evaluate(node => node.parentElement.classList.contains('sidebar-scroll')), true);
       assert.equal(await sidebar.locator('.sidebar-footer').evaluate(node => node.parentElement.classList.contains('sidebar-scroll')), true);
+      if (zoom === 2) {
+        phase = 'loaded overlay after reaching footer';
+        const before = await sidebarState();
+        assert.equal(before.paperId, id); assert.equal(before.selected, '55'); assert.equal(before.draft, loadedDraft);
+        assert.ok(before.sidebarScroll > 100);
+        await closeAndReopen('loaded document after scrolling to footer');
+        phase = 'overlay close and Focus Reading transitions';
+        await closeWithMouse();
+        await mouseCenter(page.getByRole('button', { name: 'Focus Reading', exact: true }), 'Focus Reading');
+        await page.locator('.app.focus').waitFor();
+        assert.equal(await sidebar.isVisible(), false);
+        await mouseCenter(page.getByRole('button', { name: 'Exit Focus Reading', exact: true }), 'Exit Focus Reading');
+        await page.locator('.app.focus').waitFor({ state: 'detached' });
+        assert.equal(await sidebar.isVisible(), false, 'normal focus exit respects the previously closed sidebar');
+        await mouseCenter(showSidebar, 'Show Document Sidebar');
+        await sidebar.waitFor({ state: 'visible' });
+        await assertPreserved(before);
+        // The header's Show action also exits Focus and reopens the same overlay.
+        await closeWithMouse();
+        await mouseCenter(page.getByRole('button', { name: 'Focus Reading', exact: true }), 'Focus Reading');
+        await page.locator('.app.focus').waitFor();
+        await mouseCenter(showSidebar, 'Show Document Sidebar');
+        await page.locator('.app.focus').waitFor({ state: 'detached' });
+        await sidebar.waitFor({ state: 'visible' });
+        await assertPreserved(before);
+        await closeAndReopen('loaded document after leaving Focus through Show Sidebar');
+        await captureNative('sidebar-loaded-overlay-zoom200.png');
+      }
       for (const name of ['Local AI setup', 'Settings', 'Saved Terminology']) {
         phase = `${zoom * 100}% zoom: ${name}`;
         const button = sidebar.locator('.sidebar-footer').getByRole('button', { name, exact: true });
@@ -253,7 +358,7 @@ async function run() {
       assert.equal(native.zoom, zoom);
       if (zoom === 2) assert.ok(Math.abs(native.contentSize[0] - 980) <= 1 && Math.abs(native.contentSize[1] - 620) <= 1);
       samples.push({ zoom, overflow, native, brandScroll: top.y - bottom.y });
-      await bounded('sidebar screenshot', page.screenshot({ path: path.join(workspace, `sidebar-980x620-zoom${zoom * 100}.png`), timeout: 10000 }), 12000);
+      await captureNative(`sidebar-980x620-zoom${zoom * 100}.png`);
     }
     assert.equal(generationRequests, 0);
     assert.deepEqual(rendererErrors, []);
@@ -261,7 +366,7 @@ async function run() {
   } catch (error) {
     fail(error, phase); // Print the original error before any screenshot or diagnostic call can stall.
     await diagnostics('failure-diagnostics.json');
-    if (page && !page.isClosed()) await bounded('failure screenshot', page.screenshot({ path: path.join(workspace, 'failure.png'), timeout: 5000 }), 6000)
+    if (page && !page.isClosed()) await captureNative('failure.png')
       .catch(cause => console.error(`[sidebar-layout] Screenshot failed: ${cause.message}`));
   } finally {
     if (cdp) await bounded('CDP detach', cdp.detach(), 3000).catch(error => fail(error, 'cleanup'));
@@ -290,8 +395,8 @@ async function run() {
     await bounded('mock server close', new Promise(resolve => ollama.close(resolve)), 3000).catch(error => fail(error, 'cleanup'));
   }
   if (failure) throw failure;
-  fs.writeFileSync(path.join(workspace, 'results.json'), JSON.stringify({ minimumWidthBrand, samples }, null, 2));
-  console.log(`Sidebar layout passed: shared scroll, empty-state order, outline/import controls, footer dialogs, search, 980x620 and 200% zoom. Artifacts: ${workspace}`);
+  fs.writeFileSync(path.join(workspace, 'results.json'), JSON.stringify({ minimumWidthBrand, samples, overlayChecks }, null, 2));
+  console.log(`Sidebar layout passed: shared scroll, empty-state order, outline/import controls, footer dialogs, search, native 980x620 at 200% zoom, mouse close/reopen, focus restoration and retained drafts/reading positions. Artifacts: ${workspace}`);
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });

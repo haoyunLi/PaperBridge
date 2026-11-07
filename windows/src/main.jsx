@@ -1038,6 +1038,7 @@ function App() {
   const pullRef = useRef(false);
   const [setupProgress, setSetupProgress] = useState(null);
   const searchRef = useRef(null);
+  const sidebarToggleRef = useRef(null);
   const taskRef = useRef(null);
   const selectionRef = useRef(null);
   selectionRef.current = selection;
@@ -3087,6 +3088,12 @@ function App() {
     {sidebar && !focus && !modal && <WorkspaceSplitter panel="sidebar" width={sidebarWidth} onResize={setSidebarWidth} />}
     {inspector && !focus && !modal && !pendingImport && !compactInspector && <WorkspaceSplitter panel="inspector" width={inspectorWidth} onResize={setInspectorWidth} />}
     <aside id="document-sidebar" className="sidebar" inert={Boolean(modal)}>
+      <div className="sidebar-overlay-bar"><span>Document</span><button type="button" aria-label="Close Document Sidebar" aria-controls="document-sidebar"
+        title={readingLayoutAvailable ? 'Close document sidebar · Ctrl+Alt+S' : 'Close document sidebar'} onClick={() => {
+          toggleDocumentSidebar();
+          const target = pendingImport ? mainScrollRef.current?.querySelector('.import-progress-screen button') : sidebarToggleRef.current;
+          target?.focus({ preventScroll: true });
+        }}><X size={16} /> Close</button></div>
       <div className="sidebar-scroll">
         <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
         <button className="sidebar-library-button" title="Open library" disabled={Boolean(pendingImport)} onClick={() => setModal('library')}><Library size={16} /> Paper Library</button>
@@ -3114,7 +3121,7 @@ function App() {
       </div>
     </aside>
     <main className="workspace" inert={Boolean(modal)}>
-      <header className="header"><div className="title-row"><button className="icon-button panel-toggle" title="Toggle sidebar" aria-label={sidebar && !focus ? "Hide Document Sidebar" : "Show Document Sidebar"} aria-keyshortcuts="Control+Alt+S" disabled={Boolean(pendingImport)} onClick={toggleDocumentSidebar}>{sidebar && !focus ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1 title={pendingImport?.name || paper?.name || 'PaperBridge'}>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsed}s elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaStatus === 'ready' ? 'Ollama Ready' : ollamaStatus === 'unavailable' ? 'Ollama unavailable' : 'Check Ollama'}</div>
+      <header className="header"><div className="title-row"><button ref={sidebarToggleRef} aria-controls="document-sidebar" aria-expanded={sidebar && !focus} className="icon-button panel-toggle" title="Toggle sidebar" aria-label={sidebar && !focus ? "Hide Document Sidebar" : "Show Document Sidebar"} aria-keyshortcuts="Control+Alt+S" disabled={Boolean(pendingImport)} onClick={toggleDocumentSidebar}>{sidebar && !focus ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1 title={pendingImport?.name || paper?.name || 'PaperBridge'}>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsed}s elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaStatus === 'ready' ? 'Ollama Ready' : ollamaStatus === 'unavailable' ? 'Ollama unavailable' : 'Check Ollama'}</div>
         {paper && <button className="icon-button" aria-label={focus ? 'Exit Focus Reading' : 'Focus Reading'} aria-keyshortcuts="Control+Alt+F"
           title={`${focus ? 'Exit Focus Reading' : 'Focus Reading'} · Ctrl+Alt+F`} disabled={Boolean(pendingImport)} onClick={toggleFocus}>
           {focus ? <Minimize2 size={18} /> : <Maximize2 size={18} />}

@@ -17,7 +17,7 @@ function paperId(text) { return crypto.createHash('sha256').update(text.trim()).
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    try { if (predicate()) return; } catch { /* Paper may still be saving. */ }
+    try { if (await predicate()) return; } catch { /* Paper may still be saving. */ }
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   throw new Error(`Timed out waiting for ${label}`);
@@ -73,9 +73,20 @@ async function assertSettings(page, source, target, model, appearance) {
   await closeSettings(page);
 }
 
-async function openByBlocks(page, count, distinctiveText) {
+async function waitForPaper(page, id, distinctiveText) {
+  // The inline paste draft can contain the destination text while the old
+  // paper is still waiting for its load IPC. Check identity and layout first.
+  await page.waitForFunction(id => {
+    const host = document.querySelector('.main-scroll');
+    return host?.dataset.readingPaperId === id && host.getAttribute('aria-busy') === 'false';
+  }, id, { timeout: 15000 });
+  await page.locator('.main-scroll').locator('.source-text, .paper-preview-source')
+    .filter({ hasText: distinctiveText }).first().waitFor({ state: 'visible' });
+}
+
+async function openByBlocks(page, count, id, distinctiveText) {
   await page.locator('.library-row').filter({ hasText: `${count} blocks` }).click();
-  await page.getByText(distinctiveText, { exact: false }).first().waitFor();
+  await waitForPaper(page, id, distinctiveText);
 }
 
 async function waitForSavedExplanation(page) {
@@ -115,10 +126,10 @@ async function run() {
   const paperPath = text => path.join(workspace, 'papers', `${paperId(text)}.json`);
   const readPaper = text => JSON.parse(fs.readFileSync(paperPath(text), 'utf8'));
   const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
-  let app;
+  let app, page;
   try {
     app = await launch();
-    let page = await app.firstWindow();
+    page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.waitForSelector('.welcome', { timeout: 20000 });
 
@@ -196,14 +207,53 @@ async function run() {
     const appearance = { fontSize: '24', lineSpacing: '12', readingWidth: '1200' };
     await waitFor(() => readPaper(textB).taskSettings?.translationModel === modelB, 'paper B task settings');
     await waitFor(() => readPaper(textB).inspectorOpen === true && Object.values(readPaper(textB).paragraphExplanations || {}).some(result => result.language === 'German' && result.output === 'Saved paragraph explanation'), 'paper B explanation and inspector');
-    await openByBlocks(page, 2, 'Paper A describes');
+    await openByBlocks(page, 2, paperId(textA), 'Paper A describes');
     assert.equal(await page.locator('.inspector').isVisible(), false);
     await assertSettings(page, 'English', 'Simplified Chinese', modelA, appearance);
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'French');
     await waitForSavedExplanation(page);
     await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
-    await openByBlocks(page, 3, 'Paper B describes');
+    // Hold the real destination response to reproduce the CI race: B's text
+    // already matches the retained paste draft, but A is still displayed.
+    await app.evaluate(({ ipcMain }, destinationId) => {
+      const original = ipcMain._invokeHandlers.get('paper:load');
+      if (!original) throw new Error('Missing production paper:load handler');
+      const state = globalThis.__paperSettingsHeldLoad = { original, used: false, release: null };
+      ipcMain.removeHandler('paper:load');
+      ipcMain.handle('paper:load', async (event, id) => {
+        const snapshot = await original(event, id);
+        if (id !== destinationId || state.used) return snapshot;
+        state.used = true;
+        return new Promise(resolve => { state.release = () => resolve(snapshot); });
+      });
+    }, paperId(textB));
+    let reopeningFinished = false;
+    const reopening = openByBlocks(page, 3, paperId(textB), 'Paper B describes').then(
+      () => { reopeningFinished = true; return null; },
+      error => { reopeningFinished = true; return error; }
+    );
+    try {
+      await waitFor(() => app.evaluate(() => typeof globalThis.__paperSettingsHeldLoad?.release === 'function'), 'held paper B load');
+      const legacyMatch = page.getByText('Paper B describes', { exact: false }).first();
+      await legacyMatch.waitFor({ state: 'visible', timeout: 3000 });
+      assert.equal(await legacyMatch.evaluate(node => node.tagName), 'TEXTAREA', 'the old page-wide wait already matches the retained paste draft');
+      assert.equal(await page.locator('.paste-area').inputValue(), textB);
+      assert.equal(await page.locator('.main-scroll').getAttribute('data-reading-paper-id'), paperId(textA));
+      assert.equal(await page.locator('.main-scroll .source-text').filter({ hasText: 'Paper A describes' }).isVisible(), true);
+      assert.equal(await page.locator('.inspector').isVisible(), false, 'paper A remains visible until the held paper B load finishes');
+      assert.equal(reopeningFinished, false, 'the corrected helper must not resolve from the paste draft');
+    } finally {
+      await app.evaluate(({ ipcMain }) => {
+        const state = globalThis.__paperSettingsHeldLoad;
+        ipcMain.removeHandler('paper:load');
+        ipcMain.handle('paper:load', state.original);
+        state.release?.();
+        delete globalThis.__paperSettingsHeldLoad;
+      });
+    }
+    const reopeningError = await reopening;
+    if (reopeningError) throw reopeningError;
     assert.equal(await page.locator('.inspector').isVisible(), true);
     await assertSettings(page, 'Japanese', 'English', modelB, appearance);
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'German');
@@ -214,7 +264,7 @@ async function run() {
     const library = page.getByRole('dialog', { name: 'Paper Library', exact: true });
     await library.getByRole('button', { name: /\b\d+\/2 translated\b/ }).click();
     await library.waitFor({ state: 'hidden' });
-    await page.getByText('Paper A describes', { exact: false }).first().waitFor();
+    await waitForPaper(page, paperId(textA), 'Paper A describes');
     await page.getByRole('button', { name: 'Exit Focus Reading', exact: true }).click();
     assert.equal(await page.locator('.sidebar').isVisible(), true);
     assert.equal(await page.locator('.inspector').isVisible(), false, 'Exiting focus on another paper must use its own saved inspector setting');
@@ -224,14 +274,14 @@ async function run() {
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.locator('.library-row').first().waitFor({ timeout: 20000 });
-    await openByBlocks(page, 2, 'Paper A describes');
+    await openByBlocks(page, 2, paperId(textA), 'Paper A describes');
     assert.equal(await page.locator('.inspector').isVisible(), false);
     await assertSettings(page, 'English', 'Simplified Chinese', modelA, appearance);
     await page.locator('button[title="Toggle inspector"]').click();
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'French');
     await waitForSavedExplanation(page);
     await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
-    await openByBlocks(page, 3, 'Paper B describes');
+    await openByBlocks(page, 3, paperId(textB), 'Paper B describes');
     assert.equal(await page.locator('.inspector').isVisible(), true);
     await assertSettings(page, 'Japanese', 'English', modelB, appearance);
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'German');
@@ -245,8 +295,8 @@ async function run() {
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.locator('.library-row').first().waitFor({ timeout: 20000 });
-    await openByBlocks(page, 3, 'Paper B describes');
-    await openByBlocks(page, 2, 'Paper A describes');
+    await openByBlocks(page, 3, paperId(textB), 'Paper B describes');
+    await openByBlocks(page, 2, paperId(textA), 'Paper A describes');
     await page.waitForFunction(() => document.querySelector('.title-wrap p')?.textContent?.includes('Japanese → English'));
     assert.equal(await page.locator('.block').count(), 2);
     await page.locator('button[title="Toggle inspector"]').click();
@@ -372,7 +422,24 @@ async function run() {
     assert.equal(readSettings().pdfExtractionMode, 'pdfOnly');
     assert.equal(readPaper(textA).blocks[1].translation, original.translation);
 
-    console.log('Paper task settings and explanations restored; additive appearance persists globally, legacy proportional spacing survives unrelated saves and restart, and explicit conversion/reset preserve paper work.');
+    console.log('Paper task settings and explanations restored after destination load despite a matching paste draft; additive appearance persists globally, legacy proportional spacing survives unrelated saves and restart, and explicit conversion/reset preserve paper work.');
+  } catch (error) {
+    if (page && !page.isClosed()) {
+      const snapshot = await page.locator('body').evaluate(() => {
+        const main = document.querySelector('.main-scroll');
+        const inspector = document.querySelector('.inspector');
+        return { paperId: main?.dataset.readingPaperId, layoutBusy: main?.getAttribute('aria-busy'),
+          tab: document.querySelector('.tabs button.active')?.textContent,
+          title: document.querySelector('.title-wrap h1')?.textContent,
+          subtitle: document.querySelector('.title-wrap p')?.textContent,
+          selectedLibrary: document.querySelector('.library-row.selected')?.textContent,
+          mainText: main?.textContent?.slice(0, 1000), pasteDraft: document.querySelector('.paste-area')?.value,
+          inspector: inspector ? { display: getComputedStyle(inspector).display, rects: inspector.getClientRects().length } : null };
+      }, null, { timeout: 5000 }).catch(cause => ({ diagnosticError: cause.message }));
+      fs.writeFileSync(path.join(workspace, 'failure-diagnostics.json'), JSON.stringify({ error: error.stack, snapshot }, null, 2));
+      await page.screenshot({ path: path.join(workspace, 'failure.png'), timeout: 5000 }).catch(() => {});
+    }
+    throw error;
   } finally {
     await app?.close();
     ollama.close();
