@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第八十二阶段：Windows 0.2.20 发布候选（2026-11-07 UTC）
+
+当前候选包含第 80–81 阶段的长段分块和独立图书馆索引。版本已升至 0.2.20；此前源码提交为 `8c59aaf88c5e700039b4351e576f2a926685129b`，本地 273 项单元、全部 36 套桌面流程及打包启动已验证，实际 ASAR 中 dist/electron 共 84 个文件与最终源码/构建文件字节一致。尚待本候选的标签 CI、公开下载文件校验、0.2.19→0.2.20 实际升级与公开便携版新功能验收，不能把本地候选当作已验证的公开包。
+
+准备的隔离验收脚本及范围见 `test-artifacts/release-0220-verification-plan.md`。旧升级输入固定使用公开 0.2.19 Setup SHA-256 `0683caaf7aa46d1bac982c52dc2938573bd5dcbe32d35fd5a910326cae4b78cc`；0.2.20 哈希必须从实际发布文件、校验文件及 GitHub digest 核对。便携新功能流程将通过真实菜单验证两次有界 Markdown 请求，以及标签独立保存、真实双副本损坏、重启和同 ID 原文重导；受控模型输出不作为 AMD 翻译质量证据。公开 0.2.19 的真实 AMD 新推理仍只属于上一版本。
+
 ## 第八十一阶段：独立图书馆索引与损坏工作区恢复（2026-11-07 UTC，开发分支）
 
 上一阶段 `88f6d026bee66cc76e7b2d59b0283195ac171291` 已通过 [GitHub CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42356647724) 的 266 项单元、36 套桌面和打包启动。继续对照 Mac `WorkspaceStore.library.json` 与 `openLibraryPaper/updateLibraryMetadata`，发现 Windows 同时损坏论文正文 JSON 和备份时会丢失图书馆条目及标签。现在新增独立 `library-index.json`，可读旧论文自动建立索引；正文不可读或缺失时保留标题、标签和最后可用计数，显示 Workspace unavailable，并保留当前正在阅读的其它论文。点击无法读取的条目会提示重新导入原文。
