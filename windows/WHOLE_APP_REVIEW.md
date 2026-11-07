@@ -1,5 +1,15 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第七十九阶段：Windows 0.2.19 发布与升级验收（2026-11-07 UTC，候选准备）
+
+版本与 lockfile 已更新至 0.2.19，包含第 76–78 阶段的独立段落选择、输出语言归属与导出命名、批注列表和删除/结构 Undo 改进。上一提交 `d0b1956` 已在 [完整 GitHub 检查](https://github.com/haoyunLi/PaperBridge/actions/runs/42353367598)通过 259 项单元、36 套桌面、Setup/Portable 构建及打包启动；版本更新后 259 项单元、更新提示的真实重启回归、Setup/Portable 构建及打包首次启动再次通过。两份本地候选包 ProductVersion 为 0.2.19，Authenticode 状态为 NotSigned。
+
+本阶段先验证候选提交，再让 `windows-v0.2.19` 标签触发发布工作流。公开资产出现后，分别下载 Setup 与 Portable，核对 SHA-256、GitHub digest、字节数及 ProductVersion，再用实际下载的文件进行隔离验收。旧升级输入必须来自已核验的公开 0.2.18（Setup SHA-256 `24edf0f8a5620e6e9d55ba05b54611ff79ddf335a1c98f35543d2a5d621c70fb`）；`release/` 中同名开发构建不代表旧公开包。
+
+验收脚本已准备并交叉复核，静态检查和五类合成夹具的纯数据验证通过，尚未执行公开 0.2.19 下载、安装或 UI 验收。真实旧版 UI 创建的数据与旧应用退出后才加入的合成新字段夹具分别记录。计划检查公开更新提示、注释/设置保留、独立选择和视口、已知/未知/矛盾语言及缓存、批注删除/撤销、完整重启和卸载后数据保留；Portable 另复核真实论文原有 AMD 译文与 PDF 字节。没有把静态检查或源代码 e2e 当成公开安装包验收。
+
+当前公开下载仍为 0.2.18；0.2.19 发布、验收及主页入口的实际结果在完成后更新。签名证书未配置，不把构建日志中的 signtool 阶段当成已签名证明。
+
 ## 第七十八阶段：批注列表、完整预览和删除撤销（2026-11-07 UTC，开发分支）
 
 对照 Mac 1.10.0 的 SelectionInspectorView 和 PaperAnnotation，补齐批注列表的来源、原译文侧别、创建时间倒序及两行预览。上一阶段 `4bf73c6` 已由 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42351271120)验证 235 项单元、35 套桌面和打包启动。本阶段仍在 Windows 开发分支，公开 0.2.18 尚不包含第 76–78 阶段。
