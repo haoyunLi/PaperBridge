@@ -1,6 +1,7 @@
 // Keep results under the settings that produced them, as macOS workspaces do.
 import { activeAIModel, aiCacheNamespace } from './aiSettings.mjs';
 import { usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { migrateOutputLanguages, normalizeOutputLanguage } from './outputLanguages.mjs';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const sourceOf = block => [block.id, block.text, block.sourceMarkdown || ''];
@@ -49,6 +50,7 @@ function switchParagraphOutputs(paper, previous, next) {
   if (translationKey(previous) !== translationKey(next)) {
     variants.translations = { ...variants.translations, [scoped(sourceMode, translationKey(previous))]: paper.blocks.map(block => ({
       source: sourceOf(block), translation: block.translation || '', translationMarkdown: block.translationMarkdown,
+      translationLanguage: normalizeOutputLanguage(block.translationLanguage),
       status: block.status, error: block.error, highlights: block.translationHighlights || [],
       notes: (block.notes || []).filter(note => note.kind === 'translation')
     })) };
@@ -56,6 +58,7 @@ function switchParagraphOutputs(paper, previous, next) {
     result.blocks = paper.blocks.map(block => {
       const match = saved.find(item => same(item.source, sourceOf(block)));
       return { ...block, translation: match?.translation || '', translationMarkdown: match?.translationMarkdown || null,
+        translationLanguage: normalizeOutputLanguage(match?.translationLanguage),
         status: match?.status || 'pending', error: match?.error || '', translationHighlights: match?.highlights || [],
         notes: [...(block.notes || []).filter(note => note.kind !== 'translation'), ...(match?.notes || [])] };
     });
@@ -81,6 +84,8 @@ function switchDocumentOutputs(current, destination, previous, next) {
     if (current.connectedTranslation || current.connectedBlocks?.length || notes.length || highlights.length) {
       variants.connected = { ...variants.connected, [scoped(from, connectedKey(previous))]: {
         source, text: current.connectedTranslation, blocks: current.connectedBlocks, stale: current.connectedStale,
+        connectedLanguage: normalizeOutputLanguage(current.connectedLanguage),
+        connectedLanguageConflict: current.connectedLanguageConflict === true,
         shared: current.connectedShared, batchVersion: current.connectedBatchVersion, notes, highlights
       } };
     }
@@ -90,6 +95,8 @@ function switchDocumentOutputs(current, destination, previous, next) {
     const match = exact || sourceChanged ? saved : null;
     Object.assign(result, {
       connectedTranslation: match?.text || '', connectedBlocks: match?.blocks || [],
+      connectedLanguage: normalizeOutputLanguage(match?.connectedLanguage),
+      connectedLanguageConflict: match?.connectedLanguageConflict === true,
       connectedStale: Boolean(match && (match.stale || !exact)), connectedShared: match?.shared || false,
       connectedBatchVersion: match?.batchVersion ?? null,
       viewNotes: [...(result.viewNotes || []).filter(item => !isConnected(item)), ...(match?.notes || [])],
@@ -124,10 +131,12 @@ function switchPaperOutputs(current, destination, previous, next, destinationSet
 }
 
 export function switchOutputSettings(paper, previous, next) {
+  paper = migrateOutputLanguages(paper);
   return switchPaperOutputs(paper, paper, previous, next);
 }
 
 export function switchReadingSource(paper, mode, settings) {
+  paper = migrateOutputLanguages(paper);
   const destination = mode === 'mineru'
     ? { ...paper, pdfBlocks: paper.blocks, blocks: paper.mineruBlocks, extraction: 'MinerU', sourceMode: 'mineru' }
     : { ...paper, mineruBlocks: paper.blocks, blocks: paper.pdfBlocks, extraction: 'PDF.js', sourceMode: 'pdf' };

@@ -44,6 +44,7 @@
     "test:connected-translation-e2e": "node tests/connected-translation-e2e.cjs",
     "test:summary-e2e": "node tests/summary-e2e.cjs",
     "test:terminology-e2e": "node tests/terminology-e2e.cjs",
+    "test:legacy-output-language-e2e": "node tests/legacy-output-language-e2e.cjs",
     "test:reopen-mineru": "node tests/reopen-mineru.cjs",
     "test:live": "node tests/live-local.cjs",
     "test:live-connected": "node tests/live-connected.cjs",

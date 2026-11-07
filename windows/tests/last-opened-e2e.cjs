@@ -87,7 +87,8 @@ async function run() {
     await page.locator('.library-row').first().getByText('Library label B').waitFor();
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(papersDir, `${paperAId}.json`), 'utf8')).blocks, a.blocks);
     const savedB = JSON.parse(fs.readFileSync(path.join(papersDir, `${paperBId}.json`), 'utf8'));
-    assert.deepEqual(savedB.blocks, b.blocks);
+    assert.deepEqual(savedB.blocks, b.blocks.map(block => ({ ...block, translationLanguage: null })),
+      'Saving a library label must retain all legacy content and explicitly record its unknown output language');
     assert.equal(savedB.name, b.name);
     assert.deepEqual(savedB.tags, ['test', '进度']);
     assert.equal(savedB.libraryTitle, 'Library label B');

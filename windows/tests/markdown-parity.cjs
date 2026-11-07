@@ -74,6 +74,7 @@ async function run() {
   }));
   fs.writeFileSync(path.join(workspace, 'papers', `${id}.json`), JSON.stringify({
     id, name: 'Markdown parity fixture', type: 'text', blocks,
+    taskSettings: { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' },
     mineruMarkdown: parts.join('\n\n'), sourceMode: 'mineru', extraction: 'MinerU',
     summary: { source: formula + '\n\nSecond stack.', target: formula, sourceLanguage: 'English', targetLanguage: 'Chinese' },
     viewNotes: [{ id: 'shifted-summary', scope: 'summarySource', text: 'stack', offset: null,
@@ -457,14 +458,15 @@ async function run() {
       shell.showItemInFolder = destination => {
         const fs = process.getBuiltinModule('node:fs');
         const path = process.getBuiltinModule('node:path');
-        globalThis.__revealedBundle = { destination, original: fs.readFileSync(path.join(destination, 'Original.md'), 'utf8') };
+        globalThis.__revealedBundle = { destination, original: fs.readFileSync(path.join(destination, 'paper_original.md'), 'utf8') };
       };
     }, exports);
     await reopened.getByRole('button', { name: 'More ···', exact: true }).click();
     await reopened.locator('.modal').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
     await reopened.getByText(/1 referenced local asset\(s\) could not be included/).waitFor();
     const bundle = path.join(exports, fs.readdirSync(exports)[0]);
-    const original = fs.readFileSync(path.join(bundle, 'Original.md'), 'utf8');
+    assert.equal(path.basename(bundle), 'Markdown parity fixture_PaperBridge');
+    const original = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8');
     assert.deepEqual(await app.evaluate(() => globalThis.__revealedBundle), { destination: bundle, original });
     const panel = original.match(/<img src="(assets\/[a-f0-9]+\.png)" alt="Table panel">/)?.[1];
     const data = original.match(/\[Measurements\]\((assets\/local-[a-f0-9]+\.csv)#rows\)/)?.[1];
@@ -473,9 +475,9 @@ async function run() {
     assert.ok(original.includes('[Missing appendix](data/missing.csv)'));
     assert.deepEqual(fs.readFileSync(path.join(bundle, panel)), figureBytes);
     assert.equal(fs.readFileSync(path.join(bundle, data), 'utf8'), measurements);
-    const translatedFile = fs.readFileSync(path.join(bundle, 'Translated.md'), 'utf8');
-    const bilingualFile = fs.readFileSync(path.join(bundle, 'Bilingual.md'), 'utf8');
-    assert.equal(fs.readFileSync(path.join(bundle, 'Full Translation.md'), 'utf8'), translatedFile);
+    const translatedFile = fs.readFileSync(path.join(bundle, 'paper_translation_zh-Hans.md'), 'utf8');
+    const bilingualFile = fs.readFileSync(path.join(bundle, 'paper_bilingual_en_zh-Hans.md'), 'utf8');
+    assert.equal(fs.readFileSync(path.join(bundle, 'paper_full_translation_zh-Hans.md'), 'utf8'), translatedFile);
     assert.match(bilingualFile, /> \*\*Simplified Chinese translation\*\*\n>\n> /);
     for (const edition of [translatedFile, bilingualFile]) {
       assert.ok(edition.includes(`![Figure](${panel})`));

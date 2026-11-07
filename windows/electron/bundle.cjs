@@ -11,13 +11,15 @@ const facsimileHeadings = new Map([
 ]);
 
 function safeName(name) {
-  return String(name || 'PaperBridge').replace(/\.pdf$/i, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-').trim().slice(0, 90) || 'PaperBridge';
+  const stem = String(name || 'PaperBridge').replace(/\.pdf$/i, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+    .trim().slice(0, 90).replace(/[. ]+$/, '') || 'PaperBridge';
+  return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(stem) ? `_${stem}` : stem;
 }
 
 function uniqueFolder(parent, name) {
   const base = safeName(name);
   for (let i = 0; i < 1000; i++) {
-    const candidate = path.join(parent, i ? `${base}-${i}` : base);
+    const candidate = path.join(parent, i ? `${base}-${i + 1}` : base);
     try { fs.mkdirSync(candidate); return candidate; }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
   }
@@ -26,7 +28,8 @@ function uniqueFolder(parent, name) {
 
 function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
   if (!Array.isArray(documents) || !documents.length) throw new Error('No Markdown documents to export.');
-  const folder = uniqueFolder(parent, `${safeName(paper.name)}-PaperBridge`);
+  const paperStem = path.parse(String(paper.name || 'PaperBridge')).name;
+  const folder = uniqueFolder(parent, `${safeName(paperStem)}_PaperBridge`);
   const assets = path.join(folder, 'assets');
   const assetNames = new Set();
   const missing = new Set();
@@ -64,7 +67,8 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
   const used = new Set(originalPdf ? ['original pages.md'] : []);
   const facsimileDocuments = [];
   for (const document of documents) {
-    const stem = safeName(document.name);
+    const stem = safeName(typeof document.filename === 'string' && document.filename.trim()
+      ? document.filename.replace(/\.md$/i, '') : document.name);
     let name = `${stem}.md`;
     for (let i = 2; used.has(name.toLowerCase()); i++) name = `${stem}-${i}.md`;
     used.add(name.toLowerCase());

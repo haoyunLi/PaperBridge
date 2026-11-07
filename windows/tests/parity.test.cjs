@@ -178,7 +178,8 @@ test('structured Markdown editions preserve the source, unfinished passages, and
     { id: 5, sourceMarkdown: '![Figure](images/plot.png)', resource: true, status: 'ok', translation: 'Wrong figure' }
   ];
   const mineruMarkdown = blocks.map(block => block.sourceMarkdown).join('\n\n\n');
-  const paper = { name: 'Study', sourceMode: 'mineru', mineruMarkdown, blocks, connectedTranslation: 'An older saved draft' };
+  const paper = { name: 'Study', sourceMode: 'mineru', mineruMarkdown, blocks, connectedTranslation: 'An older saved draft',
+    taskSettings: { sourceLanguage: 'English', targetLanguage: 'French' } };
   const docs = Object.fromEntries(markdownDocuments(paper, 'French').map(document => [document.kind, document.content]));
   assert.equal(docs.original, mineruMarkdown);
   assert.match(docs.translated, /^# Étude\n\nUne phrase\./);
@@ -197,7 +198,7 @@ test('PDF text bundle retains the original passage when a translation is unavail
   const paper = { name: 'Article.pdf', type: 'pdf', sourceMode: 'pdf', blocks };
   const docs = Object.fromEntries(markdownDocuments(paper, 'French').map(document => [document.kind, document.content]));
   assert.equal(docs.translated, 'Une traduction.\n\nPending paragraph.');
-  assert.match(docs.bilingual, /Pending paragraph\.\n\n> \*\*French translation\*\*\n>\n> \[Translation unavailable\]/);
+  assert.match(docs.bilingual, /Pending paragraph\.\n\n> \*\*Translation\*\*\n>\n> \[Translation unavailable\]/);
   assert.match(markdownDocuments(paper, 'French', 'translated')[0].content, /\[Untranslated block 2\]/);
 });
 
@@ -211,14 +212,16 @@ test('portable bundle writes real image assets and the unchanged original PDF', 
     const image = Buffer.from('image bytes');
     const data = `data:image/png;base64,${image.toString('base64')}`;
     const result = writeBundle(parent, { name: 'Test Paper.pdf', type: 'pdf' }, [
-      { name: 'Original', content: `![plot](${data})` },
-      { name: 'Bilingual', content: `![plot](${data})` }
+      { name: 'Original', filename: 'paper_original.md', content: `![plot](${data})` },
+      { name: 'Bilingual', filename: 'paper_bilingual_en_fr.md', content: `![plot](${data})` }
     ], pdf);
     const digest = crypto.createHash('sha256').update(image).digest('hex');
     assert.equal(result.assets, 1);
     assert.equal(fs.readFileSync(path.join(result.folder, 'original.pdf')).compare(original), 0);
     assert.equal(fs.readFileSync(path.join(result.folder, 'assets', `${digest}.png`)).compare(image), 0);
-    assert.match(fs.readFileSync(path.join(result.folder, 'Original.md'), 'utf8'), new RegExp(`assets/${digest}\\.png`));
+    assert.equal(path.basename(result.folder), 'Test Paper_PaperBridge');
+    assert.deepEqual(fs.readdirSync(result.folder).sort(), ['assets', 'original.pdf', 'paper_bilingual_en_fr.md', 'paper_original.md']);
+    assert.match(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), new RegExp(`assets/${digest}\\.png`));
   } finally {
     if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
     fs.rmSync(parent, { recursive: true, force: true });
@@ -250,10 +253,10 @@ test('portable bundles keep HTML images, retained MinerU files and link fragment
       '[Linked outside](linked/escape.csv)',
       '```html\n<img src="in-a-code-example.png">\n```'
     ].join('\n\n');
-    const bundle = writeBundle(parent, { name: 'Scan.pdf', type: 'pdf', sourceMode: 'mineru' }, [{ name: 'Original', content }], pdf, source);
+    const bundle = writeBundle(parent, { name: 'Scan.pdf', type: 'pdf', sourceMode: 'mineru' }, [{ name: 'Original', filename: 'paper_original.md', content }], pdf, source);
     assert.equal(bundle.assets, 3);
     assert.deepEqual(bundle.missingAssetPaths, ['../private.csv', 'figures/gone.png', 'linked/escape.csv']);
-    const exported = fs.readFileSync(path.join(bundle.folder, 'Original.md'), 'utf8');
+    const exported = fs.readFileSync(path.join(bundle.folder, 'paper_original.md'), 'utf8');
     const embedded = exported.match(/!\[Figure\]\((assets\/\w+\.png) "Caption title"\)/)?.[1];
     const legacy = exported.match(/alt="Embedded cell"><img src="(assets\/local-\w+\.png)"/)?.[1];
     const csv = exported.match(/\[Data\]\(<(assets\/local-\w+\.csv)> "Supplement"\)/)?.[1];
@@ -271,6 +274,44 @@ test('portable bundles keep HTML images, retained MinerU files and link fragment
   }
 });
 
+test('bundle filenames are safe, case-insensitively unique and preserve generated PDF index names', () => {
+  const { writeBundle, writeBundleFacsimile, safeName } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-names-'));
+  try {
+    for (const name of ['CON', 'prn', 'NUL.txt', 'com1', 'LPT9']) assert.equal(safeName(name), `_${name}`);
+    assert.equal(safeName('a<bad>:name?. . '), 'a-bad--name-');
+    assert.equal(safeName('...'), 'PaperBridge');
+    const pdf = path.join(parent, 'source.pdf');
+    fs.writeFileSync(pdf, 'unchanged original PDF');
+    const documents = [
+      { name: 'Original label stays readable', filename: 'paper_original.md', content: 'first' },
+      { name: 'Same name with different casing', filename: 'PAPER_ORIGINAL.md', content: 'second' },
+      { name: 'Device', filename: 'CON.md', content: 'device' },
+      { name: 'Unsafe', filename: '../escape.md', content: 'contained' },
+      { name: 'Trailing', filename: 'trailing. .md', content: 'trimmed' },
+      { name: 'Index collision', filename: 'Original Pages.md', content: 'user document' }
+    ];
+    const result = writeBundle(parent, { name: 'Paper.draft.pdf', type: 'pdf' }, documents, pdf);
+    assert.equal(path.basename(result.folder), 'Paper.draft_PaperBridge');
+    assert.deepEqual(fs.readdirSync(result.folder).sort(), ['..-escape.md', 'Original Pages-2.md', 'PAPER_ORIGINAL-2.md', '_CON.md', 'original.pdf', 'paper_original.md', 'trailing.md'].sort());
+    assert.equal(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), 'first');
+    assert.equal(fs.readFileSync(path.join(result.folder, 'PAPER_ORIGINAL-2.md'), 'utf8'), 'second');
+    assert.equal(fs.existsSync(path.join(parent, 'escape.md')), false);
+    writeBundleFacsimile({ ...result, renderedPages: new Set() }, 0, false);
+    assert.equal(fs.readFileSync(path.join(result.folder, 'Original Pages-2.md'), 'utf8'), 'user document');
+    assert.match(fs.readFileSync(path.join(result.folder, 'Original Pages.md'), 'utf8'), /could not be opened for page previews/);
+    const second = writeBundle(parent, { name: 'Paper.draft.pdf' }, [{ name: 'Legacy name', content: 'legacy compatibility' }]);
+    assert.equal(path.basename(second.folder), 'Paper.draft_PaperBridge-2');
+    assert.equal(fs.readFileSync(path.join(second.folder, 'Legacy name.md'), 'utf8'), 'legacy compatibility');
+    const third = writeBundle(parent, { name: 'Paper.draft.pdf' }, [{ name: 'Third', filename: 'paper_original.md', content: 'third' }]);
+    assert.equal(path.basename(third.folder), 'Paper.draft_PaperBridge-3');
+    assert.equal(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), 'first');
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
 test('PDF facsimile bundles include only completed page images and preserve the translated body', () => {
   const { writeBundle, writeBundleFacsimile } = require('../electron/bundle.cjs');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-facsimile-'));
@@ -278,23 +319,23 @@ test('PDF facsimile bundles include only completed page images and preserve the 
   fs.writeFileSync(pdf, '%PDF-1.4\nsource bytes');
   try {
     const documents = [
-      { kind: 'full', name: 'Full Translation', content: 'Saved translated text.' },
-      { kind: 'analysis', name: 'Analysis', content: 'Exact notes.' }
+      { kind: 'full', name: 'Full Translation', filename: 'paper_full_translation_fr.md', content: 'Saved translated text.' },
+      { kind: 'analysis', name: 'Analysis', filename: 'paper_analysis_notes.md', content: 'Exact notes.' }
     ];
     const bundle = writeBundle(parent, { name: 'PDF text.pdf', type: 'pdf', facsimile: true }, documents, pdf);
     writeBundleFacsimile({ ...bundle, renderedPages: new Set([1, 120]) }, 125, true);
-    const full = fs.readFileSync(path.join(bundle.folder, 'Full Translation.md'), 'utf8');
+    const full = fs.readFileSync(path.join(bundle.folder, 'paper_full_translation_fr.md'), 'utf8');
     assert.match(full, /first 120 of 125 pages/);
     assert.match(full, /Page export stopped/);
     assert.match(full, /\(original\.pdf\)/);
     assert.deepEqual([...full.matchAll(/pages\/page-(\d+)\.png/g)].map(match => match[1]), ['001', '120']);
     assert.match(full, /# Full translation of selectable text\n\nSaved translated text\.\n$/);
-    assert.equal(fs.readFileSync(path.join(bundle.folder, 'Analysis.md'), 'utf8'), 'Exact notes.');
+    assert.equal(fs.readFileSync(path.join(bundle.folder, 'paper_analysis_notes.md'), 'utf8'), 'Exact notes.');
 
     const structured = writeBundle(parent, { name: 'MinerU.pdf', type: 'pdf' }, documents, pdf);
     writeBundleFacsimile({ ...structured, renderedPages: new Set() }, 1, false);
     assert.match(fs.readFileSync(path.join(structured.folder, 'Original Pages.md'), 'utf8'), /previews are unavailable/);
-    assert.equal(fs.readFileSync(path.join(structured.folder, 'Full Translation.md'), 'utf8'), 'Saved translated text.');
+    assert.equal(fs.readFileSync(path.join(structured.folder, 'paper_full_translation_fr.md'), 'utf8'), 'Saved translated text.');
   } finally {
     if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
     fs.rmSync(parent, { recursive: true, force: true });

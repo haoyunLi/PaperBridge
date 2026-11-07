@@ -260,11 +260,14 @@ async function run() {
     }
     const exports = await app.evaluate(() => global.__readerReviewExports);
     assert.equal(exports.length, 2);
-    assert.ok(exports[0].name.endsWith('-analysis'));
-    assert.ok(exports[1].name.endsWith('-bilingual'));
+    assert.equal(exports[0].name, 'Reader review fixture_bilingual');
+    assert.equal(exports[1].name, 'Reader review fixture_bilingual_en_zh-Hans');
     const analysis = exports[0].content;
     const paragraphFour = analysis.split('### Paragraph 4\n\n')[1].split('\n\n### Paragraph 5')[0];
-    assert.match(paragraphFour, /^> Bookmarked in PaperBridge\n\nBeta control/);
+    assert.match(paragraphFour, /^> Bookmarked in PaperBridge\n\n#### Original\n\nBeta control/);
+    const paragraphTwo = analysis.split('### Paragraph 2\n\n')[1].split('\n\n### Paragraph 3')[0];
+    assert.match(paragraphTwo, /^#### Original English\n\nAlpha mechanism/);
+    assert.match(paragraphTwo, /#### Translation \(Simplified Chinese\)/);
     assert.match(paragraphFour, /#### Highlights and Notes\n\n##### Reader · Block 4 · source · amber\n\n> Beta control/);
     assert.doesNotMatch(analysis, /\n## (Bookmarks|Highlights|Notes)\n/);
     assert.match(exports[1].content, /## Bookmarks\n\n- Block 4: Beta control/);

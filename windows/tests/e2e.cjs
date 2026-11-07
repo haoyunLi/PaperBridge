@@ -651,7 +651,7 @@ async function run() {
       await target.getByRole('button', { name: 'More' }).click();
       await target.locator('.modal-body').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
     };
-    const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
+    const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice_PaperBridge'));
     const beforeExport = new Set(bundleFolders());
     await app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] }); });
     await exportBundle();
@@ -669,12 +669,12 @@ async function run() {
     for (const file of ['page-001.png', 'page-002.png']) {
       assert.deepEqual(pngDimensions(path.join(bundle, 'pages', file)), [1391, 1800]);
     }
-    for (const name of ['Original Pages', 'Original', 'Translated', 'Bilingual', 'Full Translation']) {
-      const markdown = fs.readFileSync(path.join(bundle, `${name}.md`), 'utf8');
+    for (const name of ['Original Pages.md', 'paper_original.md', 'paper_translation_zh-Hans.md', 'paper_bilingual_en_zh-Hans.md', 'paper_full_translation_zh-Hans.md']) {
+      const markdown = fs.readFileSync(path.join(bundle, name), 'utf8');
       assert.match(markdown, /\(original\.pdf\)[\s\S]*\(pages\/page-001\.png\)[\s\S]*\(pages\/page-002\.png\)/);
-      if (name === 'Full Translation') assert.match(markdown, /# Full translation of selectable text\n\n本地测试译文/);
+      if (name === 'paper_full_translation_zh-Hans.md') assert.match(markdown, /# Full translation of selectable text\n\n本地测试译文/);
     }
-    const exportedAnalysis = fs.readFileSync(path.join(bundle, 'Analysis.md'), 'utf8');
+    const exportedAnalysis = fs.readFileSync(path.join(bundle, 'paper_analysis_notes.md'), 'utf8');
     assert.match(exportedAnalysis, /Original PDF · page 1 · teal\n\n> Abstract\n\nNote: This note belongs to the original PDF page\./);
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral\n\n> Abstract\n\nNote: This note belongs to the exact PDF inside Paper\./);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber\n\n> Abstract\n\nNote: The repeated heading belongs to page two\./);
@@ -723,7 +723,7 @@ async function run() {
     await page.getByText(/1 PDF page image\(s\) \(page export stopped\)/).waitFor();
     assert.equal((await reveals()).length, 2);
     const stopped = path.join(artifacts, bundleFolders().find(name => !beforeStop.has(name)));
-    const stoppedTranslation = fs.readFileSync(path.join(stopped, 'Full Translation.md'), 'utf8');
+    const stoppedTranslation = fs.readFileSync(path.join(stopped, 'paper_full_translation_zh-Hans.md'), 'utf8');
     assert.match(stoppedTranslation, /Page export stopped[\s\S]*pages\/page-001\.png[\s\S]*本地测试译文/);
     assert.doesNotMatch(stoppedTranslation, /pages\/page-002\.png/);
     assert.deepEqual(fs.readdirSync(path.join(stopped, 'pages')), ['page-001.png']);

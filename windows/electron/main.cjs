@@ -11,7 +11,7 @@ const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('./mineru-resources.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
-const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages } = require('./bundle.cjs');
+const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
@@ -274,14 +274,16 @@ function registerHandlers() {
     if (activeImportArchive && activeImportArchive.requestId === requestId && activeImportArchive.sender === event.sender) activeImportArchive = null;
   });
   ipcMain.handle('markdown:export', async (_event, { name, content }) => {
-    const result = await dialog.showSaveDialog(window, { title: 'Export Markdown', defaultPath: `${String(name || 'PaperBridge').replace(/[<>:"/\\|?*]/g, '-')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] });
+    const stem = safeName(String(name || 'PaperBridge').replace(/\.md$/i, ''));
+    const result = await dialog.showSaveDialog(window, { title: 'Export Markdown', defaultPath: `${stem}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] });
     if (result.canceled) return null;
     fs.writeFileSync(result.filePath, String(content), 'utf8');
     return result.filePath;
   });
   ipcMain.handle('markdown:bundle', async (_event, { paper, documents }) => {
     safeId(paper.id);
-    if (!Array.isArray(documents) || documents.length > 8 || documents.some(item => typeof item.name !== 'string' || typeof item.content !== 'string')) throw new Error('Invalid Markdown bundle.');
+    if (!Array.isArray(documents) || documents.length > 8 || documents.some(item => typeof item.name !== 'string' || typeof item.content !== 'string'
+        || item.filename != null && typeof item.filename !== 'string')) throw new Error('Invalid Markdown bundle.');
     const result = await dialog.showOpenDialog(window, { title: 'Choose export folder', properties: ['openDirectory', 'createDirectory'] });
     if (result.canceled) return null;
     const sourceMode = paper.sourceMode === 'mineru' ? 'mineru' : undefined;

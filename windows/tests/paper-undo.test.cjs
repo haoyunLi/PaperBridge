@@ -269,3 +269,33 @@ test('undo clears a viewport absent from the snapshot without resetting current 
   assert.equal(restored.selectedParagraphID, 1);
   assert.deepEqual(restored.position, { tab: 'Reader', displayMode: 'bilingual', pdfZoom: 1.5 });
 });
+
+test('source repairs clear output language with text and structural Undo restores their original pairing', async () => {
+  const { splitBlockAt, mergeBlocks, editedBlock } = await paperHelpers;
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const chinese = { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' };
+  const german = { sourceLanguage: 'English', targetLanguage: 'German' };
+  const before = paper([
+    { text: 'First sentence. Second sentence.', translation: '原有中文译文。', translationLanguage: chinese, status: 'ok' },
+    { text: 'Independent evidence.', translation: 'Earlier result.', translationLanguage: null, status: 'ok' }
+  ]);
+  const split = splitBlockAt(before.blocks[0], before.blocks[0].text.indexOf('Second'));
+  for (const repaired of [...split, mergeBlocks(...before.blocks), editedBlock(before.blocks[0], 'Repaired source.')]) {
+    assert.equal(repaired.translation, '');
+    assert.equal(repaired.translationMarkdown, null);
+    assert.equal(repaired.translationLanguage, null, 'invalidated output must not retain its old language label');
+  }
+  const after = { ...before, blocks: [...split, before.blocks[1]].map((block, index) => ({ ...block, id: index + 1 })) };
+  const current = { ...after, blocks: after.blocks.map((block, index) => index === 2
+    ? { ...block, translation: 'Neue Übersetzung.', translationLanguage: german, status: 'ok' } : block),
+    connectedTranslation: 'Newer independent German draft.', connectedLanguage: german };
+  const restored = applyUndoEntry(current, createUndoEntry(before, after, { start: 0, beforeEnd: 1, afterEnd: 2 }));
+  assert.equal(restored.blocks[0].translation, before.blocks[0].translation);
+  assert.deepEqual(restored.blocks[0].translationLanguage, chinese);
+  assert.equal(restored.blocks[1].translation, 'Neue Übersetzung.');
+  assert.deepEqual(restored.blocks[1].translationLanguage, german);
+  assert.equal(restored.connectedTranslation, current.connectedTranslation);
+  assert.deepEqual(restored.connectedLanguage, german);
+  assert.equal(restored.connectedStale, true);
+  assert.equal(before.blocks[0].translation, '原有中文译文。');
+});

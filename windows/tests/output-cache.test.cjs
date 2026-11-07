@@ -9,14 +9,15 @@ function paperWithOutputs(label = 'A') {
   return {
     id: 'fixture-paper',
     blocks: [
-      { id: 1, text: 'Abstract', heading: true, translation: '', translationMarkdown: null, status: 'pending', error: '', translationHighlights: [], notes: [] },
+      { id: 1, text: 'Abstract', heading: true, translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending', error: '', translationHighlights: [], notes: [] },
       { id: 2, text: 'A reproducible method.', translation: `${label} paragraph`, translationMarkdown: `**${label} paragraph**`, status: 'ok', error: '',
-        highlights: [{ text: 'method', offset: 15, color: 'amber' }],
+        translationLanguage: null, highlights: [{ text: 'method', offset: 15, color: 'amber' }],
         translationHighlights: [{ text: label, offset: 0, color: 'blue' }],
         notes: [{ id: 'source-note', kind: 'source', text: 'method', body: 'Source note' }, { id: `${label}-translation-note`, kind: 'translation', text: label, body: `${label} translation note` }] },
-      { id: 3, text: 'An independent result.', translation: `${label} result`, translationMarkdown: null, status: 'ok', error: '', translationHighlights: [], notes: [] }
+      { id: 3, text: 'An independent result.', translation: `${label} result`, translationMarkdown: null, translationLanguage: null, status: 'ok', error: '', translationHighlights: [], notes: [] }
     ],
-    connectedTranslation: `${label} full translation`, connectedBlocks: [{ source: 'A reproducible method.', output: `${label} full translation` }], connectedStale: false,
+    connectedTranslation: `${label} full translation`, connectedLanguage: null,
+    connectedBlocks: [{ source: 'A reproducible method.', output: `${label} full translation`, translationLanguage: null }], connectedStale: false,
     summary: { source: `${label} source summary`, target: `${label} target summary`, claims: [{ quote: 'A reproducible method.', blockId: 2 }] },
     viewNotes: ['fullTranslation', 'summarySource', 'summaryTarget'].map(scope => ({ id: `${label}-${scope}`, scope, body: `${label} ${scope} note` })),
     viewHighlights: ['fullTranslation', 'summarySource', 'summaryTarget'].map(scope => ({ id: `${label}-${scope}`, scope, text: label, offset: 0, color: 'amber' })),
@@ -26,13 +27,13 @@ function paperWithOutputs(label = 'A') {
 
 function applyOutputs(paper, label) {
   const generated = paperWithOutputs(label);
-  return { ...paper, blocks: generated.blocks, connectedTranslation: generated.connectedTranslation, connectedBlocks: generated.connectedBlocks,
+  return { ...paper, blocks: generated.blocks, connectedTranslation: generated.connectedTranslation, connectedBlocks: generated.connectedBlocks, connectedLanguage: generated.connectedLanguage,
     summary: generated.summary, viewNotes: generated.viewNotes, viewHighlights: generated.viewHighlights };
 }
 
 function assertGeneratedOutputs(paper, label) {
   const expected = paperWithOutputs(label);
-  for (const key of ['blocks', 'connectedTranslation', 'connectedBlocks', 'summary', 'viewNotes', 'viewHighlights', 'pdfNotes']) {
+  for (const key of ['blocks', 'connectedTranslation', 'connectedBlocks', 'connectedLanguage', 'summary', 'viewNotes', 'viewHighlights', 'pdfNotes']) {
     assert.deepEqual(paper[key], expected[key], `${key} should restore version ${label}`);
   }
 }

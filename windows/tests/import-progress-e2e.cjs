@@ -212,7 +212,7 @@ async function run() {
     assert.equal(saved.mineruResourceId, resourceId);
     assert.deepEqual(await page.evaluate(id => window.paperBridge.cachedMineruPages(id), structuredId), [{ page: 1, text: 'A parsed title' }]);
     const bundle = path.join(exports, fs.readdirSync(exports)[0]);
-    const link = fs.readFileSync(path.join(bundle, 'Original.md'), 'utf8').match(/\[Measurements\]\((assets\/[^#]+\.csv)#row\)/)?.[1];
+    const link = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8').match(/\[Measurements\]\((assets\/[^#]+\.csv)#row\)/)?.[1];
     assert.ok(link, 'The current attachment should be linked with its fragment');
     assert.equal(fs.readFileSync(path.join(bundle, link), 'utf8'), 'current bytes');
     assert.equal((await app.evaluate(() => globalThis.__discardedMineruResults)).length, 2);

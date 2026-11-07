@@ -45,7 +45,7 @@ test('full exports mark only failed batch positions and retain duplicate origina
   assert.match(docs.full, /> Original text retained below\.\n\nRepeated exact source\.\n\n\$\$x=2\$\$\n\nA pending excerpt/);
   assert.match(docs.full, /References\n\n\[1\] An untranslated reference\.$/);
   assert.doesNotMatch(docs.full, /batch 1\]|batch 3\]|Obsolete error/);
-  assert.ok(docs.analysis.includes(`## Connected Full Translation\n\n${docs.full}`));
+  assert.ok(docs.analysis.includes(`## Connected Full Translation (French)\n\n${docs.full}`));
   assert.equal(markdownDocuments(paper, 'French', 'full')[0].content, docs.full);
   assert.ok(markdownDocuments(paper, 'French', 'analysis')[0].content.includes(docs.full));
   assert.doesNotMatch(docs.original + docs.translated + docs.bilingual, /Connected translation failed/);
@@ -79,8 +79,8 @@ test('legacy, mismatched or unsupported batch metadata never injects failure lab
     const paper = { ...original, ...change };
     assert.equal(markdownDocuments(paper, 'French', 'full')[0].content, paper.connectedTranslation, JSON.stringify(change));
   }
-  assert.equal(markdownDocuments(original, 'German', 'full')[0].content, original.connectedTranslation,
-    'Current-language metadata cannot describe a different requested language.');
+  assert.equal(markdownDocuments(original, 'German', 'full')[0].content, markdownDocuments(original, 'French', 'full')[0].content,
+    'The legacy current-language argument cannot relabel a saved artifact or suppress its valid failure markers.');
 });
 
 test('stale saved drafts retain their original contents and carry the source-change notice in all full exports', async () => {
@@ -181,4 +181,162 @@ test('summary exports distinguish verified quote locations from interpretation a
   const legacy = markdownDocuments({ ...paper, summary: { source: 'Legacy plain summary.', target: 'Legacy translation.' } }, 'French', 'analysis')[0].content;
   assert.match(legacy, /Legacy plain summary/);
   assert.doesNotMatch(legacy, /undefined|null|Claim 1:/);
+});
+
+const pair = targetLanguage => ({ sourceLanguage: 'English', targetLanguage });
+const translatedBlock = (id, targetLanguage, extra = {}) => ({ id, text: `Source ${id}.`, status: 'ok',
+  translation: `Saved output ${id}.`, translationLanguage: targetLanguage ? pair(targetLanguage) : null, ...extra });
+const descriptors = documents => Object.fromEntries(documents.map(document => [document.kind, document]));
+
+test('each analysis language and filename describes its own saved output rather than current settings', async () => {
+  const [{ markdownDocuments, markdownExportName }] = await modules;
+  const paper = { name: 'Study.draft.pdf', blocks: [translatedBlock(1, 'Japanese')], taskSettings: pair('Spanish'),
+    summary: { source: 'Saved source summary.', target: 'Résumé français.', sourceLanguage: 'English', targetLanguage: 'French' },
+    connectedTranslation: 'Gespeicherte Übersetzung.', connectedLanguage: pair('German') };
+  const before = structuredClone(paper);
+  const docs = descriptors(markdownDocuments(paper, 'Russian'));
+  assert.match(docs.analysis.content, /## Whole-paper summary \(English\)\n\nSaved source summary\./);
+  assert.match(docs.analysis.content, /## Whole-paper summary \(French\)\n\nRésumé français\./);
+  assert.match(docs.analysis.content, /## Connected Full Translation \(German\)\n\nGespeicherte Übersetzung\./);
+  assert.match(docs.analysis.content, /### Paragraph 1\n\n#### Original English\n\nSource 1\.\n\n#### Translation \(Japanese\)\n\nSaved output 1\./);
+  assert.doesNotMatch(docs.analysis.content, /Spanish|Russian/);
+  assert.deepEqual(Object.fromEntries(Object.entries(docs).map(([kind, document]) => [kind, document.filename])), {
+    original: 'paper_original.md', translated: 'paper_translation_ja.md', bilingual: 'paper_bilingual_en_ja.md',
+    analysis: 'paper_analysis_notes.md', full: 'paper_full_translation_de.md'
+  });
+  assert.deepEqual([docs.original.name, docs.translated.name, docs.bilingual.name, docs.analysis.name, docs.full.name],
+    ['Original', 'Translated', 'Bilingual', 'Analysis', 'Full Translation']);
+  assert.equal(markdownExportName(paper, docs.analysis), 'Study.draft_bilingual');
+  assert.equal(markdownExportName(paper, docs.original), 'Study.draft_original');
+  assert.equal(markdownExportName(paper, docs.translated), 'Study.draft_translation_ja');
+  assert.equal(markdownExportName(paper, docs.bilingual), 'Study.draft_bilingual_en_ja');
+  assert.equal(markdownExportName(paper, docs.full), 'Study.draft_full_translation_de');
+  assert.deepEqual(paper, before);
+});
+
+test('all eleven Mac language codes are deterministic and Chinese scripts stay distinct', async () => {
+  const [{ markdownDocuments }] = await modules;
+  for (const [language, code] of Object.entries({ English: 'en', 'Simplified Chinese': 'zh-Hans', 'Traditional Chinese': 'zh-Hant',
+    Japanese: 'ja', Korean: 'ko', French: 'fr', German: 'de', Spanish: 'es', Italian: 'it', Portuguese: 'pt', Russian: 'ru' })) {
+    const docs = descriptors(markdownDocuments({ name: 'Study', blocks: [translatedBlock(1, language)],
+      connectedTranslation: 'Saved full text.', connectedLanguage: pair(language) }, 'Unrelated language'));
+    assert.equal(docs.translated.filename, `paper_translation_${code}.md`);
+    assert.equal(docs.bilingual.filename, `paper_bilingual_en_${code}.md`);
+    assert.equal(docs.full.filename, `paper_full_translation_${code}.md`);
+  }
+});
+
+test('old unknown, explicit unknown and mixed outputs retain text with generic language labels and names', async () => {
+  const [{ markdownDocuments }] = await modules;
+  const legacy = { name: 'Old paper', sourceMode: 'mineru', blocks: [
+    { id: 1, text: 'Old source.', sourceMarkdown: 'Old **source**.', status: 'ok', translation: '旧中文译文。' }
+  ], connectedTranslation: '独立旧全文。', summary: { source: 'Old source summary.', target: '旧摘要。' } };
+  for (const paper of [legacy, { ...legacy, taskSettings: pair('German'), connectedLanguage: null,
+    blocks: legacy.blocks.map(block => ({ ...block, translationLanguage: null })) },
+  { ...legacy, taskSettings: pair('Chinese') }]) {
+    const before = structuredClone(paper);
+    const docs = descriptors(markdownDocuments(paper, 'German'));
+    assert.equal(docs.translated.filename, 'paper_translation.md');
+    assert.equal(docs.bilingual.filename, 'paper_bilingual.md');
+    assert.equal(markdownDocuments(paper, 'German', 'full')[0].filename, 'paper_full_translation.md');
+    assert.match(docs.bilingual.content, /> \*\*Translation\*\*\n>\n> 旧中文译文。/);
+    assert.match(docs.analysis.content, /## Source summary\n\nOld source summary\./);
+    assert.match(docs.analysis.content, /## Target summary\n\n旧摘要。/);
+    assert.match(docs.analysis.content, /## Connected Full Translation\n\n独立旧全文。/);
+    assert.doesNotMatch(docs.analysis.content + docs.bilingual.content, /German|Simplified Chinese|Traditional Chinese|undefined|null/);
+    assert.deepEqual(paper, before);
+  }
+  for (const second of [translatedBlock(2, null), translatedBlock(2, 'German')]) {
+    const mixed = { name: 'Mixed saved outputs', blocks: [translatedBlock(1, 'French'), second] };
+    const docs = descriptors(markdownDocuments(mixed, 'French'));
+    assert.equal(docs.translated.filename, 'paper_translation.md');
+    assert.equal(docs.bilingual.filename, 'paper_bilingual.md');
+    assert.match(docs.translated.content, /Saved output 1\.\n\nSaved output 2\./);
+    assert.match(docs.analysis.content, /#### Translation \(French\)/);
+  }
+});
+
+test('structured and facsimile file languages follow only adopted output while direct legacy full stays independent', async () => {
+  const [{ markdownDocuments }] = await modules;
+  const blocks = [translatedBlock(1, 'French', { sourceMarkdown: 'Ready **source**.', translationMarkdown: 'Texte **français**.' }),
+    translatedBlock(2, 'German', { sourceMarkdown: 'Failed source.', status: 'failed', error: 'Retry needed.', translation: 'Alte Übersetzung.' }),
+    translatedBlock(3, 'Japanese', { sourceMarkdown: '![Figure](images/a.png)', resource: true })];
+  const base = { name: 'Saved variants.pdf', type: 'pdf', blocks, connectedShared: false,
+    connectedTranslation: 'Vecchia traduzione completa.', connectedLanguage: pair('Italian') };
+  const structured = { ...base, sourceMode: 'mineru' };
+  const bundle = descriptors(markdownDocuments(structured, 'Russian'));
+  assert.equal(bundle.translated.filename, 'paper_translation_fr.md');
+  assert.equal(bundle.bilingual.filename, 'paper_bilingual_en_fr.md');
+  assert.equal(bundle.full.filename, 'paper_full_translation_fr.md');
+  assert.equal(bundle.full.content, bundle.translated.content);
+  assert.doesNotMatch(bundle.full.content, /Alte Übersetzung|Vecchia traduzione/);
+  const direct = markdownDocuments(structured, 'Russian', 'full')[0];
+  assert.equal(direct.filename, 'paper_full_translation_it.md');
+  assert.equal(direct.content, base.connectedTranslation);
+  assert.match(bundle.analysis.content, /Connected Full Translation \(Italian\)/);
+  const facsimile = descriptors(markdownDocuments({ ...base, sourceMode: 'pdf' }, 'Russian'));
+  assert.equal(facsimile.translated.filename, 'paper_translation_fr.md');
+  assert.match(facsimile.bilingual.content, /Ready \*\*source\*\*\.\n\n> \*\*French translation\*\*/);
+  assert.match(facsimile.bilingual.content, /Failed source\.\n\n> \*\*Translation\*\*\n>\n> \[Translation unavailable\]/);
+  assert.doesNotMatch(facsimile.bilingual.content, /German translation|Alte Übersetzung/);
+  const directPlain = markdownDocuments({ ...base, sourceMode: 'pdf' }, 'Russian', 'translated')[0];
+  assert.equal(directPlain.filename, 'paper_translation.md');
+  assert.match(directPlain.content, /Alte Übersetzung/);
+  const stale = descriptors(markdownDocuments({ ...structured, connectedStale: true }, 'German'));
+  assert.equal(stale.full.filename, 'paper_full_translation_it.md');
+  assert.equal(stale.full.content, `> The source changed after this translation was saved.\n\n${base.connectedTranslation}`);
+});
+
+test('contradictory connected batch language metadata cannot attach failure labels to another saved artifact', async () => {
+  const [{ markdownDocuments }, , , { switchOutputSettings }] = await modules;
+  const { migrateOutputLanguages } = await import('../src/outputLanguages.mjs');
+  const paper = await fixture();
+  const { connectedTranslationMarkdown } = await import('../src/connectedTranslationExport.mjs');
+  assert.equal(connectedTranslationMarkdown(paper, 'German'), paper.connectedTranslation,
+    'The legacy explicit-target conflict guard remains conservative for direct helper callers.');
+  paper.connectedLanguage = pair('French');
+  paper.connectedBlocks = paper.connectedBlocks.map(batch => ({ ...batch, translationLanguage: pair('German') }));
+  const before = structuredClone(paper);
+  const migrated = migrateOutputLanguages(paper);
+  assert.equal(migrated.connectedLanguage, null);
+  assert.equal(migrated.connectedLanguageConflict, true);
+  const serialized = JSON.parse(JSON.stringify(migrated));
+  assert.deepEqual(migrateOutputLanguages(serialized), serialized);
+  const next = { ...settings, targetLanguage: 'German' };
+  const switched = switchOutputSettings(serialized, settings, next);
+  const restored = switchOutputSettings(JSON.parse(JSON.stringify(switched)), next, settings);
+  for (const document of [paper, migrated, serialized, restored]) {
+    const full = markdownDocuments(document, 'German', 'full')[0];
+    assert.equal(full.filename, 'paper_full_translation.md');
+    assert.equal(full.content, paper.connectedTranslation);
+  }
+  assert.equal(restored.connectedLanguageConflict, true);
+  assert.equal(restored.connectedLanguage, null);
+  assert.deepEqual(paper, before, 'Export and pure migration must not overwrite the conflicting input evidence.');
+});
+
+test('a rebuilt shared artifact uses current Reader evidence while a conflicting saved full draft stays literal', async () => {
+  const [{ markdownDocuments }] = await modules;
+  const paper = { name: 'Shared conflict', sourceMode: 'mineru', connectedShared: true, connectedLanguage: pair('French'),
+    blocks: [translatedBlock(1, 'German', { sourceMarkdown: 'Ready source.', translation: 'Ergebnis.' }),
+      translatedBlock(2, 'German', { sourceMarkdown: 'Failed source.', translation: '', status: 'failed', error: 'Interrupted.' })],
+    connectedTranslation: 'Ergebnis.\n\nFailed source.' };
+  const direct = markdownDocuments(paper, 'French', 'full')[0];
+  assert.equal(direct.filename, 'paper_full_translation.md');
+  assert.equal(direct.content, paper.connectedTranslation);
+  const rebuilt = descriptors(markdownDocuments(paper, 'French')).full;
+  assert.equal(rebuilt.filename, 'paper_full_translation_de.md');
+  assert.match(rebuilt.content, /\[Connected translation failed for paragraph 2\] Interrupted\./);
+  assert.ok(rebuilt.content.endsWith('Failed source.'));
+});
+
+test('failed Analysis passages do not claim the language of retained old output and summary sides resolve independently', async () => {
+  const [{ markdownDocuments }] = await modules;
+  const paper = { name: 'Failed retained translation', blocks: [translatedBlock(1, 'German', { status: 'failed', error: 'Model interrupted.' })],
+    summary: { source: 'Source summary.', target: 'Unknown-script summary.', sourceLanguage: 'English', targetLanguage: 'Chinese' } };
+  const output = markdownDocuments(paper, 'French', 'analysis')[0].content;
+  assert.match(output, /## Whole-paper summary \(English\)\n\nSource summary\./);
+  assert.match(output, /## Target summary\n\nUnknown-script summary\./);
+  assert.match(output, /#### Original English\n\nSource 1\.\n\n#### Translation\n\n\[Translation failed\] Model interrupted\./);
+  assert.doesNotMatch(output, /Translation \(German\)|French|Simplified Chinese|Saved output 1/);
 });

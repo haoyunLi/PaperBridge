@@ -202,8 +202,8 @@ export function splitBlockAt(block, cut) {
   const [leftNotes, rightNotes] = divide((block.notes || []).filter(item => item.kind !== 'translation'));
   const translationNotes = (block.notes || []).filter(item => item.kind === 'translation').map(forReview);
   return [
-    { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationHighlights: (block.translationHighlights || []).map(forReview), status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
-    { ...block, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
+    { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: (block.translationHighlights || []).map(forReview), status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
+    { ...block, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
   ];
 }
 
@@ -255,7 +255,7 @@ export function mergeBlocks(left, right) {
   const rightStart = text.length - right.text.length;
   const move = (item, source, start) => matchesQuote(source, item.text, item.offset) ? moveSourceAnnotation(item, text, start + item.offset) : forReview(item);
   const moveNote = (item, source, start) => item.kind === 'translation' ? forReview(item) : move(item, source, start);
-  return { ...left, text, heading: isHeading(text), translation: '', translationMarkdown: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
+  return { ...left, text, heading: isHeading(text), translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
     highlights: [...(left.highlights || []).map(item => move(item, left.text, 0)), ...(right.highlights || []).map(item => move(item, right.text, rightStart))],
     translationHighlights: [...(left.translationHighlights || []), ...(right.translationHighlights || [])].map(forReview),
     notes: [...(left.notes || []).map(item => moveNote(item, left.text, 0)), ...(right.notes || []).map(item => moveNote(item, right.text, rightStart))]
@@ -271,7 +271,7 @@ export function editedBlock(block, newText) {
     const offset = retained === null ? uniqueOffset(text, item.text) : retained + original;
     return moveSourceAnnotation(item, text, offset);
   }
-  return { ...block, text, heading: isHeading(text), translation: '', translationMarkdown: null, status: 'pending',
+  return { ...block, text, heading: isHeading(text), translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending',
     translationHighlights: (block.translationHighlights || []).map(forReview),
     highlights: (block.highlights || []).map(relocate),
     notes: (block.notes || []).map(item => item.kind === 'translation' ? forReview(item) : relocate(item))

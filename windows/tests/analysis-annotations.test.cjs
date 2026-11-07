@@ -35,7 +35,7 @@ test('Analysis places bookmarks and combined chronological Reader annotations in
   const before = structuredClone(paper);
   const output = markdownDocuments(paper, 'French', 'analysis')[0].content;
   const first = output.slice(output.indexOf('### Paragraph 1'), output.indexOf('### Paragraph 2'));
-  assert.match(first, /^### Paragraph 1\n\n> Bookmarked in PaperBridge\n\nAlpha beta gamma/);
+  assert.match(first, /^### Paragraph 1\n\n> Bookmarked in PaperBridge\n\n#### Original\n\nAlpha beta gamma/);
   assert.match(first, /\n#### Highlights and Notes\n\n##### Reader · Block 1 · source · amber\n\n> Alpha\n\nNote: Combined exact-range note\./);
   assert.equal(occurrences(output, 'Combined exact-range note.'), 1);
   assert.equal(occurrences(first, '> Alpha\n'), 3, 'A distinct occurrence and the translation side remain separate from the merged note/highlight.');

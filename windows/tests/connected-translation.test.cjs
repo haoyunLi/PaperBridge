@@ -63,7 +63,8 @@ test('connected batch status survives model switches and excludes stale or legac
   assert.deepEqual(pendingConnectedBatches(switched), []);
   const restored = switchOutputSettings(switched, next, settings);
   assert.equal(restored.connectedTranslation, paper.connectedTranslation);
-  assert.deepEqual(pendingConnectedBatches(restored), [failed]);
+  assert.deepEqual(pendingConnectedBatches(restored), [{ ...failed, translationLanguage: null }]);
+  assert.equal(Object.hasOwn(failed, 'translationLanguage'), false, 'migration must leave the original legacy fixture untouched');
   assert.deepEqual(pendingConnectedBatches({ ...restored, connectedStale: true }), []);
   assert.deepEqual(pendingConnectedBatches({ ...restored, connectedBatchVersion: null }), []);
 });

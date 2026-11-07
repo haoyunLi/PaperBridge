@@ -1,5 +1,33 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第七十七阶段：导出语言归属、文件命名与旧译文兼容（2026-11-07 UTC，开发分支）
+
+再次查询 GitHub main 为 `4a0b301`，Mac 功能源码仍为 1.10.0 / `16e01ac`。上一阶段 `900b57c` 已由 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42349220785)验证 217 项单元、34 套桌面和打包启动。本阶段针对 Mac 的导出语言标题、`paper_*.md` 文件名及 `_PaperBridge` 目录补齐，而非只在旧译文前拼接当前设置中的语言。
+
+Reader 每段译文、普通全文的每个批次及保存的完整译稿分别记录源语言和目标语言。缓存归档/恢复、PDF/MinerU 切源、续译和结构 Undo 同时保留文字与语言记录。编辑原文清除失效译文时也清除其语言；未知旧成功批次与新批次混合时，整篇语言仍未知，全部重新生成后才能使用统一语言。失败重译保留的旧译文继续保留其原有语言；结构化全文只按实际采用的成功段落聚合。
+
+加载旧文时先读取原始保存的任务配置，再合并当前设置。明确完整的历史语言对可作为迁移依据；缺失、不完整、明确 null、混合方向和未记录语言的旧缓存保持未知，不能从当前全局设置或缓存键推测。旧 `Chinese` 值保留，不推断简繁体，也不修改缓存键。摘要始终使用自身已保存的语言。导出纯函数不重新生成译文、不修改原文或批注。
+
+已知摘要采用 Mac 的 `Whole-paper summary (语言)` 标题，全文标题采用该译稿自身的目标语言；段落内补充 Original / Translation 标题。未知时使用通用标题，正文仍完整导出。结构化 bundle 的 Full Translation 重建自当前 Reader，直接导出旧独立全文则保留旧稿及其自身语言，两者按各自实际内容命名。
+
+| 输出 | 已知语言的 bundle 文件名 |
+| --- | --- |
+| 原文 | `paper_original.md` |
+| 逐段译文 | `paper_translation_<target>.md` |
+| 双语正文 | `paper_bilingual_<source>_<target>.md` |
+| 分析、摘要和批注 | `paper_analysis_notes.md` |
+| 全文译稿 | `paper_full_translation_<target>.md` |
+
+语言代码与 Mac 的 11 项映射一致，简体/繁体为 `zh-Hans` / `zh-Hant`。未知语言省去对应后缀。默认单文件分析使用 `<论文名>_bilingual.md`；便携目录使用 `<论文名>_PaperBridge`，重复从 `-2` 开始，保留既有目录。Windows 额外单文件格式继续提供，按实际内容使用明确后缀。设备保留名、非法字符、末尾点/空格和大小写重名在 Windows 写盘端处理。
+
+已确认的语言矛盾与单纯缺失记录分别保存。矛盾的全文保留原始内容及未知语言，不再按矛盾的批次元数据注入失败提示；普通未知语言下的真实失败仍保留原有错误和原文。Resume 若复用了有矛盾的旧成功批次，矛盾状态继续保留；完整 Regenerate 后才建立新方向。PDF 双语导出中失败段落仅保留原文及通用 Translation 提示，不再借用未输出的旧译文语言。
+
+本机 235 项单元和 35 套桌面回归已通过。旧语言专项 `test-artifacts/legacy-output-language-uVObLG/results.json` 验证缺失设置的中文译文在 German 全局设置下仍使用通用名称；French 摘要保持自己的标题，批注/书签/译文经过设置往返与重启保持，模型请求数为 0。另一明确记录夹具同时输出 French Reader、中文全文和 German 摘要，三种语言各自正确。Connected 专项验证普通失败提示、未知旧成功批次继续保持未知、完整重译确立方向、French/Chinese 缓存恢复，以及矛盾稿 Resume/重启保留、Regenerate 清除的真实 UI 流程；使用隔离的模拟模型服务，没有新增实际模型质量测试。
+
+完整桌面运行与每套退出码记录于 `test-artifacts/phase77-full-desktop/results.json`。两处旧断言因新增语言字段而失败：库标题保存的旧文预期补充明确 null；编辑器夹具补充其原本已知的任务方向，保留全部正文/译文/批注的精确比较，旧未知迁移另有专门覆盖。没有移除内容断言。最终 Setup / Portable 构建与打包程序的首次引导、自动设置和 Reader 启动也通过，日志为 `phase77-dist-final.log` / `phase77-packaged.log`；本次提交的 GitHub 完整检查另行跟进。
+
+资源仍使用 Windows 已有的包内哈希路径；原 PDF、PNG 页面及相对资源链接保留，后续 facsimile 写入使用实际生成的文件名，不重新猜路径。Windows 使用 PDF.js，在文字层导入时归档页面，导出时复用或补缺；另保留 Original Pages 索引、额外单文件入口及自身 Analysis 目录层级。此处补齐功能与命名，不宣称导出文件逐字或内部资源目录与 Mac 完全相同。公开下载仍为 0.2.18，尚不包含第 76–77 阶段。
+
 ## 第七十六阶段：独立段落选中、阅读位置和结构撤销（2026-11-07 UTC，开发分支）
 
 GitHub main 已核对至 `4a0b301`；其新增内容为 Windows 下载入口，Mac 功能源码仍为 1.10.0 / `16e01ac`。本阶段对照 Mac 的 selectedParagraphID、readingPositions、结构修改及 Undo 行为，分开保存“正在查看哪个段落”和“选择哪个段落供检查器操作”。此前 Windows 被动滚动会改选中目标，修改结构后也会强制跳到编辑位置。

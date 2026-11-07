@@ -17,7 +17,8 @@ import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBloc
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry, remapPositionAfterStructureChange } from './paperUndo.mjs';
-import { markdownDocuments } from './exportDocuments.mjs';
+import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
+import { normalizeOutputLanguage, commonOutputLanguage, migrateOutputLanguages } from './outputLanguages.mjs';
 import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
@@ -1279,6 +1280,9 @@ function App() {
     if (token) requireActiveTask(token);
     if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained.');
     if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
+    // Capture the saved output's language before missing task settings are filled
+    // from the current global configuration. Unknown historical output stays so.
+    loaded = migrateOutputLanguages(loaded);
     let pagesMigrated = false;
     if (loaded.mineruMarkdown && loaded.mineruPageMapVersion !== mineruPageMapVersion) {
       const pageHints = await api.cachedMineruPages(loaded.id).catch(() => []);
@@ -2155,7 +2159,8 @@ function App() {
             for (const part of parts) translated.push(await generate(translationModel, protectedBlock ? markdownTranslationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)) : translationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)), translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token));
             output = protectedBlock ? restoreMarkdown(translated.join('\n'), protectedBlock.tokens) : translated.join(' ');
           }
-          if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: protectedBlock ? output : null, status: 'ok', error: '' });
+          if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: protectedBlock ? output : null,
+            translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '' });
         } catch (err) {
           if (token.cancelled) break;
           if (config.aiProvider === 'openai' && isGlobalOpenAIError(err.message)) throw err;
@@ -2346,14 +2351,19 @@ function App() {
         setStatus('Using the saved connected full translation.');
         return;
       }
+      let inheritedLanguageConflict = false;
       const saveDraft = batches => commitPaper(paper => ({
         ...paper, connectedBlocks: [...batches],
         connectedTranslation: batches.map(batch => batch.output).join('\n\n'),
+        connectedLanguageConflict: inheritedLanguageConflict,
+        connectedLanguage: inheritedLanguageConflict ? null
+          : commonOutputLanguage(batches.filter(batch => batch.kind === 'translation').map(batch => batch.translationLanguage))
+            || (batches.every(batch => batch.kind === 'original') && config.sourceLanguage === config.targetLanguage ? normalizeOutputLanguage(config) : null),
         connectedBatchVersion, connectedShared: false, connectedStale: false
       }));
       if (config.sourceLanguage === config.targetLanguage) {
         const source = current.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
-        saveDraft([{ kind: 'original', source, output: source, status: 'ok' }]);
+        saveDraft([{ kind: 'original', source, output: source, translationLanguage: normalizeOutputLanguage(config), status: 'ok' }]);
         setStatus('Source and target languages match. The full draft uses the original text.');
         return;
       }
@@ -2362,8 +2372,13 @@ function App() {
       const batches = planConnectedBatches(current.blocks).map((batch, index) => {
         const saved = previous?.[index];
         if (saved?.kind === batch.kind && saved.source === batch.source && saved.status === 'ok' && saved.output) return saved;
-        return { ...batch, output: batch.source, status: batch.kind === 'original' ? 'ok' : 'pending' };
+        return { ...batch, output: batch.source, translationLanguage: batch.kind === 'translation' ? normalizeOutputLanguage(config) : null,
+          status: batch.kind === 'original' ? 'ok' : 'pending' };
       });
+      // Resuming a contradictory saved artifact does not establish the language
+      // of its reused successful passages. A fresh generation has no such reuse.
+      inheritedLanguageConflict = current.connectedLanguageConflict === true && batches.some((batch, index) =>
+        batch.kind === 'translation' && batch === previous?.[index]);
       const translationCount = batches.filter(batch => batch.kind === 'translation').length;
       let done = batches.filter(batch => batch.kind === 'translation' && batch.status === 'ok').length;
       if (done === translationCount) {
@@ -2382,7 +2397,7 @@ function App() {
           const prompt = connectedTranslationPrompt(protectedExcerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(protectedExcerpt.text));
           const answer = await generate(translationModel, prompt, translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage)), token);
           const output = restoreConnectedExcerpt(answer, protectedExcerpt.tokens);
-          batches[index] = { ...batch, output, status: 'ok' };
+          batches[index] = { ...batch, output, translationLanguage: normalizeOutputLanguage(config), status: 'ok' };
         } catch (cause) {
           if (token.cancelled) return;
           if (config.aiProvider === 'openai' && isGlobalOpenAIError(cause.message)) throw cause;
@@ -2496,9 +2511,9 @@ function App() {
     const token = startTask('Exporting Markdown…');
     setModal('');
     try {
-      const [document] = markdownDocuments(paper, settingsRef.current.targetLanguage, kind);
+      const [document] = markdownDocuments(paper, undefined, kind);
       if (!document) return;
-      const destination = await api.exportMarkdown({ name: `${paper.name.replace(/\.pdf$/i, '')}-${kind}`, content: document.content });
+      const destination = await api.exportMarkdown({ name: markdownExportName(paper, document), content: document.content });
       if (destination && !token.cancelled) setStatus(`Exported ${destination}`);
     } catch (cause) { if (!token.cancelled) setError(cause.message); }
     finally { endTask(token); }
@@ -2512,7 +2527,7 @@ function App() {
       const resource = Object.hasOwn(paper, 'mineruResourceId') ? { mineruResourceId: paper.mineruResourceId } : {};
       const result = await api.exportBundle({
         paper: { id: paper.id, name: paper.name, type: paper.type, sourceMode: paper.sourceMode, facsimile: pdfFacsimile, ...resource },
-        documents: markdownDocuments(paper, settingsRef.current.targetLanguage)
+        documents: markdownDocuments(paper)
       });
       if (!result) return;
       let pageImages = 0;

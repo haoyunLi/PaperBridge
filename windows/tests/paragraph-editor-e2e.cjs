@@ -60,7 +60,8 @@ async function run() {
   const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`,
     translationModel: 'translategemma:4b', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
     autoCheckUpdates: false, onboardingCompletedVersion: 1 };
-  const defaults = { heading: false, status: 'ok', bookmark: false, highlights: [], translationHighlights: [], notes: [] };
+  const defaults = { heading: false, status: 'ok', bookmark: false, highlights: [], translationHighlights: [], notes: [],
+    translationLanguage: { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' } };
   const blocks = [
     { ...defaults, id: 1, text: 'Earlier source text remains unchanged throughout paragraph repair.', translation: 'Earlier saved translation.' },
     { ...defaults, id: 2, text: 'First sentence. Second sentence.', translation: '第一句话。第二句话。', bookmark: true,

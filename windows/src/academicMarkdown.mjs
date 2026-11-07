@@ -1,4 +1,5 @@
 import { referenceBlockIds } from './references.mjs';
+import { commonOutputLanguage, normalizeOutputLanguage } from './outputLanguages.mjs';
 
 export function usesSharedMarkdown(paper) {
   return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
@@ -12,7 +13,11 @@ export function completedBlockTranslation(block, references) {
 export function withSharedMarkdownTranslation(paper) {
   const references = referenceBlockIds(paper.blocks);
   const markdown = paper.blocks.map(block => completedBlockTranslation(block, references) || block.sourceMarkdown || block.text).join('\n\n');
-  return { ...paper, connectedTranslation: markdown, connectedBlocks: [], connectedBatchVersion: null, connectedShared: true, connectedStale: false };
+  const translated = paper.blocks.filter(block => completedBlockTranslation(block, references));
+  const connectedLanguage = translated.length ? commonOutputLanguage(translated.map(block => block.translationLanguage))
+    : normalizeOutputLanguage(paper.taskSettings);
+  return { ...paper, connectedTranslation: markdown, connectedLanguage, connectedLanguageConflict: false,
+    connectedBlocks: [], connectedBatchVersion: null, connectedShared: true, connectedStale: false };
 }
 
 export function readableHtml(text) {

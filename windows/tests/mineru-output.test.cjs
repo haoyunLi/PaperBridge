@@ -103,8 +103,8 @@ test('MinerU 4.x ZIP keeps referenced attachments through saved resources and po
   const restored = findPaperMineruMarkdown(file(''), { id, mineruResourceId, mineruMarkdown: embedded });
   assert.deepEqual(readMineruPageHints(restored), [{ page: 5, text: 'Main result' }]);
   const bundle = writeBundle(file(''), { name: 'Kit', type: 'text', sourceMode: 'mineru' },
-    [{ kind: 'original', name: 'Original', content: embedded }], null, path.dirname(restored));
-  const original = fs.readFileSync(path.join(bundle.folder, 'Original.md'), 'utf8');
+    [{ kind: 'original', name: 'Original', filename: 'paper_original.md', content: embedded }], null, path.dirname(restored));
+  const original = fs.readFileSync(path.join(bundle.folder, 'paper_original.md'), 'utf8');
   const measurements = original.match(/\[Measurements\]\((assets\/[^?]+\.csv)\?view=table#rows\)/)?.[1];
   const appendix = original.match(/\[Appendix\]\((assets\/[^)]+\.md)\)/)?.[1];
   assert.ok(measurements && appendix);
