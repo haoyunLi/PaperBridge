@@ -45,6 +45,36 @@ test('locations include tab, mode, search, page and every sorted surface offset'
   assert.equal(sameReadingLocation(value, { ...value, page: 3 }), false);
 });
 
+test('locations retain selection separately from viewport and distinguish missing selection from null', async () => {
+  const { normalizeReadingLocation, sameReadingLocation } = await historyModule;
+  const viewport = location(12);
+  assert.equal(Object.hasOwn(normalizeReadingLocation(viewport), 'selectedParagraphID'), false);
+  const selected = normalizeReadingLocation({ ...viewport, selectedParagraphID: 2 });
+  assert.equal(selected.selectedParagraphID, 2);
+  assert.equal(selected.block, 12);
+  assert.equal(sameReadingLocation(selected, { ...selected, selectedParagraphID: 20 }), false);
+  assert.equal(sameReadingLocation(viewport, { ...viewport, selectedParagraphID: null }), false);
+  assert.equal(normalizeReadingLocation({ ...viewport, selectedParagraphID: null }).selectedParagraphID, null);
+  for (const invalid of [undefined, 0, -1, 1.5, '2', NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(normalizeReadingLocation({ ...viewport, selectedParagraphID: invalid }).selectedParagraphID, null);
+  }
+});
+
+test('Back and Forward restore different selections at the same viewport without deduplicating them', async () => {
+  const { createReadingHistory } = await historyModule;
+  const history = createReadingHistory();
+  const first = location(12, { selectedParagraphID: 2 });
+  const second = location(12, { selectedParagraphID: 20 });
+  const unselected = location(12, { selectedParagraphID: null });
+  history.record(first);
+  history.record(second);
+  assert.equal(history.snapshot().back.length, 2);
+  assert.deepEqual(history.goBack(unselected), second);
+  assert.deepEqual(history.goBack(second), first);
+  assert.deepEqual(history.goForward(first), second);
+  assert.deepEqual(history.goForward(second), unselected);
+});
+
 test('reading history distinguishes extraction sources and leaves blocked moves in place', async () => {
   const { createReadingHistory, sameReadingLocation } = await historyModule;
   const pdf = location(4, { sourceMode: 'pdf', search: 'evidence', searchOrigin: 640 });
@@ -63,18 +93,21 @@ test('reading history distinguishes extraction sources and leaves blocked moves 
 test('filtered history retains its viewport and paragraph origin without persisting filtered offsets', async () => {
   const { createReadingHistory, persistedReadingPosition } = await historyModule;
   const origin = { scrollTop: 1840, block: 12, offset: -37 };
-  const filtered = location(16, { search: 'evidence', searchOrigin: origin, scrollByTab: { Reader: 120, Summary: 45 } });
+  const filtered = location(16, { selectedParagraphID: 20, search: 'evidence', searchOrigin: origin, scrollByTab: { Reader: 120, Summary: 45 } });
   const history = createReadingHistory();
   history.record(filtered);
   origin.block = 999;
   const restored = history.goBack(location(20));
   assert.deepEqual(restored.searchOrigin, { scrollTop: 1840, block: 12, offset: -37 });
   assert.equal(restored.scrollByTab.Reader, 120, 'Back must restore the filtered viewport');
-  const persisted = persistedReadingPosition(restored, { pdfZoom: 125 });
+  assert.equal(restored.selectedParagraphID, 20, 'the chosen paragraph can differ from both filtered and original viewports');
+  const persisted = persistedReadingPosition(restored, { pdfZoom: 125, selectedParagraphID: 99 });
   assert.equal(persisted.block, 12, 'the active filtered result must not replace the unfiltered paragraph');
   assert.deepEqual(persisted.scrollByTab, { Reader: 1840, Summary: 45 });
   assert.deepEqual(persisted.readerSearchOrigin, restored.searchOrigin);
   assert.equal(persisted.pdfZoom, 125);
+  assert.equal(Object.hasOwn(persisted, 'selectedParagraphID'), false, 'selection is never a field of persisted position');
+  assert.equal(restored.selectedParagraphID, 20, 'persisting the unfiltered origin must not change the selected result');
   assert.equal(restored.scrollByTab.Reader, 120, 'persistence must not mutate the session history');
   const summary = persistedReadingPosition({ ...restored, tab: 'Summary', block: 16 }, persisted);
   assert.equal(summary.block, 16);

@@ -1,5 +1,7 @@
 import { anchorText } from './academicMarkdown.mjs';
 import { remapSummaryEvidence } from './paper.mjs';
+import { firstSelectableParagraphID, isSelectableParagraphID, resolveSelectedParagraphID } from './paragraphSelection.mjs';
+import { normalizeSearchOrigin } from './readingHistory.mjs';
 
 const blockFields = ['bookmark', 'notes', 'highlights', 'translationHighlights'];
 const documentFields = ['pdfNotes', 'pdfHighlights', 'viewNotes', 'viewHighlights'];
@@ -8,6 +10,44 @@ const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const sourceKey = block => JSON.stringify([block.text, block.sourceMarkdown, block.heading, block.resource, block.page]);
 const sameSources = (left, right) => left.length === right.length && left.every((block, index) => sourceKey(block) === sourceKey(right[index]));
 const itemKey = item => item.id || JSON.stringify([item.kind, item.scope, item.page, item.offset, item.text, item.color]);
+const viewportFields = ['block', 'page', 'scrollByTab'];
+
+function readingPositionSnapshot(position) {
+  if (!position) return undefined;
+  const snapshot = Object.fromEntries(viewportFields.filter(field => Object.hasOwn(position, field))
+    .map(field => [field, clone(position[field])]));
+  // A structural change exits filtering. Its snapshot must represent the
+  // durable unfiltered location, not the temporary search-result viewport.
+  const origin = normalizeSearchOrigin(position.readerSearchOrigin);
+  if (origin !== null) {
+    snapshot.scrollByTab = { ...snapshot.scrollByTab, Reader: typeof origin === 'number' ? origin : origin.scrollTop };
+    if (typeof origin === 'object') snapshot.block = origin.block;
+  }
+  return snapshot;
+}
+
+function restoreReadingPosition(current, snapshot) {
+  const position = { ...current };
+  for (const field of [...viewportFields, 'readerSearchOrigin']) delete position[field];
+  Object.assign(position, clone(snapshot));
+  return Object.keys(position).length ? position : undefined;
+}
+
+// Mac keeps paper-view locations and remaps the Reader item independently of
+// the newly selected edit result. Pixel offsets into the old Reader layout and
+// positions in invalidated generated views cannot describe the new structure.
+export function remapPositionAfterStructureChange(position, beforeBlocks, afterBlocks, range = changedRange(beforeBlocks, afterBlocks)) {
+  const next = { ...position, ...readingPositionSnapshot(position) };
+  const oldIndex = beforeBlocks.findIndex(block => block.id === next.block);
+  const nextIndex = oldIndex < range.start ? oldIndex
+    : oldIndex < range.beforeEnd ? range.start : oldIndex + range.afterEnd - range.beforeEnd;
+  if (oldIndex >= 0 && Number.isSafeInteger(afterBlocks[nextIndex]?.id) && afterBlocks[nextIndex].id > 0) next.block = afterBlocks[nextIndex].id;
+  else delete next.block;
+  next.scrollByTab = Object.fromEntries(Object.entries(next.scrollByTab || {}).filter(([key]) =>
+    key === 'Paper' || key.startsWith('Paper:') || key === 'Original' || key.startsWith('Original:') || key.startsWith('Pdf:')));
+  delete next.readerSearchOrigin;
+  return next;
+}
 
 function changedFields(before, after, fields) {
   return fields.filter(field => !equal(before[field], after[field]))
@@ -21,7 +61,8 @@ export function createUndoEntry(before, after, range) {
   const base = { paperId: before.id, sourceMode: before.sourceMode };
   if (!sameSources(before.blocks, after.blocks)) {
     return { ...base, type: 'structure', beforeBlocks: clone(before.blocks), afterBlocks: clone(after.blocks), range,
-      beforeSummary: clone(before.summary), afterSummary: clone(after.summary) };
+      beforeSummary: clone(before.summary), afterSummary: clone(after.summary),
+      beforeSelectedParagraphID: resolveSelectedParagraphID(before), beforePosition: readingPositionSnapshot(before.position) };
   }
   const blocks = before.blocks.flatMap((block, index) => {
     const changes = changedFields(block, after.blocks[index], blockFields);
@@ -144,12 +185,17 @@ export function applyUndoEntry(current, entry) {
   const restored = restoreStructuralAnnotations(clone(entry.beforeBlocks.slice(start, beforeEnd)), current.blocks.slice(start, afterEnd), entry.afterBlocks.slice(start, afterEnd));
   const blocks = [...current.blocks.slice(0, start), ...restored, ...current.blocks.slice(afterEnd)]
     .map((block, index) => ({ ...block, id: entry.beforeBlocks[index].id }));
-  const currentIndex = current.blocks.findIndex(block => block.id === current.position?.block);
-  const targetIndex = currentIndex < start ? currentIndex : currentIndex < afterEnd ? start : currentIndex + beforeEnd - afterEnd;
   const summary = equal(current.summary, entry.afterSummary) ? entry.beforeSummary
     : remapSummaryEvidence(current.summary, current.blocks, blocks, { start, beforeEnd: afterEnd, afterEnd: beforeEnd });
+  // Mac's structural Undo restores the old selected index, falling back to the
+  // first paragraph for a nil/invalid snapshot. This differs deliberately from
+  // loading an explicitly null selection, which preserves null.
+  const selectedParagraphID = isSelectableParagraphID(entry.beforeSelectedParagraphID, blocks)
+    ? entry.beforeSelectedParagraphID : firstSelectableParagraphID(blocks);
+  const position = restoreReadingPosition(current.position, entry.beforePosition);
   return { ...current, blocks,
+    selectedParagraphID,
     ...(summary !== undefined && { summary }),
     ...(current.connectedTranslation ? { connectedStale: true } : {}),
-    ...(currentIndex >= 0 && blocks[targetIndex] ? { position: { ...current.position, block: blocks[targetIndex].id } } : {}) };
+    ...((position !== undefined || Object.hasOwn(current, 'position')) && { position }) };
 }

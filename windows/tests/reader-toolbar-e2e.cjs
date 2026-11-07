@@ -200,16 +200,22 @@ async function run() {
     await page.getByRole('button', { name: 'Clear search', exact: true }).click();
     await waitFor(async () => (await firstBlock()) === 'block-20', 'history retains unfiltered search origin too');
 
-    // Editing or undoing structure while filtered must discard obsolete block anchors.
+    // Filtered edits select their result while keeping the durable Reader location.
+    // Undo restores that pre-edit viewport instead of revealing the selected block.
+    const structureOrigin = await scroll();
     await search().fill('Unique search destination');
     await page.locator('#block-3').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.getByRole('textbox', { name: 'Paragraph source', exact: true }).fill('Unique search destination repaired. The study documents corrected source text.');
     await page.getByRole('dialog', { name: 'Repair Paragraph 3', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
-    await waitFor(async () => await search().inputValue() === '' && (await firstBlock()) === 'block-3', 'source edit clears filter and reveals repaired block');
+    await waitFor(async () => await search().inputValue() === '' && (await firstBlock()) === 'block-20' &&
+      readPaper().selectedParagraphID === 3 && readPaper().position.block === 20,
+    'source edit clears filter, selects repaired block and preserves the mapped viewport');
     await search().fill('Unique search destination');
     await undo.click();
-    await waitFor(async () => await search().inputValue() === '' && (await firstBlock()) === 'block-3', 'structural undo clears filter and reveals restored block');
+    await waitFor(async () => await search().inputValue() === '' && (await firstBlock()) === 'block-20' &&
+      readPaper().selectedParagraphID === 3 && Math.abs(await scroll() - structureOrigin) < 3,
+    'structural undo clears filter and independently restores its selected block and exact viewport');
     await waitFor(() => !readPaper().position.readerSearchOrigin, 'obsolete search anchor removed after undo');
 
     // Filtering and scrolling the results must not replace the durable Reader position.

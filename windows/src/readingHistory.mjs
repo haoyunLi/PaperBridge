@@ -11,7 +11,9 @@ export function normalizeSearchOrigin(value) {
 // to when the temporary search is dismissed or the application is reopened.
 export function persistedReadingPosition(location, previous = {}) {
   const origin = location.search ? normalizeSearchOrigin(location.searchOrigin) : null;
-  const position = { ...previous, block: location.block, page: location.page, tab: location.tab,
+  // Selection belongs to the paper, never to a saved viewport or search origin.
+  const { selectedParagraphID: discardedSelection, ...viewport } = previous || {};
+  const position = { ...viewport, block: location.block, page: location.page, tab: location.tab,
     displayMode: location.displayMode, scrollByTab: { ...location.scrollByTab } };
   if (origin !== null) {
     position.scrollByTab.Reader = typeof origin === 'number' ? origin : origin.scrollTop;
@@ -34,6 +36,10 @@ export function normalizeReadingLocation(value = {}) {
     tab: typeof value.tab === 'string' ? value.tab : 'Paper',
     displayMode: ['source', 'translation', 'bilingual'].includes(value.displayMode) ? value.displayMode : 'bilingual',
     block: Number.isInteger(value.block) && value.block > 0 ? value.block : 1,
+    // Keep missing distinct from null so old session records can still migrate
+    // from block. The destination paper validates that an explicit ID exists.
+    ...(Object.hasOwn(value, 'selectedParagraphID') && { selectedParagraphID:
+      Number.isSafeInteger(value.selectedParagraphID) && value.selectedParagraphID > 0 ? value.selectedParagraphID : null }),
     page: Number.isInteger(value.page) && value.page > 0 ? value.page : 1,
     search,
     ...(searchOrigin !== null && { searchOrigin }),

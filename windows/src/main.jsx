@@ -16,11 +16,12 @@ import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qu
 import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
-import { createUndoEntry, applyUndoEntry } from './paperUndo.mjs';
+import { createUndoEntry, applyUndoEntry, remapPositionAfterStructureChange } from './paperUndo.mjs';
 import { markdownDocuments } from './exportDocuments.mjs';
 import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
+import { firstSelectableParagraphID, isSelectableParagraphID, resolveSelectedParagraphID } from './paragraphSelection.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import Onboarding from './Onboarding.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
@@ -1023,7 +1024,7 @@ function App() {
   const [pdfNavigation, setPdfNavigation] = useState(null);
   const [viewNavigation, setViewNavigation] = useState(null);
   const [blockNavigation, setBlockNavigation] = useState(null);
-  const [activeBlock, setActiveBlock] = useState(1);
+  const activeBlock = resolveSelectedParagraphID(paper);
   const [edit, setEdit] = useState(null);
   const editRef = useRef(null);
   editRef.current = edit;
@@ -1079,6 +1080,12 @@ function App() {
     if (next) saveQueue.current.schedule(next, delay);
     return next;
   };
+  function selectParagraph(id) {
+    return commitPaper(current => {
+      if (!current || id !== null && !isSelectableParagraphID(id, current.blocks) || current.selectedParagraphID === id) return current;
+      return { ...current, selectedParagraphID: id };
+    }, { deferUndo: true });
+  }
   async function finishNoteEditing() {
     if (noteEditingIdentity.current && pendingUndoSnapshot.current) {
       const entry = createUndoEntry(pendingUndoSnapshot.current, paperRef.current);
@@ -1112,7 +1119,6 @@ function App() {
       const bounds = block.getBoundingClientRect();
       const offset = Math.max(origin.offset, 16 - bounds.height);
       host.scrollTop += bounds.top - host.getBoundingClientRect().top - offset;
-      setActiveBlock(origin.block);
     } else host.scrollTop = typeof origin === 'number' ? origin : origin.scrollTop;
   }
   function currentReadingLocation() {
@@ -1126,13 +1132,14 @@ function App() {
     const pdfHost = mainScrollRef.current?.querySelector('.pdf-continuous');
     const pdfPage = pdfPageElement(pdfHost, pageNumber);
     if (pdfPage) scrollByTab[pdfScrollKey(pdfHost.dataset.pdfScope, pageNumber)] = pdfOffsetAtFit(pdfHost, pdfPage, pdfZoomPercent(Number(pdfHost.dataset.pdfZoom)));
-    let block = activeBlock;
+    let block = current.position?.block || firstSelectableParagraphID(current.blocks) || 1;
     if (tab === 'Reader' && !search && mainScrollRef.current) {
       const top = mainScrollRef.current.getBoundingClientRect().top;
       const visible = [...mainScrollRef.current.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12);
       if (visible) block = Number(visible.id.replace('block-', ''));
     }
     return { paperId: current.id, sourceMode: paperArticleSource(current).mode, tab, displayMode, block,
+      selectedParagraphID: resolveSelectedParagraphID(current),
       page: pageNumber, search, searchOrigin: searchOrigin.current, scrollByTab };
   }
   function recordReadingJump(isAlreadyAtDestination = () => false) {
@@ -1188,13 +1195,16 @@ function App() {
     searchScroll.current = location.search ? Number(location.scrollByTab?.Reader || 0) : null;
     window.getSelection()?.removeAllRanges();
     setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
-    setTab(location.tab); setDisplayMode(location.displayMode); setActiveBlock(location.block); setPageNumber(location.page); setSearch(location.search);
+    setTab(location.tab); setDisplayMode(location.displayMode); setPageNumber(location.page); setSearch(location.search);
     const sourceChanged = location.sourceMode && location.sourceMode !== paperArticleSource(paperRef.current).mode;
     if (sourceChanged) { setUndo([]); cancelParagraphEdit(); setError(''); }
-    commitPaper(current => ({
-      ...(sourceChanged ? switchReadingSource(current, location.sourceMode, settingsRef.current) : current),
-      position: persistedReadingPosition(location, sourceChanged ? { ...current.position, readerSearchOrigin: undefined } : current.position)
-    }));
+    commitPaper(current => {
+      const target = sourceChanged ? switchReadingSource(current, location.sourceMode, settingsRef.current) : current;
+      const selectedParagraphID = resolveSelectedParagraphID({ blocks: target.blocks, position: { block: location.block },
+        ...(Object.hasOwn(location, 'selectedParagraphID') && { selectedParagraphID: location.selectedParagraphID }) });
+      return { ...target, selectedParagraphID,
+        position: persistedReadingPosition(location, sourceChanged ? { ...current.position, readerSearchOrigin: undefined } : current.position) };
+    });
     afterReadingLayout(mainScrollRef.current, () => {
       try {
         const current = paperRef.current;
@@ -1295,7 +1305,8 @@ function App() {
     }
     resetReadingHistory();
     cancelParagraphEdit();
-    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setActiveBlock(loaded.position?.block || 1); setPageNumber(loaded.position?.page || 1);
+    loaded = { ...loaded, selectedParagraphID: resolveSelectedParagraphID(loaded) };
+    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setPageNumber(loaded.position?.page || 1);
     if (pagesMigrated) saveQueue.current.schedule(loaded);
     setStatus(loaded.extractionWarning || (hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`));
     return true;
@@ -1394,33 +1405,36 @@ function App() {
     if (!entry) return;
     if (entry.type === 'structure' && taskRef.current) { setError('Finish or stop the current task before undoing a source edit.'); return; }
     noteEditingIdentity.current = '';
-    const restored = commitPaper(current => {
-      const next = applyUndoEntry(current, entry);
-      return entry.type === 'structure' ? { ...next, position: positionAfterStructureChange(next.position, next.position?.block || 1) } : next;
-    });
+    const restored = commitPaper(current => applyUndoEntry(current, entry));
     if (entry.type === 'structure') {
       resetStructureNavigation();
-      setActiveBlock(restored.position?.block || 1);
-      revealChangedReaderBlock(restored.position?.block || 1);
+      const restoredPage = restored.position?.page || 1;
+      setPageNumber(restoredPage);
+      restoreMainScroll({ clearSearch: true, page: restoredPage });
     } else setNoteDraft(findSelectionNote(restored, selectionRef.current)?.body || '');
     setUndo(previous => previous.slice(0, -1));
   }
-  const restoreMainScroll = () => {
+  const restoreMainScroll = ({ clearSearch = false, page = pageNumber } = {}) => {
     const generation = readingRestoration.current;
+    const paperId = paperRef.current?.id;
+    const sourceMode = paperArticleSource(paperRef.current).mode;
+    const host = mainScrollRef.current;
     let cancelled = false;
     const owner = beginReadingRestore();
-    afterReadingLayout(mainScrollRef.current, () => {
+    afterReadingLayout(host, () => {
       try {
-        if (cancelled || generation !== readingRestoration.current) return;
-        const key = tab === 'Original' ? `Original:${pageNumber}` : tab;
-        const saved = tab === 'Reader' && search ? searchScroll.current : paperRef.current?.position?.scrollByTab?.[key];
-        const origin = tab === 'Reader' && !search ? normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin) : null;
+        if (cancelled || generation !== readingRestoration.current || paperRef.current?.id !== paperId ||
+            paperArticleSource(paperRef.current).mode !== sourceMode || paperRef.current?.position?.tab !== tab ||
+            mainScrollRef.current !== host) return;
+        const key = tab === 'Original' ? `Original:${page}` : tab;
+        const saved = tab === 'Reader' && search && !clearSearch ? searchScroll.current : paperRef.current?.position?.scrollByTab?.[key];
+        const origin = tab === 'Reader' && (!search || clearSearch) ? normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin) : null;
         if (origin !== null) {
           restoreReaderSearchOrigin(origin);
           persistRestoredReaderPosition();
         } else {
           if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
-          if (saved == null && tab === 'Reader') document.getElementById(`block-${activeBlock}`)?.scrollIntoView({ block: 'start' });
+          if (saved == null && tab === 'Reader') document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
         }
       } finally { finishReadingRestore(owner); }
     });
@@ -1441,7 +1455,6 @@ function App() {
       const top = host?.getBoundingClientRect().top || 0;
       const visible = tab === 'Reader' && !search ? [...host.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12) : null;
       const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
-      if (visible) setActiveBlock(block);
       commitPaper(current => ({ ...current, position: { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } } }));
     }, 350);
   };
@@ -1987,10 +2000,10 @@ function App() {
       ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
       extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning,
       tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(config), explanationLanguage: 'English',
-      paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
+      paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: firstSelectableParagraphID(blocks), position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
     };
     resetReadingHistory();
-    cancelParagraphEdit(); setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
+    cancelParagraphEdit(); setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setPageNumber(1); setSearch('');
     token.mineruResource = null;
     setStatus(extractionWarning || `Extracted ${blocks.length} blocks${pageCount ? ` from ${pageCount} pages` : ''}. Compare uncertain passages with Original PDF.`);
   }
@@ -2019,9 +2032,9 @@ function App() {
         resetReadingHistory(); cancelParagraphEdit(); setUndo([]);
         commitPaper({ id, name, type: 'text', sourceMode: 'text', createdAt: new Date().toISOString(), blocks,
           tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current),
-          explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector,
+          explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: firstSelectableParagraphID(blocks),
           position: { block: 1, page: 1, tab: initialTab }, extraction: 'Pasted text' });
-        setTab(initialTab); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
+        setTab(initialTab); setExplanationLanguage('English'); setPageNumber(1); setSearch('');
         setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
         setStatus(`Loaded ${name} with ${paragraphs.length} analysis paragraphs using Pasted text.${references.size ? ` Kept ${references.size} reference blocks in the document but excluded them from AI tasks.` : ''}`);
       }
@@ -2164,7 +2177,8 @@ function App() {
   function openTranslationRange() {
     if (tab === 'Reader' && !search) {
       const location = currentReadingLocation();
-      if (location) setActiveBlock(location.block);
+      clearTimeout(scrollSaveTimer.current);
+      if (location) commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
     }
     setModal('range');
   }
@@ -2236,8 +2250,7 @@ function App() {
     selectionRef.current = null;
     setSelection(null); setNoteDraft(''); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
     setQuickTermOpen(false); setTermDraft(''); setSelectionLookup({ status: '', error: '' });
-    setActiveBlock(id); setFocus(false); setInspector(true);
-    if (!search && current.position?.block !== id) commitPaper(paper => ({ ...paper, position: { ...paper.position, block: id } }));
+    selectParagraph(id); setFocus(false); setInspector(true);
   }
   async function explainBlock(id) {
     const block = paperRef.current?.blocks.find(item => item.id === id);
@@ -2405,13 +2418,24 @@ function App() {
       const { markdown, pageHints, blocks: parsed, resourceId = null, resourceWarning = '' } = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
       requireActiveTask(token);
       resetReadingHistory();
-      commitPaper(current => {
+      const previousBlocks = paperRef.current.blocks;
+      const updated = commitPaper(current => {
         const hasUserWork = current.summary || current.connectedTranslation || hasMineruWork(current.blocks) ||
           hasArticleWork(current, paperArticleSource(current).mode);
         const pdfBlocks = current.pdfBlocks || (current.sourceMode !== 'mineru' ? current.blocks : []);
         const blocks = locateMineruPages(parsed, pageHints, pdfBlocks);
-        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, mineruPageMapVersion, mineruResourceId: resourceId, pdfBlocks, blocks: hasUserWork ? current.blocks : blocks, extractionWarning: resourceWarning, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
+        const { Reader: discarded, ...scrollByTab } = current.position?.scrollByTab || {};
+        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, mineruPageMapVersion, mineruResourceId: resourceId, pdfBlocks, blocks: hasUserWork ? current.blocks : blocks,
+          selectedParagraphID: hasUserWork ? resolveSelectedParagraphID(current) : firstSelectableParagraphID(blocks),
+          ...(!hasUserWork && { position: { ...current.position, block: firstSelectableParagraphID(blocks) || 1, scrollByTab, readerSearchOrigin: undefined } }),
+          extractionWarning: resourceWarning, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
       });
+      if (updated.blocks !== previousBlocks) {
+        window.getSelection()?.removeAllRanges();
+        setUndo([]); cancelParagraphEdit(); setSelection(null); setSearch('');
+        setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+        if (tab === 'Reader') restoreMainScroll({ clearSearch: true });
+      }
       token.mineruResource = null;
       setStatus(`MinerU structure ready: ${parsed.length} blocks. You can switch Reader source without discarding either version.${resourceWarning ? ` ${resourceWarning}` : ''}`);
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
@@ -2427,12 +2451,17 @@ function App() {
     if (!current || paperArticleSource(current).mode === mode || !canSwitchReadingSource(current, mode)) return false;
     recordReadingJump();
     invalidateReadingScroll();
-    commitPaper(current => ({ ...switchReadingSource(current, mode, settingsRef.current), position: { ...current.position, block: 1, readerSearchOrigin: undefined } }));
+    commitPaper(current => {
+      const target = switchReadingSource(current, mode, settingsRef.current);
+      const selectedParagraphID = firstSelectableParagraphID(target.blocks);
+      const { Reader: discarded, ...scrollByTab } = current.position?.scrollByTab || {};
+      return { ...target, selectedParagraphID, position: { ...current.position, block: selectedParagraphID || 1, scrollByTab, readerSearchOrigin: undefined } };
+    });
     searchOrigin.current = null;
     window.getSelection()?.removeAllRanges();
     setUndo([]); cancelParagraphEdit(); setSelection(null); setSearch('');
     setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
-    setActiveBlock(1);
+    if (tab === 'Reader') restoreMainScroll({ clearSearch: true });
     setError('');
     setStatus(`Reader source changed to ${mode === 'mineru' ? 'MinerU' : 'PDF text'}. The other version remains saved.`);
     return true;
@@ -2452,6 +2481,7 @@ function App() {
     recordReadingJump();
     restoreReadingLocation({
       ...origin, sourceMode: sourceChanged ? 'mineru' : origin.sourceMode, tab: 'Reader', page, block,
+      selectedParagraphID: target?.id ?? (sourceChanged ? firstSelectableParagraphID(blocks) : origin.selectedParagraphID),
       displayMode: origin.displayMode === 'translation' ? 'bilingual' : origin.displayMode,
       search: '', searchOrigin: null, scrollByTab
     });
@@ -2552,7 +2582,7 @@ function App() {
       modelRefreshId.current++;
       setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
       void refreshModels(data.settings);
-      setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setActiveBlock(1); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
+      setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
       setPaste(''); setPasteExpanded(false); setPasteFocusRequest(0);
       setModal(''); setStatus('Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
     } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
@@ -2722,10 +2752,11 @@ function App() {
       }
     }
     const mode = requestedMode ?? (revealSource && displayMode === 'translation' ? 'bilingual' : displayMode);
-    recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.displayMode === mode);
+    recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.selectedParagraphID === id && location.displayMode === mode);
     setBlockNavigation(null);
-    searchOrigin.current = null; setSearch(''); setActiveBlock(id); setDisplayMode(mode); setTab('Reader');
-    commitPaper(current => ({ ...current, position: { ...current.position, block: id, displayMode: mode, readerSearchOrigin: undefined } }));
+    searchOrigin.current = null; setSearch(''); setDisplayMode(mode); setTab('Reader');
+    commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
+      position: { ...current.position, block: id, displayMode: mode, readerSearchOrigin: undefined } }));
     setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }
   function navigateBlockAnnotation(blockId, item, kind, recordType) {
@@ -2746,9 +2777,10 @@ function App() {
     invalidateReadingScroll();
     if (tab !== targetTab || displayMode !== mode || search) setSelection(null);
     if (recordType !== 'evidence') setInspector(true);
-    setSearch(''); searchOrigin.current = null; setActiveBlock(blockId); setDisplayMode(mode); setTab(targetTab);
+    setSearch(''); searchOrigin.current = null; setDisplayMode(mode); setTab(targetTab);
     setBlockNavigation({ ...item, scope, blockId, kind, recordType, requestId: crypto.randomUUID() });
-    commitPaper(current => ({ ...current, position: { ...current.position, tab: targetTab, block: blockId, displayMode: mode, readerSearchOrigin: undefined } }));
+    commitPaper(current => ({ ...current, ...(scope === 'reader' && { selectedParagraphID: blockId }),
+      position: { ...current.position, tab: targetTab, ...(scope === 'reader' && { block: blockId }), displayMode: mode, readerSearchOrigin: undefined } }));
   }
   function markViewAnchorForReview(item) {
     if (!item.needsReview) commitPaper(current => ({ ...current,
@@ -2817,48 +2849,30 @@ function App() {
     cancelParagraphEdit(); setSelection(null); setNoteDraft(''); setSearch('');
     setBlockNavigation(null); setViewNavigation(null);
   }
-  function positionAfterStructureChange(position, block) {
-    const { Reader: discarded, ...scrollByTab } = position?.scrollByTab || {};
-    return { ...position, block, scrollByTab, readerSearchOrigin: undefined };
-  }
-  function revealChangedReaderBlock(blockId) {
-    const host = mainScrollRef.current;
-    const reader = host?.querySelector('[data-reading-list]');
-    if (!reader) return;
-    const generation = readingRestoration.current, paperId = paperRef.current?.id;
-    const owner = beginReadingRestore();
-    afterReadingLayout(host, () => {
-      try {
-        if (generation !== readingRestoration.current || paperRef.current?.id !== paperId ||
-            paperRef.current?.position?.tab !== 'Reader' || !reader.isConnected ||
-            host.querySelector('[data-reading-list]') !== reader) return;
-        host.querySelector(`#block-${blockId}`)?.scrollIntoView({ block: 'start' });
-        persistRestoredReaderPosition();
-      } finally { finishReadingRestore(owner); }
-    });
-  }
   function modifyBlocks(start, count, replacements) {
     if (taskRef.current) { setError('Finish or stop the current task before editing the source.'); return; }
     if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
+    const location = currentReadingLocation();
+    if (location) commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
     resetStructureNavigation();
     rememberUndo();
     const range = { start, beforeEnd: start + count, afterEnd: start + replacements.length };
     commitPaper(current => {
       const blocks = current.blocks.slice(0, start).concat(replacements, current.blocks.slice(range.beforeEnd))
         .map((block, index) => ({ ...block, id: index + 1 }));
-      return { ...current, blocks, position: positionAfterStructureChange(current.position, start + 1),
+      return { ...current, blocks, selectedParagraphID: blocks[start]?.id ?? firstSelectableParagraphID(blocks),
+        position: remapPositionAfterStructureChange(current.position, current.blocks, blocks, range),
         summary: remapSummaryEvidence(current.summary, current.blocks, blocks, range),
         connectedStale: Boolean(current.connectedTranslation) };
     }, { undoRange: range });
-    setActiveBlock(start + 1);
-    revealChangedReaderBlock(start + 1);
+    restoreMainScroll({ clearSearch: true });
   }
   function beginEditingBlock(id) {
     const current = paperRef.current;
     if (!current || busy || taskRef.current || modal || current.sourceMode === 'mineru') return;
     const block = current.blocks.find(block => block.id === id);
     if (!block) return;
-    setActiveBlock(id);
+    selectParagraph(id);
     editRef.current = { paperId: current.id, id, text: block.text };
     setEdit(editRef.current);
     setModal('paragraphEdit');
@@ -2935,6 +2949,7 @@ function App() {
       if (previous) void finishNoteEditing();
       setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
     }
+    if (next?.scope === 'reader') selectParagraph(next.id);
     setSelection(next);
     return true;
   }
@@ -2993,8 +3008,10 @@ function App() {
       const passage = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
       const selector = '.source-text, .translation-text.done';
       const active = passage?.closest(selector);
+      const top = mainScrollRef.current?.getBoundingClientRect().top || 0;
+      const visible = [...host.querySelectorAll('.block')].find(block => block.getBoundingClientRect().bottom > top + 12);
       region = initial = active && host.contains(active) ? active
-        : host.querySelector(`#block-${activeBlock}`)?.querySelector(selector) || host.querySelector(selector);
+        : visible?.querySelector(selector) || host.querySelector(selector);
     } else if (pdf) {
       initial = pdfLayerFor(host, pageNumber);
     } else if (scope !== 'paperArticle') {
@@ -3040,7 +3057,7 @@ function App() {
     '--document-sidebar-width': `${sidebarWidth}px`,
     '--research-inspector-width': `${inspectorWidth}px`
   };
-  const currentSection = sections.findLast(section => section.startId <= activeBlock);
+  const currentSection = sections.findLast(section => section.startId <= (paper?.position?.block || activeBlock || 1));
   const currentSectionIds = translationRangeIds(paper?.blocks || [], currentSection?.ids || [], referenceIDs);
   const activeQueue = translationQueueRef.current;
   const queuedSectionIds = modal === 'range' && activeQueue && activeQueue.token === taskRef.current
@@ -3194,7 +3211,7 @@ function App() {
               : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
                 : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
-          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (!search && paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} isFirst={block.id === paper.blocks[0]?.id} isLast={block.id === paper.blocks.at(-1)?.id} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeBlock(block.id)} onMergeNext={() => mergeNextBlock(block.id)} onReflow={() => reflowParagraph(block.id)} /></div>
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} isFirst={block.id === paper.blocks[0]?.id} isLast={block.id === paper.blocks.at(-1)?.id} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeBlock(block.id)} onMergeNext={() => mergeNextBlock(block.id)} onReflow={() => reflowParagraph(block.id)} /></div>
           {issue && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}
