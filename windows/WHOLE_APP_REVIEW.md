@@ -1,10 +1,21 @@
 # Windows 全软件功能复查：2026-09-20
 
-## 第八十二阶段：Windows 0.2.20 发布候选（2026-11-07 UTC）
+## 第八十二阶段：Windows 0.2.20 公开发布与升级验收（2026-11-07 UTC）
 
-当前候选包含第 80–81 阶段的长段分块和独立图书馆索引。版本已升至 0.2.20；此前源码提交为 `8c59aaf88c5e700039b4351e576f2a926685129b`，本地 273 项单元、全部 36 套桌面流程及打包启动已验证，实际 ASAR 中 dist/electron 共 84 个文件与最终源码/构建文件字节一致。尚待本候选的标签 CI、公开下载文件校验、0.2.19→0.2.20 实际升级与公开便携版新功能验收，不能把本地候选当作已验证的公开包。
+[Windows 0.2.20](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.20) 已发布，源码标签为 `8315c8bcc606a875774a0c54b83dfed336b24567`，包含第 80–81 阶段的长段分块和独立图书馆索引。[标签 CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42359081106) 与[同提交 PR CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42359085515) 均成功，273 项单元、36 套桌面流程、安装包构建与打包启动通过。本地候选另通过单元、更新提示重启和打包启动。
 
-准备的隔离验收脚本及范围见 `test-artifacts/release-0220-verification-plan.md`。旧升级输入固定使用公开 0.2.19 Setup SHA-256 `0683caaf7aa46d1bac982c52dc2938573bd5dcbe32d35fd5a910326cae4b78cc`；0.2.20 哈希必须从实际发布文件、校验文件及 GitHub digest 核对。便携新功能流程将通过真实菜单验证两次有界 Markdown 请求，以及标签独立保存、真实双副本损坏、重启和同 ID 原文重导；受控模型输出不作为 AMD 翻译质量证据。公开 0.2.19 的真实 AMD 新推理仍只属于上一版本。
+两份公开文件已下载并核对 `.sha256`、GitHub asset digest、字节数和 ProductVersion，Authenticode 均为 `NotSigned`。清单为 `test-artifacts/release-0.2.20-verified/verification.json`；本地同名候选先备份，再暂存公开包，没有重新构建覆盖。
+
+| 公开文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132785594 | `125debbe5e534561ad61ab757c57dcb283650b40ef6c0682fd0e51a019f3f7d1` |
+| Portable | 132574566 | `e47e7fed40a9f11666e7a31660cca63aea17a0bb93a2bd40cbc1b6a0c41bf66a` |
+
+**真实 0.2.19→0.2.20 NSIS 升级通过。** 旧公开 Setup SHA-256 为 `0683caaf7aa46d1bac982c52dc2938573bd5dcbe32d35fd5a910326cae4b78cc`。旧应用实际显示 GitHub 新版提示，并通过 UI 创建练习论文、笔记和高亮；新应用确认当前版本、迁移该论文的独立索引，保留阅读外观、批注及完整重启数据。另行加入的五类合成数据验证选择位置、输出语言缓存和组合批注删除/Undo，不声称由旧 UI 创建。卸载保留隔离论文和设置，报告 `test-artifacts/i-mw679k97-nyg/report.json` 为 `passed=true`，updater 缓存清理成功。
+
+**公开 Portable 基础与新功能验收通过。** `test-artifacts/portable-0220-c85nWm/result.json` 验证真实 15 页、266 段论文、原有第 17 段 410 字符中文译文、原 PDF 字节、标签、标题空间、粘贴、修复对话框及完整重启；单独的合成记录覆盖历史语言、选择/视口和批注。原生截图为 1306×758 CSS、DPR 1.25；490×310 短视口使用 CDP CSS 模拟，原生 200% 另由源码桌面回归覆盖。
+
+`test-artifacts/portable-0220-features-cBGZeu/result.json` 通过公开包的真实段落菜单发送恰好两次不超过 500 字素的受控请求，保留公式、链接、连续标点、Unicode 与输出语言。标签保存不改正文或备份；关闭后仅损坏测试工作区的两个正文副本，应用仍保留库条目、允许改标签，打开失败时保留当前论文。完整重启后真实 Paste Text 重导恢复同 ID 原文与标签，条目不重复，另一篇译文不变。两份 Portable 报告均 `passed=true`、渲染错误为 0，无清理错误。受控响应证明应用侧完整性，不作为模型翻译质量或 AMD 加速证据；新索引也不能重建两个副本中已经丢失的译文/注释。
 
 ## 第八十一阶段：独立图书馆索引与损坏工作区恢复（2026-11-07 UTC，开发分支）
 
