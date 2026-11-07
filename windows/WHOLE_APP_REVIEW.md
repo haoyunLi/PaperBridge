@@ -1,5 +1,22 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第七十阶段：Windows 0.2.16 公开下载与真实升级验收（2026-11-07 UTC）
+
+[Windows 0.2.16](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.16) 已发布，源码为 `53c27dc`。[发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42340952336)通过 201 项单元测试、29 套桌面回归及打包启动；这次下载包汇集第 63–69 阶段的导入修复、段落/标题动作、修复弹窗、完整大纲、侧栏语言与 AI、批注/失败译稿导出、标题外观及滚动恢复修正。
+
+重新从公开 Release 下载 Setup 和 Portable，文件大小、版本 0.2.16、各自 `.sha256` 和 GitHub asset digest 全部一致。两份程序均为 **NotSigned**，仍为未签名预览。
+
+| 公开文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132776652 | `3e0bed17df2f66c69a2fea116e40496859a7cfea89e989ea8614ae4477d6fd8b` |
+| Portable | 132565513 | `36cfec39926c1a4df2001a56dd4d6ea69cdfbc8d479ee86d28a9e584cc160bfb` |
+
+使用公开安装包在隔离目录完成真实 0.2.15→0.2.16 升级：旧版显示新版本提示，新版报告已是当前公开版本；论文、高亮、笔记及字号 16/行高 24.2px/宽度 920 保留。卸载测试实例后，工作区和设置仍在，测试创建的安装器缓存已清理，无 cleanupError。报告：`test-artifacts/i-mw5y0nva-d7g/report.json`。
+
+公开便携版直接打开真实 Attention Is All You Need 论文，恢复已保存的 AMD 中文译文，并验证阅读模式、搜索、Repair Paragraph 取消、折叠导入区和语言/Ollama/MinerU 控件。旧 Chinese 语言值准确显示，默认阅读外观保持。报告：`test-artifacts/portable-0216-ggksrb/result.json`。这次验证保存结果与交互，没有再次调用模型；最近真实模型推理证据仍是第 64 阶段。
+
+main 仅更新 Windows 首页下载/指南链接（`04d38b2`）；Windows 源码仍维护在独立分支和 PR。仓库 Latest 仍为 macOS v1.10.0。后续继续处理 Reader 宽度与留白、摘要和检查器排版、选中段落与滚动位置分离、导出语言/文件名及内嵌 Paste Text；不据本轮发布声称全软件已 1:1。
+
 ## 第六十九阶段：延迟阅读位置恢复尊重用户滚动（2026-11-07 UTC）
 
 包含标题外观修正的 `6ed8ffb` 已在 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42338976541)通过 201 项单元、29 套桌面回归和打包启动。随后加入大纲诊断的 `756cdd5` 在 [下一次构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42339221043)捕获切换论文后位置被恢复回顶部的问题；截图和日志显示窗口始终可见、无截图挂起。通过持有布局恢复回调，再执行真实滚轮，旧构建从 1163.2 回到 0，确认这条竞态可能影响实际操作。

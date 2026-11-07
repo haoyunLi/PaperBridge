@@ -1,5 +1,7 @@
 # Windows AMD 真机回归（2026-09-20）
 
+2026-11-07 05:09 UTC：公开 Windows 0.2.16 便携版通过 SHA-256 校验后，直接打开真实 Attention Is All You Need，恢复原有 AMD 中文译文，并检查新段落修复弹窗、语言状态、三种阅读模式与搜索。该次为公开产物和已保存结果的兼容验证，没有重新运行推理或更换 GPU 环境；最近一次真实模型调用仍为下述 03:21 UTC 记录。报告为 `test-artifacts/portable-0216-ggksrb/result.json`。
+
 2026-11-07 03:21 UTC：当前开发版再次完成 `npm run test:live`。Reader 通过新 Paragraph actions 菜单翻译练习段落，选词输出“虚构的练习文档”；灯泡先打开检查器，再通过检查器按钮获得真实段落解释。摘要有 6 处已核验来源引用，全文与重启流程通过。Ollama `/api/ps` 报告 `translategemma:4b` 模型大小和显存分配均为 2,881,948,220 字节。四个样例覆盖统计数字、CD8+ T 细胞术语、中译英和 Markdown 公式/图片保留。统计例的数值与单位保留，但译文改变了 p 值短语的位置，不能把这些检查当作全面的语义准确率评测。本次没有重新安装环境、运行 MinerU 或测 NVIDIA。结果为 `test-artifacts/live-local-report.json`，界面截图为 `test-artifacts/live-amd-reader.png`。
 
 这份记录来自本机 Windows 11 Pro（build 26200）、AMD Radeon RX 7800 XT（驱动 32.0.31035.1003，16 GiB 显存）。集成显卡是 AMD Radeon Graphics。测试使用 Ollama 0.34.2、`translategemma:4b` 和 MinerU 3.4.5。生成的工作区、报告与截图保存在被 Git 忽略的 `test-artifacts/`。

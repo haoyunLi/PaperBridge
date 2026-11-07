@@ -17,6 +17,8 @@ Version 0.2.16 brings the Reader and sidebar closer to the macOS layout:
 - Scrolling a text view after opening a paper interrupts delayed location restoration, so the previous saved position cannot pull the text back after you start reading elsewhere.
 - New PDF/pasted-text imports repair spaced fragments such as `re- sults` using the Mac rules while retaining compounds such as `model-based`. Complete MinerU lists and quotations avoid prose-only extraction warnings. Existing saved text and annotation positions remain intact.
 
+The [0.2.16 release build](https://github.com/haoyunLi/PaperBridge/actions/runs/42340952336) passed 201 unit tests, 29 desktop suites and packaged startup. Both public executables were downloaded and hash-verified; an actual 0.2.15→0.2.16 installer upgrade retained the test paper, annotations and reading appearance. See the [whole-app review](WHOLE_APP_REVIEW.md) for evidence and remaining differences.
+
 Version 0.2.15 adds original/translation language labels, bilingual dividers, full selected-card outlines and direct translation/setup buttons to Reader paragraphs. Compact headings keep their separate layout. Existing highlights and notes stay anchored to the passage text.
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
