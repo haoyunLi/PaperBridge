@@ -41,6 +41,7 @@ async function run() {
   fs.mkdirSync(path.join(workspace, 'papers'));
   const id = crypto.createHash('sha256').update('Long outline fixture').digest('hex');
   const plainId = crypto.createHash('sha256').update('No heading outline fixture').digest('hex');
+  const deferredId = crypto.createHash('sha256').update('Deferred restoration fixture').digest('hex');
   let generationRequests = 0;
   const ollama = http.createServer((request, response) => {
     if (request.url === '/api/generate') generationRequests++;
@@ -69,10 +70,15 @@ async function run() {
   const plainBlocks = [1, 2, 3].map(number => record(number,
     `Unheaded passage ${number}. ` + 'A long source paragraph provides a stable location without inventing a section title. '.repeat(18)));
   const plain = { ...paper, id: plainId, name: 'Paper without headings', blocks: plainBlocks };
+  const deferred = { ...plain, id: deferredId, name: 'Deferred restoration fixture',
+    blocks: Array.from({ length: 12 }, (_, index) => record(index + 1,
+      `Deferred passage ${index + 1}. ` + 'A user can scroll this document before its previous reading position finishes restoring. '.repeat(24))),
+    position: { ...plain.position, readerSearchOrigin: 0 } };
   const paperFile = paperId => path.join(workspace, 'papers', `${paperId}.json`);
   const readPaper = (paperId = id) => JSON.parse(fs.readFileSync(paperFile(paperId), 'utf8'));
   fs.writeFileSync(paperFile(id), JSON.stringify(paper));
   fs.writeFileSync(paperFile(plainId), JSON.stringify(plain));
+  fs.writeFileSync(paperFile(deferredId), JSON.stringify(deferred));
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify(settings));
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
 
@@ -90,6 +96,9 @@ async function run() {
     status: document.querySelector('.save-status')?.textContent,
     readerScroll: document.querySelector('.main-scroll')?.scrollTop,
     sidebarScroll: document.querySelector('.sidebar-scroll')?.scrollTop,
+    restoring: document.querySelector('.main-scroll')?.getAttribute('aria-busy'),
+    readingPaperId: document.querySelector('.main-scroll')?.dataset.readingPaperId,
+    heldCallbacks: window.__heldReadingFrames?.length,
     currentParagraph: document.querySelector('.document-outline [aria-current="location"]')?.dataset.paragraphId,
     outlineRows: document.querySelectorAll('.document-outline .outline-row').length
   })), 3000);
@@ -134,6 +143,7 @@ async function run() {
     page.setDefaultNavigationTimeout(15000);
     await viewport({ width: 1500, height: 900 });
     await page.locator('.document-outline').waitFor({ timeout: 20000 });
+    await readingReady();
     progress(`${phase}: launched pid=${app.process().pid} window=${JSON.stringify(await windowState())}`);
   };
   const outline = () => page.locator('.document-outline');
@@ -143,7 +153,12 @@ async function run() {
   const back = () => page.getByRole('button', { name: 'Back to previous reading location', exact: true });
   const forward = () => page.getByRole('button', { name: 'Forward in reading history', exact: true });
   const scroll = () => evaluateLocator(page.locator('.main-scroll'), node => node.scrollTop);
+  const readingReady = paperId => waitFor(() => evaluate(expected => {
+    const host = document.querySelector('.main-scroll');
+    return Boolean(host?.dataset.readingPaperId) && (!expected || host.dataset.readingPaperId === expected) && host.getAttribute('aria-busy') === 'false';
+  }, paperId), 'current paper reading position restored');
   const scrollToBlock = async (number, paperId = id) => {
+    await readingReady(paperId);
     await evaluate(number => {
       const host = document.querySelector('.main-scroll');
       const block = document.getElementById(`block-${number}`);
@@ -160,6 +175,44 @@ async function run() {
       const delta = block.getBoundingClientRect().top - host.getBoundingClientRect().top;
       return delta >= -2 && delta < 25;
     }, number), `Reader jump to heading ${number}`);
+  };
+  const holdPaperRestore = async () => {
+    await page.locator('.library-row').filter({ hasText: plain.name }).click();
+    await readingReady(plainId);
+    // Establish one known starting position before holding the next paper's restore.
+    await evaluate(() => { const host = document.querySelector('.main-scroll'); host.scrollTop = 0; host.dispatchEvent(new Event('scroll')); });
+    await waitFor(() => readPaper(plainId).position.scrollByTab.Reader === 0, 'plain fixture starts at saved zero');
+    // Install and click in one turn so Playwright's actionability frames cannot
+    // consume the held callback. Native wheel/key/scrollbar input remains real.
+    await evaluate(name => {
+      const request = window.requestAnimationFrame;
+      window.__heldReadingFrames = [];
+      window.requestAnimationFrame = callback => { window.__heldReadingFrames.push(callback); return 0; };
+      window.__releaseReadingFrames = () => {
+        window.requestAnimationFrame = request;
+        for (const callback of window.__heldReadingFrames.splice(0)) request(callback);
+      };
+      [...document.querySelectorAll('.library-row')].find(node => node.textContent.includes(name)).click();
+    }, deferred.name);
+    await page.getByRole('heading', { name: deferred.name, exact: true }).waitFor();
+    await waitFor(() => evaluate(expected => document.querySelector('.main-scroll')?.dataset.readingPaperId === expected &&
+      document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'true' && window.__heldReadingFrames.length > 0, deferredId), 'new paper owns a held restoration');
+  };
+  const releasePaperRestore = () => bounded(`${phase}: release held restoration`, evaluate(() => new Promise(resolve => {
+    window.__releaseReadingFrames();
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  })), 5000);
+  const observeScrollEnd = (selector = '.main-scroll') => evaluate(selector => {
+    const host = document.querySelector(selector);
+    window.__readingScrollEnd = new Promise(resolve => host.addEventListener('scrollend',
+      () => resolve(host.scrollTop), { once: true }));
+  }, selector);
+  const completedScroll = () => bounded(`${phase}: native scroll completion`, evaluate(() => window.__readingScrollEnd), 5000);
+  const assertUserPositionSaved = async offset => {
+    await readingReady(deferredId);
+    await waitFor(async () => Math.abs(await scroll() - offset) < 2 &&
+      Math.abs(readPaper(deferredId).position.scrollByTab.Reader - offset) < 2, 'user position survives delayed restoration and saves');
+    assert.equal(Object.hasOwn(readPaper(deferredId).position, 'readerSearchOrigin'), false, 'an interrupted unfiltered search restore must not return on reopening');
   };
   try {
     stage('launch, complete outline and document disclosure');
@@ -298,10 +351,104 @@ async function run() {
     assert.equal(await outline().locator('.outline-row').count(), 1);
     assert.match(await row(1).textContent(), /Beginning/);
     assert.equal(generationRequests, 0, 'outline and source-map navigation do not invoke AI');
+
+    stage('held restoration: ignored controls and real wheel takeover');
+    await holdPaperRestore();
+    await evaluate(() => {
+      const host = document.querySelector('.main-scroll');
+      const input = document.createElement('textarea');
+      input.id = 'restoration-input-fixture'; input.value = 'Editable control retains its keyboard semantics.';
+      input.style.cssText = 'position:fixed;left:450px;top:300px;width:220px;height:60px;z-index:20';
+      host.append(input); input.focus({ preventScroll: true });
+    });
+    await page.keyboard.press('End');
+    assert.equal(await page.locator('.main-scroll').getAttribute('aria-busy'), 'true', 'editing keys do not cancel reading restoration');
+    await evaluate(() => document.getElementById('restoration-input-fixture').remove());
+    const box = await page.locator('.main-scroll').boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.keyboard.down('Control');
+    try { await page.mouse.wheel(0, 100); } finally { await page.keyboard.up('Control'); }
+    assert.equal(await page.locator('.main-scroll').getAttribute('aria-busy'), 'true', 'Ctrl-wheel does not cancel reading restoration');
+    await evaluateMain(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));
+    await evaluate(() => {
+      const nested = document.createElement('div'); nested.id = 'restoration-scroll-fixture';
+      nested.style.cssText = 'position:fixed;left:450px;top:300px;width:220px;height:90px;overflow-y:auto;z-index:20;background:white';
+      nested.innerHTML = '<div style="height:900px">Independent scrolling fixture</div>';
+      document.querySelector('.main-scroll').append(nested);
+    });
+    await page.mouse.move(550, 345);
+    await observeScrollEnd('#restoration-scroll-fixture');
+    await page.mouse.wheel(0, 150);
+    await completedScroll();
+    await waitFor(() => evaluate(() => document.getElementById('restoration-scroll-fixture').scrollTop > 0), 'nested scroller receives real wheel');
+    assert.equal(await page.locator('.main-scroll').getAttribute('aria-busy'), 'true', 'independent nested scrolling does not cancel outer restoration');
+    await evaluate(() => document.getElementById('restoration-scroll-fixture').remove());
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const beforeWheel = await scroll();
+    await observeScrollEnd();
+    await page.mouse.wheel(0, 600);
+    const wheelPosition = await completedScroll();
+    await waitFor(async () => await scroll() > beforeWheel + 100, 'real wheel moves the new paper while restoration is held');
+    await readingReady(deferredId);
+    await releasePaperRestore();
+    await assertUserPositionSaved(wheelPosition);
+    await closeElectron('user position restart');
+    await launch();
+    await readingReady(deferredId);
+    assert.ok(Math.abs(await scroll() - wheelPosition) < 2, 'reopening keeps the user position rather than the cancelled search origin');
+
+    stage('held restoration: native PageDown takeover');
+    await holdPaperRestore();
+    await evaluate(() => { window.getSelection()?.removeAllRanges(); document.querySelector('[data-reading-list]').focus({ preventScroll: true }); });
+    const beforeKey = await scroll();
+    await observeScrollEnd();
+    await page.keyboard.press('PageDown');
+    const keyPosition = await completedScroll();
+    await waitFor(async () => await scroll() > beforeKey + 100, 'PageDown scrolls the reader');
+    await readingReady(deferredId);
+    await releasePaperRestore();
+    await assertUserPositionSaved(keyPosition);
+
+    stage('held restoration: native scrollbar drag takeover');
+    await holdPaperRestore();
+    const scrollbar = await evaluate(() => {
+      const host = document.querySelector('.main-scroll'), bounds = host.getBoundingClientRect();
+      const gutter = bounds.width - host.clientWidth;
+      // Windows' top arrow occupies one gutter width; start inside the thumb,
+      // not on that arrow, which correctly does nothing when already at zero.
+      const track = host.clientHeight - gutter * 2;
+      const thumb = Math.max(26, track * host.clientHeight / host.scrollHeight);
+      const thumbOffset = (track - thumb) * host.scrollTop / (host.scrollHeight - host.clientHeight);
+      return { x: bounds.right - gutter / 2, y: bounds.top + gutter + thumbOffset + thumb / 2,
+        endY: bounds.top + bounds.height * .6, gutter };
+    });
+    assert.ok(scrollbar.gutter > 0, 'Windows fixture exposes the native scrollbar gutter');
+    await page.mouse.move(scrollbar.x, scrollbar.y);
+    await observeScrollEnd();
+    await page.mouse.down();
+    try { await page.mouse.move(scrollbar.x, scrollbar.endY, { steps: 6 }); } finally { await page.mouse.up(); }
+    const dragPosition = await completedScroll();
+    await readingReady(deferredId);
+    assert.ok(dragPosition > 100, 'native scrollbar drag moves the reader');
+    await releasePaperRestore();
+    await assertUserPositionSaved(dragPosition);
+
+    stage('held restoration: boundary wheel persists without movement');
+    await holdPaperRestore();
+    assert.equal(await scroll(), 0);
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -200);
+    await readingReady(deferredId);
+    await releasePaperRestore();
+    await assertUserPositionSaved(0);
+    assert.equal(generationRequests, 0, 'restoration input handling does not invoke AI');
     result = { passed: true, workspace, initialOutline, geometry, checked: ['65 sections retained', 'same-page paragraph identifiers',
       'full heading text', 'exact selected-heading marker', 'Beginning fallback', '980x620 and 200% zoom',
       'outline Back/Forward positions', 'Overview links reveal source and restore mode on Back',
-      'paper-specific outline, position and history', 'restart without AI'] };
+      'paper-specific outline, position and history', 'restart without AI', 'per-paper restoration readiness',
+      'held restore cannot overwrite real wheel, PageDown or native scrollbar drag',
+      'Ctrl-wheel, editable keys and nested scrolling preserve pending restoration',
+      'cancelled search origin stays cleared on reopening', 'boundary wheel persists the visible position'] };
     progress('All assertions passed; beginning cleanup');
   } catch (error) {
     failure = error;

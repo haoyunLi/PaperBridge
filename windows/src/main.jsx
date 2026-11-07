@@ -1045,6 +1045,8 @@ function App() {
   const mainScrollRef = useRef(null);
   const scrollSaveTimer = useRef(null);
   const restoringScroll = useRef(false);
+  const pendingReadingRestorations = useRef(new Set());
+  const [readingLayoutState, setReadingLayoutState] = useState({ paperId: null, busy: false });
   const searchOrigin = useRef(null);
   const searchScroll = useRef(null);
   const lastCommand = useRef({ name: '', at: 0 });
@@ -1136,10 +1138,27 @@ function App() {
     commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
     return true;
   }
+  function publishReadingRestorationState() {
+    const next = { paperId: paperRef.current?.id || null, busy: pendingReadingRestorations.current.size > 0 };
+    restoringScroll.current = next.busy;
+    setReadingLayoutState(previous => previous.paperId === next.paperId && previous.busy === next.busy ? previous : next);
+  }
+  function beginReadingRestore() {
+    const owner = { paperId: paperRef.current?.id, generation: readingRestoration.current };
+    pendingReadingRestorations.current.add(owner);
+    publishReadingRestorationState();
+    return owner;
+  }
+  function finishReadingRestore(owner) {
+    // A stale callback must not announce readiness for a newer restoration.
+    if (pendingReadingRestorations.current.delete(owner)) publishReadingRestorationState();
+  }
   function invalidateReadingScroll() {
     clearTimeout(scrollSaveTimer.current);
-    restoringScroll.current = false;
-    return ++readingRestoration.current;
+    pendingReadingRestorations.current.clear();
+    const generation = ++readingRestoration.current;
+    publishReadingRestorationState();
+    return generation;
   }
   function resetReadingHistory() {
     readingHistory.current.reset();
@@ -1157,7 +1176,7 @@ function App() {
     if (!location || location.paperId !== paperRef.current?.id) return;
     void finishNoteEditing();
     const generation = invalidateReadingScroll();
-    restoringScroll.current = true;
+    const owner = beginReadingRestore();
     searchOrigin.current = normalizeSearchOrigin(location.searchOrigin);
     searchScroll.current = location.search ? Number(location.scrollByTab?.Reader || 0) : null;
     window.getSelection()?.removeAllRanges();
@@ -1170,14 +1189,15 @@ function App() {
       position: persistedReadingPosition(location, sourceChanged ? { ...current.position, readerSearchOrigin: undefined } : current.position)
     }));
     afterReadingLayout(mainScrollRef.current, () => {
-      const current = paperRef.current;
-      if (generation !== readingRestoration.current || current?.id !== location.paperId ||
-          current.position?.tab !== location.tab || current.position?.displayMode !== location.displayMode) return;
-      const key = scrollKey(location.tab, location.page);
-      const saved = location.scrollByTab?.[key];
-      if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
-      if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
-      restoringScroll.current = false;
+      try {
+        const current = paperRef.current;
+        if (generation !== readingRestoration.current || current?.id !== location.paperId ||
+            current.position?.tab !== location.tab || current.position?.displayMode !== location.displayMode) return;
+        const key = scrollKey(location.tab, location.page);
+        const saved = location.scrollByTab?.[key];
+        if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
+        if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
+      } finally { finishReadingRestore(owner); }
     });
   }
   function goBackInReading() {
@@ -1381,22 +1401,23 @@ function App() {
   const restoreMainScroll = () => {
     const generation = readingRestoration.current;
     let cancelled = false;
-    restoringScroll.current = true;
+    const owner = beginReadingRestore();
     afterReadingLayout(mainScrollRef.current, () => {
-      if (cancelled || generation !== readingRestoration.current) return;
-      const key = tab === 'Original' ? `Original:${pageNumber}` : tab;
-      const saved = tab === 'Reader' && search ? searchScroll.current : paperRef.current?.position?.scrollByTab?.[key];
-      const origin = tab === 'Reader' && !search ? normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin) : null;
-      if (origin !== null) {
-        restoreReaderSearchOrigin(origin);
-        persistRestoredReaderPosition();
-      } else {
-        if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
-        if (saved == null && tab === 'Reader') document.getElementById(`block-${activeBlock}`)?.scrollIntoView({ block: 'start' });
-      }
-      restoringScroll.current = false;
+      try {
+        if (cancelled || generation !== readingRestoration.current) return;
+        const key = tab === 'Original' ? `Original:${pageNumber}` : tab;
+        const saved = tab === 'Reader' && search ? searchScroll.current : paperRef.current?.position?.scrollByTab?.[key];
+        const origin = tab === 'Reader' && !search ? normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin) : null;
+        if (origin !== null) {
+          restoreReaderSearchOrigin(origin);
+          persistRestoredReaderPosition();
+        } else {
+          if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
+          if (saved == null && tab === 'Reader') document.getElementById(`block-${activeBlock}`)?.scrollIntoView({ block: 'start' });
+        }
+      } finally { finishReadingRestore(owner); }
     });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; finishReadingRestore(owner); };
   };
   const saveMainScroll = () => {
     if (restoringScroll.current || !paperRef.current) return;
@@ -1433,17 +1454,18 @@ function App() {
     const pendingOrigin = current?.position?.readerSearchOrigin;
     if (!reader || !current || normalizeSearchOrigin(pendingOrigin) === null) return;
     const paperId = current.id, sourceMode = paperArticleSource(current).mode;
-    restoringScroll.current = true;
+    const owner = beginReadingRestore();
     afterReadingLayout(host, () => {
-      const latest = paperRef.current;
-      if (generation !== readingRestoration.current || latest?.id !== paperId ||
-          paperArticleSource(latest).mode !== sourceMode || latest.position?.tab !== 'Reader' ||
-          !reader.isConnected || mainScrollRef.current !== host ||
-          host.querySelector('[data-reading-list]') !== reader ||
-          latest.position?.readerSearchOrigin !== pendingOrigin) return;
-      restoreReaderSearchOrigin(origin);
-      persistRestoredReaderPosition();
-      restoringScroll.current = false;
+      try {
+        const latest = paperRef.current;
+        if (generation !== readingRestoration.current || latest?.id !== paperId ||
+            paperArticleSource(latest).mode !== sourceMode || latest.position?.tab !== 'Reader' ||
+            !reader.isConnected || mainScrollRef.current !== host ||
+            host.querySelector('[data-reading-list]') !== reader ||
+            latest.position?.readerSearchOrigin !== pendingOrigin) return;
+        restoreReaderSearchOrigin(origin);
+        persistRestoredReaderPosition();
+      } finally { finishReadingRestore(owner); }
     });
   }
   const changeSearch = value => {
@@ -1757,7 +1779,10 @@ function App() {
       api.closeCancelled();
     }
   }), []);
-  useEffect(() => paper && !viewNavigation && !blockNavigation ? restoreMainScroll() : undefined, [tab, paper?.id]);
+  useLayoutEffect(() => {
+    if (paper && !viewNavigation && !blockNavigation) return restoreMainScroll();
+    publishReadingRestorationState();
+  }, [tab, paper?.id]);
   useEffect(() => {
     const targetTab = blockNavigation?.scope === 'paper' ? 'Paper' : 'Reader';
     if (!blockNavigation || !paper || tab !== targetTab) return;
@@ -2765,14 +2790,15 @@ function App() {
     const reader = host?.querySelector('[data-reading-list]');
     if (!reader) return;
     const generation = readingRestoration.current, paperId = paperRef.current?.id;
-    restoringScroll.current = true;
+    const owner = beginReadingRestore();
     afterReadingLayout(host, () => {
-      if (generation !== readingRestoration.current || paperRef.current?.id !== paperId ||
-          paperRef.current?.position?.tab !== 'Reader' || !reader.isConnected ||
-          host.querySelector('[data-reading-list]') !== reader) return;
-      host.querySelector(`#block-${blockId}`)?.scrollIntoView({ block: 'start' });
-      persistRestoredReaderPosition();
-      restoringScroll.current = false;
+      try {
+        if (generation !== readingRestoration.current || paperRef.current?.id !== paperId ||
+            paperRef.current?.position?.tab !== 'Reader' || !reader.isConnected ||
+            host.querySelector('[data-reading-list]') !== reader) return;
+        host.querySelector(`#block-${blockId}`)?.scrollIntoView({ block: 'start' });
+        persistRestoredReaderPosition();
+      } finally { finishReadingRestore(owner); }
     });
   }
   function modifyBlocks(start, count, replacements) {
@@ -2875,6 +2901,45 @@ function App() {
     }
     setSelection(next);
     return true;
+  }
+  function handleMainScrollIntent(event) {
+    const host = mainScrollRef.current;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!restoringScroll.current || !host || !target || !event.isTrusted || event.defaultPrevented || event.isComposing || event.nativeEvent?.isComposing ||
+        modal || pendingImport || event.altKey || event.ctrlKey || event.metaKey ||
+        host.querySelector('[data-pdf-scope]') ||
+        target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [data-pdf-scope], .pdf-scroll')) return;
+    // Independent scrollers own their input, including PDF viewers and long editor controls.
+    for (let node = target; node && node !== host; node = node.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight + 1) return;
+    }
+    if (event.type === 'wheel') {
+      if (!event.deltaY || event.shiftKey) return;
+    } else if (event.type === 'keydown') {
+      if (target.closest('a, button') || !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) return;
+    } else if (event.type === 'pointerdown') {
+      if (event.button !== 0 || target !== host || host.scrollHeight <= host.clientHeight) return;
+      const bounds = host.getBoundingClientRect();
+      const contentLeft = bounds.left + host.clientLeft;
+      const contentRight = contentLeft + host.clientWidth;
+      if (event.clientX >= contentLeft && event.clientX < contentRight) return;
+    } else return;
+
+    // Only explicit user intent cancels pending position restoration. Native scroll
+    // events can also come from our own scrollTop assignments and must not cancel it.
+    invalidateReadingScroll();
+    if (tab === 'Reader' && !search) {
+      searchOrigin.current = null;
+      if (paperRef.current?.position?.readerSearchOrigin != null) {
+        commitPaper(current => {
+          const { readerSearchOrigin: discarded, ...position } = current.position;
+          return { ...current, position };
+        });
+      }
+    }
+    // At a scroll boundary the input may move nothing, but the visible position
+    // still replaces the cancelled restore destination. Later scroll events refresh this save.
+    saveMainScroll();
   }
   function handleReadingKey(event) {
     if (modal || pendingImport || !Object.hasOwn(readingKeys, event.key) ||
@@ -3036,7 +3101,10 @@ function App() {
       </div>}
       {paper && !pendingImport && tab === 'Reader' && <ReaderToolbar displayMode={displayMode} onDisplayMode={changeDisplayMode}
         search={search} onSearch={changeSearch} searchRef={searchRef} canUndo={canUndo} onUndo={undoLastChange} />}
-      <div className="main-scroll" ref={mainScrollRef} onScroll={saveMainScroll} onKeyDown={handleReadingKey}>
+      <div className="main-scroll" ref={mainScrollRef} data-reading-paper-id={paper?.id || ''}
+        aria-busy={Boolean(paper && (readingLayoutState.paperId !== paper.id || readingLayoutState.busy))}
+        onWheelCapture={handleMainScrollIntent} onPointerDownCapture={handleMainScrollIntent}
+        onScroll={saveMainScroll} onKeyDown={event => { handleReadingKey(event); handleMainScrollIntent(event); }}>
         {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
         {paper && status && <Notice>{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
