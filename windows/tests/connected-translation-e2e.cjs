@@ -101,7 +101,7 @@ async function run() {
     const reference = page.locator('#block-4');
     await reference.getByText(citations[0], { exact: true }).waitFor();
     assert.equal(await reference.getByTitle('Translate or retry block').count(), 0);
-    assert.match(await page.locator('.reader-top').innerText(), /0 of 4 blocks translated/);
+    assert.match(await page.locator('.reader-summary').innerText(), /0 of 4 blocks translated/);
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const preview = page.locator('[data-paper-block-id="4"]');
     await preview.getByText(citations[0], { exact: true }).waitFor();

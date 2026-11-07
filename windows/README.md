@@ -24,6 +24,8 @@ Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF
 
 On the development branch, portable page images use a 1,800-pixel longest edge and follow the PDF page crop and rotation. Existing papers regenerate older previews on the next export. The original PDF, reader zoom and saved annotations retain their existing behavior.
 
+The development branch also keeps the Reader display modes, search and undo above the scrolling text. Choose **Bilingual**, **Original** or **Translation** with the segmented control or arrow keys. **Ctrl+F** focuses search; **Clear search** and **Escape** return to the paragraph you were reading. That paragraph survives resizing, changing display mode during search, or closing the app with a filter active.
+
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.
 
 During paragraph translation, **More > Translation Range > Prioritize current section in queue** moves the current section’s waiting blocks after the block in progress. The menu shows how many queued blocks can move. **Stop** keeps completed blocks, and **Resume Translation** retries unfinished blocks, including failures. The progress bar counts failures from the current pass. The sidebar shows the paper’s total.

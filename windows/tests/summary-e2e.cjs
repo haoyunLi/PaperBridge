@@ -154,10 +154,10 @@ async function run() {
     await verified.getByText(opening, { exact: true }).waitFor({ state: 'hidden' });
     assert.notEqual(await unverified.getAttribute('open'), null);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await readTail(2);
-    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
+    assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
 
     regenerate = 'cutoff';
     await page.getByRole('button', { name: 'Overview', exact: true }).click();

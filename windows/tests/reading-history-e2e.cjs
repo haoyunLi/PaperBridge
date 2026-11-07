@@ -188,7 +188,7 @@ async function run() {
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
     assert.equal(await forward.isDisabled(), true, 'a new jump after Back must clear Forward');
 
-    const search = page.getByPlaceholder('Search paper  Ctrl+F');
+    const search = page.getByPlaceholder('Search original or translation');
     await search.fill('Unique evidence phrase');
     await page.locator('.sidebar .outline-row').filter({ hasText: 'Result details remain available' }).click();
     await back.click();
@@ -257,7 +257,7 @@ async function run() {
     await page.getByRole('button', { name: 'Save note', exact: true }).click();
     await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    await page.getByLabel('Reading mode').selectOption('source');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();
     const unfilteredScroll = await page.locator('.main-scroll').evaluate(host => { host.scrollTop = 640; return host.scrollTop; });
     await search.evaluate(input => {
       // Change the filter without Playwright scrolling its input into view.
@@ -281,7 +281,7 @@ async function run() {
     await back.click();
     await page.waitForFunction(expected => {
       const host = document.querySelector('.main-scroll');
-      return document.querySelector('.reader-mode-select')?.value === 'source' &&
+      return document.querySelector('[role="radiogroup"][aria-label="Reading mode"] input:checked')?.value === 'source' &&
         document.querySelector('.search')?.value === 'Supporting detail' &&
         host.textContent.includes('Unique evidence phrase') && Math.abs(host.scrollTop - expected) < 12;
     }, filteredScroll);
@@ -339,7 +339,7 @@ async function run() {
     if (await previousPage.isEnabled()) await previousPage.click();
     await pdfToolbar.getByText(/page 1 of 2/).waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     const quality = page.locator('.quality-list');
     assert.equal(await quality.getAttribute('open'), null, 'the PDF quality list is independent from MinerU');
@@ -348,7 +348,7 @@ async function run() {
     await quality.getByRole('button', { name: 'Review block 6', exact: true }).click();
     const warning = page.locator('#block-6 .quality-warning');
     await warning.getByText(/This phrase appears unfinished/).waitFor();
-    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
+    assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
     await warning.getByRole('button', { name: 'Compare Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' &&
       document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of 2') && document.querySelector('.textLayer[data-page="2"]'));

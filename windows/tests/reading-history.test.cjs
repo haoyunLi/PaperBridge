@@ -59,3 +59,40 @@ test('reading history distinguishes extraction sources and leaves blocked moves 
   assert.deepEqual(history.snapshot(), { back: [], forward: [mineru] });
   assert.deepEqual(history.goForward(pdf), mineru);
 });
+
+test('filtered history retains its viewport and paragraph origin without persisting filtered offsets', async () => {
+  const { createReadingHistory, persistedReadingPosition } = await historyModule;
+  const origin = { scrollTop: 1840, block: 12, offset: -37 };
+  const filtered = location(16, { search: 'evidence', searchOrigin: origin, scrollByTab: { Reader: 120, Summary: 45 } });
+  const history = createReadingHistory();
+  history.record(filtered);
+  origin.block = 999;
+  const restored = history.goBack(location(20));
+  assert.deepEqual(restored.searchOrigin, { scrollTop: 1840, block: 12, offset: -37 });
+  assert.equal(restored.scrollByTab.Reader, 120, 'Back must restore the filtered viewport');
+  const persisted = persistedReadingPosition(restored, { pdfZoom: 125 });
+  assert.equal(persisted.block, 12, 'the active filtered result must not replace the unfiltered paragraph');
+  assert.deepEqual(persisted.scrollByTab, { Reader: 1840, Summary: 45 });
+  assert.deepEqual(persisted.readerSearchOrigin, restored.searchOrigin);
+  assert.equal(persisted.pdfZoom, 125);
+  assert.equal(restored.scrollByTab.Reader, 120, 'persistence must not mutate the session history');
+  const summary = persistedReadingPosition({ ...restored, tab: 'Summary', block: 16 }, persisted);
+  assert.equal(summary.block, 16);
+  assert.equal(summary.scrollByTab.Reader, 1840, 'leaving Reader must not persist a filtered Reader offset');
+  const cleared = persistedReadingPosition(location(12, { scrollByTab: { Reader: 1590 } }), persisted);
+  assert.equal(Object.hasOwn(cleared, 'readerSearchOrigin'), false);
+  assert.equal(cleared.scrollByTab.Reader, 1590);
+});
+
+test('search origins accept legacy pixel positions and reject malformed paragraph anchors', async () => {
+  const { normalizeReadingLocation, normalizeSearchOrigin, persistedReadingPosition } = await historyModule;
+  assert.equal(normalizeSearchOrigin(0), 0);
+  assert.equal(normalizeSearchOrigin(640), 640);
+  for (const invalid of [null, -1, NaN, Infinity, { scrollTop: 3, block: 0, offset: 2 }, { scrollTop: 3, block: 1, offset: Infinity }]) {
+    assert.equal(normalizeSearchOrigin(invalid), null);
+  }
+  const legacy = location(4, { search: 'term', searchOrigin: 640, scrollByTab: { Reader: 40 } });
+  assert.equal(persistedReadingPosition(legacy).scrollByTab.Reader, 640);
+  assert.equal(persistedReadingPosition(legacy).block, 4);
+  assert.equal(normalizeReadingLocation({ ...legacy, search: '' }).searchOrigin, undefined);
+});

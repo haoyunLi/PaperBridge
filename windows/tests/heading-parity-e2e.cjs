@@ -116,7 +116,7 @@ async function run() {
     assert.equal(await page.locator('#block-1 button[title="Retry heading"]').count(), 1);
     await page.locator('#block-1 button[title="Retry heading"]').click();
     await page.locator('#block-1 .translation-text.done').getByText('摘要', { exact: true }).waitFor();
-    assert.match(await page.locator('.reader-top').innerText(), /1 of 4 blocks translated/);
+    assert.match(await page.locator('.reader-summary').innerText(), /1 of 4 blocks translated/);
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
     await page.locator('.modal').getByRole('button', { name: 'Translation Range', exact: true }).click();
     assert.match(await page.getByRole('button', { name: /^All unfinished blocks/ }).innerText(), /3 blocks/);
@@ -124,14 +124,14 @@ async function run() {
     assert.equal(await page.getByRole('button', { name: /^Abstract & Conclusion/ }).isDisabled(), true);
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
-    await page.getByLabel('Reading mode').selectOption('source');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();
     assert.equal(await page.locator('#block-1 .source-text').isVisible(), true);
     assert.equal(await page.locator('#block-1 .translation-text').isVisible(), false);
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     assert.equal(await page.locator('#block-1 .source-text').isVisible(), false);
     assert.equal(await page.locator('#block-1 .translation-text').isVisible(), true);
     assert.equal(await page.locator('#block-2 .source-text').isVisible(), true, 'pending heading keeps source visible in translation-only mode');
-    await page.getByLabel('Reading mode').selectOption('bilingual');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).check();
 
     await selectText(page, '#block-1 .source-text', 0, 8);
     await page.getByText('SELECTED TEXT · BLOCK 1', { exact: true }).waitFor();

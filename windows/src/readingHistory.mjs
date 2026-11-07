@@ -1,7 +1,29 @@
 const clone = value => structuredClone(value);
 
+export function normalizeSearchOrigin(value) {
+  if (Number.isFinite(value) && value >= 0) return value;
+  if (!value || !Number.isFinite(value.scrollTop) || value.scrollTop < 0 ||
+      !Number.isInteger(value.block) || value.block < 1 || !Number.isFinite(value.offset)) return null;
+  return { scrollTop: value.scrollTop, block: value.block, offset: value.offset };
+}
+
+// History retains the filtered viewport. Disk storage retains the place to return
+// to when the temporary search is dismissed or the application is reopened.
+export function persistedReadingPosition(location, previous = {}) {
+  const origin = location.search ? normalizeSearchOrigin(location.searchOrigin) : null;
+  const position = { ...previous, block: location.block, page: location.page, tab: location.tab,
+    displayMode: location.displayMode, scrollByTab: { ...location.scrollByTab } };
+  if (origin !== null) {
+    position.scrollByTab.Reader = typeof origin === 'number' ? origin : origin.scrollTop;
+    position.readerSearchOrigin = origin;
+    if (location.tab === 'Reader' && typeof origin === 'object') position.block = origin.block;
+  } else if (location.tab === 'Reader') delete position.readerSearchOrigin;
+  return position;
+}
+
 export function normalizeReadingLocation(value = {}) {
   const search = typeof value.search === 'string' ? value.search : '';
+  const searchOrigin = search ? normalizeSearchOrigin(value.searchOrigin) : null;
   const scrollByTab = Object.fromEntries(Object.entries(value.scrollByTab || {})
     .filter(([, offset]) => Number.isFinite(Number(offset)))
     .sort(([left], [right]) => left.localeCompare(right))
@@ -14,7 +36,7 @@ export function normalizeReadingLocation(value = {}) {
     block: Number.isInteger(value.block) && value.block > 0 ? value.block : 1,
     page: Number.isInteger(value.page) && value.page > 0 ? value.page : 1,
     search,
-    ...(search && Number.isFinite(value.searchOrigin) && { searchOrigin: value.searchOrigin }),
+    ...(searchOrigin !== null && { searchOrigin }),
     scrollByTab
   };
 }

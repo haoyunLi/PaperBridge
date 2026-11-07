@@ -53,13 +53,13 @@ async function run() {
     const stages = await page.evaluate(() => [...window.summaryStages]);
     assert.ok(stages.filter(stage => stage.startsWith('Summarizing part ')).length >= 4);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     const evidence = page.locator('.evidence-claim').filter({ hasText: 'Read original block' }).first();
     await evidence.locator('summary').click();
     await evidence.getByRole('button', { name: /Read original block/ }).first().click();
     await page.locator(`#block-${sources[0].paragraphID}.current`).waitFor();
-    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'bilingual');
+    assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
     const loaded = await fetch(new URL('/api/ps', baseURL)).then(response => response.json());
     const models = loaded.models.filter(item => [modelName, summaryModel].includes(item.name || item.model));
     assert.ok(models.some(model => (model.name || model.model) === modelName && model.size_vram > 0), 'Ollama must report translation model VRAM allocation');

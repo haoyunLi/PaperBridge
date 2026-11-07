@@ -107,11 +107,11 @@ async function run() {
     await page.locator('.block').nth(1).locator('.translation-text.done').waitFor({ timeout: 180000 });
     uiTranslation = await page.locator('.block').nth(1).locator('.translation-text.done').innerText();
     assert.match(uiTranslation, /[\u3400-\u9fff]/);
-    await page.getByLabel('Reading mode').selectOption('source');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();
     assert.equal(await page.locator('.block').nth(1).locator('.translation-text').isVisible(), false);
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     assert.equal(await page.locator('.block').nth(1).locator('.source-text').isVisible(), false);
-    await page.getByLabel('Reading mode').selectOption('bilingual');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).check();
     await page.screenshot({ path: path.join(artifacts, 'live-amd-reader.png') });
     console.log(`PaperBridge Reader translation: ${uiTranslation}`);
     await page.locator('#block-2 .source-text').evaluate(element => {

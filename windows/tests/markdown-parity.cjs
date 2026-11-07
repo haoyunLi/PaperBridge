@@ -193,16 +193,16 @@ async function run() {
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
     assert.deepEqual(saved.blocks[1].highlights.filter(item => item.scope === 'reader').map(item => ({ scope: item.scope, text: item.text, offset: item.offset })), [{ scope: 'reader', text: 'Vaswani∗', offset: 7 }]);
     assert.equal(saved.blocks[1].notes.find(item => item.scope === 'reader').body, 'Author marker is preserved.');
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'The third occurrence belongs to block seven.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && window.getSelection()?.toString() === 'repeat');
     assert.equal(await page.locator('.inspector textarea').inputValue(), 'The third occurrence belongs to block seven.');
     await page.getByLabel('Back to previous reading location').click();
-    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader' && document.querySelector('.reader-mode-select')?.value === 'translation');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader' && document.querySelector('[role="radiogroup"][aria-label="Reading mode"] input:checked')?.value === 'translation');
     await page.getByLabel('Forward in reading history').click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Author marker is preserved.' }).locator('button').first().click();
-    await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === 'Vaswani∗');
+    await page.waitForFunction(() => document.querySelector('[role="radiogroup"][aria-label="Reading mode"] input:checked')?.value === 'bilingual' && window.getSelection()?.toString() === 'Vaswani∗');
     await page.evaluate(() => {
       const paragraph = document.querySelector('#block-2 .translation-text p');
       const range = document.createRange(); range.setStart(paragraph.firstChild, 0); range.setEnd(paragraph.firstChild, 3);
@@ -213,9 +213,9 @@ async function run() {
     await page.locator('.inspector textarea').fill('Translation wording is saved.');
     await page.getByRole('button', { name: 'Save note' }).click();
     await waitForNoteUnderline(page, '#block-2 .translation-text', '阿什什');
-    await page.getByLabel('Reading mode').selectOption('source');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Translation wording is saved.' }).locator('button').first().click();
-    await page.waitForFunction(() => document.querySelector('.reader-mode-select')?.value === 'bilingual' && window.getSelection()?.toString() === '阿什什');
+    await page.waitForFunction(() => document.querySelector('[role="radiogroup"][aria-label="Reading mode"] input:checked')?.value === 'bilingual' && window.getSelection()?.toString() === '阿什什');
     assert.equal(await page.locator('.inspector textarea').inputValue(), 'Translation wording is saved.');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Retain this stale note.' }).locator('button').first().click();
     await page.getByText('The saved Reader text no longer matches this block.', { exact: false }).waitFor();
@@ -382,7 +382,7 @@ async function run() {
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);
     await waitForNoteUnderline(page, '[data-view-scope="paperArticle"]', crossQuote);
     await page.getByLabel('Back to previous reading location').click();
-    assert.equal(await page.getByLabel('Reading mode').inputValue(), 'translation');
+    assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).isChecked(), true);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Paper · document preview · amber' }).getByRole('button', { name: /^Remove view highlight/ }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);

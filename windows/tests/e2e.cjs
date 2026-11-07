@@ -245,11 +245,11 @@ async function run() {
     await page.locator('.block').nth(1).locator('button[title="Translate or retry block"]').click();
     await page.locator('.block').nth(1).locator('.translation-text.done').waitFor({ timeout: 15000 });
     assert.match(await page.locator('.block').nth(1).locator('.translation-text.done').innerText(), /本地测试译文/);
-    await page.getByLabel('Reading mode').selectOption('source');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();
     assert.equal(await page.locator('.block').nth(1).locator('.translation-text').isVisible(), false);
-    await page.getByLabel('Reading mode').selectOption('translation');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     assert.equal(await page.locator('.block').nth(1).locator('.source-text').isVisible(), false);
-    await page.getByLabel('Reading mode').selectOption('bilingual');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).check();
     await page.locator('.block').nth(1).locator('button[title="Explain full paragraph"]').click();
     await page.getByText('FULL PARAGRAPH EXPLANATION', { exact: false }).waitFor();
     const readerPassage = page.locator('.source-text').nth(1);
@@ -886,15 +886,15 @@ async function run() {
     await reopenedPage.getByRole('button', { name: 'Forward in reading history', exact: true }).click();
     await expectReaderBlock(4, secondOcr);
 
-    await reopenedPage.getByLabel('Reading mode').selectOption('translation');
-    const readerSearch = reopenedPage.getByPlaceholder('Search paper  Ctrl+F');
+    await reopenedPage.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
+    const readerSearch = reopenedPage.getByPlaceholder('Search original or translation');
     await readerSearch.fill('second scanned page');
     await reopenedPage.getByRole('button', { name: 'Original', exact: true }).click();
     await reopenedPage.locator('.pdf-toolbar').getByRole('button', { name: 'Previous page' }).click();
     await reopenedPage.locator('.pdf-toolbar').getByText(/page 1 of 2/).waitFor();
     await reopenedPage.locator('.scan-notice').getByRole('button', { name: 'Open OCR Reader' }).click();
     await expectReaderBlock(1, 'Recovered scan');
-    assert.equal(await reopenedPage.getByLabel('Reading mode').inputValue(), 'bilingual');
+    assert.equal(await reopenedPage.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
     assert.equal(await readerSearch.inputValue(), '');
     await reopenedPage.getByRole('button', { name: 'Back to previous reading location', exact: true }).click();
     await reopenedPage.locator('[data-pdf-scope="pdf"]').waitFor();
