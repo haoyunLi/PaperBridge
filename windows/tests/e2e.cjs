@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const crypto = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { clickTextOffset } = require('./reading-caret.cjs');
 
@@ -741,22 +742,216 @@ async function run() {
     }, [...pdfBytes]);
     await page.getByText('Opened practice.pdf.', { exact: true }).waitFor({ timeout: 15000 });
     const libraryCount = await page.locator('.library-row').count();
+    await page.locator('button[title="Open library"]').click();
+    await page.getByRole('button', { name: 'Edit label for practice.pdf', exact: true }).click();
+    await page.getByLabel('Title', { exact: true }).fill('Annotated PDF index');
+    await page.getByLabel('Tags, separated by commas').fill('reimport, preserved');
+    await page.getByRole('button', { name: 'Save label', exact: true }).click();
+    await page.locator('.modal-list-row').getByText('Annotated PDF index', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.waitForFunction(async id => {
+      const host = document.querySelector('.main-scroll');
+      return host?.dataset.readingPaperId === id && host.getAttribute('aria-busy') === 'false'
+        && (await window.paperBridge.loadPaper(id))?.position?.tab === 'Reader';
+    }, pdfRecord.id);
+    const originalPaperPath = path.join(workspace, 'papers', `${pdfRecord.id}.json`);
+    const originalAssetPath = path.join(workspace, 'pdfs', `${pdfRecord.id}.pdf`);
+    const libraryIndexPath = path.join(workspace, 'library-index.json');
+    const readOriginal = () => JSON.parse(fs.readFileSync(originalPaperPath, 'utf8'));
+    const originalEntry = () => JSON.parse(fs.readFileSync(libraryIndexPath, 'utf8')).entries[pdfRecord.id];
+    const sourceAndWork = record => Object.fromEntries(['blocks', 'pdfBlocks', 'mineruBlocks', 'mineruMarkdown',
+      'summary', 'connectedTranslation', 'connectedLanguage', 'connectedLanguageConflict', 'connectedBlocks',
+      'paragraphExplanations', 'pdfNotes', 'pdfHighlights', 'viewNotes', 'viewHighlights', 'outputVariants']
+      .map(key => [key, record[key] ?? null]));
+    const ownedContentHashes = () => Object.fromEntries(['papers', 'pdfs'].flatMap(folder =>
+      fs.readdirSync(path.join(workspace, folder)).map(name => path.join(folder, name)))
+      .concat(['library-index.json', 'library-index.json.backup']).filter(name => fs.existsSync(path.join(workspace, name)))
+      .map(name => [name, crypto.createHash('sha256').update(fs.readFileSync(path.join(workspace, name))).digest('hex')]));
+    await app.evaluate(({ dialog, ipcMain }) => {
+      const original = ipcMain._invokeHandlers.get('pdf:copy-as-new');
+      if (!original) throw new Error('The real copy-as-new IPC handler must exist');
+      global.__reextractResults = [];
+      global.__reextractPickers = [];
+      ipcMain.removeHandler('pdf:copy-as-new');
+      ipcMain.handle('pdf:copy-as-new', async (...args) => {
+        const result = await original(...args);
+        global.__reextractResults.push(result ? { id: result.id, fingerprint: result.fingerprint, name: result.name,
+          existing: result.existing, bytesHash: process.getBuiltinModule('node:crypto').createHash('sha256').update(result.bytes).digest('hex') } : null);
+        return result;
+      });
+      dialog.showOpenDialog = async (_window, options) => {
+        global.__reextractPickers.push(options);
+        return new Promise(resolve => { global.__releaseReextractPicker = resolve; });
+      };
+    });
     await page.getByRole('button', { name: 'More' }).click();
     await page.getByRole('button', { name: 'Re-extract PDF as New Copy' }).click();
-    await page.getByText('Extracted', { exact: false }).first().waitFor({ timeout: 20000 });
-    assert.equal(await page.locator('.library-row').count(), libraryCount + 1);
-    await page.getByRole('button', { name: 'Original', exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
+    const picker = await app.evaluate(async () => {
+      const deadline = Date.now() + 10000;
+      while (typeof global.__releaseReextractPicker !== 'function') {
+        if (Date.now() > deadline) throw new Error('Native re-extract picker was not reached');
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+      return global.__reextractPickers.at(-1);
+    });
+    assert.equal(picker.title, 'Re-extract PDF as New Copy');
+    assert.equal(picker.buttonLabel, 'Extract New Copy');
+    assert.deepEqual(picker.properties, ['openFile']);
+    assert.deepEqual(picker.filters, [{ name: 'PDF documents', extensions: ['pdf'] }]);
+    assert.equal(await page.locator('.title-wrap h1').innerText(), 'practice.pdf');
+    assert.equal(await page.locator('.main-scroll').getAttribute('data-reading-paper-id'), pdfRecord.id);
+    assert.equal(await page.locator('.import-progress-screen').count(), 0, 'Choosing a file must leave the current paper visible');
+    assert.equal(await page.locator('.task-progress').count(), 0);
+    const beforeCancel = ownedContentHashes();
+    await app.evaluate(() => { global.__releaseReextractPicker({ canceled: true, filePaths: [] }); delete global.__releaseReextractPicker; });
+    await app.evaluate(async () => {
+      const deadline = Date.now() + 10000;
+      while (global.__reextractResults.length !== 1) {
+        if (Date.now() > deadline) throw new Error('Cancelled picker did not return through the real IPC');
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+    });
+    assert.deepEqual(await app.evaluate(() => global.__reextractResults), [null]);
+    assert.deepEqual(ownedContentHashes(), beforeCancel, 'Cancelling the native dialog leaves all paper/index/PDF bytes unchanged');
+    assert.equal(await page.locator('.library-row').count(), libraryCount);
+    assert.equal(await page.locator('.import-progress-screen').count(), 0);
+    const alternatePath = path.join(artifacts, 'selected-reextract.pdf');
+    const alternateText = 'Selected alternate PDF content proves that the native dialog controls extraction.';
+    fs.writeFileSync(alternatePath, samplePdf(false, ' from selected alternate PDF',
+      `BT /F1 18 Tf 72 720 Td (Selected source) Tj 0 -30 Td /F1 12 Tf (${alternateText}) Tj ET`));
+    const mismatchedPdf = Buffer.from(samplePdf(false, ' mismatched internal bytes'));
+    const copies = [];
+    for (const [damage, selectedPath, expectedText] of [
+      [Buffer.from('This owned internal asset is corrupt, not a PDF.'), pdfPath, 'This practice PDF contains selectable academic text'],
+      [mismatchedPdf, alternatePath, alternateText]
+    ]) {
+      const beforePaper = fs.readFileSync(originalPaperPath, 'utf8');
+      const beforeEntry = originalEntry();
+      const beforeWork = sourceAndWork(readOriginal());
+      fs.writeFileSync(originalAssetPath, damage);
+      await app.evaluate(({ dialog }, file) => {
+        dialog.showOpenDialog = async (_window, options) => {
+          global.__reextractPickers.push(options);
+          return { canceled: false, filePaths: [file] };
+        };
+      }, selectedPath);
+      await page.getByRole('button', { name: 'More' }).click();
+      await page.getByRole('button', { name: 'Re-extract PDF as New Copy' }).click();
+      await page.waitForFunction(id => {
+        const host = document.querySelector('.main-scroll');
+        return host?.dataset.readingPaperId && host.dataset.readingPaperId !== id
+          && host.getAttribute('aria-busy') === 'false' && !document.querySelector('.import-progress-screen');
+      }, pdfRecord.id, { timeout: 25000 });
+      const copied = (await app.evaluate(() => global.__reextractResults)).at(-1);
+      const selectedBytes = fs.readFileSync(selectedPath);
+      const selectedHash = crypto.createHash('sha256').update(selectedBytes).digest('hex');
+      assert.notEqual(copied.id, pdfRecord.id);
+      assert.notEqual(copied.id, selectedHash, 'Re-extract creates an independent workspace, not a regular reopen');
+      assert.ok(!copies.includes(copied.id)); copies.push(copied.id);
+      assert.equal(copied.fingerprint, selectedHash);
+      assert.equal(copied.bytesHash, selectedHash);
+      assert.equal(copied.existing, null);
+      assert.equal(copied.name, `${path.basename(selectedPath)} (new extraction)`);
+      assert.equal(await page.locator('.title-wrap h1').innerText(), copied.name);
+      await page.waitForFunction(async ({ id, text }) => (await window.paperBridge.loadPaper(id))?.blocks?.some(block => block.text.includes(text)),
+        { id: copied.id, text: expectedText });
+      assert.deepEqual(fs.readFileSync(path.join(workspace, 'pdfs', `${copied.id}.pdf`)), selectedBytes);
+      assert.deepEqual(fs.readFileSync(originalAssetPath), damage, 'A new copy must not silently overwrite the old internal asset');
+      assert.equal(fs.readFileSync(originalPaperPath, 'utf8'), beforePaper, 'New extraction must not overwrite the original paper');
+      assert.deepEqual(originalEntry(), beforeEntry, 'New extraction must preserve the original independent library entry');
+      assert.equal(await page.locator('.library-row').count(), libraryCount + copies.length);
+      await page.getByRole('button', { name: 'Original', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
+      await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, pdfPath);
+      await revealSidebarSource(page);
+      await page.getByRole('button', { name: 'Open PDF', exact: true }).first().click();
+      await page.waitForFunction(id => document.querySelector('.main-scroll')?.dataset.readingPaperId === id
+        && document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false'
+        && !document.querySelector('.import-progress-screen'), pdfRecord.id);
+      assert.deepEqual(fs.readFileSync(originalAssetPath), pdfBytes, 'Ordinary reopen repairs corrupt or mismatched internal PDF bytes from the selected original');
+      assert.deepEqual(sourceAndWork(readOriginal()), beforeWork, 'Repair keeps the old workspace outputs and every annotation');
+      assert.equal(originalEntry().libraryTitle, 'Annotated PDF index');
+      assert.deepEqual(originalEntry().tags, ['preserved', 'reimport']);
+      assert.equal(await page.locator('.library-row').count(), libraryCount + copies.length, 'Regular reopen must not duplicate the repaired original');
+      assert.match(await page.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./);
+    }
+    const latestReopenNote = 'Latest Reader note must survive reopening this same repaired PDF.';
+    await app.evaluate(({ ipcMain }, { id, note }) => {
+      const save = ipcMain._invokeHandlers.get('paper:save');
+      const open = ipcMain._invokeHandlers.get('pdf:import');
+      global.__duplicateImportOriginalHandlers = { save, open };
+      global.__duplicateImportReturned = false;
+      let held = false;
+      ipcMain.removeHandler('paper:save');
+      ipcMain.handle('paper:save', async (event, paper) => {
+        if (!held && paper.id === id && paper.blocks?.some(block => block.notes?.some(item => item.body === note))) {
+          held = true;
+          await new Promise(resolve => { global.__releaseLatestPdfSave = resolve; });
+        }
+        return save(event, paper);
+      });
+      ipcMain.removeHandler('pdf:import');
+      ipcMain.handle('pdf:import', async (...args) => {
+        const imported = await open(...args);
+        global.__duplicateImportSnapshotHadNote = Boolean(imported?.existing?.blocks?.some(block => block.notes?.some(item => item.body === note)));
+        global.__duplicateImportReturned = true;
+        return imported;
+      });
+    }, { id: pdfRecord.id, note: latestReopenNote });
+    try {
+      await page.locator('#block-2 .source-text').evaluate(node => {
+        const range = document.createRange(); range.selectNodeContents(node);
+        window.getSelection().removeAllRanges(); window.getSelection().addRange(range);
+        node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      });
+      await page.getByLabel('Note for selected passage').fill(latestReopenNote);
+      await page.getByRole('button', { name: 'Save note', exact: true }).click();
+      await app.evaluate(async () => {
+        const deadline = Date.now() + 10000;
+        while (typeof global.__releaseLatestPdfSave !== 'function') {
+          if (Date.now() > deadline) throw new Error('The latest PDF note save was not held');
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+      });
+      await revealSidebarSource(page);
+      await page.getByRole('button', { name: 'Open PDF', exact: true }).first().click();
+      const snapshotHadNote = await app.evaluate(async () => {
+        const deadline = Date.now() + 10000;
+        while (!global.__duplicateImportReturned) {
+          if (Date.now() > deadline) throw new Error('Duplicate PDF import did not return its actual saved snapshot');
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        return global.__duplicateImportSnapshotHadNote;
+      });
+      assert.equal(snapshotHadNote, false, 'The fixture must actually expose the pre-flush stale backend snapshot');
+      await app.evaluate(() => { global.__releaseLatestPdfSave(); delete global.__releaseLatestPdfSave; });
+      await page.waitForFunction(async ({ id, note }) => document.querySelector('.main-scroll')?.dataset.readingPaperId === id
+        && !document.querySelector('.import-progress-screen')
+        && (await window.paperBridge.loadPaper(id))?.blocks?.some(block => block.notes?.some(item => item.body === note)),
+      { id: pdfRecord.id, note: latestReopenNote });
+      await page.locator('#block-2 .block-notes').getByText(latestReopenNote, { exact: false }).waitFor();
+      assert.deepEqual(fs.readFileSync(originalAssetPath), pdfBytes);
+      assert.equal(originalEntry().libraryTitle, 'Annotated PDF index');
+    } finally {
+      await app.evaluate(({ ipcMain }) => {
+        global.__releaseLatestPdfSave?.(); delete global.__releaseLatestPdfSave;
+        const handlers = global.__duplicateImportOriginalHandlers;
+        if (handlers) {
+          ipcMain.removeHandler('paper:save'); ipcMain.handle('paper:save', handlers.save);
+          ipcMain.removeHandler('pdf:import'); ipcMain.handle('pdf:import', handlers.open);
+          delete global.__duplicateImportOriginalHandlers;
+        }
+      });
+    }
     await page.locator('.library-row').filter({ hasText: 'Edited practice label' }).click();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Summary selection note.' }).waitFor();
     assert.match(await page.locator('.saved-annotations').innerText(), /Summary selection note\./);
     assert.match(await page.locator('.saved-annotations').innerText(), /Connected translation note\./);
-    let returnedToAnnotatedPdf = false;
-    const pdfRows = page.locator('.library-row').filter({ hasText: 'practice.pdf' });
-    for (let index = 0; index < await pdfRows.count(); index++) {
-      await pdfRows.nth(index).click();
-      if ((await page.locator('.saved-annotations').innerText().catch(() => '')).includes('This note belongs to the original PDF page.')) { returnedToAnnotatedPdf = true; break; }
-    }
-    assert.equal(returnedToAnnotatedPdf, true, 'The original annotated PDF should remain in the library');
+    await page.locator('.library-row').filter({ hasText: 'Annotated PDF index' }).click();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).waitFor();
+    assert.match(await page.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./,
+      'The original annotated PDF should remain independently labeled in the library');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
@@ -966,6 +1161,17 @@ async function run() {
     assert.deepEqual(pngDimensions(path.join(cropBundle, 'pages', 'page-002.png')), [1, 1800]);
     assert.deepEqual(fs.readFileSync(path.join(cropBundle, 'original.pdf')), fs.readFileSync(rotatedPath));
     console.log('Electron workflow verified: menus, shortcuts, source and cross-line PDF annotations, original-page comparison, portable export, scan guidance, restart recovery, and narrow-gutter reading order.');
+  } catch (error) {
+    const failure = fs.mkdtempSync(path.join(artifacts, 'e2e-failure-'));
+    const evidence = { error: error.stack };
+    try {
+      const failedPage = await app.firstWindow();
+      evidence.text = await Promise.race([failedPage.locator('body').innerText(), new Promise((_, reject) => setTimeout(() => reject(new Error('Failure capture timed out')), 3000))]);
+      await failedPage.screenshot({ path: path.join(failure, 'failure.png'), timeout: 5000 });
+    } catch (captureError) { evidence.captureError = captureError.message; }
+    fs.writeFileSync(path.join(failure, 'error.json'), JSON.stringify(evidence, null, 2));
+    console.error(`Desktop failure evidence: ${failure}`);
+    throw error;
   } finally { await app?.close(); ollama.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

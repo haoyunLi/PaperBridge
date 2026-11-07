@@ -1323,6 +1323,7 @@ function App() {
     if (!await finishNoteEditing()) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
+    if (fromImport && loaded?.id === paperRef.current?.id) loaded = paperRef.current;
     if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained; try importing the original again.');
     if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
     // Capture the saved output's language before missing task settings are filled
@@ -2004,7 +2005,9 @@ function App() {
   }
   async function ingestPdf(imported, token) {
     requireActiveTask(token);
-    if (imported.existing) { await loadPaper(imported.existing, { fromImport: true, token }); return; }
+    // The import response may precede the current paper's final note save.
+    // Reload only after loadPaper flushes it, retaining the latest open copy.
+    if (imported.existing) { await loadPaper(imported.id, { fromImport: true, token }); return; }
     const config = settingsRef.current;
     const mode = config.pdfExtractionMode || 'mineruPreferred';
     let mineruMarkdown = '';
@@ -2297,11 +2300,15 @@ function App() {
     } catch (err) { if (!token.cancelled) { setSelectionLookup({ key, status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
   }
   async function reextractAsNew() {
-    if (paper?.type !== 'pdf' || busy || taskRef.current) return;
+    if (paperRef.current?.type !== 'pdf' || busy || taskRef.current || editRef.current) return;
     setModal('');
-    const token = startPdfImport(`${paper.name} (new extraction)`, 'Preparing an independent PDF copy');
-    try { await ingestPdf(await api.copyPdfAsNew({ id: paper.id, name: paper.name }), token); }
-    catch (cause) { if (!token.cancelled) setError(cause.message); }
+    let imported;
+    try { imported = await api.copyPdfAsNew({ id: paperRef.current.id, name: paperRef.current.name }); }
+    catch (cause) { setError(cause.message); return; }
+    if (!imported || taskRef.current || editRef.current) return;
+    const token = startPdfImport(imported.name, 'Preparing an independent PDF copy');
+    try { requireActiveTask(token); await ingestPdf(imported, token); }
+    catch (cause) { if (!token.cancelled) setError(`Could not import ${imported.name}: ${cause.message}`); }
     finally { endTask(token); }
   }
   function selectParagraphForExplanation(id) {

@@ -1,7 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
@@ -13,6 +12,7 @@ const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = requir
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
+const { importPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
 const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
@@ -107,13 +107,8 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
 function progress(data) { if (window && !window.isDestroyed()) window.webContents.send('paperbridge:progress', data); }
 
 function importPdfBytes(bytes, name) {
-  const source = Buffer.from(bytes);
-  if (!source.subarray(0, 5).equals(Buffer.from('%PDF-'))) throw new Error('This file is not a valid PDF.');
-  const id = crypto.createHash('sha256').update(source).digest('hex');
-  const destination = store.pdfPath(id);
-  fs.mkdirSync(path.dirname(destination), { recursive: true });
-  if (!fs.existsSync(destination)) fs.writeFileSync(destination, source);
-  return { id, fingerprint: id, name: path.basename(String(name || 'Paper.pdf')), existing: store.paper(id), bytes: new Uint8Array(source) };
+  const imported = importPdfAsset(bytes, name, store.pdfPath);
+  return { ...imported, existing: store.paper(imported.id) };
 }
 
 async function pullOllamaModel(baseURL, model, signal, update) {
@@ -235,16 +230,9 @@ function registerHandlers() {
     return importPdfBytes(fs.readFileSync(source), path.basename(source));
   });
   ipcMain.handle('pdf:import-bytes', (_event, { bytes, name }) => importPdfBytes(bytes, name));
-  ipcMain.handle('pdf:copy-as-new', (_event, { id, name }) => {
-    const bytes = fs.readFileSync(store.pdfPath(safeId(id)));
-    const hash = crypto.createHash('sha256').update(bytes);
-    const fingerprint = hash.copy().digest('hex');
-    const newId = hash.update(crypto.randomUUID()).digest('hex');
-    const destination = store.pdfPath(newId);
-    fs.mkdirSync(path.dirname(destination), { recursive: true });
-    fs.writeFileSync(destination, bytes);
-    return { id: newId, fingerprint, name: `${path.basename(String(name || 'Paper.pdf'))} (new extraction)`, bytes: new Uint8Array(bytes), existing: null };
-  });
+  ipcMain.handle('pdf:copy-as-new', () => selectIndependentPdfAsset({
+    showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options), owner: window, pdfPath: store.pdfPath
+  }));
   ipcMain.handle('pdf:read', (_event, id) => new Uint8Array(fs.readFileSync(store.pdfPath(safeId(id)))));
   ipcMain.handle('pdf:prepare-page-archive', async (event, { id, fingerprint, pageCount, requestId }) => {
     const pdfFile = store.pdfPath(safeId(id));

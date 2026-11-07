@@ -1,5 +1,15 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第八十四阶段：原件重选、PDF 资产修复与最新笔记保全（2026-11-07 UTC，开发分支）
+
+继续对照 Mac `reextractPDFAsNewCopy/readPaper`，Windows 原先只复制内部 PDF，无法在内部文件损坏后选择正确原件；普通同哈希导入也会因目标文件已存在而跳过修复。现在 Re-extract PDF as New Copy 先打开原生单文件选择器，使用实际选中 PDF 的字节和文件名，按原件哈希加 UUID 建立独立新副本。取消选择不创建资产、不进入导入进度，当前论文保持可见；已保存正文、译文、注释与独立标签不覆盖。新副本可选择不同原件，行为与 Mac 一致。
+
+普通 Open PDF 或拖放重开相同原件时，先比较内部文件 SHA-256：相同则不改写，缺失或不同则通过同目录自有临时文件加原子 rename 修复，仅替换 PDF 资产。写入失败保留原文件；临时名称冲突不会删除非本次创建的文件。重复打开论文先等待笔记保存，再按 ID 读取最新工作区，并优先保留当前同 ID 的内存记录，避免使用导入响应中保存之前的旧快照。
+
+新增 8 项资产/失败/取消单元，完整 **281 项单元**通过。实际 Electron 主流程覆盖两个损坏场景（无效字节、另一份合法 PDF）、重选原件/其它 PDF、独立新 ID 与原件哈希、旧论文和索引不改写、普通重开修复、取消零写入，以及故意延迟最新笔记落盘后同 PDF 重开。系统 dialog API 的选择结果由测试注入，不声称人工点击了 Windows 系统选择框。最终 `test-artifacts/phase84-main-e2e-complete.log` 通过全部主流程，导入进度/取消和粘贴恢复专项也通过。
+
+首次新测试在 Electron evaluate 环境调用不存在的 `require`，修正为 `process.getBuiltinModule`；下一次旧测试在异步切文完成前立即断言批注，改为有界等待目标批注后仍执行原断言。失败证据 `phase84-main-first-failure`、`e2e-failure-7aYHqN`、`e2e-failure-eE8H83` 均保留。产品完整性断言未放宽。公开 0.2.20 尚不包含本阶段修复。
+
 ## 第八十三阶段：公开 0.2.20 的真实 AMD 长段翻译（2026-11-07 UTC）
 
 第 82 阶段公开包验收完成后，使用同一校验通过的公开 Portable，在新隔离工作区翻译已提取真实 MinerU 论文的第 32 段（Encoder，660 字符，两条公式）。实际段落动作恰好发出 363 / 296 字素的两次请求，完整 payload 与预期匹配；两条公式、English→Simplified Chinese 元数据、其它全部输出/批注、PDF 和资源原件与副本均经关闭重启保全。报告 `test-artifacts/portable-0220-amd-mineru-Y0St0z/result.json` 为 `passed=true`，渲染错误为 0，无清理错误。
