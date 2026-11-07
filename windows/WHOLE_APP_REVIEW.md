@@ -6,6 +6,8 @@ Paper 的精确 PDF 与 Original 各自支持 50–250% 缩放。工具栏、Ctr
 
 154 项单元测试、生产构建、主流程、阅读历史、逐论文设置、Markdown、Reader 与导入回归通过。测试包含旋转页、原页返回、重启和标注复选。RX 7800 XT 在 150% 缩放打开真实 15 页《Attention Is All You Need》。PDF 250% 时画布显示和文字层均为 2125×2750，位图 2486×3217。Ctrl+滚轮缩放、两个视图的独立比例、标注回跳、重启和原 PDF 字节一致性均验证。另用 TranslateGemma 4B 翻译第 17 段，显存占用 2,881,948,220 字节。
 
+GitHub 发布构建通过 154 项单元测试、23 套桌面回归和打包启动检查。两个公开 `.exe` 的 SHA-256 均匹配，Authenticode 状态为 NotSigned。0.2.10 安装版提示更新，升到 0.2.11 后恢复论文、笔记和高亮，测试卸载后隔离工作区仍在。公开便携版在本机 125% 缩放复测 250% PDF、原页标注恢复、专注切换及 AMD 翻译。GitHub 首页提供两个新版直链。 [Windows 0.2.11](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.11) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42317946340)
+
 ## 第五十阶段：专注阅读入口与紧凑查词选取（2026-11-07 UTC）
 
 论文工具栏和 View 菜单提供 Focus Reading，Windows 快捷键为 Ctrl+Alt+F。Ctrl+Alt+S 切换左侧栏。退出专注恢复两侧偏好。在专注中手动打开左侧栏或检查器时，只打开所选面板。专注时可以切换阅读视图或从图书馆打开另一论文，退出后按当前论文已保存的检查器状态显示。进入专注会保存正在编辑的笔记并隐藏查词卡。紧凑查词的两个结果在同一个可滚动区域内，可拖选，关闭卡片仍保留原文选区。
