@@ -218,17 +218,45 @@ async function run() {
     assert.equal((await app.evaluate(() => globalThis.__discardedMineruResults)).length, 2);
 
     await chooseMode('pdfOnly');
-    // Inline paste keeps Document & Import expanded. Its read-only status card
-    // independently probes MinerU whenever import progress remounts the sidebar.
-    // Close that disclosure so this strict counter observes the import pipeline,
-    // not an unrelated status refresh after cancellation or successful import.
+    // A native <details> toggle is queued separately from the summary click.
+    // Delay its delivery deterministically across the import unmount: the click
+    // must commit the user's closed state without relying on that later event.
+    // This also isolates the strict PDF-only counter from sidebar status probes.
     const documentDetails = page.locator('.document-details');
-    if (await documentDetails.getAttribute('open') !== null) {
-      await page.locator('.sidebar-parser-status .sidebar-refresh').waitFor({ state: 'visible' });
-      await page.waitForFunction(() => document.querySelector('.sidebar-parser-status .sidebar-refresh')?.getAttribute('aria-busy') === 'false');
-      await documentDetails.locator(':scope > summary').click();
+    if (await documentDetails.getAttribute('open') === null) await documentDetails.locator(':scope > summary').click();
+    await page.locator('.sidebar-parser-status .sidebar-refresh').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+      const refresh = document.querySelector('.sidebar-parser-status .sidebar-refresh');
+      return refresh && !refresh.disabled && refresh.getAttribute('aria-busy') === 'false';
+    });
+    const keyboardToggles = [];
+    for (const [key, open] of [['Enter', false], ['Space', true], ['Space', false], ['Enter', true]]) {
+      await documentDetails.locator(':scope > summary').press(key);
+      await page.waitForFunction(open => {
+        const details = document.querySelector('.document-details');
+        const refresh = details?.querySelector('.sidebar-parser-status .sidebar-refresh');
+        return details?.open === open && refresh?.disabled === !open && refresh.getAttribute('aria-busy') === 'false';
+      }, open);
+      keyboardToggles.push({ key, open });
     }
+    await page.evaluate(() => {
+      const hold = event => {
+        if (!event.target.matches?.('.document-details') || event.target.open) return;
+        event.stopImmediatePropagation();
+        window.removeEventListener('toggle', hold, true);
+        window.__heldDocumentToggle = { node: event.target, event };
+      };
+      window.addEventListener('toggle', hold, true);
+    });
+    await documentDetails.locator(':scope > summary').click();
+    await page.waitForFunction(() => Boolean(window.__heldDocumentToggle));
     assert.equal(await documentDetails.getAttribute('open'), null);
+    const beforeImportDisclosure = await page.evaluate(() => ({
+      closed: !document.querySelector('.document-details').open,
+      sidebarProbeDisabled: document.querySelector('.sidebar-parser-status .sidebar-refresh').disabled,
+      heldToggleConnected: window.__heldDocumentToggle.node.isConnected
+    }));
+    console.log(`PDF-only disclosure before import: ${JSON.stringify(beforeImportDisclosure)}`);
     const probes = await app.evaluate(() => globalThis.__mineruStatusCalls);
     await page.evaluate(() => {
       const toBlob = HTMLCanvasElement.prototype.toBlob;
@@ -240,8 +268,28 @@ async function run() {
     await drop('cancelled-archive.pdf', cancelledArchiveText);
     await page.waitForFunction(() => typeof window.releaseImportPage === 'function');
     await page.getByRole('main').getByText('Preparing original PDF page images · 1 of 1', { exact: true }).waitFor();
+    const staleToggle = await page.evaluate(() => {
+      const { node, event } = window.__heldDocumentToggle;
+      const disconnected = !node.isConnected;
+      node.dispatchEvent(event);
+      delete window.__heldDocumentToggle;
+      return { disconnected };
+    });
+    assert.equal(staleToggle.disconnected, true, 'the delayed native toggle outlives the old sidebar instance');
     await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
     await page.getByRole('heading', { name: 'structured-with-pages.pdf', exact: true }).waitFor();
+    const afterCancellationDisclosure = await page.evaluate(() => ({
+      closed: !document.querySelector('.document-details').open,
+      sidebarProbeDisabled: document.querySelector('.sidebar-parser-status .sidebar-refresh').disabled
+    }));
+    const cancellationProbes = await app.evaluate(() => globalThis.__mineruStatusCalls);
+    const disclosureRegression = { keyboardToggles, beforeImportDisclosure, staleToggle, afterCancellationDisclosure,
+      baselineProbes: probes, cancellationProbes };
+    fs.writeFileSync(path.join(workspace, 'document-disclosure-regression.json'), JSON.stringify(disclosureRegression, null, 2));
+    console.log(`PDF-only disclosure after cancellation: ${JSON.stringify(disclosureRegression)}`);
+    assert.equal(afterCancellationDisclosure.closed, true, 'closing Document & Import must survive a delayed toggle and import cancellation');
+    assert.equal(afterCancellationDisclosure.sidebarProbeDisabled, true, 'the remounted sidebar must retain the committed closed state');
+    assert.equal(cancellationProbes, probes, 'PDF-only cancellation must not introduce a sidebar or import MinerU probe');
     await drop('pdf-only.pdf', 'The PDF only mode reads the selectable text layer.');
     await page.getByText(/Extracted \d+ blocks from 1 pages/).waitFor();
     await page.evaluate(() => { window.releaseImportPage(); delete window.releaseImportPage; });

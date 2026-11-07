@@ -1,5 +1,15 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第七十四阶段：发布检查发现的折叠状态竞态（2026-11-07 UTC）
+
+第 73 阶段的精确提交 `47787dc` 在 [PR 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42345610544)通过 203 项单元、33 套桌面与打包启动。但同一提交的 [0.2.17 标签构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346065913)在 PDF-only 导入回归发现 MinerU 状态请求从 14 次增至 17 次，发布步骤被阻止，没有生成公开 Release 或下载包。保留失败标签作为历史记录，下一候选版本使用 0.2.18。
+
+确定性复现证明是产品折叠状态竞态：暂扣浏览器排队的 `toggle` 事件，真实点击关闭 Document & Import 后，DOM 已关闭但 React 状态仍展开；导入卸载该元素，取消后再次挂载时重新展开，状态检测从 14 次变为 15 次。证据为 `test-artifacts/document-disclosure-before.json`。PDF-only 解析分支本身没有选择 MinerU。
+
+Document & Import 现在在 summary 的点击/键盘激活时直接更新受控展开状态，不再等待可能晚于导入卸载的原生 toggle。回归继续暂扣同一事件，检查取消后的关闭状态、检测按钮是否禁用以及原有严格请求计数，保留所有导入、取消、资源隔离和存档断言。发布和公开升级验证以之后的实际结果为准。
+
+修复后同一故障注入保持关闭，检测计数 16→16；预备阶段另验证 Enter、空格键的双向展开/关闭。报告 `test-artifacts/document-disclosure-after.json`。本机通过 203 项单元、生产构建、0.2.18 Setup / Portable 构建及打包启动，以及 Import Progress、Sidebar Settings、Sidebar Layout、Paste Text 四套相关桌面回归；后两套报告分别为 `sidebar-layout-ado32m/results.json` 和 `paste-text-6N4xQb/result.json`。
+
 ## 第七十三阶段：窄窗关闭入口与 0.2.17 发布准备（2026-11-07 UTC）
 
 重新确认 GitHub main 为 `04d38b2`，Mac 源码基线仍为 1.10.0。第 72 阶段的 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42344797466)通过 203 项单元与安装包生成，但逐论文设置回归未通过。定位为测试的全页文字查找命中了保留的 Paste Text 草稿，过早检查了旧论文的检查器。新增持有 `paper:load` 返回的确定性检查，直接证明旧定位器匹配的是 textarea；现在等待目标论文 ID、布局就绪与主阅读区正文，再检查原有设置和检查器断言。没有据此放宽产品行为要求。

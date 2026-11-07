@@ -3100,8 +3100,13 @@ function App() {
         {!paper && !pendingImport && sidebarSource}
         {!paper && !pendingImport && sidebarAI}
         {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <>
-          <details className="document-details" open={documentDetailsExpanded} onToggle={event => setDocumentDetailsExpanded(event.currentTarget.open)}>
-            <summary>Document &amp; Import</summary>
+          <details className="document-details" open={documentDetailsExpanded}>
+            <summary onClick={event => {
+              // Import can unmount this disclosure before the native queued
+              // toggle event. Commit the user's choice during activation.
+              event.preventDefault();
+              setDocumentDetailsExpanded(expanded => !expanded);
+            }}>Document &amp; Import</summary>
             {sidebarSource}
             <div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Paragraphs</span><b>{translatableCount}</b></div>{referenceIDs.size > 0 && <div className="side-stat"><span>Skipped refs</span><b>{referenceIDs.size}</b></div>}<div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div>
             <SidebarLanguage settings={settings} languages={languages} disabled={Boolean(busy || pulling)} onChange={change => { if (!taskRef.current && !pullRef.current) updateSettings(change); }} />
