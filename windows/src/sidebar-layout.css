@@ -1,0 +1,45 @@
+.sidebar { container: document-sidebar / inline-size; }
+
+.sidebar-scroll {
+  min-height: 0;
+  padding: 14px;
+}
+
+.sidebar .brand {
+  padding: 6px 2px;
+  margin-bottom: 12px;
+}
+.sidebar .brand > div { min-width: 0; }
+.sidebar .brand img { flex: none; }
+.sidebar .brand strong { font-size: 25px; line-height: 1.15; }
+
+@container document-sidebar (max-width: 260px) {
+  .sidebar .brand { gap: 10px; }
+  .sidebar .brand img { width: 40px; height: 40px; }
+  .sidebar .brand strong { font-size: 22px; }
+}
+
+.sidebar .sidebar-footer {
+  margin-top: 12px;
+  padding: 11px 0 0;
+}
+
+.sidebar .side-search {
+  min-width: 0;
+  border: 1px solid #304966;
+  border-radius: 7px;
+  outline: none;
+}
+.sidebar .side-search:focus {
+  border-color: #84b4fc !important;
+  box-shadow: 0 0 0 2px #84b4fc40;
+}
+.sidebar-footer button:focus-visible {
+  outline: 2px solid #84b4fc;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+@media (forced-colors: active) {
+  .sidebar .side-search:focus,
+  .sidebar-footer button:focus-visible { outline: 2px solid Highlight; }
+}

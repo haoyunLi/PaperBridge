@@ -1,11 +1,17 @@
 .reader-layout { max-width: none; }
 .content-column:not(.pdf-comparison-column):has(.document-preview) { max-width: max(1000px, var(--reader-width)); }
-.reader-summary { max-width: var(--reader-width); margin-left: auto; margin-right: auto; }
+.app .main-scroll.reader-scroll { padding: 0; }
+.reader-list { padding: 22px; }
+.notice.workspace-status { padding: 14px; border: 0; box-shadow: inset 0 0 0 1px #cfc6b8; border-radius: 14px; gap: 10px; justify-content: flex-start; }
+.notice.workspace-status::before { content: ''; flex: none; width: 7px; height: 7px; margin: 0; border-radius: 50%; background: #0a59d6; }
+.notice.workspace-status > span { min-width: 0; overflow-wrap: anywhere; }
+.reader-list > .workspace-status { margin: 0 0 16px; }
 .reader-list > .block:not(.heading-block) {
   padding: 18px;
   border-radius: 14px;
   margin-bottom: 16px;
 }
+.reader-list > .block:last-child { margin-bottom: 0; }
 .reader-list > .block:not(.heading-block).current {
   border: 1px solid #0a59d6;
   box-shadow: inset 0 0 0 1px #0a59d6;

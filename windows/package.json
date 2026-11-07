@@ -14,6 +14,8 @@
     "test:last-opened-e2e": "node tests/last-opened-e2e.cjs",
     "test:reader-review-e2e": "node tests/reader-review-e2e.cjs",
     "test:reader-toolbar-e2e": "node tests/reader-toolbar-e2e.cjs",
+    "test:layout-parity-e2e": "node tests/layout-parity-e2e.cjs",
+    "test:sidebar-layout-e2e": "node tests/sidebar-layout-e2e.cjs",
     "test:reader-actions-e2e": "node tests/reader-actions-e2e.cjs",
     "test:paragraph-editor-e2e": "node tests/paragraph-editor-e2e.cjs",
     "test:outline-e2e": "node tests/outline-e2e.cjs",

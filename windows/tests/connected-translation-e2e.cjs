@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -126,7 +127,10 @@ async function run() {
     await reference.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     assert.equal(await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).count(), 0);
     await page.keyboard.press('Escape');
-    assert.match(await page.locator('.reader-summary').innerText(), /0 of 4 blocks translated/);
+    await revealSidebarSource(page);
+    assert.equal(await page.locator('.document-details .side-stat').filter({ has: page.getByText('Paragraphs', { exact: true }) }).locator('b').innerText(), '4');
+    assert.equal(await page.locator('.document-details .side-stat').filter({ has: page.getByText('Translated', { exact: true }) }).locator('b').innerText(), '0');
+    await page.locator('.document-details > summary').click();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const preview = page.locator('[data-paper-block-id="4"]');
     await preview.getByText(citations[0], { exact: true }).waitFor();

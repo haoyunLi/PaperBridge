@@ -177,6 +177,12 @@ async function run() {
     await page.setViewportSize({ width: 1500, height: 900 });
     await page.getByRole('button', { name: 'Focus Reading', exact: true }).click();
     await page.waitForFunction(() => Math.abs(document.querySelector('.reader-list').getBoundingClientRect().width - 1200) < 1);
+    const readerWidth = await page.locator('.reader-list').evaluate(list => ({
+      outer: list.getBoundingClientRect().width,
+      card: list.querySelector('#block-2').getBoundingClientRect().width,
+      left: parseFloat(getComputedStyle(list).paddingLeft), right: parseFloat(getComputedStyle(list).paddingRight)
+    }));
+    assert.deepEqual(readerWidth, { outer: 1200, card: 1156, left: 22, right: 22 }, 'reading width includes the macOS 22px padding on both sides');
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     await page.waitForFunction(() => Math.abs(document.querySelector('.document-preview').getBoundingClientRect().width - 1200) < 1);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();

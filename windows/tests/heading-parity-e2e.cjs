@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -142,7 +143,10 @@ async function run() {
     await page.keyboard.press('End');
     await page.keyboard.press('Escape');
     await assertHeadingAppearance(page, '24px', '40.8px');
-    assert.match(await page.locator('.reader-summary').innerText(), /1 of 4 blocks translated/);
+    await revealSidebarSource(page);
+    assert.equal(await page.locator('.document-details .side-stat').filter({ has: page.getByText('Paragraphs', { exact: true }) }).locator('b').innerText(), '4');
+    assert.equal(await page.locator('.document-details .side-stat').filter({ has: page.getByText('Translated', { exact: true }) }).locator('b').innerText(), '1');
+    await page.locator('.document-details > summary').click();
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
     await page.locator('.modal').getByRole('button', { name: 'Translation Range', exact: true }).click();
     assert.match(await page.getByRole('button', { name: /^All unfinished blocks/ }).innerText(), /3 blocks/);
