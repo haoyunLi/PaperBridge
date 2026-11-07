@@ -85,8 +85,8 @@ function writeBundleFacsimile({ folder, facsimileDocuments, renderedPages }, pag
   const limit = Math.min(pageCount, maximumPreviewPages);
   const notice = ['Page images preserve the original layout.'];
   if (pageCount > limit) notice.push(`Previews are limited to the first ${limit} of ${pageCount} pages.`);
-  if (!pageCount) notice.push('The PDF could not be opened for page previews.');
-  else if (stopped) notice.push('Page export stopped. Only completed previews are included.');
+  if (stopped) notice.push('Page export stopped. Only completed previews are included.');
+  else if (!pageCount) notice.push('The PDF could not be opened for page previews.');
   else if (renderedPages.size < limit) notice.push('Some page previews are unavailable.');
   const pages = [];
   for (let page = 1; page <= limit; page++) {

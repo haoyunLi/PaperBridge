@@ -2241,19 +2241,38 @@ function App() {
       if (!result) return;
       setModal('');
       let pageImages = 0;
+      let reusedPages = 0;
       let missingPages = 0;
       if (result.originalPdf) {
         setBusy({ label: 'Exporting portable PDF page images…' });
         const destination = { id: paper.id, folder: result.folder };
+        const cachedPages = new Set(result.cachedPages);
+        let pageCount = result.cachedPageCount || 0;
         let pdf;
+        const loadPdf = async () => {
+          if (!pdf) {
+            pdf = await openPdf(await api.readBundlePdf(destination));
+            pageCount = pdf.numPages;
+          }
+          return pdf;
+        };
         try {
-          pdf = await openPdf(await api.readPdf(paper.id));
-          const limit = Math.min(pdf.numPages, result.maximumPreviewPages);
+          if (!pageCount && !token.cancelled) await loadPdf();
+          const limit = Math.min(pageCount, result.maximumPreviewPages);
           for (let pageNumber = 1; pageNumber <= limit && !token.cancelled; pageNumber++) {
             setProgress({ done: pageNumber - 1, total: limit });
+            if (cachedPages.has(pageNumber) && await api.exportBundlePage({ ...destination, pageNumber })) {
+              pageImages++;
+              reusedPages++;
+              setProgress({ done: pageNumber, total: limit });
+              continue;
+            }
+            if (token.cancelled) break;
+            const pdfDocument = await loadPdf();
+            if (token.cancelled) break;
             let image;
             try {
-              const page = await pdf.getPage(pageNumber);
+              const page = await pdfDocument.getPage(pageNumber);
               if (token.cancelled) break;
               const base = page.getViewport({ scale: 1 });
               const viewport = page.getViewport({ scale: Math.min(1.5, 1800 / Math.max(base.width, base.height)) });
@@ -2278,12 +2297,12 @@ function App() {
             setProgress({ done: pageNumber, total: limit });
           }
         } finally {
-          try { await api.finishBundle({ ...destination, pageCount: pdf?.numPages || 0, stopped: token.cancelled }); }
+          try { await api.finishBundle({ ...destination, pageCount, stopped: token.cancelled }); }
           finally { await pdf?.loadingTask.destroy(); }
         }
       }
       const missingAssets = result.missingAssetPaths?.length;
-      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}${missingAssets ? `. ${missingAssets} referenced local asset(s) could not be included.` : ''}`);
+      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}${reusedPages ? `. Reused ${reusedPages} archived PDF page image(s).` : ''}${missingAssets ? `. ${missingAssets} referenced local asset(s) could not be included.` : ''}`);
     } catch (cause) { setError(`Bundle export incomplete: ${cause.message}`); }
     finally { endTask(token); setModal(''); }
   }

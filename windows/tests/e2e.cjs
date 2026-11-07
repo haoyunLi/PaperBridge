@@ -609,10 +609,10 @@ async function run() {
     await page.getByRole('button', { name: 'Previous page' }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
-    const exportBundle = async () => {
-      await page.getByRole('button', { name: 'More' }).click();
-      await page.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
-      await page.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
+    const exportBundle = async (target = page) => {
+      await target.getByRole('button', { name: 'More' }).click();
+      await target.locator('.modal-body').getByRole('button', { name: 'Export Markdown', exact: true }).click();
+      await target.getByRole('button', { name: 'Export portable Markdown bundle' }).click();
     };
     const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
     const beforeExport = new Set(bundleFolders());
@@ -639,15 +639,24 @@ async function run() {
     assert.match(exportedAnalysis, /Original PDF · page 1 · teal/);
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral/);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);
+    const beforeWarm = new Set(bundleFolders());
+    await exportBundle();
+    await page.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
+    const warm = path.join(artifacts, bundleFolders().find(name => !beforeWarm.has(name)));
+    for (const file of ['original.pdf', 'pages/page-001.png', 'pages/page-002.png']) {
+      assert.deepEqual(fs.readFileSync(path.join(warm, file)), fs.readFileSync(path.join(bundle, file)));
+    }
+    const cache = path.join(workspace, 'pdf-page-cache');
+    const cachedPageTwo = path.join(cache, fs.readdirSync(cache)[0], pdfRecord.id, 'page-002.png.entry');
+    const damagedPage = fs.readFileSync(cachedPageTwo);
+    damagedPage[damagedPage.length - 1] ^= 1;
+    fs.writeFileSync(cachedPageTwo, damagedPage);
     const beforeStop = new Set(bundleFolders());
     await page.evaluate(() => {
       const toBlob = HTMLCanvasElement.prototype.toBlob;
-      let count = 0;
       HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
-        if (++count === 2) {
-          HTMLCanvasElement.prototype.toBlob = toBlob;
-          window.releasePageImage = () => toBlob.call(this, callback, ...options);
-        } else toBlob.call(this, callback, ...options);
+        HTMLCanvasElement.prototype.toBlob = toBlob;
+        window.releasePageImage = () => toBlob.call(this, callback, ...options);
       };
     });
     await exportBundle();
@@ -660,6 +669,11 @@ async function run() {
     assert.match(stoppedTranslation, /Page export stopped[\s\S]*pages\/page-001\.png[\s\S]*本地测试译文/);
     assert.doesNotMatch(stoppedTranslation, /pages\/page-002\.png/);
     assert.deepEqual(fs.readdirSync(path.join(stopped, 'pages')), ['page-001.png']);
+    const beforeRepair = new Set(bundleFolders());
+    await exportBundle();
+    await page.getByText(/2 PDF page image\(s\)[\s\S]*Reused 1 archived PDF page image\(s\)/).waitFor();
+    const repaired = path.join(artifacts, bundleFolders().find(name => !beforeRepair.has(name)));
+    assert.deepEqual(fs.readFileSync(path.join(repaired, 'pages', 'page-002.png')), fs.readFileSync(path.join(bundle, 'pages', 'page-002.png')));
     const pdfBytes = fs.readFileSync(pdfPath);
     await page.evaluate(bytes => {
       const file = new File([new Uint8Array(bytes)], 'practice.pdf', { type: 'application/pdf' });
@@ -733,6 +747,9 @@ async function run() {
           && range.startContainer.parentElement.closest('.textLayer')?.dataset.page === String(anchor.page)));
       });
     }, crossAnchors);
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
+    await exportBundle(reopenedPage);
+    await reopenedPage.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
     const blankPath = path.join(artifacts, 'scan-no-text.pdf');
     fs.writeFileSync(blankPath, samplePdf(true));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, blankPath);

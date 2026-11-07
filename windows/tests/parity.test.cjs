@@ -264,6 +264,51 @@ test('PDF facsimile bundles include only completed page images and preserve the 
   }
 });
 
+test('PDF page archives share exact PDF bytes, detect damaged entries and clear with workspace data', async () => {
+  const { createPageArchive } = require('../electron/pdf-page-archive.cjs');
+  const { createStore } = require('../electron/storage.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-page-archive-'));
+  const pdfBytes = Buffer.from('%PDF-1.4\narchive fixture');
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+Xf1sAAAAASUVORK5CYII=', 'base64');
+  try {
+    const store = createStore(root);
+    const hash = crypto.createHash('sha256').update(pdfBytes).digest('hex');
+    const pdf = store.pdfPath(hash);
+    fs.mkdirSync(path.dirname(pdf));
+    fs.writeFileSync(pdf, pdfBytes);
+    const archive = await createPageArchive(root, pdf);
+    archive.savePage(1, image);
+    archive.savePageCount(2);
+    const copy = path.join(root, 'new extraction.pdf');
+    fs.copyFileSync(pdf, copy);
+    const same = await createPageArchive(root, copy);
+    assert.deepEqual(same.status(), { cachedPageCount: 2, cachedPages: [1] });
+    assert.deepEqual(same.readPage(1), image);
+    assert.equal(same.readPage(2), null);
+    fs.appendFileSync(copy, ' changed');
+    const changed = await createPageArchive(root, copy);
+    assert.deepEqual(changed.status(), { cachedPageCount: 0, cachedPages: [] });
+    assert.equal(same.matches(fs.readFileSync(copy)), false);
+    const cache = path.join(root, 'pdf-page-cache');
+    const folder = path.join(cache, fs.readdirSync(cache)[0], hash);
+    const imageFile = path.join(folder, 'page-001.png.entry');
+    const damaged = fs.readFileSync(imageFile);
+    damaged[damaged.length - 1] ^= 1;
+    fs.writeFileSync(imageFile, damaged);
+    assert.equal(same.readPage(1), null);
+    same.savePage(1, image);
+    assert.deepEqual(same.readPage(1), image);
+    fs.writeFileSync(path.join(folder, 'page-count.entry'), 'damaged');
+    assert.deepEqual(same.status(), { cachedPageCount: 0, cachedPages: [1] });
+    store.clearData();
+    assert.equal(fs.existsSync(cache), false);
+    assert.deepEqual(fs.readFileSync(pdf), pdfBytes);
+  } finally {
+    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('split and merge retain exact note and highlight anchors', async () => {
   const { splitBlockAt, mergeBlocks } = await import('../src/paper.mjs');
   const original = { id: 1, text: 'First sentence. Second sentence.', status: 'ok', translation: 'old', bookmark: true,

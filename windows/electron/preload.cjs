@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   saveGlossary: glossary => ipcRenderer.invoke('glossary:save', glossary),
   exportMarkdown: payload => ipcRenderer.invoke('markdown:export', payload),
   exportBundle: payload => ipcRenderer.invoke('markdown:bundle', payload),
+  readBundlePdf: payload => ipcRenderer.invoke('markdown:bundle-pdf', payload),
   exportBundlePage: payload => ipcRenderer.invoke('markdown:bundle-page', payload),
   finishBundle: payload => ipcRenderer.invoke('markdown:bundle-finish', payload),
   listModels: baseURL => ipcRenderer.invoke('ollama:models', baseURL),

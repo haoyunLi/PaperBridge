@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const readingAppearanceDefaults = require('./reading-appearance.json');
+const { clearPageArchives } = require('./pdf-page-archive.cjs');
 
 const defaults = {
   aiProvider: 'ollama',
@@ -98,6 +99,7 @@ function createStore(root) {
       writeJson(paperPath(paper.id), { ...paper, updatedAt: new Date().toISOString() });
     },
     clearData() {
+      clearPageArchives(root);
       if (fs.existsSync(papersDir)) {
         for (const name of fs.readdirSync(papersDir)) {
           if (/^[a-f0-9]{64}\.json(?:\.backup)?$/.test(name)) fs.unlinkSync(path.join(papersDir, name));
