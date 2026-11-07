@@ -1,0 +1,15 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const source = path.join(__dirname, '..', '..', 'PaperBridge', 'Assets.xcassets', 'AppIcon.appiconset', 'appicon_256x256.png');
+const destination = path.join(__dirname, '..', 'assets', 'paperbridge.ico');
+const png = fs.readFileSync(source);
+const header = Buffer.alloc(22);
+header.writeUInt16LE(1, 2);
+header.writeUInt16LE(1, 4);
+header.writeUInt16LE(1, 10);
+header.writeUInt16LE(32, 12);
+header.writeUInt32LE(png.length, 14);
+header.writeUInt32LE(header.length, 18);
+fs.mkdirSync(path.dirname(destination), { recursive: true });
+fs.writeFileSync(destination, Buffer.concat([header, png]));
+console.log(destination);

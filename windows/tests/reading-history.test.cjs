@@ -1,0 +1,131 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const historyModule = import('../src/readingHistory.mjs');
+
+function location(block, extra = {}) {
+  return { paperId: 'paper', tab: 'Reader', displayMode: 'bilingual', block, page: 1, search: '', scrollByTab: { Reader: block * 100 }, ...extra };
+}
+
+test('reading history restores full locations in both directions and clears a forward branch', async () => {
+  const { createReadingHistory } = await historyModule;
+  const history = createReadingHistory();
+  const summary = location(1, { tab: 'Summary', displayMode: 'translation', search: 'evidence', scrollByTab: { Summary: 280 } });
+  const readerTwo = location(2);
+  const readerFour = location(4, { scrollByTab: { Reader: 740, 'Original:2': 120 } });
+  history.record(summary);
+  history.record(readerTwo);
+  assert.deepEqual(history.goBack(readerFour), readerTwo);
+  assert.deepEqual(history.goBack(readerTwo), summary);
+  assert.deepEqual(history.goForward(summary), readerTwo);
+  history.record(location(7));
+  assert.equal(history.canGoForward(), false);
+});
+
+test('reading history de-duplicates adjacent origins, caps at 50 and resets between papers', async () => {
+  const { createReadingHistory } = await historyModule;
+  const history = createReadingHistory(50);
+  history.record(location(1));
+  history.record({ ...location(1), scrollByTab: { Reader: 100 } });
+  assert.equal(history.snapshot().back.length, 1);
+  for (let index = 2; index <= 70; index++) history.record(location(index));
+  const snapshot = history.snapshot();
+  assert.equal(snapshot.back.length, 50);
+  assert.equal(snapshot.back[0].block, 21);
+  snapshot.back[0].block = 999;
+  assert.equal(history.snapshot().back[0].block, 21, 'callers cannot mutate history internals');
+  history.reset();
+  assert.deepEqual(history.snapshot(), { back: [], forward: [] });
+});
+
+test('locations include tab, mode, search, page and every sorted surface offset', async () => {
+  const { normalizeReadingLocation, sameReadingLocation } = await historyModule;
+  const value = normalizeReadingLocation({ paperId: 'p', tab: 'Original', displayMode: 'source', block: 3, page: 2, search: 'term', scrollByTab: { Summary: 8, Reader: '4', broken: 'x' } });
+  assert.deepEqual(value, { paperId: 'p', tab: 'Original', displayMode: 'source', block: 3, page: 2, search: 'term', scrollByTab: { Reader: 4, Summary: 8 } });
+  assert.equal(sameReadingLocation(value, { ...value, scrollByTab: { Summary: 8, Reader: 4 } }), true);
+  assert.equal(sameReadingLocation(value, { ...value, page: 3 }), false);
+});
+
+test('locations retain selection separately from viewport and distinguish missing selection from null', async () => {
+  const { normalizeReadingLocation, sameReadingLocation } = await historyModule;
+  const viewport = location(12);
+  assert.equal(Object.hasOwn(normalizeReadingLocation(viewport), 'selectedParagraphID'), false);
+  const selected = normalizeReadingLocation({ ...viewport, selectedParagraphID: 2 });
+  assert.equal(selected.selectedParagraphID, 2);
+  assert.equal(selected.block, 12);
+  assert.equal(sameReadingLocation(selected, { ...selected, selectedParagraphID: 20 }), false);
+  assert.equal(sameReadingLocation(viewport, { ...viewport, selectedParagraphID: null }), false);
+  assert.equal(normalizeReadingLocation({ ...viewport, selectedParagraphID: null }).selectedParagraphID, null);
+  for (const invalid of [undefined, 0, -1, 1.5, '2', NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(normalizeReadingLocation({ ...viewport, selectedParagraphID: invalid }).selectedParagraphID, null);
+  }
+});
+
+test('Back and Forward restore different selections at the same viewport without deduplicating them', async () => {
+  const { createReadingHistory } = await historyModule;
+  const history = createReadingHistory();
+  const first = location(12, { selectedParagraphID: 2 });
+  const second = location(12, { selectedParagraphID: 20 });
+  const unselected = location(12, { selectedParagraphID: null });
+  history.record(first);
+  history.record(second);
+  assert.equal(history.snapshot().back.length, 2);
+  assert.deepEqual(history.goBack(unselected), second);
+  assert.deepEqual(history.goBack(second), first);
+  assert.deepEqual(history.goForward(first), second);
+  assert.deepEqual(history.goForward(second), unselected);
+});
+
+test('reading history distinguishes extraction sources and leaves blocked moves in place', async () => {
+  const { createReadingHistory, sameReadingLocation } = await historyModule;
+  const pdf = location(4, { sourceMode: 'pdf', search: 'evidence', searchOrigin: 640 });
+  const mineru = { ...pdf, sourceMode: 'mineru' };
+  assert.equal(sameReadingLocation(pdf, mineru), false);
+  const history = createReadingHistory();
+  history.record(pdf);
+  assert.equal(history.goBack(mineru, () => false), null);
+  assert.deepEqual(history.snapshot(), { back: [pdf], forward: [] });
+  assert.deepEqual(history.goBack(mineru, target => target.sourceMode === 'pdf'), pdf);
+  assert.equal(history.goForward(pdf, () => false), null);
+  assert.deepEqual(history.snapshot(), { back: [], forward: [mineru] });
+  assert.deepEqual(history.goForward(pdf), mineru);
+});
+
+test('filtered history retains its viewport and paragraph origin without persisting filtered offsets', async () => {
+  const { createReadingHistory, persistedReadingPosition } = await historyModule;
+  const origin = { scrollTop: 1840, block: 12, offset: -37 };
+  const filtered = location(16, { selectedParagraphID: 20, search: 'evidence', searchOrigin: origin, scrollByTab: { Reader: 120, Summary: 45 } });
+  const history = createReadingHistory();
+  history.record(filtered);
+  origin.block = 999;
+  const restored = history.goBack(location(20));
+  assert.deepEqual(restored.searchOrigin, { scrollTop: 1840, block: 12, offset: -37 });
+  assert.equal(restored.scrollByTab.Reader, 120, 'Back must restore the filtered viewport');
+  assert.equal(restored.selectedParagraphID, 20, 'the chosen paragraph can differ from both filtered and original viewports');
+  const persisted = persistedReadingPosition(restored, { pdfZoom: 125, selectedParagraphID: 99 });
+  assert.equal(persisted.block, 12, 'the active filtered result must not replace the unfiltered paragraph');
+  assert.deepEqual(persisted.scrollByTab, { Reader: 1840, Summary: 45 });
+  assert.deepEqual(persisted.readerSearchOrigin, restored.searchOrigin);
+  assert.equal(persisted.pdfZoom, 125);
+  assert.equal(Object.hasOwn(persisted, 'selectedParagraphID'), false, 'selection is never a field of persisted position');
+  assert.equal(restored.selectedParagraphID, 20, 'persisting the unfiltered origin must not change the selected result');
+  assert.equal(restored.scrollByTab.Reader, 120, 'persistence must not mutate the session history');
+  const summary = persistedReadingPosition({ ...restored, tab: 'Summary', block: 16 }, persisted);
+  assert.equal(summary.block, 16);
+  assert.equal(summary.scrollByTab.Reader, 1840, 'leaving Reader must not persist a filtered Reader offset');
+  const cleared = persistedReadingPosition(location(12, { scrollByTab: { Reader: 1590 } }), persisted);
+  assert.equal(Object.hasOwn(cleared, 'readerSearchOrigin'), false);
+  assert.equal(cleared.scrollByTab.Reader, 1590);
+});
+
+test('search origins accept legacy pixel positions and reject malformed paragraph anchors', async () => {
+  const { normalizeReadingLocation, normalizeSearchOrigin, persistedReadingPosition } = await historyModule;
+  assert.equal(normalizeSearchOrigin(0), 0);
+  assert.equal(normalizeSearchOrigin(640), 640);
+  for (const invalid of [null, -1, NaN, Infinity, { scrollTop: 3, block: 0, offset: 2 }, { scrollTop: 3, block: 1, offset: Infinity }]) {
+    assert.equal(normalizeSearchOrigin(invalid), null);
+  }
+  const legacy = location(4, { search: 'term', searchOrigin: 640, scrollByTab: { Reader: 40 } });
+  assert.equal(persistedReadingPosition(legacy).scrollByTab.Reader, 640);
+  assert.equal(persistedReadingPosition(legacy).block, 4);
+  assert.equal(normalizeReadingLocation({ ...legacy, search: '' }).searchOrigin, undefined);
+});

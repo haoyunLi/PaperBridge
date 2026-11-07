@@ -1,0 +1,473 @@
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const { _electron: electron } = require('playwright-core');
+
+function samplePdf() {
+  const streams = [
+    'BT /F1 18 Tf 72 720 Td (First page history context.) Tj ET',
+    'BT /F1 18 Tf 72 720 Td (Second page history target appears here.) Tj ET'
+  ];
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    `<< /Length ${Buffer.byteLength(streams[0])} >>\nstream\n${streams[0]}\nendstream`,
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
+    `<< /Length ${Buffer.byteLength(streams[1])} >>\nstream\n${streams[1]}\nendstream`
+  ];
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (let index = 0; index < objects.length; index++) { offsets.push(Buffer.byteLength(body)); body += `${index + 1} 0 obj\n${objects[index]}\nendobj\n`; }
+  const start = Buffer.byteLength(body);
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets.slice(1)) body += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  return `${body}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
+}
+
+async function waitFor(predicate, label, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try { if (await predicate()) return; } catch { /* atomic saves can briefly move the file */ }
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function selectPdfText(page, quote) {
+  await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of ') && document.querySelector('.textLayer[data-page="2"]'));
+  await page.evaluate(quote => {
+    const host = document.querySelector('.textLayer[data-page="2"]');
+    const source = host.textContent || '';
+    const offset = source.indexOf(quote);
+    if (offset < 0 || offset !== source.lastIndexOf(quote)) throw new Error(`Expected one PDF quote: ${quote}`);
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let cursor = 0;
+    let started = false;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const end = cursor + node.textContent.length;
+      if (!started && offset < end) { range.setStart(node, offset - cursor); started = true; }
+      if (started && offset + quote.length <= end) { range.setEnd(node, offset + quote.length - cursor); break; }
+      cursor = end;
+    }
+    const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+    host.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }, quote);
+  await page.waitForFunction(text => document.querySelector('.inspector blockquote')?.textContent === text, quote);
+}
+
+async function saveViewNote(page, scope, quote, body) {
+  await page.locator(`[data-view-scope="${scope}"]`).evaluate((host, quote) => {
+    const walker = document.createTreeWalker(host.querySelector('[data-markdown-host]'), NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const offset = node.textContent.indexOf(quote);
+      if (offset < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, offset);
+      range.setEnd(node, offset + quote.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      host.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return;
+    }
+    throw new Error(`Missing view quote ${quote}`);
+  }, quote);
+  await page.getByPlaceholder('What should you remember?').fill(body);
+  await page.getByRole('button', { name: 'Save note', exact: true }).click();
+}
+
+async function run() {
+  const root = path.resolve(__dirname, '..');
+  const artifacts = path.join(root, 'test-artifacts');
+  const workspace = path.join(artifacts, 'reading-history-workspace');
+  fs.rmSync(workspace, { recursive: true, force: true });
+  fs.mkdirSync(path.join(workspace, 'papers'), { recursive: true });
+  fs.mkdirSync(path.join(workspace, 'pdfs'), { recursive: true });
+  const id = crypto.createHash('sha256').update('PaperBridge reading history fixture').digest('hex');
+  const otherId = crypto.createHash('sha256').update('PaperBridge second history fixture').digest('hex');
+  let finishTranslation;
+  let holdTranslation = false;
+  const ollama = http.createServer(async (request, response) => {
+    response.setHeader('Content-Type', 'application/json');
+    if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model: 'translategemma:4b' }] }));
+    if (request.url === '/api/generate') {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const { prompt } = JSON.parse(body);
+      if (prompt.startsWith('Summarize this academic paper excerpt')) {
+        const summary = { claims: [{ text: 'Distinct MinerU summary', sources: [{ paragraphID: 8, quote: 'Structured passage 8. Supporting detail' }] }] };
+        return response.end(JSON.stringify({ response: JSON.stringify(summary), done: true }));
+      }
+      const output = JSON.stringify({ response: '结构化来源译文。', done: true });
+      if (holdTranslation) {
+        finishTranslation = () => {
+          finishTranslation = null;
+          holdTranslation = false;
+          response.end(output);
+        };
+        return;
+      }
+      return response.end(output);
+    }
+    response.end('{}');
+  });
+  await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
+  const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
+    summaryModel: 'translategemma:4b', autoCheckUpdates: false, onboardingCompletedVersion: 1 };
+  const filler = ' Supporting detail keeps this reading surface tall enough to exercise exact scroll restoration.'.repeat(10);
+  const texts = ['Abstract', `Opening context.${filler}`, 'Methods', `Unique evidence phrase supports the history target.${filler}`, 'Results', `Result details remain available.${filler} Measures such as`, 'Discussion', `Discussion details remain available.${filler}`, 'Conclusion', `Closing context remains available.${filler}`];
+  const blocks = texts.map((text, index) => ({ id: index + 1, text, page: index < 5 ? 1 : 2, heading: index % 2 === 0, translation: '', status: 'pending', bookmark: [4, 6].includes(index + 1), notes: [], highlights: [] }));
+  const mineruBlocks = blocks.map(block => {
+    const text = block.heading ? `MinerU section ${block.id}` : `Structured passage ${block.id}.${filler}${block.id === 6 ? ' Metric defined as' : ''}`;
+    return { ...block, text, sourceMarkdown: block.heading ? `# ${text}` : text, bookmark: false };
+  });
+  const quote = 'Unique evidence phrase supports the history target.';
+  const paper = {
+    id, name: 'Reading history fixture.pdf', type: 'pdf', createdAt: '2026-09-21T00:00:00.000Z', updatedAt: '2026-09-21T00:00:00.000Z',
+    taskSettings: settings, explanationLanguage: 'English', inspectorOpen: true, extraction: 'PDF.js', sourceMode: 'pdf', blocks, pdfBlocks: blocks,
+    mineruBlocks, mineruMarkdown: mineruBlocks.map(block => block.sourceMarkdown).join('\n\n'),
+    position: { block: 2, page: 1, tab: 'Summary', displayMode: 'translation', scrollByTab: { Summary: 0, Reader: 0, 'Original:1': 0, 'Original:2': 0 } },
+    summary: { source: `${'Summary context. '.repeat(120)}\n\n${quote}`, target: `摘要内容。${'更多摘要。'.repeat(120)}`,
+      sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', claims: [{ text: 'The paper includes a history target.', sources: [{ paragraphID: 4, quote }] }] },
+    connectedTranslation: 'Saved PDF draft.',
+    viewNotes: [{ id: 'pdf-draft-note', scope: 'fullTranslation', text: 'Saved PDF draft', offset: 0, body: 'PDF full draft note' }]
+  };
+  const other = { ...paper, id: otherId, name: 'Second library paper', type: 'text', blocks: [{ id: 1, text: 'Second paper body.', heading: false, translation: '', status: 'pending' }], pdfBlocks: undefined, summary: null, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' } };
+  const paperPath = path.join(workspace, 'papers', `${id}.json`);
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify(settings));
+  fs.writeFileSync(paperPath, JSON.stringify(paper));
+  fs.writeFileSync(path.join(workspace, 'papers', `${otherId}.json`), JSON.stringify(other));
+  fs.writeFileSync(path.join(workspace, 'pdfs', `${id}.pdf`), samplePdf());
+  fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
+  const readPaper = () => JSON.parse(fs.readFileSync(paperPath, 'utf8'));
+
+  let app;
+  let page;
+  try {
+    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    page = await app.firstWindow();
+    await page.setViewportSize({ width: 1320, height: 900 });
+    await page.getByRole('button', { name: 'Overview', exact: true }).waitFor({ timeout: 20000 });
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
+    const back = page.getByRole('button', { name: 'Back to previous reading location', exact: true });
+    const forward = page.getByRole('button', { name: 'Forward in reading history', exact: true });
+    const readingReady = tab => page.waitForFunction(({ id, tab }) => {
+      const host = document.querySelector('.main-scroll');
+      return host?.dataset.readingPaperId === id && host.getAttribute('aria-busy') === 'false' &&
+        document.querySelector('.tabs button.active')?.textContent === tab;
+    }, { id, tab });
+    assert.equal(await back.isDisabled(), true);
+    await page.evaluate(() => { const host = document.querySelector('.main-scroll'); host.scrollTop = 360; host.dispatchEvent(new Event('scroll')); });
+    await page.locator('.evidence-claim summary').click();
+    const sourceLink = page.getByRole('button', { name: 'Read original block 4 →', exact: true });
+    await sourceLink.scrollIntoViewIfNeeded();
+    const summaryOffset = await page.locator('.main-scroll').evaluate(element => element.scrollTop);
+    await sourceLink.click();
+    await page.locator('#block-4').waitFor();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
+    assert.equal(await back.isEnabled(), true);
+    await page.locator('.sidebar .outline-row').filter({ hasText: 'Unique evidence phrase' }).click();
+    await back.click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
+    await sourceLink.waitFor();
+    await page.waitForFunction(expected => Math.abs((document.querySelector('.main-scroll')?.scrollTop || 0) - expected) < 12, summaryOffset);
+    await forward.click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
+
+    // A scroll callback queued before Back must not overwrite the restored Summary block.
+    await page.evaluate(() => {
+      const host = document.querySelector('.main-scroll');
+      const target = document.querySelector('#block-8');
+      host.scrollTop += target.getBoundingClientRect().top - host.getBoundingClientRect().top + 20;
+      host.dispatchEvent(new Event('scroll'));
+    });
+    await back.click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await waitFor(() => readPaper().position?.tab === 'Summary' && readPaper().position?.block === 2, 'restored generation to reject a stale scroll callback');
+    await page.locator('.sidebar .outline-row').filter({ hasText: 'Result details remain available' }).click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
+    assert.equal(await forward.isDisabled(), true, 'a new jump after Back must clear Forward');
+
+    const search = page.getByPlaceholder('Search original or translation');
+    await search.fill('Unique evidence phrase');
+    await page.locator('.sidebar .outline-row').filter({ hasText: 'Result details remain available' }).click();
+    await back.click();
+    await page.waitForFunction(() => document.querySelector('.search')?.value === 'Unique evidence phrase');
+    assert.equal(await page.locator('.reader-list .block').count(), 1);
+    await forward.click();
+    await page.waitForFunction(() => document.querySelector('.search')?.value === '');
+
+    // Create an exact PDF note on page two, then prove annotation navigation records and restores its Reader origin.
+    await page.getByRole('button', { name: 'Original', exact: true }).click();
+    await page.getByRole('button', { name: 'Next page', exact: true }).click();
+    await selectPdfText(page, 'Second page history target');
+    await page.getByPlaceholder('What should you remember?').fill('PDF history note');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'PDF history note' }).locator('button').first().click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Original' && document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of 2'));
+    await back.click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Reader');
+    await page.keyboard.press('Control+]');
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Original' && document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of 2'));
+    const native = await app.evaluate(({ Menu }) => ({
+      back: Menu.getApplicationMenu().getMenuItemById('command:readingBack').enabled,
+      forward: Menu.getApplicationMenu().getMenuItemById('command:readingForward').enabled
+    }));
+    assert.equal(native.back, true);
+
+    await back.click();
+    // The real source switch is on Paper. Preserve an offscreen Reader selection
+    // separately from its viewport through Paper -> source switch -> Reader.
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await readingReady('Reader');
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).check();
+    await page.locator('#block-2 .source-text').click();
+    await waitFor(() => readPaper().selectedParagraphID === 2, 'PDF Reader paragraph two selected');
+    const sourceOrigin = await page.locator('.main-scroll').evaluate(host => {
+      const block = host.querySelector('#block-8');
+      host.scrollTop += block.getBoundingClientRect().top - host.getBoundingClientRect().top + 20;
+      host.dispatchEvent(new Event('scroll'));
+      return host.scrollTop;
+    });
+    await waitFor(() => readPaper().position.block === 8 && Math.abs(readPaper().position.scrollByTab.Reader - sourceOrigin) < 2,
+      'PDF Reader viewport eight saved independently');
+    assert.equal(readPaper().selectedParagraphID, 2);
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await readingReady('Paper');
+    await page.getByLabel('Paper display mode').selectOption('bilingual');
+    await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await readingReady('Reader');
+    await waitFor(() => readPaper().sourceMode === 'mineru' && readPaper().selectedParagraphID === 1 && readPaper().position.block === 1,
+      'MinerU source starts with its own first paragraph');
+    assert.equal(await page.locator('.reader-list .block.current').getAttribute('id'), 'block-1');
+    assert.ok(await page.locator('#block-1').evaluate(block => {
+      const host = document.querySelector('.main-scroll').getBoundingClientRect();
+      const bounds = block.getBoundingClientRect();
+      return bounds.bottom > host.top && bounds.top < host.bottom;
+    }), 'the new source first paragraph must actually be in the viewport');
+    await back.click();
+    await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
+    await waitFor(() => readPaper().sourceMode === 'pdf' && readPaper().selectedParagraphID === 2 && readPaper().position.block === 8,
+      'Back restores the PDF source, selected paragraph and separate Reader viewport');
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await readingReady('Reader');
+    await page.waitForFunction(expected => Math.abs(document.querySelector('.main-scroll').scrollTop - expected) < 2, sourceOrigin);
+    assert.equal(await page.locator('.reader-list .block.current').getAttribute('id'), 'block-2');
+    await forward.click();
+    await readingReady('Reader');
+    await waitFor(() => readPaper().sourceMode === 'mineru' && readPaper().selectedParagraphID === 1 && readPaper().position.block === 1,
+      'Forward restores the MinerU selection and its own viewport');
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('heading', { name: 'No summary yet', exact: true }).waitFor();
+    assert.equal(await page.getByText('PDF full draft note', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Generate summary', exact: true }).click();
+    await page.locator('[data-view-scope="summarySource"]').getByText('Distinct MinerU summary', { exact: true }).waitFor();
+    assert.equal(await page.locator('.evidence-claim[open]').count(), 0, 'MinerU evidence has its own disclosures');
+    await saveViewNote(page, 'summarySource', 'Distinct MinerU summary', 'MinerU summary note');
+    await page.locator('.quality-list summary').click();
+    await page.getByRole('button', { name: 'Review block 6', exact: true }).click();
+    const structuredWarning = page.locator('#block-6 .quality-warning');
+    await structuredWarning.getByText(/MinerU controls these blocks/).waitFor();
+    assert.equal(await structuredWarning.getByRole('button', { name: 'Edit or Split' }).isDisabled(), true);
+    await back.click();
+    await page.locator('.quality-list[open]').waitFor();
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    const structuredQuote = 'MinerU section 7\nStructured passage 8.';
+    await page.evaluate(() => {
+      const article = document.querySelector('[data-view-scope="paperArticle"]');
+      const start = article.querySelector('[data-paper-block-id="7"] [data-paper-kind="source"] h1').firstChild;
+      const end = article.querySelector('[data-paper-block-id="8"] [data-paper-kind="source"] p').firstChild;
+      const range = document.createRange();
+      range.setStart(start, 0);
+      range.setEnd(end, 'Structured passage 8.'.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges(); selection.addRange(range);
+      article.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    assert.equal(await page.locator('.inspector blockquote').textContent(), structuredQuote);
+    await page.getByPlaceholder('What should you remember?').fill('MinerU history annotation');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();
+    const unfilteredScroll = await page.locator('.main-scroll').evaluate(host => { host.scrollTop = 640; return host.scrollTop; });
+    await search.evaluate(input => {
+      // Change the filter without Playwright scrolling its input into view.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'Supporting detail');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.reader-list .block').length === 5);
+    const filteredScroll = await page.locator('.main-scroll').evaluate(host => { host.scrollTop = 355; return host.scrollTop; });
+    assert.ok(unfilteredScroll > 300 && filteredScroll > 100);
+    const structuredNote = page.locator('.saved-annotations .annotation-row').filter({ hasText: 'MinerU history annotation' }).locator('button').first();
+    await structuredNote.click();
+    await page.waitForFunction(quote => {
+      const host = document.querySelector('.main-scroll');
+      const heading = host.querySelector('[data-paper-block-id="7"]');
+      return document.querySelector('.inspector blockquote')?.textContent === quote && heading &&
+        heading.getBoundingClientRect().top >= host.getBoundingClientRect().top &&
+        heading.getBoundingClientRect().top < host.getBoundingClientRect().bottom;
+    }, structuredQuote);
+    const structuredScroll = await page.locator('.main-scroll').evaluate(host => host.scrollTop);
+    assert.ok(structuredScroll > 300, 'The annotation jump should scroll the reflowed paper');
+    await back.click();
+    await page.waitForFunction(expected => {
+      const host = document.querySelector('.main-scroll');
+      return document.querySelector('[role="radiogroup"][aria-label="Reading mode"] input:checked')?.value === 'source' &&
+        document.querySelector('.search')?.value === 'Supporting detail' &&
+        host.textContent.includes('Unique evidence phrase') && Math.abs(host.scrollTop - expected) < 12;
+    }, filteredScroll);
+    await forward.click();
+    await page.waitForFunction(expected => {
+      const host = document.querySelector('.main-scroll');
+      return document.querySelector('[aria-label="Paper display mode"]')?.value === 'bilingual' &&
+        document.querySelector('.source-mode')?.textContent.includes('Reader source: MinerU Markdown') &&
+        Math.abs(host.scrollTop - expected) < 12;
+    }, structuredScroll);
+    assert.ok(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size > 0));
+
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    const translated = page.locator('#block-8');
+    holdTranslation = true;
+    await translated.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
+    await waitFor(() => typeof finishTranslation === 'function', 'translation request to start');
+    await back.click();
+    await page.getByText('Finish or stop the current task before switching the reading source.', { exact: true }).waitFor();
+    assert.equal(await back.isEnabled(), true);
+    await translated.locator('.source-text').getByText(/Structured passage 8/).waitFor();
+    finishTranslation();
+    await translated.locator('.translation-text.done').getByText('结构化来源译文。', { exact: true }).waitFor();
+    await back.click();
+    await page.waitForFunction(expected => document.querySelector('.search')?.value === 'Supporting detail' &&
+      Math.abs(document.querySelector('.main-scroll').scrollTop - expected) < 12, filteredScroll);
+    await search.fill('');
+    await page.waitForFunction(expected => Math.abs(document.querySelector('.main-scroll').scrollTop - expected) < 12, unfilteredScroll);
+    await waitFor(() => readPaper().sourceMode === 'pdf', 'Back restored the PDF text source');
+    await forward.click();
+    await translated.locator('.translation-text.done').getByText('结构化来源译文。', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.getByText('Structure-preserving full translation saved. Reader and the full draft share the same translations.', { exact: true }).waitFor();
+    await saveViewNote(page, 'fullTranslation', '结构化来源译文。', 'MinerU full draft note');
+    await back.click();
+    await waitFor(() => readPaper().sourceMode === 'pdf', 'PDF source before structure repair');
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await page.getByRole('button', { name: 'Read original block 4 →', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await page.locator('[data-view-scope="fullTranslation"]').getByText('Saved PDF draft.', { exact: true }).waitFor();
+    await page.getByText('PDF full draft note', { exact: true }).waitFor();
+    assert.equal(await page.getByText('MinerU summary note', { exact: true }).count(), 0);
+    await forward.click();
+    await page.getByText('MinerU full draft note', { exact: true }).waitFor();
+    await page.getByText('MinerU summary note', { exact: true }).waitFor();
+    assert.equal(await page.getByText('PDF full draft note', { exact: true }).count(), 0);
+    await back.click();
+    await waitFor(() => readPaper().sourceMode === 'pdf', 'restored PDF variant before structure repair');
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.getByLabel('Paper display mode').selectOption('source');
+    const pdfToolbar = page.locator('.pdf-toolbar');
+    await pdfToolbar.getByText(/of 2/).waitFor();
+    const previousPage = pdfToolbar.getByRole('button', { name: 'Previous page' });
+    if (await previousPage.isEnabled()) await previousPage.click();
+    await pdfToolbar.getByText(/page 1 of 2/).waitFor();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    const quality = page.locator('.quality-list');
+    assert.equal(await quality.getAttribute('open'), null, 'the PDF quality list is independent from MinerU');
+    await quality.locator('summary').press('Enter');
+    assert.equal(await quality.locator('blockquote').innerText(), texts[5].slice(-160));
+    await quality.getByRole('button', { name: 'Review block 6', exact: true }).click();
+    const warning = page.locator('#block-6 .quality-warning');
+    await warning.getByText(/This phrase appears unfinished/).waitFor();
+    assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
+    await warning.getByRole('button', { name: 'Compare Original', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' &&
+      document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of 2') && document.querySelector('.textLayer[data-page="2"]'));
+    await back.click();
+    await warning.waitFor();
+    await warning.getByRole('button', { name: 'Edit or Split', exact: true }).click();
+    const qualityEditor = page.getByRole('dialog', { name: 'Repair Paragraph 6', exact: true });
+    assert.equal(await qualityEditor.getByRole('textbox', { name: 'Paragraph source' }).inputValue(), texts[5]);
+    await qualityEditor.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await back.click();
+    await page.locator('.quality-list[open]').waitFor();
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await readingReady('Reader');
+    await page.locator('#block-4').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Repair Paragraph 4', exact: true }).getByRole('textbox', { name: 'Paragraph source' }).fill(`${blocks[3].text} Revised.`);
+    // Delay only the first frame of the structural Reader restore. Normal
+    // frames, including the next Overview's restore, keep running. Releasing
+    // the obsolete callback last must not scroll the new surface back to zero.
+    await page.evaluate(() => {
+      const request = window.requestAnimationFrame.bind(window);
+      let held = null;
+      window.__lateStructureRestoreHeld = false;
+      window.requestAnimationFrame = callback => {
+        window.requestAnimationFrame = request;
+        held = callback;
+        window.__lateStructureRestoreHeld = true;
+        return 0;
+      };
+      window.__releaseStructureRestore = () => new Promise(resolve => {
+        window.requestAnimationFrame = request;
+        const callback = held; held = null; window.__lateStructureRestoreHeld = false;
+        if (callback) request(callback);
+        request(() => request(() => request(resolve)));
+      });
+      document.querySelector('.paragraph-editor button[type="submit"]').click();
+    });
+    await page.getByRole('dialog', { name: 'Repair Paragraph 4', exact: true }).waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => window.__lateStructureRestoreHeld && document.querySelector('.main-scroll').getAttribute('aria-busy') === 'true');
+    await waitFor(() => readPaper().blocks[3].text.endsWith('Revised.'), 'source edit saved before its held Reader restoration');
+    assert.equal(await back.isDisabled(), true, 'a structure repair must clear Back');
+    assert.equal(await forward.isDisabled(), true, 'a structure repair must clear Forward');
+    try {
+      await page.getByRole('button', { name: 'Overview', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+      const overviewOffset = await page.locator('.main-scroll').evaluate(host => {
+        host.scrollTop = Math.min(180, host.scrollHeight - host.clientHeight);
+        return host.scrollTop;
+      });
+      assert.ok(overviewOffset > 50, 'the Overview fixture must expose a measurable scroll position');
+      await page.evaluate(() => window.__releaseStructureRestore());
+      await readingReady('Overview');
+      assert.equal(await page.locator('.tabs button.active').textContent(), 'Overview');
+      assert.ok(Math.abs(await page.locator('.main-scroll').evaluate(host => host.scrollTop) - overviewOffset) < 2,
+        'a late Reader restore must not scroll the current Overview');
+      assert.equal(readPaper().selectedParagraphID, 4, 'discarding an obsolete viewport callback preserves the edited paragraph selection');
+    } finally {
+      await page.evaluate(() => window.__releaseStructureRestore?.());
+    }
+    await page.locator('.sidebar .outline-row').filter({ hasText: 'Result details remain available' }).click();
+    assert.equal(await back.isEnabled(), true);
+    await page.locator('.library-row').filter({ hasText: 'Second library paper' }).click();
+    await page.getByRole('heading', { name: 'Second library paper', exact: true }).waitFor();
+    assert.equal(await back.isDisabled(), true, 'opening another paper must clear Back');
+    assert.equal(await forward.isDisabled(), true, 'opening another paper must clear Forward');
+    await page.screenshot({ path: path.join(artifacts, 'reading-history.png') });
+    console.log('Reading history checks passed: independent selection and viewport across source swaps, Back/Forward, late restore isolation, extraction review, busy retry, search/scroll/page restoration, native shortcuts and paper isolation.');
+  } catch (error) {
+    await page?.screenshot({ path: path.join(artifacts, 'reading-history-failure.png') }).catch(() => {});
+    throw error;
+  } finally {
+    finishTranslation?.();
+    await app?.close().catch(() => {});
+    await new Promise(resolve => ollama.close(resolve));
+  }
+}
+
+run().catch(error => { console.error(error); process.exitCode = 1; });

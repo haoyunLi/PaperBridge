@@ -1,0 +1,47 @@
+.reader-block-actions { display: inline-flex; flex: none; align-items: center; justify-content: flex-end; gap: 7px; letter-spacing: normal; }
+.reader-block-actions .mini-action { flex: none; }
+.reader-block-actions .reader-paragraph-retry { border: 1px solid #cfc6b8; background: #fffdf8; }
+.reader-heading-translate { border: 0; border-radius: 5px; background: transparent; color: #0a59d6; padding: 4px 3px; font: 12px "Segoe UI", sans-serif; white-space: nowrap; }
+.reader-heading-translate:hover:not(:disabled) { background: #dce9ff; }
+.reader-block-actions > button:focus-visible { outline: 2px solid #0a59d6; outline-offset: 2px; }
+.reader-actions-menu {
+  visibility: hidden;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(260px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  padding: 5px;
+  overflow: auto;
+  border: 1px solid #cfc6b8;
+  border-radius: 9px;
+  background: #fffdf8;
+  color: #122033;
+  box-shadow: 0 6px 22px #12203330;
+  font: 12px/1.4 "Segoe UI", sans-serif;
+}
+.reader-actions-menu[data-positioned="true"] { visibility: visible; }
+.reader-actions-menu::backdrop { background: transparent; }
+.reader-actions-menu > button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.reader-actions-menu > button:hover:not(:disabled), .reader-actions-menu > button:focus { background: #dce9ff; color: #073c91; outline: 0; }
+.reader-actions-menu > button:focus-visible { outline: 2px solid #0a59d6; outline-offset: -2px; }
+.reader-actions-menu > button:disabled { color: #8b929b; }
+.reader-actions-menu > [role="separator"] { height: 1px; margin: 4px 6px; background: #ded8cf; }
+@media (forced-colors: active) {
+  .reader-actions-menu { border-color: ButtonText; background: Canvas; color: CanvasText; box-shadow: none; }
+  .reader-actions-menu > button:focus { outline: 2px solid Highlight; outline-offset: -2px; }
+  .reader-actions-menu > button:disabled { color: GrayText; }
+  .reader-actions-menu > [role="separator"] { background: CanvasText; }
+}

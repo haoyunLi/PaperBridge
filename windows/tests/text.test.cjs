@@ -1,0 +1,201 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+
+test('paste text retains paragraphs and identifies sections', async () => {
+  const { blocksFromText, readingMap } = await import('../src/text.mjs');
+  const blocks = blocksFromText('Abstract\n\nThis is a source passage with enough content to appear in the reading map and link back to its block.\n\n1 Methods\n\nWe tested a careful procedure with a second long passage that has many words.');
+  assert.equal(blocks.length, 4);
+  assert.equal(blocks[0].heading, true);
+  assert.equal(blocks[2].heading, true);
+  const guide = readingMap(blocks);
+  assert.equal(guide[0].paragraphID, 2);
+  assert.deepEqual({ id: guide[0].id, title: guide[0].title, question: guide[0].question, sectionTitle: guide[0].sectionTitle }, {
+    id: 'question',
+    title: 'The research question',
+    question: 'What problem does this paper address?',
+    sectionTitle: 'Abstract'
+  });
+});
+
+test('reading map matches complete normalized headings and never borrows the next section passage', async () => {
+  const { readingMap } = await import('../src/text.mjs');
+  const blocks = [
+    { id: 1, text: 'A Method Mentioned in Context', heading: true },
+    { id: 2, text: 'This opening passage is long enough but its custom heading must not be classified as the methods section.', heading: false },
+    { id: 3, text: '2 Approach', heading: true },
+    { id: 4, text: 'Too short.', heading: false },
+    { id: 5, text: 'III. Results', heading: true },
+    { id: 6, text: 'The evidence passage belongs only to Results and must never be borrowed by the preceding Approach section.', heading: false },
+    { id: 7, text: 'IV. Discussion', heading: true },
+    { id: 8, text: 'This discussion passage explains the limits carefully enough to appear as its own exact source excerpt.', heading: false }
+  ];
+  const guide = readingMap(blocks);
+  assert.deepEqual(guide.map(entry => entry.id), ['evidence', 'limits']);
+  assert.deepEqual(guide.map(entry => entry.paragraphID), [6, 8]);
+  assert.equal(guide.some(entry => entry.id === 'method'), false);
+});
+
+test('standalone heading classification keeps heading-plus-body paragraphs translatable', async () => {
+  const { blocksFromText, isHeading } = await import('../src/text.mjs');
+  assert.equal(isHeading('Abstract'), true);
+  assert.equal(isHeading('2 Methods'), true);
+  assert.equal(isHeading('A Compact Custom Heading'), true);
+  assert.equal(isHeading('Study design', '## Study design'), true);
+  assert.equal(isHeading('Study design\nWe retained all evidence.', '## Study design\nWe retained all evidence.'), false);
+  assert.equal(isHeading('Abstract. We tested the complete workflow without dropping any evidence.'), false);
+  assert.equal(isHeading('2 Methods We retained all evidence from both independent reviewers.'), false);
+
+  const blocks = blocksFromText('Abstract\n\n2 Methods\nWe retained all evidence.\n\nA body paragraph without a final period');
+  assert.deepEqual(blocks.map(block => ({ text: block.text, heading: block.heading })), [
+    { text: 'Abstract', heading: true },
+    { text: '2 Methods We retained all evidence.', heading: false },
+    { text: 'A body paragraph without a final period', heading: false }
+  ]);
+});
+
+test('PDF lines split at headings and preserve page provenance', async () => {
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const blocks = blocksFromLines([{ text: 'Abstract', x: 0, y: 100, height: 12 }, { text: 'A paper about careful reading.', x: 0, y: 80, height: 12 }, { text: 'It compares passages.', x: 0, y: 68, height: 12 }], 3);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[1].text, 'A paper about careful reading. It compares passages.');
+  assert.equal(blocks[1].page, 3);
+});
+
+test('new pasted text uses Mac single-line and multiline spaced-hyphen passes', async () => {
+  const { blocksFromText, cleanLine, joinPdfText } = await import('../src/text.mjs');
+  const source = 'The natu- ral mea- sure lets our model out- perform the baseline and supports re- search.';
+  assert.equal(blocksFromText(source)[0].text, 'The natural measure lets our model outperform the baseline and supports research.');
+  assert.equal(blocksFromText('We compare a well- known model- based method with T- cell data and end- to-end training.')[0].text,
+    'We compare a well-known model-based method with T-cell data and end-to-end training.');
+  assert.equal(blocksFromText('A chain inter- national- based model.')[0].text, 'A chain international- based model.');
+  assert.equal(blocksFromText('A chain inter- national- based model.\nMore evidence.')[0].text,
+    'A chain international-based model. More evidence.');
+  assert.equal(blocksFromText('Abstract\n\nA chain inter- national- based model.')[1].text, 'A chain international-based model.');
+  assert.equal(blocksFromText('Re- sults')[0].heading, true);
+  assert.equal(blocksFromText('Re- sults\nMore evidence about the observations.')[0].heading, false);
+  // Generic cleanup and manual joins do not normalize already saved source.
+  assert.equal(cleanLine('Legacy re- sults'), 'Legacy re- sults');
+  assert.equal(joinPdfText('Legacy re- sults', 'stay bound to notes.'), 'Legacy re- sults stay bound to notes.');
+});
+
+test('PDF item reconstruction repairs spaced fragments without changing line geometry', async () => {
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const item = (str, x, width) => ({ str, transform: [12, 0, 0, 12, x, 720], width, height: 12 });
+  const lines = pageLines({ items: [
+    item('We report re-', 42, 72), item(' ', 114, 3), item('sults from an attention-', 117, 125),
+    item(' ', 242, 3), item('based model.', 245, 72)
+  ] }, [0, 0, 612, 792]);
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].text, 'We report results from an attention-based model.');
+  assert.deepEqual({ x: lines[0].x, y: lines[0].y, width: lines[0].width, height: lines[0].height },
+    { x: 42, y: 720, width: 275, height: 12 });
+  assert.equal(blocksFromLines(lines, 3)[0].text, lines[0].text);
+  assert.equal(blocksFromLines(lines, 3)[0].page, 3);
+});
+
+test('import stages preserve ICU whitespace boundaries and remove soft hyphens at the Mac stage', async () => {
+  const { blocksFromLines, blocksFromText, finishExtractedPdfText } = await import('../src/text.mjs');
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const source = 'Boundary re-\ufeffsults and re-\u0085sults plus re- sults\u00ad.';
+  const lines = pageLines({ items: [{ str: source, transform: [12, 0, 0, 12, 42, 720], width: 400, height: 12 }] }, [0, 0, 612, 792]);
+  const paragraph = blocksFromLines(lines, 1)[0].text;
+  assert.equal(paragraph, 'Boundary re-\ufeffsults and results plus re- sults\u00ad.');
+  assert.equal(finishExtractedPdfText(paragraph), 'Boundary re-\ufeffsults and results plus results.');
+  assert.equal(blocksFromText(source)[0].text, 'Boundary re-\ufeffsults and results plus re- sults\u00ad.');
+  assert.equal(blocksFromText(source + '\nMore evidence.')[0].text, 'Boundary re-\ufeffsults and results plus results. More evidence.');
+});
+
+test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
+  const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, y, width, vertical = false) => ({
+    str, transform: [...(vertical ? [0, 10, -10, 0] : [10, 0, 0, 10]), x, y], width, height: 10
+  });
+  const leftUpper = Array.from({ length: 6 }, (_, i) => item('Left side records results from trial ' + i, 66, 740 - 12 * i, 234));
+  const rightUpper = leftUpper.map(({ transform }, i) => item('Right side reports values from trial ' + i, 329, transform[5], 218));
+  const lowerLeft = item('Left side continues after the shared table.', 66, 610, 236);
+  const lowerRight = item('Right side continues after the shared table.', 329, 610, 224);
+  const title = item('Shared title across the whole page', 122, 770, 355);
+  const table = item('Table 1. Shared measurements across the whole page.', 90, 650, 425);
+  const stamp = item('arXiv:1234.5678', 42, 716, 257, true);
+  const items = [
+    ...rightUpper, lowerRight, stamp, title,
+    item('ImageNet', 66, 740, 43),
+    item(' ', 109, 740, 1.5),
+    item('trial records reproducible baseline results', 110.5, 740, 189.5),
+    ...leftUpper.slice(1), table, lowerLeft
+  ];
+  const lines = pageLines({ items }, [20, 30, 632, 822]);
+  assert.deepEqual(pdfReadingGroups(lines).map(group => group.map(line => line.text)), [
+    [title.str],
+    ['ImageNet trial records reproducible baseline results', ...leftUpper.slice(1).map(item => item.str)],
+    rightUpper.map(item => item.str),
+    [table.str],
+    [lowerLeft.str],
+    [lowerRight.str]
+  ]);
+});
+
+test('short cell labels do not make a single-column PDF into two columns', async () => {
+  const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, y, width) => ({ str, transform: [10, 0, 0, 10, x, y], width, height: 10 });
+  const rows = Array.from({ length: 8 }, (_, i) => [
+    item('ID ' + i, 60, 750 - 12 * i, 224),
+    item('100', 322, 750 - 12 * i, 220)
+  ]).flat();
+  const text = item('A regular paragraph resumes underneath the table.', 60, 630, 470);
+  const lines = pageLines({ items: [...rows, text] }, [0, 0, 612, 792]);
+  assert.deepEqual(pdfReadingGroups(lines), [lines]);
+  assert.equal(lines.at(-1).text, text.str);
+});
+
+test('long text is chunked without losing characters', async () => {
+  const { chunkText } = await import('../src/text.mjs');
+  const text = 'First sentence. Second sentence. Third sentence.';
+  assert.equal(chunkText(text, 20).join(' ').replace(/\s+/g, ' ').trim(), text);
+});
+
+test('repeated PDF running heads and page footers leave the first header and all body text', async () => {
+  const { filterRepeatedPageDecorations } = await import('../src/pdfDecorations.mjs');
+  const pages = [1, 2, 3].map(number => ({ width: 600, height: 800, lines: [
+    { text: 'Journal of Reading 2026', y: 770, height: 12 },
+    { text: `Unique body paragraph ${number}`, y: 390, height: 12 },
+    { text: `Page ${number}`, y: 30, height: 12 }
+  ] }));
+  const result = filterRepeatedPageDecorations(pages);
+  assert.deepEqual(result.map(page => page.lines.map(line => line.text)), [
+    ['Journal of Reading 2026', 'Unique body paragraph 1'],
+    ['Unique body paragraph 2'],
+    ['Unique body paragraph 3']
+  ]);
+});
+
+test('PDF page stitching repairs an interrupted word but keeps complete sentences separate', async () => {
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  const blocks = stitchPageBlocks([
+    { id: 1, page: 1, text: 'The paper describes a reproducible metho-' },
+    { id: 2, page: 2, text: 'dology for this experiment.' },
+    { id: 3, page: 2, text: 'Results end here.' },
+    { id: 4, page: 3, text: 'A new section starts.' }
+  ]);
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0].text, 'The paper describes a reproducible methodology for this experiment.');
+  assert.equal(blocks[0].endPage, 2);
+  assert.equal(blocks[1].text, 'Results end here.');
+});
+
+test('PDF line and page wrapping preserve compound hyphens and separate paragraphs on the same page', async () => {
+  const { joinLines } = await import('../src/text.mjs');
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  assert.equal(joinLines(['It uses attention-', 'based inference and repro-', 'ducible evaluation.']), 'It uses attention-based inference and reproducible evaluation.');
+  assert.equal(joinLines(['A state-of-the-', 'art model at low‐', 'resolution.']), 'A state-of-the-art model at low‐resolution.');
+  const blocks = stitchPageBlocks([
+    { page: 1, text: 'The paper proposes attention-' },
+    { page: 2, text: 'based inference with a slower alternative' },
+    { page: 2, text: 'another paragraph belongs to this page.' }
+  ]);
+  assert.deepEqual(blocks.map(({ text, page, endPage }) => ({ text, page, endPage })), [
+    { text: 'The paper proposes attention-based inference with a slower alternative', page: 1, endPage: 2 },
+    { text: 'another paragraph belongs to this page.', page: 2, endPage: undefined }
+  ]);
+});

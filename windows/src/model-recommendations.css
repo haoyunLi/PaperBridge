@@ -1,0 +1,17 @@
+.model-recommendations{display:grid;gap:11px}
+.model-card{display:flex;align-items:flex-start;gap:14px;background:#fffdf8;border:1px solid #d7cebf;border-radius:11px;padding:16px}
+.model-card.selected{border-color:#4a85da;box-shadow:inset 3px 0 #0a59d6}
+.model-card-copy{flex:1;min-width:0}
+.model-card-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.model-card-title h3{font-size:15px;margin:0}
+.model-card-title>span{font-size:9px;color:#53667e;background:#e7edf3;padding:3px 6px;border-radius:4px;font-weight:650}
+.model-card-title>b{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#247557;font-weight:650}
+.model-card-copy>code{display:block;font-size:10px;color:#60738a;margin:6px 0 8px;overflow-wrap:anywhere}
+.model-card-copy>p{font-size:12px;line-height:1.5;margin:0 0 5px}
+.model-card-copy>small{display:block;font-size:11px;line-height:1.5;color:#657080}
+.model-card-meta{display:flex;gap:8px 14px;flex-wrap:wrap;margin-top:11px;align-items:center}
+.model-card-meta>span{font-size:11px;font-weight:650;color:#52647c}
+.model-card-meta>a{font-size:11px;color:#0a59d6;text-underline-offset:3px}
+.model-card>.button{font-size:11px;flex:none;margin-top:2px}
+.model-card button:focus-visible,.model-card a:focus-visible{outline:2px solid #0a59d6;outline-offset:3px}
+@media(max-width:1050px){.model-card{flex-wrap:wrap}.model-card>.button{margin-left:auto}}

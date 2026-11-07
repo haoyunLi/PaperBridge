@@ -60,6 +60,8 @@ Both links download Windows **0.2.20 x64** directly. Setup installs for the curr
 
 See the [1.10.0 release notes](docs/release-1.10.0.md) and [OpenAI setup guide](#optional-openai-setup). Install the latest signed DMG or choose **PaperBridge > Check for Updates**. No Xcode or Homebrew is needed to use the downloaded app.
 
+The same repository contains the active [Windows development preview](windows/README.md), including local Ollama/MinerU setup with AMD/NVIDIA-aware detection, optional OpenAI with Windows DPAPI-encrypted key and session-only consent, provider/model/style result variants, MinerU import progress and cancellation preservation, restart-persistent update prompts, and NSIS/portable packaging. Its parity status is tracked in the [feature mapping](windows/FEATURE_MAPPING.md) and [1.10 incremental report](windows/MAC_1_10_GAPS.md).
+
 ## Reading Continuity in 1.9.1
 
 PaperBridge 1.9.1 is a small reading-continuity update to 1.9. [Download the latest Mac app](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), or choose **PaperBridge > Check for Updates** in the app.
