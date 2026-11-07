@@ -48,6 +48,12 @@ function pageBundle(id, folder) {
   return activeBundle;
 }
 
+function revealBundle(folder) {
+  try {
+    if (fs.lstatSync(folder).isDirectory()) shell.showItemInFolder(folder);
+  } catch { /* The bundle is saved even when File Explorer cannot select it. */ }
+}
+
 function revokeOpenAIConsent() {
   openAIConsent = false;
   openAIRevision += 1;
@@ -287,6 +293,7 @@ function registerHandlers() {
     const pdfFile = bundle.originalPdf ? path.join(bundle.folder, 'original.pdf') : null;
     const archive = pdfFile ? await createPageArchive(store.root, pdfFile) : null;
     activeBundle = pdfFile ? { id: paper.id, folder: bundle.folder, pdfFile, archive, facsimileDocuments, renderedPages: new Set() } : null;
+    if (!pdfFile) revealBundle(bundle.folder);
     return { ...report, maximumPreviewPages, ...archive?.status() };
   });
   ipcMain.handle('markdown:bundle-pdf', (_event, { id, folder }) => {
@@ -310,12 +317,13 @@ function registerHandlers() {
     if (!cached) archive?.savePage(pageNumber, png);
     return true;
   });
-  ipcMain.handle('markdown:bundle-finish', (_event, { id, folder, pageCount, stopped }) => {
+  ipcMain.handle('markdown:bundle-finish', (_event, { id, folder, pageCount, stopped, completed }) => {
     const bundle = pageBundle(id, folder);
     if (!Number.isSafeInteger(pageCount) || pageCount < 0) throw new Error('Invalid PDF page count.');
     activeBundle = null;
     writeBundleFacsimile(bundle, pageCount, stopped === true);
     bundle.archive?.savePageCount(pageCount);
+    if (completed === true && stopped !== true) revealBundle(bundle.folder);
   });
   ipcMain.handle('ollama:models', async (_event, baseURL) => {
     const response = await ollamaRequest(baseURL, 'api/tags');

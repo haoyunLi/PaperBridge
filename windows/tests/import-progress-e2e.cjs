@@ -160,7 +160,10 @@ async function run() {
     assert.equal(fs.existsSync(archivePage(structuredPdfText)), false, 'Successful MinerU imports keep their structured source');
     const exports = path.join(workspace, 'exports');
     fs.mkdirSync(exports);
-    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, exports);
+    await app.evaluate(({ dialog, shell }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      shell.showItemInFolder = () => {};
+    }, exports);
     await page.keyboard.press('Control+Shift+e');
     await page.getByText(/Exported 4 Markdown files, 1 asset\(s\), 1 PDF page image/).waitFor();
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), structuredId);

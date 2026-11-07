@@ -612,16 +612,48 @@ async function run() {
     await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 2 of ') && document.querySelector('.textLayer[data-page="2"]'));
     await page.getByRole('button', { name: 'Previous page' }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
-    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
+    const watchReveals = () => app.evaluate(({ shell }) => {
+      const fs = process.getBuiltinModule('node:fs');
+      const path = process.getBuiltinModule('node:path');
+      globalThis.__bundleReveals = [];
+      shell.showItemInFolder = folder => {
+        const index = path.join(folder, 'Original Pages.md');
+        globalThis.__bundleReveals.push({ folder, index: fs.existsSync(index) ? fs.readFileSync(index, 'utf8') : '' });
+        if (globalThis.__failBundleReveal) throw new Error('Fixture File Explorer is unavailable.');
+      };
+    });
+    const reveals = () => app.evaluate(() => globalThis.__bundleReveals);
+    const failBundleWrite = name => app.evaluate((_electron, filename) => {
+      const fs = process.getBuiltinModule('node:fs');
+      const path = process.getBuiltinModule('node:path');
+      const write = fs.writeFileSync;
+      fs.writeFileSync = function (target, ...args) {
+        if (typeof target === 'string' && path.basename(target) === filename) {
+          fs.writeFileSync = write;
+          throw new Error(`Fixture cannot write ${filename}.`);
+        }
+        return write.call(this, target, ...args);
+      };
+    }, name);
+    await watchReveals();
     const exportBundle = async (target = page) => {
       await target.getByRole('button', { name: 'More' }).click();
       await target.locator('.modal-body').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
     };
     const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
     const beforeExport = new Set(bundleFolders());
+    await app.evaluate(({ dialog }) => { dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] }); });
+    await exportBundle();
+    await page.locator('.task-progress').waitFor({ state: 'hidden' });
+    assert.deepEqual(new Set(bundleFolders()), beforeExport);
+    assert.deepEqual(await reveals(), []);
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
     await exportBundle();
     await page.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
     const bundle = path.join(artifacts, bundleFolders().find(name => !beforeExport.has(name)));
+    const firstReveal = (await reveals())[0];
+    assert.equal(firstReveal.folder, bundle);
+    assert.match(firstReveal.index, /pages\/page-001\.png[\s\S]*pages\/page-002\.png/, 'Explorer should select a completed bundle');
     assert.deepEqual(fs.readFileSync(path.join(bundle, 'original.pdf')), fs.readFileSync(pdfPath));
     assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-001.png')));
     assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-002.png')));
@@ -642,11 +674,21 @@ async function run() {
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral/);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);
     const beforeWarm = new Set(bundleFolders());
+    await app.evaluate(() => { globalThis.__failBundleReveal = true; });
     await exportBundle();
     await page.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
+    await page.locator('.task-progress').waitFor({ state: 'hidden' });
     const warm = path.join(artifacts, bundleFolders().find(name => !beforeWarm.has(name)));
+    assert.equal((await reveals()).at(-1).folder, warm, 'Explorer failure should preserve successful export status');
+    await app.evaluate(() => { globalThis.__failBundleReveal = false; });
     for (const file of ['original.pdf', 'pages/page-001.png', 'pages/page-002.png']) {
       assert.deepEqual(fs.readFileSync(path.join(warm, file)), fs.readFileSync(path.join(bundle, file)));
+    }
+    for (const filename of ['page-002.png', 'Original Pages.md']) {
+      await failBundleWrite(filename);
+      await exportBundle();
+      await page.getByText(`Bundle export incomplete: Error invoking remote method`, { exact: false }).filter({ hasText: `Fixture cannot write ${filename}` }).waitFor();
+      assert.equal((await reveals()).length, 2, 'Incomplete exports should stay in the chosen folder without opening Explorer');
     }
     const cache = path.join(workspace, 'pdf-page-cache');
     const cachedPageTwo = path.join(cache, fs.readdirSync(cache)[0], pdfRecord.id, 'page-002.png.entry');
@@ -666,6 +708,7 @@ async function run() {
     await page.getByRole('button', { name: 'Stop', exact: true }).click();
     await page.evaluate(() => { window.releasePageImage(); delete window.releasePageImage; });
     await page.getByText(/1 PDF page image\(s\) \(page export stopped\)/).waitFor();
+    assert.equal((await reveals()).length, 2);
     const stopped = path.join(artifacts, bundleFolders().find(name => !beforeStop.has(name)));
     const stoppedTranslation = fs.readFileSync(path.join(stopped, 'Full Translation.md'), 'utf8');
     assert.match(stoppedTranslation, /Page export stopped[\s\S]*pages\/page-001\.png[\s\S]*本地测试译文/);
@@ -675,6 +718,7 @@ async function run() {
     await exportBundle();
     await page.getByText(/2 PDF page image\(s\)[\s\S]*Reused 1 archived PDF page image\(s\)/).waitFor();
     const repaired = path.join(artifacts, bundleFolders().find(name => !beforeRepair.has(name)));
+    assert.equal((await reveals()).at(-1).folder, repaired);
     assert.deepEqual(fs.readFileSync(path.join(repaired, 'pages', 'page-002.png')), fs.readFileSync(path.join(bundle, 'pages', 'page-002.png')));
     const pdfBytes = fs.readFileSync(pdfPath);
     await page.evaluate(bytes => {
@@ -749,6 +793,7 @@ async function run() {
           && range.startContainer.parentElement.closest('.textLayer')?.dataset.page === String(anchor.page)));
       });
     }, crossAnchors);
+    await watchReveals();
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
     await exportBundle(reopenedPage);
     await reopenedPage.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();

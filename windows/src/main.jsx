@@ -2283,6 +2283,7 @@ function App() {
         const destination = { id: paper.id, folder: result.folder };
         const cachedPages = new Set(result.cachedPages);
         let pageCount = result.cachedPageCount || 0;
+        let completed = false;
         let pdf;
         const loadPdf = async () => {
           if (!pdf) {
@@ -2313,9 +2314,10 @@ function App() {
             } else missingPages++;
             setProgress({ done: pageNumber, total: limit });
           }
+          completed = true;
         } finally {
-          try { await api.finishBundle({ ...destination, pageCount, stopped: token.cancelled }); }
-          finally { await pdf?.loadingTask.destroy(); }
+          try { await api.finishBundle({ ...destination, pageCount, stopped: token.cancelled, completed }); }
+          finally { await pdf?.loadingTask.destroy().catch(() => {}); }
         }
       }
       const missingAssets = result.missingAssetPaths?.length;

@@ -446,12 +446,20 @@ async function run() {
     await reopened.waitForFunction(() => document.querySelector('.document-preview table img[alt="Table panel"]')?.naturalWidth === 1);
     const exports = path.join(workspace, 'exports');
     fs.mkdirSync(exports);
-    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, exports);
+    await app.evaluate(({ dialog, shell }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      shell.showItemInFolder = destination => {
+        const fs = process.getBuiltinModule('node:fs');
+        const path = process.getBuiltinModule('node:path');
+        globalThis.__revealedBundle = { destination, original: fs.readFileSync(path.join(destination, 'Original.md'), 'utf8') };
+      };
+    }, exports);
     await reopened.getByRole('button', { name: 'More ···', exact: true }).click();
     await reopened.locator('.modal').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
     await reopened.getByText(/1 referenced local asset\(s\) could not be included/).waitFor();
     const bundle = path.join(exports, fs.readdirSync(exports)[0]);
     const original = fs.readFileSync(path.join(bundle, 'Original.md'), 'utf8');
+    assert.deepEqual(await app.evaluate(() => globalThis.__revealedBundle), { destination: bundle, original });
     const panel = original.match(/<img src="(assets\/[a-f0-9]+\.png)" alt="Table panel">/)?.[1];
     const data = original.match(/\[Measurements\]\((assets\/local-[a-f0-9]+\.csv)#rows\)/)?.[1];
     assert.ok(panel && data);
