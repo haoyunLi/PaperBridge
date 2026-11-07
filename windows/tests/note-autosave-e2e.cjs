@@ -73,7 +73,7 @@ async function run() {
     ({ app, page } = await launch(root, workspace));
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
-    await page.locator('.reader-top [title="Focus reading"]').focus();
+    await page.locator('.reader-top .search').focus();
     await page.keyboard.press('Tab');
     assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Reader text');
     await page.keyboard.press('Shift+ArrowRight');

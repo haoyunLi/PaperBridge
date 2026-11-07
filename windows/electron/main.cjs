@@ -393,6 +393,8 @@ function buildMenu() {
       action('Highlight Selection', 'highlightSelection', 'CmdOrCtrl+Shift+H')
     ] },
     { label: 'View', submenu: [
+      action('Focus Reading', 'focusReading', 'CmdOrCtrl+Alt+F'),
+      action('Toggle Document Sidebar', 'toggleSidebar', 'CmdOrCtrl+Alt+S'),
       action('Show Research Inspector', 'inspector', 'CmdOrCtrl+Shift+I'),
       action('Settings', 'settings')
     ] },

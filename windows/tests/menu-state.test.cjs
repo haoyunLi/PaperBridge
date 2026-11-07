@@ -3,12 +3,12 @@ const assert = require('node:assert/strict');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('../electron/menu-state.cjs');
 
 const readyPaper = { ready: true, hasPaper: true, busy: false, hasSelection: true, canUndo: true, canPrimaryTask: true,
-  canGoBack: true, canGoForward: true, canSummarize: true, canFullTranslation: true, canLookupSelection: true, canExport: true, checkingUpdates: false };
+  canGoBack: true, canGoForward: true, canSummarize: true, canFullTranslation: true, canLookupSelection: true, canExport: true, checkingUpdates: false, canUseReadingLayout: true };
 
 test('startup and empty-workspace menus cannot dispatch paper or selection actions', () => {
   assert.equal(Object.values(menuCommandState({})).every(enabled => !enabled), true);
   const empty = menuCommandState({ ...readyPaper, hasPaper: false });
-  for (const command of ['export', 'summary', 'find', 'readingBack', 'readingForward', 'primaryTask', 'generateSummary', 'generateFullTranslation', 'undo', 'translateSelection', 'explainSelection', 'highlightSelection']) {
+  for (const command of ['export', 'summary', 'find', 'readingBack', 'readingForward', 'primaryTask', 'generateSummary', 'generateFullTranslation', 'undo', 'translateSelection', 'explainSelection', 'highlightSelection', 'focusReading', 'toggleSidebar']) {
     assert.equal(empty[command], false, `${command} needs a paper`);
   }
   for (const command of ['openPdf', 'library', 'glossary', 'settings', 'setup', 'onboarding', 'checkUpdates']) assert.equal(empty[command], true);
@@ -17,7 +17,7 @@ test('startup and empty-workspace menus cannot dispatch paper or selection actio
 test('busy work disables import/export and generation while keeping navigation and annotations available', () => {
   const busy = menuCommandState({ ...readyPaper, busy: true, canLookupSelection: false });
   for (const command of ['openPdf', 'export', 'primaryTask', 'generateSummary', 'generateFullTranslation', 'translateSelection', 'explainSelection']) assert.equal(busy[command], false);
-  for (const command of ['summary', 'find', 'highlightSelection', 'undo', 'inspector', 'library']) assert.equal(busy[command], true);
+  for (const command of ['summary', 'find', 'highlightSelection', 'undo', 'inspector', 'library', 'focusReading', 'toggleSidebar']) assert.equal(busy[command], true);
 });
 
 test('selection, task availability and update progress each control the corresponding commands', () => {
@@ -27,6 +27,9 @@ test('selection, task availability and update progress each control the correspo
     canGoBack: false, canGoForward: false, canSummarize: false, canFullTranslation: false, canExport: false, checkingUpdates: true });
   for (const command of ['translateSelection', 'explainSelection', 'highlightSelection', 'undo', 'readingBack', 'readingForward', 'primaryTask', 'generateSummary', 'generateFullTranslation', 'export', 'checkUpdates']) assert.equal(unavailable[command], false);
   assert.equal(unavailable.onboarding, true);
+  const layoutBlocked = menuCommandState({ ...readyPaper, canUseReadingLayout: false });
+  assert.equal(layoutBlocked.focusReading, false);
+  assert.equal(layoutBlocked.toggleSidebar, false);
 });
 
 test('menu IPC data accepts boolean capabilities only and missing fields clear earlier enablement', () => {

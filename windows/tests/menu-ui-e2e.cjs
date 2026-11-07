@@ -63,12 +63,47 @@ async function run() {
       item.click(null, BrowserWindow.getAllWindows()[0]);
     }, command);
 
-    await expectMenus({ openPdf: true, summary: false, export: false, generateSummary: false, primaryTask: false, translateSelection: false });
+    await expectMenus({ openPdf: true, summary: false, export: false, generateSummary: false, primaryTask: false, translateSelection: false, focusReading: false, toggleSidebar: false });
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill('Abstract\n\nThis paper studies deterministic menu state transitions.');
     await page.getByRole('button', { name: 'Open text', exact: true }).click();
     await page.locator('.paper-preview-block').first().waitFor();
-    await expectMenus({ summary: true, export: true, generateSummary: true, generateFullTranslation: true, primaryTask: true, undo: false, highlightSelection: false });
+    await expectMenus({ summary: true, export: true, generateSummary: true, generateFullTranslation: true, primaryTask: true, undo: false, highlightSelection: false, focusReading: true, toggleSidebar: true });
+
+    const button = name => page.getByRole('button', { name, exact: true });
+    const sidebar = page.locator('.sidebar');
+    const inspector = page.locator('.inspector');
+    const expectPanels = async (sidebarVisible, inspectorVisible) => {
+      await sidebar.waitFor({ state: sidebarVisible ? 'visible' : 'hidden' });
+      await inspector.waitFor({ state: inspectorVisible ? 'visible' : 'hidden' });
+    };
+    await clickMenu('focusReading');
+    await expectPanels(false, false);
+    await button('Overview').click();
+    await button('Exit Focus Reading').waitFor();
+    await button('Full Translation').click();
+    await button('Exit Focus Reading').click();
+    await expectPanels(true, true);
+    await clickMenu('toggleSidebar');
+    await expectPanels(false, true);
+    await button('Focus Reading').click();
+    await expectPanels(false, false);
+    await page.keyboard.press('Control+Alt+f');
+    await expectPanels(false, true);
+
+    await button('Focus Reading').click();
+    await page.keyboard.press('Control+Alt+s');
+    await expectPanels(true, false);
+    await button('Focus Reading').waitFor();
+    await button('Focus Reading').click();
+    await button('Show Research Inspector').click();
+    await expectPanels(false, true);
+    await button('Focus Reading').waitFor();
+    await button('Show Document Sidebar').click();
+    await clickMenu('settings');
+    await expectMenus({ focusReading: false, toggleSidebar: false });
+    await button('Close dialog').click();
+    await expectMenus({ focusReading: true, toggleSidebar: true });
 
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text').waitFor();

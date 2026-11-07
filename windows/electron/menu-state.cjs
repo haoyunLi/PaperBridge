@@ -1,6 +1,6 @@
 const MENU_STATE_KEYS = Object.freeze([
   'ready', 'hasPaper', 'busy', 'hasSelection', 'canUndo', 'canGoBack', 'canGoForward', 'canPrimaryTask',
-  'canSummarize', 'canFullTranslation', 'canLookupSelection', 'canExport', 'checkingUpdates'
+  'canSummarize', 'canFullTranslation', 'canLookupSelection', 'canExport', 'checkingUpdates', 'canUseReadingLayout'
 ]);
 
 function normalizeMenuState(value) {
@@ -32,6 +32,8 @@ function menuCommandState(value) {
     translateSelection: paper && state.hasSelection && state.canLookupSelection,
     explainSelection: paper && state.hasSelection && state.canLookupSelection,
     highlightSelection: paper && state.hasSelection,
+    focusReading: paper && state.canUseReadingLayout,
+    toggleSidebar: paper && state.canUseReadingLayout,
     inspector: state.ready,
     settings: state.ready,
     setup: state.ready,

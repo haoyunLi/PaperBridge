@@ -193,6 +193,16 @@ async function run() {
     assert.equal(await page.getByLabel('Explanation language').inputValue(), 'German');
     await waitForSavedExplanation(page);
 
+    await page.getByRole('button', { name: 'Focus Reading', exact: true }).click();
+    await page.keyboard.press('Control+Shift+l');
+    const library = page.getByRole('dialog', { name: 'Paper Library', exact: true });
+    await library.getByRole('button', { name: /\b\d+\/2 translated\b/ }).click();
+    await library.waitFor({ state: 'hidden' });
+    await page.getByText('Paper A describes', { exact: false }).first().waitFor();
+    await page.getByRole('button', { name: 'Exit Focus Reading', exact: true }).click();
+    assert.equal(await page.locator('.sidebar').isVisible(), true);
+    assert.equal(await page.locator('.inspector').isVisible(), false, 'Exiting focus on another paper must use its own saved inspector setting');
+
     await app.close(); app = null;
     app = await launch();
     page = await app.firstWindow();
