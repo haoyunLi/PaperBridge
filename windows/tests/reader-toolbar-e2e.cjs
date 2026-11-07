@@ -162,6 +162,27 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await waitFor(async () => (await firstBlock()) === 'block-20', 'Reader remount consumes pending origin');
 
+    // A mode switch during deferred Clear must reschedule restoration after reflow.
+    await mode('Bilingual').check();
+    await toBlock(20);
+    await search().fill('Unique search destination');
+    await page.waitForFunction(() => document.querySelectorAll('.reader-list > .block').length === 1);
+    await page.evaluate(() => {
+      const request = window.requestAnimationFrame;
+      window.requestAnimationFrame = callback => {
+        window.requestAnimationFrame = request;
+        window.__releaseReaderRestore = () => request(callback);
+        return 0;
+      };
+    });
+    await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+    await mode('Original').check();
+    await page.evaluate(() => window.__releaseReaderRestore());
+    await waitFor(async () => (await firstBlock()) === 'block-20' && !readPaper().position.readerSearchOrigin,
+      'mode change completes deferred search-origin restoration');
+    assert.equal(await search().inputValue(), '');
+    assert.equal(await mode('Original').isChecked(), true);
+
     // History recorded outside Reader must retain its filtered viewport separately.
     await search().fill('evidence');
     await page.locator('#block-5').evaluate(block => {
@@ -218,7 +239,7 @@ async function run() {
     await page.keyboard.press('ArrowRight');
     assert.equal(await mode('Original').evaluate(node => node.matches(':focus-visible')), true);
     await toolbarFits();
-    console.log(JSON.stringify({ passed: true, workspace, sizes: [1500, 1320, 980], checked: ['fixed toolbar', 'native radio keyboard', 'search clear and Escape', 'reflow origin', 'undo', 'deferred clear across tabs', 'filtered cross-tab history', 'filtered structural edit and undo', 'filtered restart', 'Find across tabs', '150% zoom', 'high contrast focus'] }));
+    console.log(JSON.stringify({ passed: true, workspace, sizes: [1500, 1320, 980], checked: ['fixed toolbar', 'native radio keyboard', 'search clear and Escape', 'reflow origin', 'undo', 'deferred clear across tabs', 'deferred clear across display modes', 'filtered cross-tab history', 'filtered structural edit and undo', 'filtered restart', 'Find across tabs', '150% zoom', 'high contrast focus'] }));
   } catch (error) {
     if (page && !page.isClosed()) await page.screenshot({ path: path.join(workspace, 'failure.png') }).catch(() => {});
     throw error;

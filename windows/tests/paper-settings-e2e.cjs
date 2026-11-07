@@ -63,7 +63,7 @@ async function assertSettings(page, source, target, model, appearance) {
   if (appearance) {
     await page.getByRole('tab', { name: 'Reading', exact: true }).click();
     assert.equal(await page.getByRole('slider', { name: /Reader font size/ }).inputValue(), appearance.fontSize);
-    assert.equal(await page.getByRole('slider', { name: /Line spacing/ }).inputValue(), appearance.lineHeight);
+    assert.equal(await page.getByRole('slider', { name: /Line spacing/ }).inputValue(), appearance.lineSpacing ?? appearance.lineHeight);
     assert.equal(await page.getByRole('slider', { name: /Reading width/ }).inputValue(), appearance.readingWidth);
     await page.getByRole('tab', { name: 'Updates', exact: true }).click();
     assert.equal(await page.getByLabel(/Check official Windows releases/).isChecked(), false);
@@ -167,17 +167,25 @@ async function run() {
     await page.waitForFunction(() => {
       const passage = document.querySelector('#block-2 .source-text');
       const style = passage && getComputedStyle(passage);
-      return style?.fontSize === '25px' && style.lineHeight === '55px' && getComputedStyle(document.querySelector('.reader-list')).maxWidth === '1100px';
+      return style?.fontSize === '24px' && style.lineHeight === '40.8px' && getComputedStyle(document.querySelector('.reader-list')).maxWidth === '1200px';
     });
     await page.keyboard.press('Escape');
     await appearancePopover().waitFor({ state: 'hidden' });
     await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Reading Appearance');
+    await page.setViewportSize({ width: 1500, height: 900 });
+    await page.getByRole('button', { name: 'Focus Reading', exact: true }).click();
+    await page.waitForFunction(() => Math.abs(document.querySelector('.reader-list').getBoundingClientRect().width - 1200) < 1);
+    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await page.waitForFunction(() => Math.abs(document.querySelector('.document-preview').getBoundingClientRect().width - 1200) < 1);
+    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await page.getByRole('button', { name: 'Exit Focus Reading', exact: true }).click();
+    await page.setViewportSize({ width: 980, height: 620 });
     await appearanceButton().click();
     await appearancePopover().waitFor();
     await page.locator('.title-wrap h1').click();
     await appearancePopover().waitFor({ state: 'hidden' });
     await page.setViewportSize({ width: 1320, height: 820 });
-    const appearance = { fontSize: '25', lineHeight: '2.2', readingWidth: '1100' };
+    const appearance = { fontSize: '24', lineSpacing: '12', readingWidth: '1200' };
     await waitFor(() => readPaper(textB).taskSettings?.translationModel === modelB, 'paper B task settings');
     await waitFor(() => readPaper(textB).inspectorOpen === true && Object.values(readPaper(textB).paragraphExplanations || {}).some(result => result.language === 'German' && result.output === 'Saved paragraph explanation'), 'paper B explanation and inspector');
     await openByBlocks(page, 2, 'Paper A describes');
@@ -260,7 +268,7 @@ async function run() {
       await page.getByRole('button', { name: tab, exact: true }).click();
       await appearanceButton().click();
       await appearancePopover().waitFor();
-      assert.equal(await fontSlider().inputValue(), '25');
+      assert.equal(await fontSlider().inputValue(), '24');
     }
     await appearancePopover().getByRole('button', { name: 'Reset Appearance', exact: true }).click();
     await page.keyboard.press('Escape');
@@ -268,7 +276,93 @@ async function run() {
     await assertSettings(page, 'English', 'Simplified Chinese', modelA, Object.fromEntries(Object.entries(appearanceDefaults).map(([key, value]) => [key, String(value)])));
     assert.equal(readPaper(textA).blocks[1].translation, original.translation);
 
-    console.log('Paper settings and explanations restored across restart; the toolbar appearance popover updates live, dismisses, persists globally, and resets without changing paper tasks.');
+    // An existing 0.2 workspace must keep its proportional spacing until the
+    // reader explicitly chooses the new additive spacing or resets appearance.
+    const settingsPath = path.join(workspace, 'settings.json');
+    const readSettings = () => JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const expectAppearance = async (size, line, width) => page.waitForFunction(({ size, line, width }) => {
+      const passage = document.querySelector('#block-2 .source-text');
+      const style = passage && getComputedStyle(passage);
+      return style?.fontSize === size && style.lineHeight === line &&
+        getComputedStyle(document.querySelector('.reader-list')).maxWidth === width;
+    }, { size, line, width });
+    const restartInReader = async () => {
+      await app.close(); app = null;
+      app = await launch();
+      page = await app.firstWindow();
+      await page.setViewportSize({ width: 1320, height: 820 });
+      await page.locator('#block-2 .source-text').waitFor({ timeout: 20000 });
+    };
+    await app.close(); app = null;
+    const legacySettings = { ...readSettings(), fontSize: 25, lineHeight: 1.9, readingWidth: 560, pdfExtractionMode: 'mineruPreferred' };
+    delete legacySettings.lineSpacing;
+    delete legacySettings.legacyAppearanceRanges;
+    fs.writeFileSync(settingsPath, JSON.stringify(legacySettings));
+    app = await launch();
+    page = await app.firstWindow();
+    await page.setViewportSize({ width: 1320, height: 820 });
+    await page.locator('#block-2 .source-text').waitFor({ timeout: 20000 });
+    await expectAppearance('25px', '47.5px', '560px');
+    await appearanceButton().click();
+    const widthSlider = () => appearancePopover().getByRole('slider', { name: 'Reading width', exact: true });
+    await fontSlider().press('ArrowLeft');
+    assert.equal(await fontSlider().inputValue(), '24');
+    await fontSlider().press('ArrowRight');
+    assert.equal(await fontSlider().inputValue(), '25', 'the legacy font maximum remains reachable');
+    await widthSlider().press('ArrowRight');
+    assert.equal(await widthSlider().inputValue(), '561');
+    await widthSlider().press('ArrowLeft');
+    assert.equal(await widthSlider().inputValue(), '560', 'the legacy width minimum remains reachable');
+    await page.keyboard.press('Escape');
+    await openSettings(page);
+    await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
+    await page.getByLabel('PDF extraction mode').selectOption('pdfOnly');
+    await page.getByRole('tab', { name: 'Reading', exact: true }).click();
+    assert.equal(await page.getByRole('slider', { name: 'Line spacing', exact: true }).inputValue(), '1.9');
+    assert.equal(await page.getByRole('button', { name: 'Use extra spacing', exact: true }).isVisible(), true);
+    await closeSettings(page);
+    await waitFor(() => readSettings().pdfExtractionMode === 'pdfOnly' && readSettings().lineSpacing === null && readSettings().lineHeight === 1.9 && readSettings().legacyAppearanceRanges === true, 'unrelated settings save preserves legacy spacing and ranges');
+    await restartInReader();
+    await expectAppearance('25px', '47.5px', '560px');
+
+    await appearanceButton().click();
+    await appearancePopover().getByRole('button', { name: 'Use extra spacing', exact: true }).click();
+    const spacingSlider = () => appearancePopover().getByRole('slider', { name: 'Line spacing', exact: true });
+    assert.equal(await spacingSlider().inputValue(), '5');
+    assert.equal(await spacingSlider().getAttribute('aria-valuetext'), '5 extra pixels');
+    await spacingSlider().press('ArrowRight');
+    await page.keyboard.press('Escape');
+    await expectAppearance('25px', '36px', '560px');
+    await waitFor(() => readSettings().lineSpacing === 6 && readSettings().lineHeight === null, 'explicit additive spacing persisted');
+    await appearanceButton().click();
+    await fontSlider().press('ArrowLeft');
+    await widthSlider().press('End');
+    await page.keyboard.press('Escape');
+    await expectAppearance('24px', '34.8px', '1200px');
+    await waitFor(() => readSettings().fontSize === 24 && readSettings().readingWidth === 1200, 'legacy range marker survives values inside standard bounds');
+    await restartInReader();
+    await expectAppearance('24px', '34.8px', '1200px');
+    await appearanceButton().click();
+    assert.equal(await fontSlider().getAttribute('max'), '25');
+    assert.equal(await widthSlider().getAttribute('min'), '560');
+    await fontSlider().press('End');
+    await widthSlider().press('Home');
+    await expectAppearance('25px', '36px', '560px');
+    assert.equal(await appearancePopover().getByRole('button', { name: 'Use extra spacing', exact: true }).count(), 0);
+    await appearancePopover().getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+    await page.keyboard.press('Escape');
+    await expectAppearance('16px', '24.2px', '920px');
+    await waitFor(() => readSettings().fontSize === 16 && readSettings().lineSpacing === 5 && readSettings().lineHeight === null && readSettings().readingWidth === 920 && readSettings().legacyAppearanceRanges === false, 'new appearance reset persisted');
+    await restartInReader();
+    await expectAppearance('16px', '24.2px', '920px');
+    await appearanceButton().click();
+    assert.equal(await fontSlider().getAttribute('max'), '24');
+    assert.equal(await widthSlider().getAttribute('min'), '640');
+    await page.keyboard.press('Escape');
+    assert.equal(readSettings().pdfExtractionMode, 'pdfOnly');
+    assert.equal(readPaper(textA).blocks[1].translation, original.translation);
+
+    console.log('Paper task settings and explanations restored; additive appearance persists globally, legacy proportional spacing survives unrelated saves and restart, and explicit conversion/reset preserve paper work.');
   } finally {
     await app?.close();
     ollama.close();

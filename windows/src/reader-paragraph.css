@@ -1,0 +1,41 @@
+.reader-layout { max-width: none; }
+.content-column:not(.pdf-comparison-column):has(.document-preview) { max-width: max(1000px, var(--reader-width)); }
+.reader-summary { max-width: var(--reader-width); margin-left: auto; margin-right: auto; }
+.reader-list > .block:not(.heading-block) {
+  padding: 18px;
+  border-radius: 14px;
+  margin-bottom: 16px;
+}
+.reader-list > .block:not(.heading-block).current {
+  border: 1px solid #0a59d6;
+  box-shadow: inset 0 0 0 1px #0a59d6;
+}
+.reader-list > .block:not(.heading-block).current[data-block-status="failed"] {
+  border-color: #b52a24;
+  box-shadow: inset 0 0 0 1px #b52a24;
+}
+.block:not(.heading-block) > .block-header { margin-bottom: 15px; gap: 9px; }
+.reader-block-number { color: #0a59d6; font-variant-numeric: tabular-nums; font-size: 12px; }
+.reader-block-page { margin-left: 9px; font-size: 9px; font-weight: 500; letter-spacing: 0; }
+.reader-block-status { margin-left: 9px; font-size: 10px; letter-spacing: 0; }
+.block[data-block-status="failed"] .reader-block-status { color: #b52a24; }
+.reader-source-side, .reader-translation-side { display: flex; flex-direction: column; gap: 8px; }
+.reader-language-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; color: #66707a; user-select: none; }
+.reader-language-label strong { font-size: 10px; font-weight: 750; letter-spacing: .9px; }
+.reader-language-label span { font-size: 11px; }
+.reader-side-divider { height: 1px; margin: 15px 0; background: #cfc6b8; }
+.reader-side-divider.translated { background: #eebbb6; }
+.reader-translation-side { padding: 14px; border-radius: 10px; background: #eee9e0; }
+.reader-translation-side.translated { background: #fce5df; }
+.reader-translation-side.translated .reader-language-label strong { color: #9b3a32; }
+.reader-translation-side > .translation-text { margin: 0; padding: 0; border-radius: 0; background: transparent; }
+.reader-translation-side > .translation-text.done { background: transparent; }
+.reader-translation-side .pending { white-space: normal; }
+.reader-translation-side .failure { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font: 12px/1.5 "Segoe UI", sans-serif; }
+.app[data-display-mode="source"] :is(.reader-side-divider, .reader-translation-side),
+.app[data-display-mode="translation"] :is(.reader-side-divider, .reader-source-side) { display: none; }
+
+@media (forced-colors: active) {
+  .reader-list > .block:not(.heading-block).current { outline: 2px solid Highlight; outline-offset: -2px; }
+  .reader-side-divider { background: CanvasText; }
+}

@@ -450,7 +450,7 @@ async function run() {
     const appearancePopover = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
     await appearancePopover.getByRole('slider', { name: 'Reader font size', exact: true }).press('End');
     await appearancePopover.getByRole('slider', { name: 'Reading width', exact: true }).press('Home');
-    await page.waitForFunction(() => document.querySelector('.app')?.style.getPropertyValue('--reader-width') === '560px');
+    await page.waitForFunction(() => document.querySelector('.app')?.style.getPropertyValue('--reader-width') === '640px');
     assert.deepEqual(await originalGeometry(), originalSize, 'Reading appearance should leave the exact PDF canvas geometry intact');
     await appearancePopover.getByRole('button', { name: 'Reset Appearance', exact: true }).click();
     await page.keyboard.press('Escape');

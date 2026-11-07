@@ -106,7 +106,7 @@ async function run() {
     const appearancePopover = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
     await appearancePopover.getByRole('slider', { name: 'Reader font size', exact: true }).press('End');
     await appearancePopover.getByRole('slider', { name: 'Line spacing', exact: true }).press('End');
-    assert.deepEqual(await summaryAppearance(), Array.from({ length: 2 }, () => ({ size: '25px', line: '55px' })));
+    assert.deepEqual(await summaryAppearance(), Array.from({ length: 2 }, () => ({ size: '24px', line: '40.8px' })));
     await page.keyboard.press('Escape');
     await appearancePopover.waitFor({ state: 'hidden' });
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();

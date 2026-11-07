@@ -1,24 +1,25 @@
 import React from 'react';
 import { ALargeSmall } from 'lucide-react';
 import defaults from '../electron/reading-appearance.json';
+import { normalizeReadingAppearance, readingAppearanceControls } from '../electron/reading-appearance.mjs';
 import './reading-appearance.css';
 
-const sliders = [
-  { key: 'fontSize', label: 'Reader font size', min: 14, max: 25, step: 1, unit: 'px' },
-  { key: 'lineHeight', label: 'Line spacing', min: 1.3, max: 2.2, step: 0.1, unit: '' },
-  { key: 'readingWidth', label: 'Reading width', min: 560, max: 1100, step: 20, unit: 'px' }
-];
-
 export function ReadingAppearanceControls({ settings, onSettings }) {
+  const appearance = normalizeReadingAppearance(settings);
   return <>
     <div className="reading-appearance-sliders">
-      {sliders.map(({ key, label, min, max, step, unit }) => <label className="reading-appearance-control" key={key}>
+      {readingAppearanceControls(settings).map(({ key, label, min, max, step, unit, value }) => <label className="reading-appearance-control" key={key}>
         <span>{label}</span>
-        <span className="reading-appearance-value" aria-hidden="true">{settings[key]}{unit}</span>
-        <input aria-label={label} type="range" min={min} max={max} step={step} value={settings[key]}
-          aria-valuetext={`${settings[key]}${unit}`} onChange={event => onSettings({ [key]: event.target.valueAsNumber })} />
+        <span className="reading-appearance-value" aria-hidden="true">{value}{unit}</span>
+        <input aria-label={label} type="range" min={min} max={max} step={step} value={value}
+          aria-valuetext={key === 'lineHeight' ? `${value} times the text size` : key === 'lineSpacing' ? `${value} extra pixels` : `${value}${unit}`}
+          onChange={event => onSettings({ [key]: event.target.valueAsNumber })} />
       </label>)}
     </div>
+    {appearance.lineHeight !== null && <div className="reading-appearance-legacy">
+      <p className="reading-appearance-help">Your saved spacing scales with text size. Use extra spacing to add a fixed gap between lines.</p>
+      <button className="button outline" onClick={() => onSettings({ lineSpacing: defaults.lineSpacing, lineHeight: null })}>Use extra spacing</button>
+    </div>}
     <p className="reading-appearance-help">Applies to the Reader and text previews. Original PDF pages keep their own layout and zoom.</p>
     <button className="button outline" onClick={() => onSettings(defaults)}>Reset Appearance</button>
   </>;

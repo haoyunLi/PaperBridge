@@ -1,5 +1,7 @@
 {
-  "fontSize": 17,
-  "lineHeight": 1.7,
-  "readingWidth": 860
+  "fontSize": 16,
+  "lineSpacing": 5,
+  "lineHeight": null,
+  "readingWidth": 920,
+  "legacyAppearanceRanges": false
 }

@@ -139,12 +139,22 @@ async function run() {
     await page.locator('#block-2').waitFor({ timeout: 20000 });
     await page.waitForFunction(() => document.querySelector('.title-wrap p')?.textContent.includes('English → Simplified Chinese'));
 
+    const bodyCard = page.locator('#block-2');
+    assert.equal(await bodyCard.locator('.reader-source-side .reader-language-label strong').innerText(), 'ORIGINAL');
+    assert.equal(await bodyCard.locator('.reader-source-side .reader-language-label span').innerText(), 'English');
+    assert.equal(await bodyCard.locator('.reader-translation-side .reader-language-label span').innerText(), 'Simplified Chinese');
+    assert.equal(await bodyCard.locator('.reader-side-divider').isVisible(), true);
+    assert.equal(await bodyCard.locator('.reader-block-number').innerText(), '02');
+    assert.equal(await bodyCard.locator('.source-text').textContent(), document.blocks[1].text, 'language labels must stay outside annotation text');
+    assert.equal(await page.locator('#block-1 .reader-language-label').count(), 0, 'headings keep their compact layout');
+
     // A bookmark undo must not restore a whole-paper snapshot from before AI work.
     await page.locator('#block-2 button[title="Bookmark"]').click();
     await page.locator('#block-2 button.bookmarked').waitFor();
-    await page.locator('#block-2 button[title="Translate or retry block"]').click();
+    await bodyCard.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
     await page.locator('#block-2 .translation-text.done').waitFor({ timeout: 15000 });
     assert.equal(await page.locator('#block-2 .translation-text.done').innerText(), translated);
+    assert.equal(await bodyCard.locator('.reader-translation-side.translated').count(), 1);
     await page.locator('.undo-button').click();
     assert.equal(await page.locator('#block-2 button.bookmarked').count(), 0);
     assert.equal(await page.locator('#block-2 .translation-text.done').innerText(), translated);

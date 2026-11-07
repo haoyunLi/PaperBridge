@@ -156,7 +156,7 @@ async function run() {
     });
     await page.getByText(/Extracted 2 blocks from 1 pages/).waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    await page.locator('#block-2').getByText('PAGE 1 · BLOCK 2', { exact: true }).waitFor();
+    await page.locator('#block-2 .block-header').getByLabel('Block 2, page 1', { exact: true }).waitFor();
     assert.equal(fs.existsSync(archivePage(structuredPdfText)), false, 'Successful MinerU imports keep their structured source');
     const exports = path.join(workspace, 'exports');
     fs.mkdirSync(exports);

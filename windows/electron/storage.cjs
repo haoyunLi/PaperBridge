@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const readingAppearanceDefaults = require('./reading-appearance.json');
+const { normalizeReadingAppearance } = require('./reading-appearance.mjs');
 const { clearPageArchives } = require('./pdf-page-archive.cjs');
 
 const defaults = {
@@ -62,11 +63,11 @@ function createStore(root) {
     settings() {
       const saved = readJson(path.join(root, 'settings.json'), {});
       const { apiKey, openAIAPIKey, openAIConsent, isOpenAIOptInConfirmed, ...safe } = saved && typeof saved === 'object' ? saved : {};
-      return { ...defaults, ...safe, aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) };
+      return { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) };
     },
     saveSettings(settings) {
       const { apiKey, openAIAPIKey, openAIConsent, isOpenAIOptInConfirmed, ...safe } = settings && typeof settings === 'object' ? settings : {};
-      writeJson(path.join(root, 'settings.json'), { ...defaults, ...safe, aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) });
+      writeJson(path.join(root, 'settings.json'), { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) });
     },
     lastUpdateCheckAt() { return Number(readJson(path.join(root, 'updates.json'), {}).lastCheckAt || 0); },
     saveUpdateCheckAt(value) { writeJson(path.join(root, 'updates.json'), { lastCheckAt: value }); },

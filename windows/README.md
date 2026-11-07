@@ -2,11 +2,13 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-Download the Windows x64 development preview from the [Windows 0.2.14 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.14). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
+Download the Windows x64 development preview from the [Windows 0.2.15 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.15). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
 
 Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. Zoom with the PDF toolbar, **Ctrl+mouse wheel**, or **Ctrl+Plus/Minus**. Press **Ctrl+0** or choose **Fit** to fit the PDF to the window. Each view remembers its zoom for the current paper. PDF annotations remain anchored while scaling, and opening a saved annotation also brings its text into view horizontally.
 
-**Reading Appearance** in the paper toolbar updates text size, line spacing, and reading width in the text views. Use **Reset Appearance** in the toolbar or **Settings > Reading** to restore the Windows defaults. Reselect a passage to show its existing translation and explanation for the current session.
+**Reading Appearance** in the paper toolbar updates text size, line spacing, and reading width in the text views. New workspaces and **Reset Appearance** use size 16, 5 pixels of extra line spacing, and width 920, matching the macOS defaults. Existing Windows font sizes, widths and proportional spacing remain unchanged across updates and restarts. **Use extra spacing** switches proportional spacing to a fixed extra gap. Reselect a passage to show its existing translation and explanation for the current session.
+
+Version 0.2.15 adds original/translation language labels, bilingual dividers, full selected-card outlines and direct translation/setup buttons to Reader paragraphs. Compact headings keep their separate layout. Existing highlights and notes stay anchored to the passage text.
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
 
@@ -22,9 +24,9 @@ File Explorer selects the new folder when a portable bundle is ready, including 
 
 Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF text import, including scans and MinerU fallback. The import screen shows progress and lets you cancel without replacing the open paper. Portable Markdown export reuses completed pages across restarts and regenerates missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
 
-On the development branch, portable page images use a 1,800-pixel longest edge and follow the PDF page crop and rotation. Existing papers regenerate older previews on the next export. The original PDF, reader zoom and saved annotations retain their existing behavior.
+In version 0.2.15, portable page images use a 1,800-pixel longest edge and follow the PDF page crop and rotation. Existing papers regenerate older previews on the next export. The original PDF, reader zoom and saved annotations retain their existing behavior.
 
-The development branch also keeps the Reader display modes, search and undo above the scrolling text. Choose **Bilingual**, **Original** or **Translation** with the segmented control or arrow keys. **Ctrl+F** focuses search; **Clear search** and **Escape** return to the paragraph you were reading. That paragraph survives resizing, changing display mode during search, or closing the app with a filter active.
+Version 0.2.15 also keeps the Reader display modes, search and undo above the scrolling text. Choose **Bilingual**, **Original** or **Translation** with the segmented control or arrow keys. **Ctrl+F** focuses search; **Clear search** and **Escape** return to the paragraph you were reading. That paragraph survives resizing, changing display mode during search, or closing the app with a filter active.
 
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.
 
@@ -40,7 +42,7 @@ Overview summaries and Full Translation display inline highlights and support sa
 
 Use **Focus Reading** in the paper toolbar or **View**, or press **Ctrl+Alt+F**, to hide both panels and restore them on exit. **Ctrl+Alt+S** toggles the document sidebar. Quick Selection lets you select result text in a scrolling area. Closing the card preserves the paper selection so you can open it in the Research Inspector.
 
-On the development branch, drag the dividers to resize the document sidebar and, in a wide window, the Research Inspector. You can also focus a divider and use the arrow keys, **Home** or **End**. Widths are kept for the current session, including when leaving Focus Reading. The saved indicator sits at the right edge above the reading area, and save errors still offer **Retry save**.
+In version 0.2.15, drag the dividers to resize the document sidebar and, in a wide window, the Research Inspector. You can also focus a divider and use the arrow keys, **Home** or **End**. Widths are kept for the current session, including when leaving Focus Reading. The saved indicator sits at the right edge above the reading area, and save errors still offer **Retry save**.
 
 Tab to a reading area or click its text, then hold **Shift** and use the arrow keys to select. Use **Ctrl+Shift+Left/Right** to select by word or **Shift+Home/End** to select to a line boundary. The selection is available to the inspector and the usual translation and highlighting shortcuts.
 

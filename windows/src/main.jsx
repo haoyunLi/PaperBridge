@@ -26,6 +26,7 @@ import Onboarding from './Onboarding.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
 import { ReadingAppearancePopover } from './ReadingAppearance.jsx';
 import readingAppearanceDefaults from '../electron/reading-appearance.json';
+import { readerLineHeight } from '../electron/reading-appearance.mjs';
 import { modelSettingsPatch } from './modelCatalog.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
@@ -38,6 +39,7 @@ import './hardware.css';
 import './parity.css';
 import './save-status.css';
 import ReaderToolbar from './ReaderToolbar.jsx';
+import ReaderParagraph from './ReaderParagraph.jsx';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
@@ -1339,6 +1341,10 @@ function App() {
     }
     setDisplayMode(mode);
     commitPaper(current => ({ ...current, position: { ...current.position, displayMode: mode } }));
+    if (mode !== displayMode && tab === 'Reader' && !search) {
+      const origin = normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin);
+      if (origin !== null) scheduleReaderSearchRestore(origin);
+    }
   };
   const rememberUndo = () => { pendingUndoSnapshot.current = paperRef.current; };
   function undoLastChange() {
@@ -1404,6 +1410,27 @@ function App() {
         scrollByTab: { ...position.scrollByTab, Reader: typeof origin === 'number' ? origin : origin.scrollTop } } };
     });
   }
+  function scheduleReaderSearchRestore(origin) {
+    const generation = readingRestoration.current;
+    const current = paperRef.current;
+    const host = mainScrollRef.current;
+    const reader = host?.querySelector('[data-reading-list]');
+    const pendingOrigin = current?.position?.readerSearchOrigin;
+    if (!reader || !current || normalizeSearchOrigin(pendingOrigin) === null) return;
+    const paperId = current.id, sourceMode = paperArticleSource(current).mode;
+    restoringScroll.current = true;
+    afterReadingLayout(host, () => {
+      const latest = paperRef.current;
+      if (generation !== readingRestoration.current || latest?.id !== paperId ||
+          paperArticleSource(latest).mode !== sourceMode || latest.position?.tab !== 'Reader' ||
+          !reader.isConnected || mainScrollRef.current !== host ||
+          host.querySelector('[data-reading-list]') !== reader ||
+          latest.position?.readerSearchOrigin !== pendingOrigin) return;
+      restoreReaderSearchOrigin(origin);
+      persistRestoredReaderPosition();
+      restoringScroll.current = false;
+    });
+  }
   const changeSearch = value => {
     if (!search && value) {
       invalidateReadingScroll();
@@ -1415,22 +1442,10 @@ function App() {
     setSearch(value);
     if (search && !value && searchOrigin.current !== null) {
       const origin = searchOrigin.current;
-      const generation = invalidateReadingScroll();
-      const paperId = paperRef.current?.id;
-      const reader = mainScrollRef.current?.querySelector('[data-reading-list]');
-      const pendingOrigin = paperRef.current?.position?.readerSearchOrigin;
+      invalidateReadingScroll();
       searchOrigin.current = null;
       searchScroll.current = null;
-      restoringScroll.current = true;
-      afterReadingLayout(mainScrollRef.current, () => {
-        if (generation !== readingRestoration.current || paperRef.current?.id !== paperId ||
-            paperRef.current?.position?.tab !== 'Reader' || !reader?.isConnected ||
-            mainScrollRef.current?.querySelector('[data-reading-list]') !== reader ||
-            paperRef.current?.position?.readerSearchOrigin !== pendingOrigin) return;
-        restoreReaderSearchOrigin(origin);
-        persistRestoredReaderPosition();
-        restoringScroll.current = false;
-      });
+      scheduleReaderSearchRestore(origin);
     }
   };
   function toggleFocus() {
@@ -2857,7 +2872,7 @@ function App() {
   const activeHighlightColor = activeSelectionHighlights.length ? displayHighlightColor(activeSelectionHighlights[0].color) : '';
   const workspaceStyle = {
     '--reader-font': `${settings?.fontSize ?? readingAppearanceDefaults.fontSize}px`,
-    '--reader-line': settings?.lineHeight ?? readingAppearanceDefaults.lineHeight,
+    '--reader-line': readerLineHeight(settings),
     '--reader-width': `${settings?.readingWidth ?? readingAppearanceDefaults.readingWidth}px`,
     '--document-sidebar-width': `${sidebarWidth}px`,
     '--research-inspector-width': `${inspectorWidth}px`
@@ -2970,11 +2985,18 @@ function App() {
             </div>
           </>}
         </div>}
-        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-summary"><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': settings.lineHeight, '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => {
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-summary"><h2>{displayMode === 'bilingual' ? 'Bilingual Reader' : displayMode === 'source' ? 'Original Reader' : 'Translation Reader'}</h2><p>{translatedCount} of {translatableCount} blocks translated</p></div><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': readerLineHeight(settings), '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{visibleBlocks.map(block => {
           const issue = extractionIssuesById.get(block.id);
-          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (!search && paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span>{block.page ? `PAGE ${block.page} · ` : ''}BLOCK {block.id}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>
+          const original = <BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />;
+          const translation = !block.resource && !referenceIDs.has(block.id) && (block.status === 'ok'
+            ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" />
+            : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
+              ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}>Retry</button></span>
+              : block.heading ? <span className="pending">Translation pending · select the translate button to begin</span>
+                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); translationSetup ? openTaskSetup(translationSetup) : translateBlocks([block.id]); }}>{translationSetup ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (!search && paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>
           {issue && edit?.id !== block.id && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => setEdit({ id: block.id, text: block.text })} onCompare={() => compareOriginal(block.page)} />}
-          {edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : <><BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />{!block.resource && !referenceIDs.has(block.id) && (block.status === 'ok' ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" /> : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed' ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed'} <button onClick={() => translateBlocks([block.id])}>Retry</button></span> : <span className="pending">Translation pending · select the translate button to begin</span>}</div>)}</>}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
+          {edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}
         {paper && tab === 'Original' && <PdfView
           key={paper.id}

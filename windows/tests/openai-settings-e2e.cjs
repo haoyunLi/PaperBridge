@@ -189,7 +189,7 @@ async function run() {
     await page.locator('#block-1').getByText('在线测试译文', { exact: true }).waitFor();
     await page.locator('.library-row').getByText('Legacy local paper', { exact: true }).click();
     await legacyBlock.getByText('This paper predates provider settings.', { exact: true }).waitFor();
-    await legacyBlock.getByText('Translation pending', { exact: false }).waitFor();
+    await legacyBlock.getByText('AWAITING TRANSLATION', { exact: true }).waitFor();
     await openModels();
     await page.getByLabel('AI provider').selectOption('ollama');
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
