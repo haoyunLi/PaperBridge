@@ -1,14 +1,27 @@
 # Windows 全软件功能复查：2026-09-20
 
-## 第七十九阶段：Windows 0.2.19 发布与升级验收（2026-11-07 UTC，候选准备）
+## 第七十九阶段：Windows 0.2.19 公开发布与升级验收（2026-11-07 UTC）
 
-版本与 lockfile 已更新至 0.2.19，包含第 76–78 阶段的独立段落选择、输出语言归属与导出命名、批注列表和删除/结构 Undo 改进。上一提交 `d0b1956` 已在 [完整 GitHub 检查](https://github.com/haoyunLi/PaperBridge/actions/runs/42353367598)通过 259 项单元、36 套桌面、Setup/Portable 构建及打包启动；版本更新后 259 项单元、更新提示的真实重启回归、Setup/Portable 构建及打包首次启动再次通过。两份本地候选包 ProductVersion 为 0.2.19，Authenticode 状态为 NotSigned。
+[Windows 0.2.19](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.19) 已发布，标签源码为 `fad671750ad0773981e23f2cd6e7fedaa25f537b`，包含第 76–78 阶段的独立段落选择、输出语言归属/导出命名、批注列表与删除/结构 Undo 改进。[标签发布 CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42354219845) 和 [同提交 PR CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42354223334) 均通过 259 项单元、36 套桌面、Setup/Portable 构建和打包启动。版本更新后的本机单元、更新提示重启和打包启动也通过。
 
-本阶段先验证候选提交，再让 `windows-v0.2.19` 标签触发发布工作流。公开资产出现后，分别下载 Setup 与 Portable，核对 SHA-256、GitHub digest、字节数及 ProductVersion，再用实际下载的文件进行隔离验收。旧升级输入必须来自已核验的公开 0.2.18（Setup SHA-256 `24edf0f8a5620e6e9d55ba05b54611ff79ddf335a1c98f35543d2a5d621c70fb`）；`release/` 中同名开发构建不代表旧公开包。
+两份公开文件已下载，分别核对 `.sha256`、GitHub asset digest、字节数和 ProductVersion；Authenticode 均为 `NotSigned`，不是签名版。不能用构建日志中的 signtool 阶段代替签名验证。
 
-验收脚本已准备并交叉复核，静态检查和五类合成夹具的纯数据验证通过，尚未执行公开 0.2.19 下载、安装或 UI 验收。真实旧版 UI 创建的数据与旧应用退出后才加入的合成新字段夹具分别记录。计划检查公开更新提示、注释/设置保留、独立选择和视口、已知/未知/矛盾语言及缓存、批注删除/撤销、完整重启和卸载后数据保留；Portable 另复核真实论文原有 AMD 译文与 PDF 字节。没有把静态检查或源代码 e2e 当成公开安装包验收。
+| 公开文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132783144 | `0683caaf7aa46d1bac982c52dc2938573bd5dcbe32d35fd5a910326cae4b78cc` |
+| Portable | 132572102 | `fcb0c96a297c6f756991bf1ba2b1a602a919e8d7642d6d90f6f55e7a06e1cf2e` |
 
-当前公开下载仍为 0.2.18；0.2.19 发布、验收及主页入口的实际结果在完成后更新。签名证书未配置，不把构建日志中的 signtool 阶段当成已签名证明。
+公开下载清单为 `test-artifacts/release-0.2.19-verified/verification.json`。本地同名候选包先备份，再暂存真正的公开文件；此后没有重新 dist 覆盖它们。旧升级输入来自已核验的公开 0.2.18 Setup（SHA-256 `24edf0f8a5620e6e9d55ba05b54611ff79ddf335a1c98f35543d2a5d621c70fb`）。
+
+**真实 0.2.18 → 0.2.19 NSIS 升级通过。** 旧安装程序先创建练习论文、笔记和高亮，并显示来自实际 GitHub 的 0.2.19 更新提示；升级后应用确认当前已是最新 Windows 版本，保留原论文、注释及字号 16、行高 24.2、宽度 920。卸载后测试数据与设置保留。报告为 `test-artifacts/i-mw64r5po-354/report.json`，`passed=true`，无渲染/清理错误；事后只读复查没有 PaperBridge 进程、安装注册表、快捷方式或 updater 缓存残留。
+
+新字段验收使用五类单独标识的合成夹具，严格在旧应用关闭后加入，不声称这些字段由 0.2.18 生成。公开已安装程序验证选中段落 2 与可见段落 12 独立恢复；已知、明确未知、缺失未知、可按历史配置推导和矛盾语言分别保留。切到无缓存语言时译文/摘要清空，切回恢复原正文、批次和语言/冲突元数据。Reader 中同锚点高亮/笔记合并，单删笔记保留高亮并同步编辑框，整条删除一次 Undo 全恢复。完整重启后重复检查，模型生成请求数为 0。
+
+**公开 Portable 验收通过。** `test-artifacts/portable-0219-TdKMsM/result.json` 记录真实 15 页、266 段论文及第 17 段原有 410 字符 AMD 中文译文。先将源夹具与首次落盘状态逐项比较，再在粘贴/切文及完整重启后复查全部原文、译文、批注容器、Markdown、解释及输出缓存；仅允许已定义的未知语言元数据新增和初载配置归一化。PDF 字节与旧译文哈希均保持，另用同一组明确合成夹具验证新状态和批注流程。原真实论文没有笔记/高亮，因此批注保全证据来自单独的合成记录；不混淆二者。
+
+四张公开 Portable 截图已检查：原生窗口为 1306×758 CSS、DPR 1.25；标题、Reader、模式/搜索、修复对话框、侧栏和底部检查器正常。490×310 的短视口截图使用 CDP CSS 模拟，横向页面溢出为 0，检查器关闭后仍可滚动阅读；不能称为公开包原生 200% 测试。原生 200% 由源代码桌面回归覆盖。Portable 的 `rendererErrors=[]`，两轮合成检查模型生成请求均为 0；本轮没有重新评测 AMD 模型质量或 NVIDIA 实机。
+
+main 首页的 Windows 直达下载、版本、指南与校验入口已由 README-only 提交 `36ae4e4` 更新至 0.2.19，并同步到 Windows 分支；macOS `/releases/latest` 仍为 `v1.10.0`。本次包验收未覆盖实际导出对话框文件名、PDF/MinerU 切源、所有批注视图的删除及真实模型 resume/regenerate，这些具体场景保留各自源代码回归证据，不扩张成公开包全覆盖或完整 Mac 1:1 结论。更多复杂 PDF、硬件及真实论文并排验收仍在功能映射中。
 
 ## 第七十八阶段：批注列表、完整预览和删除撤销（2026-11-07 UTC，开发分支）
 
