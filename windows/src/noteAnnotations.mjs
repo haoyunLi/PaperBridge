@@ -1,4 +1,5 @@
 import { anchorText } from './academicMarkdown.mjs';
+import { annotationCreationTime } from './annotationCreationTime.mjs';
 import { isPdfScope, pdfAnchorKey, samePdfSelection, storedPdfAnchors, validPdfSelection } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, sameTextAnchor, sameViewAnchor, validPaperArticleSelection, validTextSelection } from './markdownAnchors.mjs';
 
@@ -45,7 +46,7 @@ export function findSelectionNote(paper, selection) {
   return block?.notes?.find(item => matches(selection, item)) || null;
 }
 
-function updateNotes(notes, selection, body, makeId, extra = {}) {
+function updateNotes(paper, notes, selection, body, makeId, extra = {}) {
   const current = notes || [];
   const existing = current.find(item => matches(selection, item));
   if (body === '') return existing ? current.filter(item => item !== existing) : current;
@@ -61,7 +62,7 @@ function updateNotes(notes, selection, body, makeId, extra = {}) {
     return current.map(item => item === existing ? { ...item, body, ...display } : item);
   }
   return [...current, {
-    id: makeId(), text: selection.text, body, createdAt: new Date().toISOString(),
+    id: makeId(), text: selection.text, body, createdAt: annotationCreationTime(paper, selection),
     ...display,
     ...extra
   }];
@@ -70,13 +71,13 @@ function updateNotes(notes, selection, body, makeId, extra = {}) {
 export function applySelectionNote(paper, selection, body, makeId = () => crypto.randomUUID()) {
   if (!validNoteSelection(paper, selection) || typeof body !== 'string') return paper;
   if (isPdfScope(selection.scope)) {
-    const pdfNotes = updateNotes(paper.pdfNotes, selection, body, makeId, {
+    const pdfNotes = updateNotes(paper, paper.pdfNotes, selection, body, makeId, {
       page: selection.page, scope: selection.scope, ...(selection.anchors && { anchors: storedPdfAnchors(selection) })
     });
     return pdfNotes === (paper.pdfNotes || []) ? paper : { ...paper, pdfNotes };
   }
   if (isMarkdownView(selection.scope)) {
-    const viewNotes = updateNotes(paper.viewNotes, selection, body, makeId, {
+    const viewNotes = updateNotes(paper, paper.viewNotes, selection, body, makeId, {
       scope: selection.scope,
       ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind })
     });
@@ -84,7 +85,7 @@ export function applySelectionNote(paper, selection, body, makeId = () => crypto
   }
   const index = paper.blocks.findIndex(item => item.id === selection.id);
   const block = paper.blocks[index];
-  const notes = updateNotes(block.notes, selection, body, makeId, { kind: selection.kind || 'source', scope: selection.scope });
+  const notes = updateNotes(paper, block.notes, selection, body, makeId, { kind: selection.kind || 'source', scope: selection.scope });
   if (notes === (block.notes || [])) return paper;
   const blocks = [...paper.blocks];
   blocks[index] = { ...block, notes };

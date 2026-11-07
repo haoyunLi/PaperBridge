@@ -61,10 +61,12 @@ async function run() {
     `Explanation ${index + 1}. This saved explanation describes the evidence and its limitations without requiring a model request.`).join('\n\n');
   const record = (number, text, output, extra = {}) => ({ id: number, text, translation: output, status: 'ok',
     heading: false, bookmark: false, highlights: [], translationHighlights: [], notes: [], ...extra });
+  const annotatedPassages = Array.from({ length: 18 }, (_, index) => `Annotation passage ${index + 1}: retained evidence.`);
+  const annotatedSource = annotatedPassages.join('\n');
   const blocks = [record(1, 'Layout and evidence', '排版与证据', { heading: true }), record(2, source, translation),
-    record(3, 'Annotated source remains independent of the long selection.', '注释来源不受长文本选择影响。', {
+    record(3, annotatedSource, '注释来源不受长文本选择影响。', {
       notes: Array.from({ length: 18 }, (_, index) => ({ id: `layout-note-${index}`, kind: 'source', scope: 'reader',
-        text: 'Annotated source', offset: 0, body: `Saved note ${index + 1}: retain this annotation while reading long content.`,
+        text: annotatedPassages[index], offset: annotatedSource.indexOf(annotatedPassages[index]), body: `Saved note ${index + 1}: retain this annotation while reading long content.`,
         createdAt: new Date(2026, 0, index + 1).toISOString() })) })];
   const sourceSummary = '- First evidence item starts with a list so default list margins cannot hide an incorrect label gap.\n- Second evidence item retains its complete source.\n\n' + 'The summary describes a controlled comparison and preserves the limits of the original experiment. '.repeat(20);
   const targetSummary = '- 第一项证据从列表开始，标签和正文之间仍然应保持准确的间距。\n- 第二项证据保留完整来源。\n\n' + '摘要用于核对主要发现及其局限，不能替代原始论文中的证据。'.repeat(24);

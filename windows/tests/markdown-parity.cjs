@@ -391,7 +391,7 @@ async function run() {
     await page.getByLabel('Back to previous reading location').click();
     assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).isChecked(), true);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
-    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Paper · document preview · amber' }).getByRole('button', { name: /^Remove view highlight/ }).click();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).getByRole('button', { name: /^Remove view highlight/ }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);
     await page.getByRole('button', { name: 'Undo last highlight or note change' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size), 1);

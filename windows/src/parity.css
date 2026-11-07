@@ -152,11 +152,16 @@
 .library-entry{display:flex;align-items:center;border-bottom:1px solid #e7dfd2}
 .task-progress-message{margin:8px 0 0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .library-entry .modal-list-row{flex:1;border-bottom:0}
-.saved-annotations{margin:10px 14px;flex:none}
-.annotation-row{display:flex;align-items:center;border-top:1px solid #e9e0d6;gap:4px}
-.annotation-row>button:first-child{flex:1;border:0;background:none;text-align:left;padding:7px 2px;min-width:0;color:#122033}
-.annotation-row b,.annotation-row span,.annotation-row small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;margin:2px 0}
-.annotation-row small{color:#667489}
+.saved-annotations{margin:10px 14px;flex:none;min-width:0}
+.annotation-row{display:flex;flex-wrap:wrap;align-items:flex-start;border-top:1px solid #e9e0d6;gap:0 6px;padding:4px 0;min-width:0}
+.annotation-row>.annotation-navigate{flex:1 1 180px;min-width:0;max-width:100%;border:0;border-radius:4px;background:none;text-align:left;padding:3px 2px;color:#122033}
+.annotation-row .annotation-label,.annotation-row .annotation-colors{display:block;margin:2px 0;font-size:11px;line-height:1.4;white-space:normal;overflow-wrap:anywhere}
+.annotation-row .annotation-quote,.annotation-row .annotation-note{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;margin:2px 0;font-size:11px;line-height:1.4}
+.annotation-row .annotation-note{color:#667489;font-weight:400;letter-spacing:normal}
+.annotation-row .annotation-colors{color:#667489;font-size:10px}
+.annotation-actions{display:flex;flex:0 1 auto;flex-wrap:wrap;justify-content:flex-end;gap:2px;min-width:0;max-width:100%;margin-left:auto;padding:2px 0}
+.annotation-actions>.icon-button{flex:none;width:28px;height:28px}
+.annotation-navigate:focus-visible,.annotation-actions>.icon-button:focus-visible{outline:2px solid #0a59d6;outline-offset:1px}
 .paragraph-explanation{margin:10px 14px;flex:none}
 .paragraph-explanation select{width:100%;border:1px solid #bfc6cd;border-radius:6px;padding:6px;background:#fff}
 .paragraph-explanation p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}

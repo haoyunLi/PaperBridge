@@ -20,6 +20,8 @@ import { createUndoEntry, applyUndoEntry, remapPositionAfterStructureChange } fr
 import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
 import { normalizeOutputLanguage, commonOutputLanguage, migrateOutputLanguages } from './outputLanguages.mjs';
 import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
+import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords } from './savedAnnotations.mjs';
+import { annotationCreationTime } from './annotationCreationTime.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
 import { firstSelectableParagraphID, isSelectableParagraphID, resolveSelectedParagraphID } from './paragraphSelection.mjs';
@@ -250,9 +252,6 @@ function validViewAnchor(paper, item) {
 function markdownViewTab(scope) {
   if (scope === 'paperArticle') return 'Paper';
   return scope === 'fullTranslation' ? 'Full Translation' : 'Summary';
-}
-function markdownViewLabel(scope) {
-  return scope === 'paperArticle' ? 'Paper · document preview' : scope;
 }
 function validBlockAnchor(block, item, kind, markdown = blockMarkdown(block, kind)) {
   return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), markdown);
@@ -878,24 +877,40 @@ function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLib
   </>;
 }
 
-function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, navigatePdf, removeNote, removeHighlight, removeViewNote, removeViewHighlight, removePdfNote, removePdfHighlight }) {
-  const notes = paper.blocks.flatMap(block => (block.notes || []).map(note => ({ block, note })));
-  const highlights = paper.blocks.flatMap(block => [
-    ...(block.highlights || []).map(highlight => ({ block, highlight, kind: 'source' })),
-    ...(block.translationHighlights || []).map(highlight => ({ block, highlight, kind: 'translation' }))
-  ]);
-  const viewNotes = paper.viewNotes || [];
-  const viewHighlights = paper.viewHighlights || [];
-  const pdfNotes = paper.pdfNotes || [];
-  const pdfHighlights = paper.pdfHighlights || [];
-  if (!notes.length && !highlights.length && !viewNotes.length && !viewHighlights.length && !pdfNotes.length && !pdfHighlights.length) return null;
-  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {notes.length + highlights.length + viewNotes.length + viewHighlights.length + pdfNotes.length + pdfHighlights.length}</small>
-    {notes.map(({ block, note }) => <div className="annotation-row" key={note.id}><button onClick={() => navigateBlockAnnotation(block.id, note, note.kind || 'source', 'note')}><b>{blockAnnotationScope(note) === 'paper' ? 'Paper' : 'Reader'} · Block {block.id}{note.needsReview || !validBlockAnchor(block, note, note.kind || 'source') ? ' · source changed, review needed' : ''}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete note ${note.id}`} onClick={() => removeNote(block.id, note.id)}><Trash2 size={14} /></button></div>)}
-    {highlights.map(({ block, highlight, kind }, index) => <div className="annotation-row" key={`${block.id}-${highlight.offset}-${index}`}><button onClick={() => navigateBlockAnnotation(block.id, highlight, kind, 'highlight')}><b>{blockAnnotationScope(highlight) === 'paper' ? 'Paper' : 'Reader'} · Block {block.id} · {kind} · {highlight.color} highlight{highlight.needsReview || !validBlockAnchor(block, highlight, kind) ? ' · source changed, review needed' : ''}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove highlight ${block.id} ${index}`} onClick={() => removeHighlight(block.id, highlight, kind)}><Trash2 size={14} /></button></div>)}
-    {viewNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigateView(note)}><b>{markdownViewLabel(note.scope)}{validViewAnchor(paper, note) ? '' : ' · source changed, review needed'}</b><span>{short(note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete view note ${note.id}`} onClick={() => removeViewNote(note.id)}><Trash2 size={14} /></button></div>)}
-    {viewHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigateView(highlight)}><b>{markdownViewLabel(highlight.scope)} · {highlight.color}{validViewAnchor(paper, highlight) ? '' : ' · source changed, review needed'}</b><span>{short(highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove view highlight ${highlight.id}`} onClick={() => removeViewHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
-    {pdfNotes.map(note => <div className="annotation-row" key={note.id}><button onClick={() => navigatePdf(note)}><b>{pdfAnnotationScope(note) === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · {pdfPageLabel(note)}{note.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(note.quote ?? note.text, 90)}</span><small>{short(note.body, 110)}</small></button><button className="icon-button" aria-label={`Delete PDF note ${note.id}`} onClick={() => removePdfNote(note.id)}><Trash2 size={14} /></button></div>)}
-    {pdfHighlights.map(highlight => <div className="annotation-row" key={highlight.id}><button onClick={() => navigatePdf(highlight)}><b>{pdfAnnotationScope(highlight) === 'paperPdf' ? 'Paper · exact PDF' : 'Original PDF'} · {pdfPageLabel(highlight)} · {highlight.color} highlight{highlight.needsReview ? ' · source changed, review needed' : ''}</b><span>{short(highlight.quote ?? highlight.text, 90)}</span></button><button className="icon-button" aria-label={`Remove PDF highlight ${highlight.id}`} onClick={() => removePdfHighlight(highlight.id)}><Trash2 size={14} /></button></div>)}
+function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, navigatePdf, removeRecords }) {
+  const entries = useMemo(() => savedAnnotations(paper), [paper]);
+  if (!entries.length) return null;
+  function navigateRecord(ref) {
+    if (ref.location === 'block') navigateBlockAnnotation(ref.blockId, ref.item, ref.kind, ref.category);
+    else if (ref.location === 'view') navigateView(ref.item);
+    else navigatePdf(ref.item);
+  }
+  function removalLabel(ref) {
+    if (ref.category === 'note') return `Delete ${ref.location === 'pdf' ? 'PDF ' : ref.location === 'view' ? 'view ' : ''}note ${ref.item.id}`;
+    return `Remove ${ref.location === 'pdf' ? 'PDF ' : ref.location === 'view' ? 'view ' : ''}highlight ${ref.location === 'block' ? `${ref.blockId} ` : ''}${ref.item.id || ref.key}`;
+  }
+  function removalName(ref, entry) {
+    const label = removalLabel(ref);
+    const matching = entry.records.filter(item => removalLabel(item) === label);
+    return matching.length > 1 ? `${label} (${matching.indexOf(ref) + 1} of ${matching.length})` : label;
+  }
+  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {entries.length}</small>
+    {entries.map(entry => {
+      const primary = entry.notes[0] || entry.highlights[0];
+      const colors = [...new Set(entry.highlights.map(ref => displayHighlightColor(ref.item.color)).filter(Boolean))];
+      return <div className="annotation-row" data-annotation-key={entry.key} key={entry.key}>
+        <button className="annotation-navigate" onClick={() => navigateRecord(primary)}>
+          <b className="annotation-label">{entry.label}{entry.review ? ' · source changed, review needed' : ''}</b>
+          {colors.length > 0 && <span className="annotation-colors">{colors.map(highlightColorName).join(', ')} highlight</span>}
+          <span className="annotation-quote" title={entry.quote}>{entry.quote}</span>
+          {entry.notes.map(ref => <small className="annotation-note" key={ref.key} title={ref.item.body}>{ref.item.body}</small>)}
+        </button>
+        <div className="annotation-actions">
+          {entry.records.map(ref => <button className="icon-button" key={ref.key} aria-label={removalName(ref, entry)} title={ref.category === 'note' ? `Delete note only: ${ref.item.body}` : 'Remove highlight only'} onClick={() => removeRecords([ref])}><X size={14} /></button>)}
+          {entry.records.length > 1 && <button className="icon-button" aria-label={`Delete annotation ${entry.label}`} title="Delete this annotation, including its notes and highlights" onClick={() => removeRecords(entry.records)}><Trash2 size={14} /></button>}
+        </div>
+      </div>;
+    })}
   </div>;
 }
 
@@ -2640,7 +2655,7 @@ function App() {
       const matching = saved.filter(item => highlightMatchesSelection(item, selection));
       if (matching.length === 1 && matching[0].color === color && matching[0].quote === selection.quote) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
-      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: new Date().toISOString() }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
+      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
         page: selection.page, offset: selection.offset, text: selection.text, quote: selection.quote,
         ...(selection.anchors && { anchors: storedPdfAnchors(selection) }), color };
       commitPaper(current => ({ ...current, pdfHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
@@ -2654,7 +2669,7 @@ function App() {
       const matching = saved.filter(item => highlightMatchesSelection(item, selection));
       if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
-      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: new Date().toISOString() }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
         ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
         ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind }), color };
       commitPaper(current => ({ ...current, viewHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
@@ -2669,7 +2684,7 @@ function App() {
     const matching = highlights.filter(item => highlightMatchesSelection(item, selection));
     if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
     rememberUndo();
-    const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: new Date().toISOString() }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+    const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
       ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), color };
     updateBlock(block.id, { [key]: [...highlights.filter(entry => !highlightMatchesSelection(entry, selection)), item] });
     setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
@@ -2709,12 +2724,23 @@ function App() {
     const saved = await finishNoteEditing();
     setStatus(saved ? 'Note saved on this PC.' : 'The note is still in memory. Retry the failed save.');
   }
-  function removeNote(blockId, noteId) { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; rememberUndo(); updateBlock(blockId, { notes: (block.notes || []).filter(note => note.id !== noteId) }); }
-  function removeHighlight(blockId, highlight, kind = 'source') { const block = paper.blocks.find(item => item.id === blockId); if (!block) return; const key = kind === 'translation' ? 'translationHighlights' : 'highlights'; rememberUndo(); updateBlock(blockId, { [key]: (block[key] || []).filter(item => item !== highlight) }); }
-  function removeViewNote(id) { rememberUndo(); commitPaper(current => ({ ...current, viewNotes: (current.viewNotes || []).filter(item => item.id !== id) })); }
-  function removeViewHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, viewHighlights: (current.viewHighlights || []).filter(item => item.id !== id) })); }
-  function removePdfNote(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfNotes: (current.pdfNotes || []).filter(item => item.id !== id) })); }
-  function removePdfHighlight(id) { rememberUndo(); commitPaper(current => ({ ...current, pdfHighlights: (current.pdfHighlights || []).filter(item => item.id !== id) })); }
+  function removeAnnotationRecords(records) {
+    const current = paperRef.current;
+    if (!current) return;
+    const activeNote = findSelectionNote(current, selectionRef.current);
+    const next = removeSavedAnnotationRecords(current, records);
+    if (next === current) return;
+    // Finish the typing undo group before recording this separate deletion.
+    // The draft changes only when its actual backing note is being deleted.
+    void finishNoteEditing();
+    rememberUndo();
+    commitPaper(next);
+    if (activeNote && records.some(ref => ref.category === 'note' && ref.item === activeNote)) {
+      setNoteDraft(findSelectionNote(next, selectionRef.current)?.body || '');
+    }
+    setStatus(records.length > 1 ? 'Annotation deleted. Undo restores its notes and highlights.'
+      : records[0].category === 'note' ? 'Note deleted; any highlight was kept.' : 'Highlight removed; any note was kept.');
+  }
   async function saveGlossary(next) {
     const write = api.saveGlossary(next);
     glossarySave.current = write;
@@ -3276,7 +3302,7 @@ function App() {
         </>}
       </div>
     </main>
-    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
+    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>

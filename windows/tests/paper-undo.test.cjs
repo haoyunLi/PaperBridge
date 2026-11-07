@@ -41,6 +41,80 @@ test('undo restores deleted highlights and does not remove a newly edited note',
   assert.equal(restored.blocks[0].notes[0].body, 'Later edit');
 });
 
+test('saved annotation single and atomic deletion undo retain duplicate IDs, every historical body and original order', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { savedAnnotations, removeSavedAnnotationRecords } = await import('../src/savedAnnotations.mjs');
+  const first = { id: 'duplicate', text: 'quote', offset: 0, body: 'First historical body' };
+  const second = { ...first, body: 'Second historical body' };
+  for (const location of ['block', 'view', 'pdf']) {
+    const items = location === 'view' ? [first, second].map(item => ({ ...item, scope: 'summarySource' }))
+      : location === 'pdf' ? [first, second].map(item => ({ ...item, scope: 'pdf', page: 1 })) : [first, second];
+    const before = paper([{ text: 'quote', ...(location === 'block' && { notes: items }) }], {
+      summary: { source: 'quote' }, ...(location === 'view' && { viewNotes: items }), ...(location === 'pdf' && { pdfNotes: items })
+    });
+    const group = savedAnnotations(before)[0];
+    for (const refs of [[group.notes[0]], [group.notes[1]], group.records]) {
+      const after = removeSavedAnnotationRecords(before, refs);
+      const restored = applyUndoEntry(after, createUndoEntry(before, after));
+      assert.deepEqual(restored, before, `${location}: deleted ${refs.map(ref => ref.item.body).join(', ')}`);
+    }
+  }
+});
+
+test('deletion undo restores original array order and identical duplicate multiplicity', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const first = { id: 'same', text: 'One', offset: 0, body: 'Same body' };
+  const other = { id: 'other', text: 'sentence', offset: 4, body: 'Other body' };
+  const before = paper([{ text: 'One sentence.', notes: [first, other, { ...first }] }]);
+  for (const notes of [[other, before.blocks[0].notes[2]], [other], []]) {
+    const after = paper([{ ...before.blocks[0], notes }]);
+    assert.deepEqual(applyUndoEntry(after, createUndoEntry(before, after)).blocks[0].notes, before.blocks[0].notes);
+  }
+});
+
+test('duplicate-ID deletion undo keeps later note edits, same-ID new anchors and unrelated highlight changes', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const first = { id: 'same', text: 'One', offset: 0, body: 'First body' };
+  const second = { ...first, body: 'Second body' };
+  const unrelated = { id: 'other', text: 'sentence', offset: 4, body: 'Other body' };
+  const highlight = { id: 'highlight', text: 'One', offset: 0, color: 'amber' };
+  const before = paper([{ text: 'One sentence.', notes: [first, second, unrelated], highlights: [highlight] }]);
+  const after = paper([{ ...before.blocks[0], notes: [second, unrelated] }]);
+  const laterSecond = { ...second, body: 'Later second body' };
+  const laterUnrelated = { ...unrelated, body: 'Later unrelated body' };
+  const newSameID = { ...first, text: 'sentence', offset: 4, body: 'New occurrence with reused ID' };
+  const current = paper([{ ...after.blocks[0], notes: [laterSecond, laterUnrelated, newSameID],
+    highlights: [{ ...highlight, color: 'teal' }] }]);
+  const entry = createUndoEntry(before, after);
+  const restored = applyUndoEntry(current, entry);
+  assert.deepEqual(restored.blocks[0].notes, [first, laterSecond, laterUnrelated, newSameID]);
+  assert.deepEqual(restored.blocks[0].highlights, current.blocks[0].highlights);
+  assert.deepEqual(applyUndoEntry(restored, entry).blocks[0].notes, restored.blocks[0].notes, 'Restored occurrences are not duplicated by a repeat application');
+
+  const cleared = paper([{ ...before.blocks[0], notes: [] }]);
+  const later = paper([{ ...cleared.blocks[0], notes: [newSameID], highlights: current.blocks[0].highlights }]);
+  const restoredAll = applyUndoEntry(later, createUndoEntry(before, cleared));
+  assert.deepEqual(restoredAll.blocks[0].notes, [first, second, unrelated, newSameID]);
+  assert.deepEqual(restoredAll.blocks[0].highlights, current.blocks[0].highlights);
+});
+
+test('duplicate-ID edit undo changes only unambiguous occurrences and preserves later bodies', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const first = { id: 'same', text: 'One', offset: 0, body: 'First body' };
+  const second = { ...first, body: 'Second body' };
+  const before = paper([{ text: 'One sentence.', notes: [first, second] }]);
+  const changed = { ...first, body: 'Changed first body' };
+  const after = paper([{ ...before.blocks[0], notes: [changed, second] }]);
+  const later = { ...changed, body: 'Later first body' };
+  const current = paper([{ ...after.blocks[0], notes: [later, second] }]);
+  assert.deepEqual(applyUndoEntry(current, createUndoEntry(before, after)).blocks[0].notes, [later, second]);
+
+  const bothChanged = paper([{ ...before.blocks[0], notes: [changed, { ...second, body: 'Changed second body' }] }]);
+  const ambiguous = paper([{ ...bothChanged.blocks[0], notes: [later, { ...second, body: 'Later second body' }] }]);
+  assert.deepEqual(applyUndoEntry(ambiguous, createUndoEntry(before, bothChanged)).blocks[0].notes, ambiguous.blocks[0].notes,
+    'Do not guess which historical body belongs to indistinguishable later duplicates');
+});
+
 test('undoing a split restores old anchors and translations while retaining later notes and unaffected AI outputs', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const { splitBlockAt } = await paperHelpers;
@@ -139,6 +213,88 @@ test('undoing a merge restores legacy anchors once and maps newly written notes 
   assert.equal(restored.blocks[1].notes[1].offset, 0);
   assert.equal(restored.blocks[1].notes[1].needsReview, false);
   assert.equal(restored.blocks[1].translation, 'Old second translation');
+});
+
+test('real split and merge undo retain every duplicate-ID body and same-value occurrence', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { splitBlockAt, mergeBlocks } = await paperHelpers;
+  const first = { id: 'duplicate', text: 'Shared', offset: 0, body: 'First body' };
+  const notes = [first, { ...first, body: 'Second body' }, { ...first }];
+  const highlights = [{ id: 'duplicate-highlight', text: 'Shared', offset: 0, color: 'amber' },
+    { id: 'duplicate-highlight', text: 'Shared', offset: 0, color: 'teal' }];
+  const beforeSplit = paper([{ text: 'Shared first sentence. Shared second sentence.', notes, highlights }]);
+  const afterSplit = paper(splitBlockAt(beforeSplit.blocks[0], 23).map((block, index) => ({ ...block, id: index + 1 })));
+  const restoredSplit = applyUndoEntry(afterSplit, createUndoEntry(beforeSplit, afterSplit));
+  assert.deepEqual(restoredSplit.blocks[0].notes, notes);
+  assert.deepEqual(restoredSplit.blocks[0].highlights, highlights);
+
+  const beforeMerge = paper([{ text: 'Shared first sentence.', notes, highlights },
+    { text: 'Shared second sentence.', notes: [{ ...first }], highlights: [{ ...highlights[0] }] }]);
+  const afterMerge = paper([mergeBlocks(...beforeMerge.blocks)]);
+  const restoredMerge = applyUndoEntry(afterMerge, createUndoEntry(beforeMerge, afterMerge));
+  for (const field of ['notes', 'highlights']) assert.deepEqual(restoredMerge.blocks.map(block => block[field]), beforeMerge.blocks.map(block => block[field]));
+});
+
+test('split undo preserves duplicate-ID later body/color edits and each independently deleted occurrence', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { splitBlockAt } = await paperHelpers;
+  const first = { id: 'duplicate', text: 'Second', offset: 16, body: 'First body' };
+  const second = { ...first, body: 'Second body' };
+  const highlights = [{ id: 'same-highlight', text: 'Second', offset: 16, color: 'amber' },
+    { id: 'same-highlight', text: 'Second', offset: 16, color: 'teal' }];
+  const before = paper([{ text: 'First sentence. Second sentence.', notes: [first, second], highlights }]);
+  const after = paper(splitBlockAt(before.blocks[0], 15).map((block, index) => ({ ...block, id: index + 1 })));
+  const entry = createUndoEntry(before, after);
+  const added = { id: 'duplicate', text: 'First sentence', offset: 0, body: 'New same-ID anchor' };
+  const edited = { ...after, blocks: after.blocks.map((block, index) => index === 0 ? { ...block, notes: [added] }
+    : { ...block, notes: block.notes.map((note, at) => at ? note : { ...note, body: 'Later first body' }),
+      highlights: block.highlights.map((highlight, at) => at ? highlight : { ...highlight, color: 'coral' }) }) };
+  const restored = applyUndoEntry(edited, entry);
+  assert.deepEqual(restored.blocks[0].notes.map(note => note.body), ['Later first body', 'Second body', 'New same-ID anchor']);
+  assert.deepEqual(restored.blocks[0].notes.map(note => note.offset), [16, 16, 0]);
+  assert.equal(restored.blocks[0].notes[2].needsReview, false);
+  assert.deepEqual(restored.blocks[0].highlights.map(highlight => highlight.color), ['coral', 'teal']);
+
+  for (const removed of [0, 1]) {
+    const current = { ...after, blocks: after.blocks.map((block, index) => index === 0 ? block
+      : { ...block, notes: block.notes.filter((_, at) => at !== removed), highlights: block.highlights.filter((_, at) => at !== removed) }) };
+    const undone = applyUndoEntry(current, entry);
+    assert.deepEqual(undone.blocks[0].notes, [removed === 0 ? second : first]);
+    assert.deepEqual(undone.blocks[0].highlights, [highlights[removed === 0 ? 1 : 0]]);
+  }
+});
+
+test('merge undo maps duplicate IDs by full historical record and keeps later same-ID new anchors', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { mergeBlocks } = await paperHelpers;
+  const first = { id: 'same', text: 'First', offset: 0, body: 'First body' };
+  const second = { id: 'same', text: 'Second', offset: 0, body: 'Second body' };
+  const before = paper([{ text: 'First passage.', notes: [first] }, { text: 'Second passage.', notes: [second] }]);
+  const after = paper([mergeBlocks(...before.blocks)]);
+  const added = { id: 'same', text: 'Second passage', offset: after.blocks[0].text.indexOf('Second'), body: 'New same-ID note' };
+  const current = paper([{ ...after.blocks[0], notes: [{ ...after.blocks[0].notes[1], body: 'Later second body' }, added] }]);
+  const restored = applyUndoEntry(current, createUndoEntry(before, after));
+  assert.deepEqual(restored.blocks[0].notes, [], 'Later deletion of the first record remains deleted');
+  assert.deepEqual(restored.blocks[1].notes.map(note => note.body), ['Later second body', 'New same-ID note']);
+  assert.deepEqual(restored.blocks[1].notes.map(note => note.offset), [0, 0]);
+  assert.equal(restored.blocks[1].notes[1].needsReview, false);
+});
+
+test('structural undo retains ambiguous historical bodies and keeps later edits separately for review', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const { mergeBlocks } = await paperHelpers;
+  const item = { id: 'same', text: 'Shared', offset: 0, body: 'Same historical body' };
+  const before = paper([{ text: 'Shared first passage.', notes: [{ ...item }] },
+    { text: 'Shared second passage.', notes: [{ ...item }] }]);
+  const after = paper([mergeBlocks(...before.blocks)]);
+  const later = { ...after.blocks[0].notes[1], body: 'Later body with ambiguous original owner' };
+  const current = paper([{ ...after.blocks[0], notes: [after.blocks[0].notes[0], later] }]);
+  const restored = applyUndoEntry(current, createUndoEntry(before, after));
+  assert.deepEqual(restored.blocks.map(block => block.notes[0].body), ['Same historical body', 'Same historical body']);
+  const retained = restored.blocks.flatMap(block => block.notes).filter(note => note.body === later.body);
+  assert.equal(retained.length, 1);
+  assert.equal(retained[0].needsReview, true);
+  assert.equal(current.blocks[0].notes[1].needsReview, false, 'The live input remains unchanged');
 });
 
 test('structural undo independently restores selection and the saved viewport without changing current view preferences', async () => {

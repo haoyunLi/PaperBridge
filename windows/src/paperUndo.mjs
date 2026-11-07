@@ -85,22 +85,64 @@ function undoObject(current, before, after) {
   return result;
 }
 
+function matchItems(from, to, allowAnchorChanges = true) {
+  const matches = new Map(), used = new Set();
+  const sameKey = (a, b) => itemKey(a) === itemKey(b);
+  const anchor = ({ body, color, ...rest }) => rest;
+  function match(index, target) { matches.set(index, target); used.add(target); }
+  // Record IDs are not unique in every legacy document. Match occurrences,
+  // retaining their multiplicity, before considering a changed body or color.
+  from.forEach((item, index) => {
+    const target = to.findIndex((other, at) => !used.has(at) && sameKey(item, other) && equal(item, other));
+    if (target >= 0) match(index, target);
+  });
+  from.forEach((item, index) => {
+    if (matches.has(index)) return;
+    const candidates = to.flatMap((other, at) => !used.has(at) && sameKey(item, other) && equal(anchor(item), anchor(other)) ? [at] : []);
+    if (candidates.length === 1 && from.filter((other, at) => !matches.has(at) && sameKey(other, to[candidates[0]]) && equal(anchor(other), anchor(to[candidates[0]]))).length === 1) match(index, candidates[0]);
+  });
+  // A genuinely unique ID still supports ordinary edits to anchor fields.
+  from.forEach((item, index) => {
+    if (!allowAnchorChanges || matches.has(index) || from.filter(other => sameKey(item, other)).length !== 1 || to.filter(other => sameKey(item, other)).length !== 1) return;
+    const target = to.findIndex((other, at) => !used.has(at) && sameKey(item, other));
+    if (target >= 0) match(index, target);
+  });
+  return matches;
+}
+
 function undoItems(current = [], before = [], after = []) {
-  const oldItems = new Map(before.map(item => [itemKey(item), item]));
-  const newItems = new Map(after.map(item => [itemKey(item), item]));
-  let result = [...current];
-  for (const key of new Set([...oldItems.keys(), ...newItems.keys()])) {
-    const oldItem = oldItems.get(key);
-    const newItem = newItems.get(key);
-    if (equal(oldItem, newItem)) continue;
-    const index = result.findIndex(item => itemKey(item) === key);
-    if (!oldItem) {
-      if (index >= 0 && equal(result[index], newItem)) result.splice(index, 1);
-    } else if (!newItem) {
-      if (index < 0) result.push(clone(oldItem));
-    } else if (index >= 0) result[index] = undoObject(result[index], oldItem, newItem);
+  if (equal(current, after)) return clone(before);
+  const oldToNew = matchItems(before, after), newToCurrent = matchItems(after, current);
+  const matchedNew = new Set(oldToNew.values()), matchedCurrent = new Set(newToCurrent.values());
+  const result = current.map(item => ({ item }));
+  const currentNodes = [...result];
+  const beforeNodes = before.map((_, index) => currentNodes[newToCurrent.get(oldToNew.get(index))]);
+  const deleted = before.flatMap((item, index) => oldToNew.has(index) ? [] : [{ item, index }]);
+  const added = after.flatMap((item, index) => matchedNew.has(index) ? [] : [{ item, index }]);
+  for (const [oldIndex, newIndex] of oldToNew) {
+    const node = currentNodes[newToCurrent.get(newIndex)];
+    if (node && !equal(before[oldIndex], after[newIndex])) node.item = undoObject(node.item, before[oldIndex], after[newIndex]);
   }
-  return result;
+  for (const { item, index } of added) {
+    // Unmatched changes sharing a key may be edits to ambiguous duplicates.
+    if (deleted.some(old => itemKey(old.item) === itemKey(item))) continue;
+    const node = currentNodes[newToCurrent.get(index)];
+    if (node && equal(node.item, item)) result.splice(result.indexOf(node), 1);
+  }
+  for (const { item, index } of deleted) {
+    if (added.some(next => itemKey(next.item) === itemKey(item))) continue;
+    // Do not duplicate an occurrence already restored independently.
+    const existing = current.findIndex((other, at) => !matchedCurrent.has(at) && equal(item, other));
+    if (existing >= 0) {
+      matchedCurrent.add(existing); beforeNodes[index] = currentNodes[existing]; continue;
+    }
+    const node = { item: clone(item) };
+    const next = beforeNodes.slice(index + 1).find(candidate => candidate && result.includes(candidate));
+    const previous = beforeNodes.slice(0, index).findLast(candidate => candidate && result.includes(candidate));
+    const at = next ? result.indexOf(next) : previous ? result.indexOf(previous) + 1 : Math.min(index, result.length);
+    result.splice(at, 0, node); beforeNodes[index] = node;
+  }
+  return result.map(node => node.item);
 }
 
 function undoFields(current, changes) {
@@ -125,29 +167,71 @@ function changedRange(before, after) {
 
 function restoreStructuralAnnotations(restored, current, after) {
   for (const field of ['notes', 'highlights', 'translationHighlights']) {
-    const oldItems = restored.flatMap(block => block[field] || []);
-    const afterItems = after.flatMap(block => block[field] || []);
-    const oldKeys = new Set(oldItems.map(itemKey));
-    const afterKeys = new Set(afterItems.map(itemKey));
-    const latest = new Map(current.flatMap(block => (block[field] || []).map(item => [itemKey(item), item])));
-    const matchedKeys = new Set();
-    const quoteKey = item => JSON.stringify([item.kind, item.text]);
+    if (equal(current.map(block => block[field] || []), after.map(block => block[field] || []))) continue;
+    const records = blocks => blocks.flatMap((block, blockIndex) => (block[field] || []).map(item => ({ item, blockIndex })));
+    const oldItems = records(restored), afterItems = records(after), latest = records(current);
+    const invariant = ({ offset, displayOffset, renderedAnchor, needsReview, ...item }) => JSON.stringify(item);
+    const anchor = ({ body, color, ...item }) => item;
+    const sameAnchor = (a, b) => a.blockIndex === b.blockIndex && itemKey(a.item) === itemKey(b.item) && equal(anchor(a.item), anchor(b.item));
+    const groups = items => {
+      const result = new Map();
+      items.forEach(({ item }, index) => {
+        const key = invariant(item);
+        if (!result.has(key)) result.set(key, []);
+        result.get(key).push(index);
+      });
+      return result;
+    };
+    const oldGroups = groups(oldItems), afterGroups = groups(afterItems);
+    const oldToAfter = new Map(), afterToLive = new Map(), consumed = new Set(), review = new Set();
+    let afterStart = 0, liveStart = 0;
+    after.forEach((block, blockIndex) => {
+      const old = block[field] || [], live = current[blockIndex]?.[field] || [];
+      // Current and after share the same source blocks. A reused ID on a new
+      // anchor must not masquerade as an edit of a deleted historical record.
+      for (const [a, b] of matchItems(old, live, false)) afterToLive.set(afterStart + a, liveStart + b);
+      afterStart += old.length; liveStart += live.length;
+    });
+    const claimedLive = new Set(afterToLive.values());
+    for (const [key, oldIndices] of oldGroups) {
+      const nextIndices = afterGroups.get(key) || [];
+      const samePlace = (items, indices) => indices.every(index => sameAnchor(items[index], items[indices[0]]));
+      if (oldIndices.length === 1 && nextIndices.length === 1 ||
+          nextIndices.length && samePlace(oldItems, oldIndices) && samePlace(afterItems, nextIndices)) {
+        oldIndices.slice(0, nextIndices.length).forEach((index, at) => oldToAfter.set(index, nextIndices[at]));
+      } else {
+        // Several identical bodies on different original anchors cannot be
+        // assigned a later edit safely. Keep originals and preserve changed
+        // live records separately for review; consume unchanged copies only.
+        for (const index of nextIndices) {
+          const liveIndex = afterToLive.get(index);
+          if (liveIndex === undefined) continue;
+          if (equal(afterItems[index].item, latest[liveIndex].item)) consumed.add(liveIndex);
+          else review.add(liveIndex);
+        }
+      }
+    }
+    let oldIndex = 0;
     for (const block of restored) {
       block[field] = (block[field] || []).flatMap(original => {
-        const key = itemKey(original);
-        const legacyMatches = !original.id && oldItems.filter(item => quoteKey(item) === quoteKey(original)).length === 1
-          ? afterItems.filter(item => quoteKey(item) === quoteKey(original)) : [];
-        const mappedKey = afterKeys.has(key) ? key : legacyMatches.length === 1 ? itemKey(legacyMatches[0]) : key;
-        const live = latest.get(mappedKey);
-        if (live) matchedKeys.add(mappedKey);
+        const afterIndex = oldToAfter.get(oldIndex++);
+        if (afterIndex === undefined) return [original];
+        const liveIndex = afterToLive.get(afterIndex);
+        if (liveIndex === undefined) {
+          const possible = latest.flatMap((record, index) => !claimedLive.has(index) && sameAnchor(afterItems[afterIndex], record) ? [index] : []);
+          if (possible.length) { possible.forEach(index => review.add(index)); return [original]; }
+          return [];
+        }
+        const live = latest[liveIndex].item;
+        consumed.add(liveIndex);
         // A user's later deletion remains deleted. An annotation discarded by
         // the structural edit itself is restored along with its old anchor.
-        if (!live && afterKeys.has(mappedKey)) return [];
-        return [{ ...original, ...(live && Object.hasOwn(live, 'body') ? { body: live.body } : {}), ...(live && Object.hasOwn(live, 'color') ? { color: live.color } : {}) }];
+        return [{ ...original, ...(Object.hasOwn(live, 'body') ? { body: live.body } : {}), ...(Object.hasOwn(live, 'color') ? { color: live.color } : {}) }];
       });
     }
-    for (const [key, item] of latest) {
-      if (oldKeys.has(key) || matchedKeys.has(key) || !restored.length) continue;
+    for (const [index, { item }] of latest.entries()) {
+      if (consumed.has(index) || !restored.length) continue;
+      const ambiguous = review.has(index) || afterItems.some(record => sameAnchor(record, latest[index]));
       const kind = field === 'translationHighlights' || item.kind === 'translation' ? 'translation' : 'source';
       const candidates = restored.flatMap((block, index) => {
         const text = anchorText(block, kind);
@@ -155,7 +239,7 @@ function restoreStructuralAnnotations(restored, current, after) {
         if (item.text) for (let offset = text.indexOf(item.text); offset >= 0; offset = text.indexOf(item.text, offset + 1)) matches.push({ index, offset });
         return matches;
       });
-      const unique = candidates.length === 1 ? candidates[0] : null;
+      const unique = !ambiguous && candidates.length === 1 ? candidates[0] : null;
       const target = restored[unique?.index ?? 0];
       const mapped = { ...item, ...(unique ? { offset: unique.offset, needsReview: false } : { needsReview: true }) };
       delete mapped.displayOffset;
