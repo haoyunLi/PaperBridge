@@ -1,5 +1,24 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第七十五阶段：Windows 0.2.18 公开下载、更新提示与升级验收（2026-11-07 UTC）
+
+[Windows 0.2.18](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.18) 已发布，精确源码为 `5c6e71f`。[标签发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346834301)及同提交的 [PR 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346836339)均通过；发布日志确认 203 项单元、33 套桌面回归和打包启动成功。前一版 0.2.17 的失败没有上传资产，更新检测不会把单独的标签当作可安装新版。
+
+重新从公开下载地址取得 Setup / Portable，核对版本、字节数、各自 `.sha256` 和 GitHub asset digest，全部一致。两份程序均为 NotSigned，仍为未签名预览。报告：`test-artifacts/release-0.2.18-verified/verification.json`。
+
+| 公开文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132778681 | `24edf0f8a5620e6e9d55ba05b54611ff79ddf335a1c98f35543d2a5d621c70fb` |
+| Portable | 132567648 | `39871cd4a7ec5c54a4f1bd4b316695c70db2f292b912a1cc84584f66c0b9c509` |
+
+使用公开安装包完成真实、隔离的 0.2.16→0.2.18 安装升级。旧版显示 0.2.18 提示；升级后确认当前公开版本，论文、高亮、笔记、字号 16、行高 24.2px、宽度 920 保留。测试卸载后工作区和设置仍在，测试创建的安装器缓存清理成功，没有 cleanupError。报告：`test-artifacts/i-mw60xqjm-nqo/report.json`。
+
+公开便携版打开真实 Attention Is All You Need 论文，恢复已存的 AMD 中文译文，验证完整内容/批注/PDF 字节保留、默认外观、语言标签、搜索、阅读模式、Repair 取消、侧栏关闭与焦点、内嵌粘贴的 Overview 和草稿保留。报告：`test-artifacts/portable-0218-Fcn6Mi/result.json`，其中 releaseDownload 为 true，记录的二进制哈希与上表相同。这次没有新模型推理；最近真实 AMD 生成测试仍为第 64 阶段。
+
+完整原生主视口 1306×758 CSS / 1633×948 PNG，以及 490×310 CSS 模拟短视口的两张 613×388 PNG 已目视检查。截图记录前后尺寸，未裁去右侧或补出虚拟空白。短视口正文保留约 142.9px，检查器可滚动和关闭。这里的 CDP CSS 模拟与桌面专项的真实 200% 缩放验收分别记录。
+
+main 首页的 Windows 下载和指南链接已更新（`4a0b301`），macOS Latest 仍为 v1.10.0。自动检测更新默认开启，成功检查后缓存 24 小时，Settings / Help 可立即检查；当前打开官方 Release 供手动下载安装。后续继续补齐独立的段落选择/阅读位置、导出语言/文件名、批注列表预览以及更多实机环境，不声称全软件已完成一比一。
+
 ## 第七十四阶段：发布检查发现的折叠状态竞态（2026-11-07 UTC）
 
 第 73 阶段的精确提交 `47787dc` 在 [PR 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42345610544)通过 203 项单元、33 套桌面与打包启动。但同一提交的 [0.2.17 标签构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346065913)在 PDF-only 导入回归发现 MinerU 状态请求从 14 次增至 17 次，发布步骤被阻止，没有生成公开 Release 或下载包。保留失败标签作为历史记录，下一候选版本使用 0.2.18。
