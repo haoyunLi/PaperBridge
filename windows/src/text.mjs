@@ -127,17 +127,70 @@ export function readingMap(blocks) {
   return first ? [{ id: 'beginning', title: 'Start at the beginning', question: 'Section headings were not identified reliably. Read the source before drawing conclusions.', sectionTitle: 'Opening passage', paragraphID: first.id, excerpt: first.text }] : [];
 }
 
-export function chunkText(text, maxLength = 1800) {
-  if (text.length <= maxLength) return [text];
-  const sentences = text.match(/[^.!?。！？]+[.!?。！？]?\s*/g) || [text];
-  const chunks = [];
-  let current = '';
-  for (const sentence of sentences) {
-    if (current && current.length + sentence.length > maxLength) { chunks.push(current.trim()); current = ''; }
-    if (sentence.length > maxLength) {
-      for (let i = 0; i < sentence.length; i += maxLength) chunks.push(sentence.slice(i, i + maxLength).trim());
-    } else current += sentence;
+const chunkGraphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const chunkSentences = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+const chunkAbbreviation = /\b(?:figs?|eqs?|secs?|chaps?|refs?|nos?|vols?|vs|cf|approx|dept|univ|dr|prof|e\.g|i\.e|et al)\.$/i;
+const graphemeCount = text => [...chunkGraphemes.segment(text)].length;
+
+function packChunks(segments, limit) {
+  const packed = [];
+  let current = '', length = 0;
+  for (const segment of segments) {
+    const piece = trimExtractedWhitespace(segment);
+    if (!piece) continue;
+    const size = graphemeCount(piece);
+    if (current && length + 1 + size > limit) { packed.push(current); current = ''; length = 0; }
+    length += size + (current ? 1 : 0);
+    current += (current ? ' ' : '') + piece;
   }
-  if (current.trim()) chunks.push(current.trim());
-  return chunks.filter(Boolean);
+  if (current) packed.push(current);
+  return packed;
+}
+
+function splitChunkWord(word, limit) {
+  // Protected formulas, figures and links must survive even when a token is
+  // adjacent to prose. Only an atomic token may exceed the requested limit.
+  const units = [];
+  let start = 0;
+  const appendText = value => { for (const { segment } of chunkGraphemes.segment(value)) units.push({ text: segment, size: 1 }); };
+  for (const match of word.matchAll(/__PAPERBRIDGE_TOKEN_\d+__/g)) {
+    appendText(word.slice(start, match.index));
+    units.push({ text: match[0], size: graphemeCount(match[0]) });
+    start = match.index + match[0].length;
+  }
+  appendText(word.slice(start));
+  const pieces = [];
+  let current = '', length = 0;
+  for (const unit of units) {
+    if (current && length + unit.size > limit) { pieces.push(current); current = ''; length = 0; }
+    current += unit.text; length += unit.size;
+    if (length >= limit) { pieces.push(current); current = ''; length = 0; }
+  }
+  if (current) pieces.push(current);
+  return pieces;
+}
+
+export function chunkText(text, maxLength = 1800) {
+  if (!Number.isFinite(maxLength) || maxLength < 1) throw new RangeError('The paragraph chunk limit must be positive and finite.');
+  const limit = Math.floor(maxLength), trimmed = trimExtractedWhitespace(text);
+  if (!trimmed) return [];
+  if (graphemeCount(trimmed) <= limit) return [trimmed];
+  const sentences = [];
+  for (const { segment } of chunkSentences.segment(trimmed)) {
+    const piece = trimExtractedWhitespace(segment);
+    if (sentences.length && chunkAbbreviation.test(sentences.at(-1))) sentences[sentences.length - 1] += ` ${piece}`;
+    else if (piece) sentences.push(piece);
+  }
+  const pieces = sentences.flatMap(sentence => {
+    let clauses = [sentence];
+    // Match the Mac order: sentences, semicolon/colon clauses, comma clauses,
+    // then whole words. Long words split only between complete graphemes.
+    for (const boundary of [/(?<=[;:])\p{White_Space}+/u, /(?<=,)\p{White_Space}+/u]) {
+      clauses = clauses.flatMap(piece => graphemeCount(piece) > limit ? packChunks(piece.split(boundary), limit) : [piece]);
+    }
+    return clauses.flatMap(piece => graphemeCount(piece) > limit
+      ? packChunks(piece.split(/\p{White_Space}+/u).flatMap(word => graphemeCount(word) > limit ? splitChunkWord(word, limit) : [word]), limit)
+      : [piece]);
+  });
+  return packChunks(pieces, limit);
 }

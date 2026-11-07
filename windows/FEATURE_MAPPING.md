@@ -62,7 +62,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 的 Original 模式直接复用精确 PDF 画布/文字层，Bilingual / Translation 显示完整结构文档；Windows 另保留 Original 标签 | 对齐 | Paper 内即可完成 Mac 对应切换，额外 Original 入口不改变 Paper 行为。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存。Reader 顶部固定分段单选器，支持方向键。PDF 文字层的双语和译文模式附带可翻页的原页预览 | 对齐 | Electron 流程验证三模式切换、原页预览翻页与折叠，以及长文滚动后的工具栏和键盘切换。 |
 | B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 使用 Mac 同组五类规范化标题、问题提示和精确原文摘录；只在当前章节内找正文，无标题时回退开篇，并提供 Reader 精确跳转、Start Reading、View Original、翻译进度及来源免责声明 | 对齐 | 单元测试覆盖编号/罗马数字标题、拒绝宽松子串误匹配及不借用下一章节正文；Electron 实际验证段落跳转、Original 模式，以及 Translation 模式点击原文后切换双语并可按 Back 恢复。 |
-| B06 | 章节大纲跳转 | 独立按 Mac 规则识别行首标题，MinerU 显式标题优先；全部章节、Beginning 回退、两行全标题和真实段落编号，跳转前清除搜索 | 对齐 | 专项覆盖 65 个章节、同页多个标题、阅读历史、论文切换、980×620 和 200% 缩放。当前标记仍随 Windows 可见段落更新，Mac 独立选择状态待拆分。 |
+| B06 | 章节大纲跳转 | 独立按 Mac 规则识别行首标题，MinerU 显式标题优先；全部章节、Beginning 回退、两行全标题和真实段落编号，跳转前清除搜索 | 对齐 | 专项覆盖 65 个章节、同页多个标题、阅读历史、论文切换、980×620 和 200% 缩放。当前标记由独立的 selectedParagraphID 决定，滚动只更新阅读位置；选择与视口分别保存和恢复，已随公开 0.2.19 发布。 |
 | B07 | 段落书签及侧栏文字预览 | 有书签时显示于大纲前，两行预览、Paragraph 编号与跳转箭头 | 对齐 | 现有来源切换、书签跳转和阅读历史桌面回归保留；长文大纲可独立滚动。 |
 | B08 | Reader 顶部搜索、清除后回到原位置 | 搜索固定在正文上方，支持 Ctrl+F、清除按钮和 Escape。搜索前记录段落及相对位置，筛选滚动不覆盖原阅读位置；目录、书签和来源跳转先清搜索 | 对齐 | Electron 覆盖 980/1320/1500px 窗口、切换显示模式和宽度后清除、跨标签 Find、过滤中重启、Back/Forward 及 150% 缩放。复杂图表重排仍列入真实文档验收。 |
 | B09 | Paper/PDF/Markdown/Reader 各自保存阅读位置 | 逐视图滚动位置、PDF 逐页滚动位置、段落和页码保存；Reader 可见位置与选中段落独立，滚动不替换检查器目标 | 部分 | 专项验证选择 2 / 视口 12、Current section、历史、搜索、切文及重启分别恢复；Markdown 内部锚点和复杂页面重排仍需验证。 |
@@ -82,7 +82,7 @@ Mac 证据：[工作区、搜索与位置](../PaperBridge/ContentView.swift#L480
 | --- | --- | --- | --- | --- |
 | C01 | 源/目标语言可选、可交换 | Settings 与 Document & Import 侧栏共用 11 语言和 Swap，逐论文保存并恢复对应译文缓存 | 对齐 | 侧栏专项验证双向互换、缓存、跨论文和忙时禁用；各语言代码在 Ollama 提示中正确。 |
 | C02 | 分段逐项翻译并原/译对齐 | `translateBlocks` 逐块保存，独立普通/Markdown 标题也进入队列并紧凑对齐 | 部分 | 图片资源继续保留原结构；更多复杂 Markdown 与真实模型待并排验收。 |
-| C03 | 长段在句界分块，结果仍为一个段落 | `chunkText` 再拼接；Settings 提供逐论文 500–6000 字符分块滑块 | 部分 | 设置恢复与缓存隔离已回归；超长单句、公式和多语标点仍需验证。 |
+| C03 | 长段在句界分块，结果仍为一个段落 | 按句、分句、整词及完整 Unicode 字素分块后拼回一段；公式/图片/链接保护标记不拆；逐论文 500–6000 字符设置 | 部分 | 开发分支新增 7 项专项单元与真实应用受控模型回归，覆盖跨 500 边界公式、连续标点、CJK/组合字符、FEFF/NEL、恰好两次有界请求及重启保全；复杂真实长段与 Mac 模型效果对照仍待验收。 |
 | C04 | 单段失败隔离，其他段继续 | 每块 try/catch，状态 failed | 对齐 | 单块失败不阻断队列。 |
 | C05 | 只恢复 pending/failed，不重译 ok | 队列过滤 `status !== ok`，结果按语言、模型、地址、分块和来源版本保存 | 对齐 | 更换设置不把旧译文当作新任务已完成；切回且原文匹配时恢复结果。 |
 | C06 | 单段 Retry | 段落菜单可显式重译成功段落，失败段另有重试按钮；普通未完成队列仍跳过成功段 | 对齐 | Electron 验证只替换目标、取消保留旧状态、失败保留旧译文并标失败、重启持久化。 |
@@ -170,7 +170,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | --- | --- | --- | --- | --- |
 | G01 | 导出原文 Markdown | 结构化导出保留存档的 MinerU 原稿和可访问的本地资源。保留原文单文件入口。 | 部分 | Windows 便携包将资产改写为包内相对链接。其它复杂引用仍待并排验收。 |
 | G02 | 导出逐段译文 Markdown | MinerU 及 PDF 便携译稿在未完成和失败的位置保留原文，结构化译稿保留原有资源与参考文献。按实际输出语言使用 Mac 的 paper_translation 文件名，未知语言不猜后缀。 | 部分 | 单元测试覆盖正常、未完成、失败和资源段落。保留 Windows 额外单文件选项；语言与缓存、续译一起保存，更多真实论文仍待并排验收。 |
-| G03 | 导出双语 Markdown | 结构化译文以标明目标语言的块引用接在原文后，标题保留 Markdown 层级。双语文件继续包含书签、高亮和笔记。 | 部分 | 已核对公式、HTML 表格图、引用和带片段的补充文件链接。更复杂布局仍待并排验收。 |
+| G03 | 导出双语 Markdown | 结构化译文以块引用接在原文后：已知语言使用译文本身的目标语言标签，缺失或矛盾语言使用通用 Translation 标签，不借用当前设置。标题保留 Markdown 层级，双语文件继续包含书签、高亮和笔记。 | 部分 | 已核对公式、HTML 表格图、引用和带片段的补充文件链接。更复杂布局仍待并排验收。 |
 | G04 | 导出摘要/笔记/证据 Markdown | 默认分析文件按段落组织书签和 Reader 高亮/笔记；其它视图、需复核及未输出段落上的记录保留在附录。失败全文原位提示、摘要引用说明及完整引文保留。各摘要/译稿采用自身语言标题，默认分析文件名为 stem_bilingual。 | 部分 | 覆盖同范围合并、不同范围隔离、时间排序、跨页 PDF 和 Markdown 渲染锚点；旧无日期记录保持稳定次序。缺失或矛盾的历史语言保持通用标注，更多真实论文的内容和资源仍待并排验收。 |
 | G05 | 资源 bundle、原 PDF、便携页面图片和全文译稿 | 文件菜单、Ctrl+Shift+E 和 More 直接打开对应保存对话框。MinerU 4.x ZIP 保留主稿引用的本地文件。包内含原 PDF、前 120 页 PNG 和全文译稿。完成后文件资源管理器选中导出包。 | 部分 | 已验证 15 页论文、两页扫描、121 页上限及跨重启复用。实际 MinerU ZIP 补入 CSV 和 Markdown 后核对两者内容及链接片段。真机核对资源管理器选中完整导出包，桌面测试覆盖取消和写入失败。 |
 | G06 | 首次启动分步引导；可重新打开 | 首次启动六步 Getting Started：Ollama、翻译模型、MinerU、解释模型及就绪检查；Settings 与 Help 可重开，可跳过并记录完成状态 | 部分 | 六步、跨启动页码恢复、跳过/重开、忙时焦点和关闭锁、保存去重、练习文档及 980×620/1320×820 布局已通过 Electron 验证；仍需更多 DPI 和 Mac 实机并排对照。 |
@@ -181,8 +181,8 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G11 | 后台下载及进度、取消 | 引导与 SetupPanel 显示进度及取消。验证阶段退出或中断可恢复旧版；已验证的新版可保留。检测会避开其他实例正在修复的环境。 | 部分 | AMD 真机验证正常退出、预下载取消及验证前后强制终止，随后用 DirectML 解析双页扫描。整机断电和其他设备仍待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单。Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E/F/S 及旧 Ctrl+L。菜单项随论文、任务、选区和更新检查状态动态启停。 | 部分 | 单元和 Electron 覆盖空白页、论文、选区、忙碌任务、专注与左侧栏、撤销及重开引导。其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
-| G14 | 签名更新源检查及应用内更新 | 默认启动检查，成功后 24 小时内不重复联网；只识别带完整 x64 Setup 的 Windows 正式 Release。Settings 和 Help 可手动检查，重启/短期离线保留新版提示 | 部分 | 公开 0.2.15 已实测提示并升级到 0.2.16，新版显示已是当前版本。当前 View release 打开 GitHub 下载页；应用内自动下载、签名验证与安装尚未实现。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 公开 0.2.16 两个下载的校验文件与 GitHub digest 一致。0.2.15→0.2.16 升级保留论文、标注和阅读外观，卸载保留工作区；便携版恢复真实论文及已存 AMD 译文。发布包当前未签名，本轮开发修改尚未发布。 |
+| G14 | 签名更新源检查及应用内更新 | 默认启动检查，成功后 24 小时内不重复联网；只识别带完整 x64 Setup 的 Windows 正式 Release。Settings 和 Help 可手动检查，重启/短期离线保留新版提示 | 部分 | 公开 0.2.18 已实测提示并升级到 0.2.19，新版显示已是当前版本。当前 View release 打开 GitHub 下载页；应用内自动下载、签名验证与安装尚未实现。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 公开 0.2.19 两个下载的校验文件与 GitHub digest 一致。0.2.18→0.2.19 升级保留论文、标注和阅读外观，完整重启与卸载保留工作区；便携版通过首次加载及完整重启保留真实论文、已存 AMD 译文和原 PDF。独立夹具验证选择/视口、输出语言缓存及批注删除/撤销。发布包当前未签名；本次为保存数据兼容验收，没有新增模型推理。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 

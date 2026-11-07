@@ -1,5 +1,9 @@
 # Windows AMD 真机回归（2026-09-20）
 
+2026-11-07 08:40 UTC：公开 Windows 0.2.19 Portable 完成新推理与重启验收（`test-artifacts/portable-0219-amd-4uExfj/result.json`）。仅翻译真实论文此前 pending 的第 22 段，热模型 1.094 秒、约 127.6 输出 token/秒；Ollama 0.40.15 / TranslateGemma 4B 报告 modelBytes = vramBytes = 2,881,948,220。新输出 English→Simplified Chinese 与旧第 17 段 Chinese/null 译文分别经语言切换和完整重启保留，原文、缓存与 PDF 哈希不变，renderer errors 为 0。此前冷启动生成 6.125 秒，当次新增日志确认 RX 7800 XT、ROCm gfx1101、35/35 层 GPU；首次报告因脚本把缺失空批注数组与 [] 判为不同而失败，原报告 `portable-0219-amd-YztbEf/result.json` 保留，修正空容器比较后独立重跑通过。两轮各一次生成；热运行没有新后端加载行，不冒充新的 ROCm 日志证据。译文保留 [21]/[32]、ht/ht−1 和顺序计算限制，个别措辞仍需审校；只代表本段论文和本机。环境与用户 Ollama 未修改。分块修复属于后续开发代码，不在此公开包内。
+
+2026-11-07：公开 Windows 0.2.19 便携版通过 SHA-256、校验文件和 GitHub digest 核对后，重新打开真实 Attention Is All You Need。首次加载与完整重启均保留原有 266 个 PDF 文字段落、第 17 段已存中文译文及字节不变的 15 页原 PDF；另用独立夹具验证选中段落与阅读位置、输出语言缓存及批注删除/撤销。原生窗口与明确标注为 CDP CSS 模拟的短视口截图均已检查。此次是公开产物与保存结果的兼容验证，模型请求为 0、renderer errors 为 0，不更新下方真实推理和 GPU 加速的证据。报告为 `test-artifacts/portable-0219-TdKMsM/result.json`，具体范围与限制见[全软件复查第 79 阶段](WHOLE_APP_REVIEW.md)。
+
 2026-11-07 05:09 UTC：公开 Windows 0.2.16 便携版通过 SHA-256 校验后，直接打开真实 Attention Is All You Need，恢复原有 AMD 中文译文，并检查新段落修复弹窗、语言状态、三种阅读模式与搜索。该次为公开产物和已保存结果的兼容验证，没有重新运行推理或更换 GPU 环境；最近一次真实模型调用仍为下述 03:21 UTC 记录。报告为 `test-artifacts/portable-0216-ggksrb/result.json`。
 
 2026-11-07 03:21 UTC：当前开发版再次完成 `npm run test:live`。Reader 通过新 Paragraph actions 菜单翻译练习段落，选词输出“虚构的练习文档”；灯泡先打开检查器，再通过检查器按钮获得真实段落解释。摘要有 6 处已核验来源引用，全文与重启流程通过。Ollama `/api/ps` 报告 `translategemma:4b` 模型大小和显存分配均为 2,881,948,220 字节。四个样例覆盖统计数字、CD8+ T 细胞术语、中译英和 Markdown 公式/图片保留。统计例的数值与单位保留，但译文改变了 p 值短语的位置，不能把这些检查当作全面的语义准确率评测。本次没有重新安装环境、运行 MinerU 或测 NVIDIA。结果为 `test-artifacts/live-local-report.json`，界面截图为 `test-artifacts/live-amd-reader.png`。

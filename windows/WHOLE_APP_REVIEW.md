@@ -1,5 +1,15 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第八十阶段：长段分块与公开版 AMD 新推理（2026-11-07 UTC，开发分支）
+
+对照最新 Mac `TextProcessing.chunkParagraph`，复现 Windows 在合法 500 字符设置下将公式保护标记切成两半，导致模型原样返回也被误报“模型改坏公式”；旧正则还会丢失连续标点，UTF-16 硬切会拆开 emoji。现按句、分号/冒号、逗号、整词分块，长词只在完整字素之间切开，公式/图片/链接/代码占位符始终完整。字符数按字素计算；只有单个完整标记自身超过限制时允许超限，通常 UI 500–6000 设置不涉及此例外。边界空白按 Mac 归一化，使用 Unicode White_Space 保留 FEFF、处理 NEL，保存的原文不改写。
+
+新增 7 项单元，覆盖跨 500 边界公式、图片/链接/代码、连续标点、CJK、组合字符/ZWJ/surrogate、句/词边界、标记邻接及 FEFF/NEL。原 Reader actions 桌面回归新增长 Markdown 的真实应用到受控模型流程：修复前稳定失败（`phase80-chunk-before.log`），修复后恰好两次请求、每次不超过 500 字素，公式/链接/标点完整、语言元数据保存、重启不重新生成。最终报告 `test-artifacts/reader-actions-HiB2Eg/result.json`。本机最终 **266 项单元**、生产构建、Reader actions、主工作流和打包启动通过；本提交 CI 另验全部桌面与发行构建。该分块修复尚未进入公开 0.2.19，下述公开包不是此新代码的模型验收。
+
+公开 0.2.19 Portable 再核验既定 SHA-256 后，在独立工作区翻译真实 15 页 Attention Is All You Need 原本 pending 的第 22 段（755 字符），经记录代理请求已有 Ollama 0.40.15 / TranslateGemma 4B，每轮恰好一次生成。首次冷运行 6.125 秒，当次新增日志明确记录 RX 7800 XT / ROCm gfx1101、35/35 层 GPU；模型与 VRAM 均为 2,881,948,220 字节。首次生成成功后，脚本把旧数据缺失的空 viewNotes/viewHighlights 与语言切换生成的 [] 误判不同，失败报告 `portable-0219-amd-YztbEf/result.json` 原样保留。只修正这两个空容器比较，非空批注或原文变化仍会失败。
+
+独立重跑 `test-artifacts/portable-0219-amd-4uExfj/result.json` **passed=true**：热模型 1.094 秒、约 127.6 输出 token/秒，模型仍全部驻留显存。热运行没有新的后端加载行，ROCm 归因来自前次冷运行的当次增量日志。新译文保存 English→Simplified Chinese；旧第 17 段 410 字符译文及 null 语言保留于 Chinese 历史缓存，真实 UI 往返两种语言后都恢复且不额外生成。关闭刷盘、完整重启后 blocks、variants、新译文/元数据、原文及 PDF 哈希不变，renderer errors 为 0，无清理错误。两轮共两次真实请求，未安装环境或停止用户 Ollama。译文保留 [21]/[32]、ht/ht−1 和顺序计算限制，个别措辞如“至关重要”仍需审校；一个段落不能代表整篇或专业翻译质量。
+
 ## 第七十九阶段：Windows 0.2.19 公开发布与升级验收（2026-11-07 UTC）
 
 [Windows 0.2.19](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.19) 已发布，标签源码为 `fad671750ad0773981e23f2cd6e7fedaa25f537b`，包含第 76–78 阶段的独立段落选择、输出语言归属/导出命名、批注列表与删除/结构 Undo 改进。[标签发布 CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42354219845) 和 [同提交 PR CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42354223334) 均通过 259 项单元、36 套桌面、Setup/Portable 构建和打包启动。版本更新后的本机单元、更新提示重启和打包启动也通过。

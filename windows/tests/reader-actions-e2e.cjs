@@ -78,6 +78,12 @@ async function run() {
       }
       if (mode === 'hold') { heldResponse = response; return; }
       if (mode === 'failure') return response.end(JSON.stringify({ error: 'Intentional paragraph retry failure.' }));
+      if (mode === 'markdown echo') {
+        if (!payload.prompt?.includes('\nMarkdown block:\n')) {
+          return response.end(JSON.stringify({ error: 'Missing Markdown request delimiter in the chunking fixture.' }));
+        }
+        return response.end(JSON.stringify({ response: payload.prompt.split('\nMarkdown block:\n').at(-1), done: true }));
+      }
       response.end(JSON.stringify({ response: `新的段落译文 ${requests.length}。`, done: true }));
     });
   });
@@ -98,12 +104,16 @@ async function run() {
   const paper = { id, name: 'Reader actions fixture', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), inspectorOpen: false,
     blocks: originalBlocks, taskSettings: settings, position: { tab: 'Reader', block: 1, displayMode: 'bilingual' } };
+  const protectedLongSource = 'word '.repeat(98) + '$E=mc^2$' + ' more'.repeat(10) +
+    '!!! Wait... Preserve 🧬 and [the citation](https://example.org/paper).';
   const mineruBlocks = [
     { ...originalBlocks[1], id: 1, sourceMarkdown: '## Results' },
-    { ...originalBlocks[0], id: 2, sourceMarkdown: originalBlocks[0].text }
+    { ...originalBlocks[0], id: 2, sourceMarkdown: originalBlocks[0].text },
+    { ...originalBlocks[6], id: 3, text: protectedLongSource, sourceMarkdown: protectedLongSource }
   ];
   const structured = { ...paper, id: structuredId, name: 'Structured actions fixture', sourceMode: 'mineru',
-    extraction: 'MinerU', blocks: mineruBlocks, mineruBlocks, mineruMarkdown: mineruBlocks.map(block => block.sourceMarkdown).join('\n\n') };
+    extraction: 'MinerU', blocks: mineruBlocks, mineruBlocks, mineruMarkdown: mineruBlocks.map(block => block.sourceMarkdown).join('\n\n'),
+    taskSettings: { ...settings, maxParagraphChars: 500 } };
   const paperFile = paperId => path.join(workspace, 'papers', `${paperId}.json`);
   const readPaper = (paperId = id) => JSON.parse(fs.readFileSync(paperFile(paperId), 'utf8'));
   fs.writeFileSync(paperFile(id), JSON.stringify(paper));
@@ -360,6 +370,26 @@ async function run() {
     await openMenu(1, true);
     for (const name of ['Edit or Split', 'Merge with Previous', 'Merge with Next']) assert.equal(await action(name).isDisabled(), true);
     await page.keyboard.press('Escape');
+    stage('long Markdown paragraph preserves protected tokens across model requests');
+    mode = 'markdown echo';
+    const beforeProtected = requests.length;
+    await bodyAction(3, 'Translate This Paragraph');
+    await waitFor(() => readPaper(structuredId).blocks[2].status !== 'pending', 'long Markdown translation settled');
+    const protectedOutput = readPaper(structuredId).blocks[2];
+    assert.equal(protectedOutput.status, 'ok', protectedOutput.error);
+    const protectedRequests = requests.slice(beforeProtected);
+    assert.equal(protectedRequests.length, 2, 'This fixed paragraph must use exactly two bounded model requests');
+    for (const request of protectedRequests) {
+      assert.ok(request.prompt.includes('\nMarkdown block:\n'));
+      const body = request.prompt.split('\nMarkdown block:\n').at(-1);
+      assert.ok([...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(body)].length <= 500);
+    }
+    assert.equal(protectedOutput.translation.replace(/\s+/g, ' '), protectedLongSource.replace(/\s+/g, ' '),
+      'An unchanged model reply must preserve every formula, link, punctuation mark and Unicode character');
+    assert.deepEqual(protectedOutput.translationLanguage, { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' });
+    assert.equal(protectedOutput.sourceMarkdown, protectedLongSource);
+    await block(3).locator('.translation-text.done').waitFor();
+    mode = 'success';
     await page.locator('.library-row').filter({ hasText: paper.name }).click();
     await page.getByRole('heading', { name: paper.name, exact: true }).waitFor();
     const finalTranslation = readPaper().blocks[0].translation;
@@ -368,11 +398,18 @@ async function run() {
     await launch();
     assert.equal(readPaper().blocks[0].translation, finalTranslation);
     await block(1).locator('.translation-text.done').getByText(finalTranslation, { exact: true }).waitFor();
+    const beforeProtectedRestart = requests.length;
+    await page.locator('.library-row').filter({ hasText: structured.name }).click();
+    await page.getByRole('heading', { name: structured.name, exact: true }).waitFor();
+    await block(3).locator('.translation-text.done').waitFor();
+    assert.equal(readPaper(structuredId).blocks[2].translation, protectedOutput.translation);
+    assert.deepEqual(readPaper(structuredId).blocks[2].translationLanguage, protectedOutput.translationLanguage);
+    assert.equal(requests.length, beforeProtectedRestart, 'Restarting and reopening a saved result must not regenerate it');
     result = { passed: true, workspace, requests: requests.length, checked: [
       'keyboard, Escape, light dismissal and one open menu', 'heading font sizes, source mode, narrow and 200% zoom layout',
       'explicit completed-block retranslation and unfinished range isolation', 'cancellation and failure retain saved output',
       'explanation selection without automatic inference and cancelled stale lookup', 'busy, MinerU, first/last gates',
-      'direct edit, merge, reflow and undo', 'restart persistence'
+      'direct edit, merge, reflow and undo', 'long Markdown request chunking, exact protected output and restart persistence'
     ] };
     progress('All assertions passed; beginning cleanup');
   } catch (error) {
