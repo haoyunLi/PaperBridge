@@ -22,6 +22,8 @@ File Explorer selects the new folder when a portable bundle is ready, including 
 
 Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF text import, including scans and MinerU fallback. The import screen shows progress and lets you cancel without replacing the open paper. Portable Markdown export reuses completed pages across restarts and regenerates missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
 
+On the development branch, portable page images use a 1,800-pixel longest edge and follow the PDF page crop and rotation. Existing papers regenerate older previews on the next export. The original PDF, reader zoom and saved annotations retain their existing behavior.
+
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.
 
 During paragraph translation, **More > Translation Range > Prioritize current section in queue** moves the current section’s waiting blocks after the block in progress. The menu shows how many queued blocks can move. **Stop** keeps completed blocks, and **Resume Translation** retries unfinished blocks, including failures. The progress bar counts failures from the current pass. The sidebar shows the paper’s total.

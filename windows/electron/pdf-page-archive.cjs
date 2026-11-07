@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { version: pdfjsVersion } = require('pdfjs-dist/package.json');
 const { maximumPreviewPages, pageImageName } = require('./bundle.cjs');
 
-const format = `pdfjs-png-v1-${pdfjsVersion}`;
+const format = `pdfjs-png-v2-${pdfjsVersion}`;
 const maxPageBytes = 20_000_000;
 const digestBytes = 32;
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

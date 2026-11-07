@@ -22,10 +22,13 @@ export async function renderPagePng(pdf, pageNumber, token) {
     page = await pdf.getPage(pageNumber);
     if (token.cancelled) return null;
     const base = page.getViewport({ scale: 1 });
-    const viewport = page.getViewport({ scale: Math.min(1.5, 1800 / Math.max(base.width, base.height)) });
+    const scale = 1800 / Math.max(base.width, base.height);
+    if (!Number.isFinite(scale) || scale <= 0 || base.width <= 0 || base.height <= 0) return null;
+    const viewport = page.getViewport({ scale });
+    if (!Number.isFinite(viewport.width) || !Number.isFinite(viewport.height)) return null;
     canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
     const render = page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport });
     token.cancelRender = () => render.cancel();
     await render.promise;

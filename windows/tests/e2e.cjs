@@ -5,16 +5,17 @@ const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 const { clickTextOffset } = require('./reading-caret.cjs');
 
-function samplePdf(blank = false, variant = '', firstPage = '', rotation = 0) {
+function samplePdf(blank = false, variant = '', firstPage = '', rotation = 0, cropBoxes = []) {
   const stream = blank ? '' : firstPage || 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj 1 0 0 1 72 52 Tm (Page one trailing sentence.) Tj ET';
   const secondStream = blank ? '' : `BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page${variant}.) Tj ET`;
+  const crop = index => cropBoxes[index] ? ` /CropBox [${cropBoxes[index].join(' ')}]` : '';
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]${rotation ? ` /Rotate ${rotation}` : ''} /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]${crop(0)}${rotation ? ` /Rotate ${rotation}` : ''} /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]${crop(1)} /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>`,
     `<< /Length ${Buffer.byteLength(secondStream)} >>\nstream\n${secondStream}\nendstream`
   ];
   let body = '%PDF-1.4\n';
@@ -25,6 +26,12 @@ function samplePdf(blank = false, variant = '', firstPage = '', rotation = 0) {
   for (const offset of offsets.slice(1)) body += `${String(offset).padStart(10, '0')} 00000 n \n`;
   body += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${start}\n%%EOF`;
   return body;
+}
+
+function pngDimensions(file) {
+  const bytes = fs.readFileSync(file);
+  assert.equal(bytes.toString('ascii', 12, 16), 'IHDR');
+  return [bytes.readUInt32BE(16), bytes.readUInt32BE(20)];
 }
 
 async function run() {
@@ -655,8 +662,9 @@ async function run() {
     assert.equal(firstReveal.folder, bundle);
     assert.match(firstReveal.index, /pages\/page-001\.png[\s\S]*pages\/page-002\.png/, 'Explorer should select a completed bundle');
     assert.deepEqual(fs.readFileSync(path.join(bundle, 'original.pdf')), fs.readFileSync(pdfPath));
-    assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-001.png')));
-    assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-002.png')));
+    for (const file of ['page-001.png', 'page-002.png']) {
+      assert.deepEqual(pngDimensions(path.join(bundle, 'pages', file)), [1391, 1800]);
+    }
     for (const name of ['Original Pages', 'Original', 'Translated', 'Bilingual', 'Full Translation']) {
       const markdown = fs.readFileSync(path.join(bundle, `${name}.md`), 'utf8');
       assert.match(markdown, /\(original\.pdf\)[\s\S]*\(pages\/page-001\.png\)[\s\S]*\(pages\/page-002\.png\)/);
@@ -925,7 +933,7 @@ async function run() {
     const lines = (await reopenedPage.locator('.source-text').allInnerTexts()).join('\n');
     assert.match(lines, /Shared heading[\s\S]*Left upper line 6[\s\S]*Right upper line 1[\s\S]*Right upper line 6[\s\S]*Table 1\.[\s\S]*Left lower line 6[\s\S]*Right lower line 1/);
     const rotatedPath = path.join(artifacts, 'rotated-pdf.pdf');
-    fs.writeFileSync(rotatedPath, samplePdf(false, '', '', 90));
+    fs.writeFileSync(rotatedPath, samplePdf(false, '', '', 90, [[60, 36, 552, 756], [72, 36, 72.1, 756]]));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, rotatedPath);
     await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
     await reopenedPage.getByRole('heading', { name: 'rotated-pdf.pdf' }).waitFor();
@@ -940,6 +948,14 @@ async function run() {
       return host?.dataset.pdfZoom === '125' && canvas && layer && canvas.width > canvas.height
         && ['left', 'top', 'width', 'height'].every(key => Math.abs(canvas[key] - layer[key]) < 2);
     });
+    const cropExports = fs.mkdtempSync(path.join(artifacts, 'crop-preview-'));
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, cropExports);
+    await exportBundle(reopenedPage);
+    await reopenedPage.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
+    const cropBundle = path.join(cropExports, fs.readdirSync(cropExports)[0]);
+    assert.deepEqual(pngDimensions(path.join(cropBundle, 'pages', 'page-001.png')), [1800, 1230]);
+    assert.deepEqual(pngDimensions(path.join(cropBundle, 'pages', 'page-002.png')), [1, 1800]);
+    assert.deepEqual(fs.readFileSync(path.join(cropBundle, 'original.pdf')), fs.readFileSync(rotatedPath));
     console.log('Electron workflow verified: menus, shortcuts, source and cross-line PDF annotations, original-page comparison, portable export, scan guidance, restart recovery, and narrow-gutter reading order.');
   } finally { await app?.close(); ollama.close(); }
 }
