@@ -243,9 +243,12 @@ async function run() {
     await bodyAction(1, 'Translate This Paragraph');
     await waitFor(() => readPaper().blocks[0].status === 'failed', 'failed explicit retry persisted');
     assert.equal(readPaper().blocks[0].translation, successful, 'failed retry keeps the old saved translation');
-    assert.equal(await block(1).getByRole('button', { name: 'Retry this paragraph', exact: true }).isVisible(), true);
+    const failedRetry = block(1).getByRole('button', { name: 'Retry this paragraph', exact: true });
+    // Persisted failure and React's visible failed state can complete in either order.
+    await failedRetry.waitFor({ state: 'visible' });
+    assert.equal(await failedRetry.isVisible(), true);
     mode = 'success';
-    await block(1).getByRole('button', { name: 'Retry this paragraph', exact: true }).click();
+    await failedRetry.click();
     await waitFor(() => readPaper().blocks[0].status === 'ok', 'failed paragraph retry recovered');
 
     await bodyAction(1, 'Edit or Split...');

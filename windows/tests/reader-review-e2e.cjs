@@ -262,11 +262,14 @@ async function run() {
     assert.equal(exports.length, 2);
     assert.ok(exports[0].name.endsWith('-analysis'));
     assert.ok(exports[1].name.endsWith('-bilingual'));
-    for (const exported of exports) {
-      assert.match(exported.content, /## Bookmarks\n\n- Block 4: Beta control/);
-      assert.match(exported.content, /## Highlights\n\n### Reader · Block 4 · source · amber\n\n> Beta control/);
-      assert.match(exported.content, /## Notes\n\nNone saved\./);
-    }
+    const analysis = exports[0].content;
+    const paragraphFour = analysis.split('### Paragraph 4\n\n')[1].split('\n\n### Paragraph 5')[0];
+    assert.match(paragraphFour, /^> Bookmarked in PaperBridge\n\nBeta control/);
+    assert.match(paragraphFour, /#### Highlights and Notes\n\n##### Reader · Block 4 · source · amber\n\n> Beta control/);
+    assert.doesNotMatch(analysis, /\n## (Bookmarks|Highlights|Notes)\n/);
+    assert.match(exports[1].content, /## Bookmarks\n\n- Block 4: Beta control/);
+    assert.match(exports[1].content, /## Highlights\n\n### Reader · Block 4 · source · amber\n\n> Beta control/);
+    assert.match(exports[1].content, /## Notes\n\nNone saved\./);
 
     const sourceQuote = 'Alpha mechanism';
     const translationQuote = '原位机制';

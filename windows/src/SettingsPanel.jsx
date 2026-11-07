@@ -15,9 +15,9 @@ function Group({ title, children }) {
   return <section className="settings-section"><h3>{title}</h3>{children}</section>;
 }
 
-export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, taskSetup,
+export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, taskSetup, initialSection = 'setup',
   modelTools, openAITools, hardwareTools, updates }) {
-  const [section, setSection] = useState(taskSetup ? 'models' : 'setup');
+  const [section, setSection] = useState(taskSetup ? 'models' : initialSection);
   const [parserCheck, setParserCheck] = useState(0);
   const [parser, setParser] = useState(null);
   const [checkingParser, setCheckingParser] = useState(false);

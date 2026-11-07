@@ -155,7 +155,7 @@ async function run() {
     }, { status, plan: plans['110'] });
     await page.getByLabel('Ollama URL').fill('http://localhost:11434');
     await button('Refresh models').click();
-    await page.getByText(/Fixture Ollama is unavailable/).waitFor();
+    await page.getByRole('tabpanel', { name: 'Models' }).getByText(/Fixture Ollama is unavailable/).waitFor();
     await button('Close dialog').click();
     await button('Full Translation').click();
     await button('Set up full translation').click();

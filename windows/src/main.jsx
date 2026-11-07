@@ -44,6 +44,7 @@ import ReaderBlockActions from './ReaderBlockActions.jsx';
 import ParagraphEditor from './ParagraphEditor.jsx';
 import { documentOutline } from './documentOutline.mjs';
 import './document-outline.css';
+import { SidebarLanguage, SidebarAIStatus } from './SidebarControls.jsx';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
@@ -980,6 +981,9 @@ function App() {
   const [modelDownloadError, setModelDownloadError] = useState('');
   const [ollamaError, setOllamaError] = useState('');
   const [ollamaStatus, setOllamaStatus] = useState('unchecked');
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const [sidebarParserRevision, setSidebarParserRevision] = useState(0);
+  const [settingsSection, setSettingsSection] = useState('setup');
   const [openAIState, setOpenAIState] = useState({ hasKey: null, consent: false, models: [], refreshing: false, saving: false, status: '', error: '' });
   const openAIStateRef = useRef(openAIState);
   openAIStateRef.current = openAIState;
@@ -1005,6 +1009,7 @@ function App() {
   const [inspector, setInspector] = useState(true);
   const [compactInspector, setCompactInspector] = useState(() => window.matchMedia('(max-width: 1399px)').matches);
   const [sidebar, setSidebar] = useState(true);
+  const [documentDetailsExpanded, setDocumentDetailsExpanded] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(workspacePanelWidths.sidebar.initial);
   const [inspectorWidth, setInspectorWidth] = useState(workspacePanelWidths.inspector.initial);
   const [focus, setFocus] = useState(false);
@@ -1280,6 +1285,7 @@ function App() {
     }
     if (change.ollamaBaseURL !== undefined && change.ollamaBaseURL !== previous.ollamaBaseURL) {
       modelRefreshId.current++;
+      setRefreshingModels(false);
       setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError('Refresh models to check this local endpoint.');
     }
     if (change.mineruExecutable !== undefined && change.mineruExecutable !== previous.mineruExecutable) setMineruRuntime(null);
@@ -1299,7 +1305,7 @@ function App() {
     setOnboardingSaveError(''); updateSettings({ onboardingPage: 0 }); setModal('onboarding');
   }
   function openSetup(request = null) { setTaskSetup(request); setModal('setup'); }
-  function openSettings(request = null) { setTaskSetup(request); setModal('settings'); }
+  function openSettings(request = null, section = 'setup') { setSettingsSection(section); setTaskSetup(request); setModal('settings'); }
   function openTaskSetup(issue, checked = false) {
     if (taskRef.current) return;
     if (!checked && settingsRef.current.aiProvider !== 'openai') void refreshModels(settingsRef.current);
@@ -1485,6 +1491,7 @@ function App() {
   const refreshModels = async config => {
     const requestId = ++modelRefreshId.current;
     const isCurrent = () => requestId === modelRefreshId.current && settingsRef.current?.ollamaBaseURL === config.ollamaBaseURL;
+    setRefreshingModels(true);
     try {
       const values = await api.listModels(config.ollamaBaseURL);
       if (isCurrent()) { setModels(values); setOllamaStatus('ready'); setOllamaError(''); }
@@ -1492,6 +1499,8 @@ function App() {
     } catch (err) {
       if (isCurrent()) { setModels([]); setOllamaStatus('unavailable'); setOllamaError(err.message); }
       return { models: [], ollamaStatus: 'unavailable' };
+    } finally {
+      if (isCurrent()) setRefreshingModels(false);
     }
   };
   async function refreshOpenAIKeyStatus() {
@@ -2480,6 +2489,9 @@ function App() {
       resetReadingHistory();
       cancelParagraphEdit();
       paperRef.current = null; setPaper(null); setLibrary([]); setGlossary([]); settingsRef.current = data.settings; setSettings(data.settings);
+      modelRefreshId.current++;
+      setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
+      void refreshModels(data.settings);
       setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setActiveBlock(1); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
       setModal(''); setStatus('Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
     } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
@@ -2522,7 +2534,7 @@ function App() {
       const matching = saved.filter(item => highlightMatchesSelection(item, selection));
       if (matching.length === 1 && matching[0].color === color && matching[0].quote === selection.quote) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
-      const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
+      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: new Date().toISOString() }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
         page: selection.page, offset: selection.offset, text: selection.text, quote: selection.quote,
         ...(selection.anchors && { anchors: storedPdfAnchors(selection) }), color };
       commitPaper(current => ({ ...current, pdfHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
@@ -2536,7 +2548,7 @@ function App() {
       const matching = saved.filter(item => highlightMatchesSelection(item, selection));
       if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
       rememberUndo();
-      const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: new Date().toISOString() }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
         ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
         ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind }), color };
       commitPaper(current => ({ ...current, viewHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
@@ -2551,7 +2563,7 @@ function App() {
     const matching = highlights.filter(item => highlightMatchesSelection(item, selection));
     if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
     rememberUndo();
-    const item = { ...(matching[0] || {}), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+    const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: new Date().toISOString() }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
       ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), color };
     updateBlock(block.id, { [key]: [...highlights.filter(entry => !highlightMatchesSelection(entry, selection)), item] });
     setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
@@ -2967,6 +2979,9 @@ function App() {
 
   if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
   const sidebarSource = <div className="side-group"><div className="side-label">SOURCE</div><button className="side-primary" onClick={openFile}><FilePlus2 size={16} /> Open PDF</button><button className="side-action" onClick={() => setModal('paste')}><FileText size={15} /> Paste Text</button><button className="side-action" onClick={loadPractice}><BookOpen size={15} /> Try a Practice Paper</button></div>;
+  const sidebarAI = <SidebarAIStatus settings={settings} ollamaStatus={ollamaStatus} ollamaError={ollamaError} refreshingModels={refreshingModels}
+    onRefreshModels={() => refreshModels(settingsRef.current)} openAIConsent={openAIState.consent} enabled={modal !== 'onboarding' && !pendingImport && (!paper || documentDetailsExpanded)}
+    parserRevision={sidebarParserRevision} onOpenAISettings={() => openSettings(null, 'models')} onOpenSettings={() => openSettings(null, 'parsing')} />;
   return <div data-display-mode={displayMode} style={workspaceStyle} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''} ${pendingImport ? 'importing' : ''}`}>
     {sidebar && !focus && !modal && <WorkspaceSplitter panel="sidebar" width={sidebarWidth} onResize={setSidebarWidth} />}
     {inspector && !focus && !modal && !pendingImport && !compactInspector && <WorkspaceSplitter panel="inspector" width={inspectorWidth} onResize={setInspectorWidth} />}
@@ -2974,12 +2989,15 @@ function App() {
       <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
       <div className="sidebar-scroll">
         {!paper && !pendingImport && sidebarSource}
+        {!paper && !pendingImport && sidebarAI}
         <button className="sidebar-library-button" title="Open library" disabled={Boolean(pendingImport)} onClick={() => setModal('library')}><Library size={16} /> Paper Library</button>
         {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <>
-          <details className="document-details">
+          <details className="document-details" open={documentDetailsExpanded} onToggle={event => setDocumentDetailsExpanded(event.currentTarget.open)}>
             <summary>Document &amp; Import</summary>
             {sidebarSource}
             <div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Paragraphs</span><b>{translatableCount}</b></div>{referenceIDs.size > 0 && <div className="side-stat"><span>Skipped refs</span><b>{referenceIDs.size}</b></div>}<div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div>
+            <SidebarLanguage settings={settings} languages={languages} disabled={Boolean(busy || pulling)} onChange={change => { if (!taskRef.current && !pullRef.current) updateSettings(change); }} />
+            {sidebarAI}
           </details>
           {paper.blocks.some(block => block.bookmark) && <nav className="side-group document-bookmarks" aria-label="Bookmarks">
             <div className="side-label"><span><Bookmark size={14} /> BOOKMARKS</span></div>
@@ -3116,9 +3134,9 @@ function App() {
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}
-      {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => refreshModels(settingsRef.current)}
+      {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => { setSidebarParserRevision(value => value + 1); refreshModels(settingsRef.current); }}
         taskSetup={taskSetup} onChooseModels={() => openSettings(taskSetup)} />}
-      {modal === 'settings' && <SettingsPanel key={taskSetup ? 'task' : 'manual'} settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)} taskSetup={taskSetup}
+      {modal === 'settings' && <SettingsPanel key={taskSetup ? 'task' : `manual-${settingsSection}`} initialSection={settingsSection} settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)} taskSetup={taskSetup}
         onOnboarding={openOnboarding} onOpenSetup={() => openSetup()} onClearData={() => setModal('clearData')}
         modelTools={{ models, ollamaError, pulling, cancelling: cancellingPull, progress: pullProgress, message: modelDownloadMessage, error: modelDownloadError,
           name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,

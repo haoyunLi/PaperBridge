@@ -61,7 +61,7 @@ function updateNotes(notes, selection, body, makeId, extra = {}) {
     return current.map(item => item === existing ? { ...item, body, ...display } : item);
   }
   return [...current, {
-    id: makeId(), text: selection.text, body,
+    id: makeId(), text: selection.text, body, createdAt: new Date().toISOString(),
     ...display,
     ...extra
   }];

@@ -1,5 +1,6 @@
 import { isHeading, joinPdfText } from './text.mjs';
 import { referenceBlockIds } from './references.mjs';
+import { markdownBlockKind } from './academicMarkdown.mjs';
 
 export { referenceBlockIds };
 
@@ -38,6 +39,8 @@ export function qualityIssues(blocks, excluded = new Set()) {
   return blocks.flatMap(block => {
     const value = String(block.text || '').trim();
     if (!value || block.heading || block.resource || excluded.has(block.id)) return [];
+    const markdownKind = markdownBlockKind(block);
+    if (markdownKind && markdownKind !== 'paragraph') return [];
     let reason = '';
     if (/[A-Za-z]{2,}[-‐]\s*$/.test(value)) reason = 'Possible cut-off word at the end. Compare with the next block and original page.';
     else if (/\b(?:in case of|where we|such as|given by|defined as)\s*$/i.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';

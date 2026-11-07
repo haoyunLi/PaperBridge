@@ -675,13 +675,14 @@ async function run() {
       if (name === 'Full Translation') assert.match(markdown, /# Full translation of selectable text\n\n本地测试译文/);
     }
     const exportedAnalysis = fs.readFileSync(path.join(bundle, 'Analysis.md'), 'utf8');
-    assert.match(exportedAnalysis, /Original PDF · page 1\n\n> Abstract\n\nThis note belongs to the original PDF page\./);
-    assert.match(exportedAnalysis, /Paper · exact PDF · page 1\n\n> Abstract\n\nThis note belongs to the exact PDF inside Paper\./);
-    assert.match(exportedAnalysis, /Original PDF · page 2\n\n> Abstract\n\nThe repeated heading belongs to page two\./);
-    assert.ok(exportedAnalysis.includes('Original PDF · page 1\n\n> ' + multilineQuote + '\n\n' + multilineNote));
-    assert.ok(exportedAnalysis.includes('Original PDF · page 1 · coral\n\n> ' + multilineQuote));
-    assert.ok(exportedAnalysis.includes('Original PDF · pages 1–2\n\n> ' + crossPageQuote + '\n\n' + crossPageNote));
-    assert.ok(exportedAnalysis.includes('Original PDF · pages 1–2 · amber\n\n> ' + crossPageQuote));
+    assert.match(exportedAnalysis, /Original PDF · page 1 · teal\n\n> Abstract\n\nNote: This note belongs to the original PDF page\./);
+    assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral\n\n> Abstract\n\nNote: This note belongs to the exact PDF inside Paper\./);
+    assert.match(exportedAnalysis, /Original PDF · page 2 · amber\n\n> Abstract\n\nNote: The repeated heading belongs to page two\./);
+    assert.ok(exportedAnalysis.includes('## Other Saved Highlights and Notes'));
+    assert.ok(exportedAnalysis.includes('Original PDF · page 1 · coral\n\n> ' + multilineQuote + '\n\nNote: ' + multilineNote));
+    assert.ok(exportedAnalysis.includes('Original PDF · pages 1–2 · amber\n\n> ' + crossPageQuote + '\n\nNote: ' + crossPageNote));
+    assert.equal(exportedAnalysis.split(multilineNote).length - 1, 1);
+    assert.equal(exportedAnalysis.split(crossPageNote).length - 1, 1);
     assert.match(exportedAnalysis, /Original PDF · page 1 · teal/);
     assert.match(exportedAnalysis, /Paper · exact PDF · page 1 · coral/);
     assert.match(exportedAnalysis, /Original PDF · page 2 · amber/);

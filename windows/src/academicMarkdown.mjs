@@ -1,4 +1,4 @@
-import { referenceBlockIds } from './paper.mjs';
+import { referenceBlockIds } from './references.mjs';
 
 export function usesSharedMarkdown(paper) {
   return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
@@ -67,7 +67,7 @@ function closingLine(lines, start, token) {
   return index;
 }
 
-export function parsedMarkdownBlocks(markdown) {
+function parsedMarkdownSegments(markdown) {
   const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
   const segments = [];
   for (let index = 0; index < lines.length;) {
@@ -99,10 +99,15 @@ export function parsedMarkdownBlocks(markdown) {
     const sourceMarkdown = lines.slice(start, index).join('\n').trim();
     if (sourceMarkdown) segments.push({ kind, sourceMarkdown });
   }
-  return segments.map(({ kind, sourceMarkdown }, index) => ({
+  return segments;
+}
+
+export function parsedMarkdownBlocks(markdown) {
+  return parsedMarkdownSegments(markdown).map(({ kind, sourceMarkdown }, index) => ({
     id: index + 1,
     text: plainText(sourceMarkdown),
     sourceMarkdown,
+    markdownKind: kind,
     page: null,
     heading: kind === 'heading',
     resource: ['image', 'formula', 'table', 'code', 'html'].includes(kind),
@@ -112,6 +117,20 @@ export function parsedMarkdownBlocks(markdown) {
     highlights: [],
     notes: []
   }));
+}
+
+// Old workspaces lack markdownKind. Recognize only a complete, unchanged
+// Markdown block: a list/quote prefix must not hide prose appended after it.
+// Reading this metadata never migrates or rewrites the saved block.
+export function markdownBlockKind(block) {
+  if (typeof block?.sourceMarkdown !== 'string' || !block.sourceMarkdown.trim()) return null;
+  const source = block.sourceMarkdown.replace(/\r\n?/g, '\n').trim();
+  const kind = segmentKind(source.split('\n'), 0) || 'paragraph';
+  if (kind === 'paragraph') return kind;
+  if (block.markdownKind != null && block.markdownKind !== kind) return null;
+  const segments = parsedMarkdownSegments(source);
+  if (segments.length !== 1 || plainText(segments[0].sourceMarkdown) !== block.text) return null;
+  return segments[0].kind;
 }
 
 export function readableMineruBlocks(markdown) {

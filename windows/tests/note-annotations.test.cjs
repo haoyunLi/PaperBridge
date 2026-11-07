@@ -86,13 +86,27 @@ test('notes map across reader translation, PDF, summary and full translation sco
   for (const [index, selection] of selections.entries()) {
     assert.equal(validNoteSelection(paper, selection), true);
     paper = applySelectionNote(paper, selection, `body-${index}`, () => `id-${index}`);
-    assert.equal(findSelectionNote(paper, selection).body, `body-${index}`);
+    const saved = findSelectionNote(paper, selection);
+    assert.equal(saved.body, `body-${index}`);
+    assert.ok(Number.isFinite(Date.parse(saved.createdAt)));
+    paper = applySelectionNote(paper, selection, `edited-${index}`);
+    assert.equal(findSelectionNote(paper, selection).createdAt, saved.createdAt, 'Editing a note must retain its original creation time.');
     assert.ok(noteSelectionIdentity(paper.id, selection));
   }
   const identity = noteSelectionIdentity(paper.id, selections[0]);
   assert.equal(sameNoteSelection(paper.id, selections[0], identity), true);
   assert.equal(sameNoteSelection('another-paper', selections[0], identity), false);
   assert.equal(sameNoteSelection(paper.id, selections[1], identity), false);
+});
+
+test('editing legacy notes does not invent a historical creation time', async () => {
+  const { applySelectionNote, findSelectionNote } = await annotations;
+  const paper = basePaper();
+  paper.blocks[0].notes = [{ id: 'legacy', text: 'Alpha', offset: 0, body: 'Old note.' }];
+  const selection = { scope: 'reader', id: 1, kind: 'source', text: 'Alpha', offset: 0 };
+  const edited = applySelectionNote(paper, selection, 'Revised note.');
+  assert.equal(findSelectionNote(edited, selection).createdAt, undefined);
+  assert.equal(findSelectionNote(edited, selection).id, 'legacy');
 });
 
 test('Paper article notes keep their reading source and reject edits through a stale selection', async () => {

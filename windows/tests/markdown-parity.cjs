@@ -364,7 +364,9 @@ async function run() {
     await page.getByRole('button', { name: 'Summary, sources and notes', exact: true }).click();
     await page.getByText('Exported fixture.md', { exact: true }).waitFor();
     const crossExport = await app.evaluate(() => globalThis.__sharedMarkdownExport);
-    assert.ok(crossExport.includes('### Paper · document preview\n\n> ' + crossQuote.replaceAll('\n', '\n> ') + '\n\n' + crossNote));
+    assert.ok(crossExport.includes('## Other Saved Highlights and Notes'));
+    assert.ok(crossExport.includes('### Paper · document preview · amber\n\n> ' + crossQuote.replaceAll('\n', '\n> ') + '\n\nNote: ' + crossNote));
+    assert.equal(crossExport.split(crossNote).length - 1, 1, 'the same-range highlight and note export together');
 
     await page.getByLabel('Paper display mode').selectOption('translation');
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);
