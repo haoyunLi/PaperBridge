@@ -1715,10 +1715,20 @@ function App() {
     const requestId = crypto.randomUUID();
     token.mineruRequest = requestId;
     try {
-      const result = await api.extractMineru({ id, executable, backend, requestId });
+      const extracted = await api.extractMineru({ id, executable, backend, requestId });
+      const result = typeof extracted === 'string' ? { markdown: extracted, pageHints: [] } : extracted;
+      if (result.resourceId) token.mineruResource = { id, resourceId: result.resourceId };
       requireActiveTask(token);
-      return typeof result === 'string' ? { markdown: result, pageHints: [] } : result;
+      return { ...result, blocks: readableMineruBlocks(result.markdown) };
+    } catch (cause) {
+      discardMineruResult(token);
+      throw cause;
     } finally { token.mineruRequest = null; }
+  }
+  function discardMineruResult(token) {
+    if (!token.mineruResource) return;
+    api.discardMineruResult(token.mineruResource).catch(() => {});
+    token.mineruResource = null;
   }
   async function archiveImportedPages(imported, pdf, token, warnings) {
     const requestId = crypto.randomUUID();
@@ -1759,6 +1769,7 @@ function App() {
     const mode = config.pdfExtractionMode || 'mineruPreferred';
     let mineruMarkdown = '';
     let mineruBlocks = null;
+    let mineruResourceId = null;
     let pageHints = [];
     const warnings = [];
     if (mode !== 'pdfOnly') {
@@ -1769,8 +1780,9 @@ function App() {
         if (!mineru.compatible) throw new Error(mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
         setBusy({ label: 'MinerU is reconstructing the paper…' });
         setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
-        ({ markdown: mineruMarkdown, pageHints } = await extractMineruForTask(imported.id, mineru.executable, config.mineruBackend, token));
-        mineruBlocks = readableMineruBlocks(mineruMarkdown);
+        const result = await extractMineruForTask(imported.id, mineru.executable, config.mineruBackend, token);
+        ({ markdown: mineruMarkdown, blocks: mineruBlocks, pageHints, resourceId: mineruResourceId = null } = result);
+        if (result.resourceWarning) warnings.push(result.resourceWarning);
       } catch (cause) {
         requireActiveTask(token);
         if (mode === 'mineruOnly') throw cause;
@@ -1807,13 +1819,14 @@ function App() {
     const document = {
       id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(),
       blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
-      ...(mineruBlocks && { mineruPageMapVersion }),
+      ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
       extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning,
       tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(config), explanationLanguage: 'English',
       paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
     };
     resetReadingHistory();
     setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
+    token.mineruResource = null;
     setStatus(extractionWarning || `Extracted ${blocks.length} blocks${pageCount ? ` from ${pageCount} pages` : ''}. Compare uncertain passages with Original PDF.`);
   }
   async function importText(text, name = 'Pasted Text') {
@@ -1835,6 +1848,7 @@ function App() {
   function startTask(label) { const token = { cancelled: false, ids: new Set(), paperId: paperRef.current?.id }; taskRef.current = token; setBusy({ label }); setProgress(null); setError(''); return token; }
   function requireActiveTask(token) { if (token.cancelled || taskRef.current !== token) throw new Error('Cancelled'); }
   function endTask(token) {
+    discardMineruResult(token);
     if (taskRef.current !== token) return;
     taskRef.current = null;
     if (token.kind === 'pdfImport') setPendingImport(null);
@@ -2178,17 +2192,18 @@ function App() {
     if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); openSetup(); return; }
     const token = startTask('MinerU is extracting structure…');
     try {
-      const { markdown, pageHints } = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
-      const parsed = readableMineruBlocks(markdown);
+      const { markdown, pageHints, blocks: parsed, resourceId = null, resourceWarning = '' } = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
+      requireActiveTask(token);
       resetReadingHistory();
       commitPaper(current => {
         const hasUserWork = current.summary || current.connectedTranslation || hasMineruWork(current.blocks) ||
           hasArticleWork(current, paperArticleSource(current).mode);
         const pdfBlocks = current.pdfBlocks || (current.sourceMode !== 'mineru' ? current.blocks : []);
         const blocks = locateMineruPages(parsed, pageHints, pdfBlocks);
-        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, mineruPageMapVersion, pdfBlocks, blocks: hasUserWork ? current.blocks : blocks, extractionWarning: '', extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
+        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, mineruPageMapVersion, mineruResourceId: resourceId, pdfBlocks, blocks: hasUserWork ? current.blocks : blocks, extractionWarning: resourceWarning, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
       });
-      setStatus(`MinerU structure ready: ${parsed.length} blocks. You can switch Reader source without discarding either version.`);
+      token.mineruResource = null;
+      setStatus(`MinerU structure ready: ${parsed.length} blocks. You can switch Reader source without discarding either version.${resourceWarning ? ` ${resourceWarning}` : ''}`);
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
   function canSwitchReadingSource(current, mode) {
@@ -2254,8 +2269,9 @@ function App() {
     token.kind = 'bundleExport';
     setModal('');
     try {
+      const resource = Object.hasOwn(paper, 'mineruResourceId') ? { mineruResourceId: paper.mineruResourceId } : {};
       const result = await api.exportBundle({
-        paper: { id: paper.id, name: paper.name, type: paper.type, sourceMode: paper.sourceMode, facsimile: pdfFacsimile },
+        paper: { id: paper.id, name: paper.name, type: paper.type, sourceMode: paper.sourceMode, facsimile: pdfFacsimile, ...resource },
         documents: markdownDocuments(paper, settingsRef.current.targetLanguage)
       });
       if (!result) return;

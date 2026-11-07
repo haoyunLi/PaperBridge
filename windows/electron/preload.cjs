@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   pullModel: payload => ipcRenderer.invoke('ollama:pull', payload),
   cancelPullModel: () => ipcRenderer.invoke('ollama:cancel-pull'),
   extractMineru: payload => ipcRenderer.invoke('mineru:extract', payload),
+  discardMineruResult: payload => ipcRenderer.invoke('mineru:discard-result', payload),
   cachedMineruPages: id => ipcRenderer.invoke('mineru:cached-pages', id),
   onProgress: callback => {
     const listener = (_event, data) => callback(data);

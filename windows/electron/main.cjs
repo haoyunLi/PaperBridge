@@ -9,6 +9,7 @@ const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
+const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('./mineru-resources.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages } = require('./bundle.cjs');
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
@@ -22,6 +23,7 @@ const developmentBuild = !app.isPackaged && process.env.NODE_ENV !== 'production
 let window;
 let store;
 const mineruJobs = createMineruJobGuard();
+const pendingMineruResults = new Map();
 let setupManager = null;
 let setupOperation = null;
 let setupChangesMineru = false;
@@ -208,7 +210,12 @@ function registerHandlers() {
   ipcMain.handle('glossary:save', (_event, glossary) => store.saveGlossary(glossary));
   ipcMain.handle('paper:load', (_event, id) => store.paper(safeId(id)));
   ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
-  ipcMain.handle('paper:save', (_event, paper) => { store.savePaper(paper); return store.list(); });
+  ipcMain.handle('paper:save', (event, paper) => {
+    store.savePaper(paper);
+    const pending = pendingMineruResults.get(paper.mineruResourceId);
+    if (pending && pending.sender === event.sender && pending.id === paper.id) pendingMineruResults.delete(paper.mineruResourceId);
+    return store.list();
+  });
   ipcMain.handle('paper:clear-data', () => {
     activeImportArchive = null;
     revokeOpenAIConsent();
@@ -272,7 +279,8 @@ function registerHandlers() {
     const result = await dialog.showOpenDialog(window, { title: 'Choose export folder', properties: ['openDirectory', 'createDirectory'] });
     if (result.canceled) return null;
     const sourceMode = paper.sourceMode === 'mineru' ? 'mineru' : undefined;
-    const markdown = sourceMode && findMineruMarkdown(path.join(store.root, 'mineru', paper.id), 'paper');
+    const original = documents.find(document => document.kind === 'original');
+    const markdown = sourceMode && findPaperMineruMarkdown(store.root, { ...paper, mineruMarkdown: original?.content });
     const bundle = writeBundle(result.filePaths[0], { name: paper.name, type: paper.type, sourceMode, facsimile: paper.facsimile === true },
       documents, store.pdfPath(paper.id), markdown ? path.dirname(markdown) : null);
     const { facsimileDocuments, ...report } = bundle;
@@ -338,18 +346,19 @@ function registerHandlers() {
   });
   ipcMain.handle('ollama:cancel', (_event, requestId) => { requests.get(requestId)?.abort(); });
   ipcMain.handle('mineru:cancel', () => mineruJobs.cancel());
+  ipcMain.handle('mineru:discard-result', (event, { id, resourceId }) => {
+    const pending = pendingMineruResults.get(resourceId);
+    if (!pending || pending.sender !== event.sender || pending.id !== id) return;
+    pendingMineruResults.delete(resourceId);
+    removeMineruResult(store.root, resourceId);
+  });
   ipcMain.handle('mineru:cached-pages', (_event, id) => {
-    const paper = store.paper(safeId(id));
-    if (!paper?.mineruMarkdown) return [];
-    try {
-      const file = findMineruMarkdown(path.join(store.root, 'mineru', id), 'paper');
-      const hints = file ? readMineruPageHints(file) : [];
-      return hints.length && readMineruMarkdown(file) === paper.mineruMarkdown ? hints : [];
-    } catch { return []; }
+    const file = findPaperMineruMarkdown(store.root, store.paper(safeId(id)));
+    return file ? readMineruPageHints(file) : [];
   });
   ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
   ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
-  ipcMain.handle('mineru:extract', async (_event, { id, executable, backend, requestId }) => {
+  ipcMain.handle('mineru:extract', async (event, { id, executable, backend, requestId }) => {
     if (setupChangesMineru) throw new Error('Finish or cancel the current MinerU setup before extracting a PDF.');
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
@@ -360,7 +369,6 @@ function registerHandlers() {
       const detected = await detectMineruExecutable(executable, setupManager.toolsRoot);
       mineruJobs.check(job);
       if (!detected.compatible) throw new Error(detected.reason);
-      const savedOutput = path.join(store.root, 'mineru', id);
       // MinerU repeats the input stem inside its temporary result paths. A SHA-256
       // filename can push these paths past the Windows path limit, so use a short
       // private input name while retaining the unchanged original in our library.
@@ -394,13 +402,16 @@ function registerHandlers() {
       const markdown = readMineruMarkdown(file);
       const pageHints = readMineruPageHints(file);
       mineruJobs.check(job);
+      if (event.sender.isDestroyed()) throw new Error('The paper window was closed.');
+      let resourceId = null;
+      let resourceWarning = '';
       try {
-        fs.mkdirSync(savedOutput, { recursive: true });
-        fs.cpSync(resultFolder, savedOutput, { recursive: true, force: true });
-      } catch (error) {
-        reportProgress(`Parsed text is ready, but the auxiliary MinerU files could not be kept: ${error.message.slice(0, 140)}`);
+        resourceId = keepMineruResult(store.root, id, file, markdown);
+        pendingMineruResults.set(resourceId, { id, sender: event.sender });
+      } catch {
+        resourceWarning = 'MinerU text is ready, but its local resource files could not be saved.';
       }
-      return { markdown, pageHints };
+      return { markdown, pageHints, resourceId, resourceWarning };
     } finally {
       mineruJobs.finish(job);
       if (staging) {
@@ -474,6 +485,14 @@ function createWindow() {
   window.webContents.on('did-start-loading', () => {
     menuState = normalizeMenuState({});
     applyMenuState(Menu.getApplicationMenu(), menuState);
+  });
+  const contents = window.webContents;
+  contents.once('destroyed', () => {
+    for (const [resourceId, pending] of pendingMineruResults) {
+      if (pending.sender !== contents) continue;
+      pendingMineruResults.delete(resourceId);
+      removeMineruResult(store.root, resourceId);
+    }
   });
   window.on('close', event => {
     if (closeReady) return;

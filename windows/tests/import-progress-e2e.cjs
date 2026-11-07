@@ -3,6 +3,7 @@ const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
+const { keepMineruResult } = require('../electron/mineru-resources.cjs');
 
 function samplePdf(text = 'Delayed import text.') {
   const stream = `BT /F1 18 Tf 72 720 Td (Imported Paper) Tj 0 -30 Td /F1 12 Tf (${text}) Tj ET`;
@@ -45,6 +46,7 @@ async function run() {
   };
   const fallbackText = 'The selectable text survives a failed MinerU process.';
   const cancelledArchiveText = 'Cancel while the original page image is being prepared.';
+  const structuredPdfText = 'The source page is the original first page.';
   const paperId = text => createHash('sha256').update(samplePdf(text)).digest('hex');
   const archivePage = text => {
     const cache = path.join(workspace, 'pdf-page-cache');
@@ -64,6 +66,9 @@ async function run() {
     const before = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       globalThis.__mineruImports = [];
+      globalThis.__discardedMineruResults = [];
+      ipcMain.removeHandler('mineru:discard-result');
+      ipcMain.handle('mineru:discard-result', (_event, payload) => { globalThis.__discardedMineruResults.push(payload); });
       globalThis.__mineruStatusCalls = 0;
       globalThis.__mineruScenario = 'hold';
       ipcMain.removeHandler('mineru:status');
@@ -96,18 +101,24 @@ async function run() {
     await app.evaluate(({ BrowserWindow }) => {
       const [first] = globalThis.__mineruImports;
       BrowserWindow.getAllWindows()[0].webContents.send('paperbridge:progress', { kind: 'mineru', requestId: first.requestId, status: 'page layout 77 / 99' });
-      first.resolve('# Imported Paper\n\nLate MinerU result must be ignored.');
+      first.resolve({ markdown: '# Imported Paper\n\nLate MinerU result must be ignored.', pageHints: [], resourceId: '1111111111111111' });
     });
     await new Promise(resolve => setTimeout(resolve, 250));
     assert.equal(await page.locator('.import-progress-screen').isVisible(), true);
     assert.equal(await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).isVisible(), true);
-    await app.evaluate(() => globalThis.__mineruImports[1].resolve('![Visual asset only](image.png)'));
+    await app.evaluate(() => globalThis.__mineruImports[1].resolve({
+      markdown: '![Visual asset only](image.png)', pageHints: [], resourceId: '2222222222222222'
+    }));
     await page.getByText(/Could not import strict-empty\.pdf: MinerU returned no readable blocks/).waitFor();
     assert.equal(await page.getByRole('heading', { name: 'Pasted Text', exact: true }).isVisible(), true);
     const after = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
     assert.equal(after.blocks[0].bookmark, true);
     assert.equal(after.blocks[1].text, before.blocks[1].text);
     assert.equal(fs.readdirSync(path.join(workspace, 'papers')).filter(name => name.endsWith('.json')).length, 1, 'Cancelled or failed strict imports must not create a workspace paper');
+    assert.deepEqual(await app.evaluate(() => globalThis.__discardedMineruResults), [
+      { id: paperId(), resourceId: '1111111111111111' },
+      { id: paperId('A strict import must keep the previous paper.'), resourceId: '2222222222222222' }
+    ]);
     await app.evaluate(() => { globalThis.__mineruScenario = 'missing'; });
     await drop('strict-missing.pdf', 'MinerU must be available in strict mode.');
     await page.getByText(/Could not import strict-missing\.pdf: Fixture MinerU executable is missing/).waitFor();
@@ -125,16 +136,41 @@ async function run() {
     await page.getByText(/MinerU failed:.*Fixture MinerU detection failed/).waitFor();
 
     await app.evaluate(() => { globalThis.__mineruScenario = 'hold'; });
-    await drop('structured-with-pages.pdf', 'The source page is the original first page.');
+    const structuredId = paperId(structuredPdfText);
+    const passage = 'A MinerU passage with independent page metadata. [Measurements](data/result.csv#row)';
+    const markdown = `# A parsed title\n\n${passage}`;
+    const legacy = path.join(workspace, 'mineru', structuredId, 'pipeline');
+    const prepared = path.join(workspace, 'prepared-mineru');
+    for (const [directory, csv] of [[legacy, 'previous bytes'], [prepared, 'current bytes']]) {
+      fs.mkdirSync(path.join(directory, 'data'), { recursive: true });
+      fs.writeFileSync(path.join(directory, 'paper.md'), markdown);
+      fs.writeFileSync(path.join(directory, 'data', 'result.csv'), csv);
+    }
+    fs.writeFileSync(path.join(legacy, 'paper_content_list.json'), '[{"page_idx":9,"text":"A parsed title"}]');
+    fs.writeFileSync(path.join(prepared, 'structured_content.json'), '{"pages":[{"page_idx":0,"blocks":[{"content":"A parsed title"}]}]}');
+    const resourceId = keepMineruResult(workspace, structuredId, path.join(prepared, 'paper.md'), markdown);
+    await drop('structured-with-pages.pdf', structuredPdfText);
     await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
-    await app.evaluate(() => globalThis.__mineruImports.at(-1).resolve({
-      markdown: '# A parsed title\n\nA MinerU passage with independent page metadata.',
-      pageHints: [{ page: 1, text: 'A parsed title' }, { page: 1, text: 'A MinerU passage with independent page metadata.' }]
-    }));
+    await app.evaluate((_electron, result) => globalThis.__mineruImports.at(-1).resolve(result), {
+      markdown, resourceId, pageHints: [{ page: 1, text: 'A parsed title' }, { page: 1, text: passage }]
+    });
     await page.getByText(/Extracted 2 blocks from 1 pages/).waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2').getByText('PAGE 1 · BLOCK 2', { exact: true }).waitFor();
-    assert.equal(fs.existsSync(archivePage('The source page is the original first page.')), false, 'Successful MinerU imports keep their structured source');
+    assert.equal(fs.existsSync(archivePage(structuredPdfText)), false, 'Successful MinerU imports keep their structured source');
+    const exports = path.join(workspace, 'exports');
+    fs.mkdirSync(exports);
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, exports);
+    await page.keyboard.press('Control+Shift+e');
+    await page.getByText(/Exported 4 Markdown files, 1 asset\(s\), 1 PDF page image/).waitFor();
+    const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), structuredId);
+    assert.equal(saved.mineruResourceId, resourceId);
+    assert.deepEqual(await page.evaluate(id => window.paperBridge.cachedMineruPages(id), structuredId), [{ page: 1, text: 'A parsed title' }]);
+    const bundle = path.join(exports, fs.readdirSync(exports)[0]);
+    const link = fs.readFileSync(path.join(bundle, 'Original.md'), 'utf8').match(/\[Measurements\]\((assets\/[^#]+\.csv)#row\)/)?.[1];
+    assert.ok(link, 'The current attachment should be linked with its fragment');
+    assert.equal(fs.readFileSync(path.join(bundle, link), 'utf8'), 'current bytes');
+    assert.equal((await app.evaluate(() => globalThis.__discardedMineruResults)).length, 2);
 
     await chooseMode('pdfOnly');
     const probes = await app.evaluate(() => globalThis.__mineruStatusCalls);
@@ -161,7 +197,7 @@ async function run() {
     assert.equal(await app.evaluate(() => globalThis.__mineruStatusCalls), probes, 'PDF-only imports should not probe MinerU');
     await page.locator('.library-row').filter({ hasText: /^fallback\.pdf/ }).click();
     await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
-    console.log('Import verified: strict and fallback modes, PDF-only page preparation, and isolation from late parser and page-image results.');
+    console.log('Import verified: strict and fallback modes, PDF-only page preparation, and accepted MinerU resources isolated from rejected or stale output.');
   } finally { await app.close().catch(() => {}); }
 }
 

@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints } = require('../electron/mineru-output.cjs');
+const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('../electron/mineru-resources.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-output-'));
@@ -90,4 +91,50 @@ test('page hints accept the companion 4.x structure or 3.x content list and keep
   assert.deepEqual(readMineruPageHints(markdown), []);
   file('paper_content_list.json', JSON.stringify([{ page_idx: 7, text: 'Legacy source.', list_items: ['A list item'] }]));
   assert.deepEqual(readMineruPageHints(markdown), [{ page: 8, text: 'Legacy source.' }, { page: 8, text: 'A list item' }]);
+});
+
+test('saved MinerU generations keep their own attachments and page hints even with identical Markdown', t => {
+  const file = fixture(t);
+  const id = 'a'.repeat(64);
+  const markdown = '# A paper\n\nRead the [measurements](tables/result.csv#rows).';
+  const old = file('pipeline/paper/auto/paper.md', markdown);
+  file('pipeline/paper/auto/tables/result.csv', 'previous bytes');
+  file('pipeline/paper/auto/paper_content_list.json', '[{"page_idx":1,"text":"A paper"}]');
+  const latest = file('kit/paper.md', markdown);
+  file('kit/tables/result.csv', 'current bytes');
+  file('kit/structured_content.json', '{"pages":[{"page_idx":4,"blocks":[{"content":"A paper"}]}]}');
+  const oldId = keepMineruResult(file(''), id, old, markdown);
+  const currentId = keepMineruResult(file(''), id, latest, markdown);
+  const paper = { id, mineruMarkdown: markdown };
+  const previous = findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: oldId });
+  const current = findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: currentId });
+  assert.notEqual(previous, current);
+  assert.equal(fs.readFileSync(path.join(path.dirname(previous), 'tables/result.csv'), 'utf8'), 'previous bytes');
+  assert.equal(fs.readFileSync(path.join(path.dirname(current), 'tables/result.csv'), 'utf8'), 'current bytes');
+  assert.equal(readMineruPageHints(previous)[0].page, 2);
+  assert.equal(readMineruPageHints(current)[0].page, 5);
+  assert.equal(findPaperMineruMarkdown(file(''), { ...paper, id: 'b'.repeat(64), mineruResourceId: currentId }), null);
+  assert.equal(findPaperMineruMarkdown(file(''), { ...paper, mineruMarkdown: 'Different paper', mineruResourceId: currentId }), null);
+  fs.appendFileSync(current, ' changed');
+  assert.equal(findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: currentId }), null);
+  removeMineruResult(file(''), currentId);
+  assert.equal(fs.existsSync(path.dirname(current)), false);
+  assert.equal(findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: oldId }), previous);
+});
+
+test('legacy MinerU assets require a unique match with the saved Markdown', t => {
+  const file = fixture(t);
+  const id = 'c'.repeat(64);
+  const old = file(`mineru/${id}/pipeline/paper.md`, '# An older and longer extraction\n'.repeat(20));
+  const markdown = '# Current text\n\n![Preview](images/preview.png)';
+  const current = file(`mineru/${id}/kit/paper.md`, markdown);
+  file(`mineru/${id}/kit/images/preview.png`, 'current image');
+  const paper = { id, mineruMarkdown: readMineruMarkdown(current) };
+  assert.equal(findMineruMarkdown(file(`mineru/${id}`), 'paper'), old);
+  assert.equal(findPaperMineruMarkdown(file(''), paper), current);
+  assert.equal(findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: null }), null);
+  assert.equal(findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: '../kit' }), null);
+  file(`mineru/${id}/older-kit/paper.md`, markdown);
+  file(`mineru/${id}/older-kit/images/preview.png`, 'current image');
+  assert.equal(findPaperMineruMarkdown(file(''), paper), null);
 });

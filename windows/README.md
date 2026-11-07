@@ -2,7 +2,7 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-Download the Windows x64 development preview from the [Windows 0.2.12 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.12). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
+Download the Windows x64 development preview from the [Windows 0.2.13 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.13). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
 
 Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. Zoom with the PDF toolbar, **Ctrl+mouse wheel**, or **Ctrl+Plus/Minus**. Press **Ctrl+0** or choose **Fit** to fit the PDF to the window. Each view remembers its zoom for the current paper. PDF annotations remain anchored while scaling, and opening a saved annotation also brings its text into view horizontally.
 
@@ -10,9 +10,11 @@ Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. 
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
 
-On the development branch, **File > Export Markdown or Bundle**, **Ctrl+Shift+E**, and the export action under **More** open the appropriate save dialog. PDF and MinerU papers export to a folder with Markdown and referenced assets. Pasted text exports an analysis file with the source passages, saved translations, summary, evidence and annotations. **More > Export Options** still offers the separate Markdown editions and the portable bundle.
+In version 0.2.13, **File > Export Markdown or Bundle**, **Ctrl+Shift+E**, and the export action under **More** open the appropriate save dialog. PDF and MinerU papers export to a folder with Markdown and referenced assets. Pasted text exports an analysis file with the source passages, saved translations, summary, evidence and annotations. **More > Export Options** still offers the separate Markdown editions and the portable bundle.
 
 In a MinerU bundle, the original edition uses the stored MinerU Markdown. Translated and bilingual editions keep original wording wherever translation is unfinished and retain figures, equations and reference links. A saved structured full draft is exported using the current paragraph translations. PDF text bundles preserve the source passage when its translation is unavailable.
+
+MinerU exports and recovered page references use the files from the saved extraction. Older workspaces reuse a local resource directory when its Markdown uniquely matches the saved source. If an attachment cannot be verified or found, the export keeps its link and reports it as missing.
 
 Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF text import, including scans and MinerU fallback. The import screen shows progress and lets you cancel without replacing the open paper. Portable Markdown export reuses completed pages across restarts and regenerates missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
 
