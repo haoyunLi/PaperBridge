@@ -57,9 +57,18 @@
 .pdf-facsimile .pdf-toolbar{margin-bottom:6px}
 .pdf-facsimile .pdf-scroll{max-height:28vh}
 .pdf-facsimile .pdf-sheet,.pdf-facsimile canvas{max-width:100%}
-.pdf-continuous{position:relative;height:clamp(280px,calc(100vh - 225px),1000px);padding:8px 0;scrollbar-gutter:stable}
+.pdf-continuous{position:relative;height:clamp(280px,calc(100vh - 225px),1000px);padding:8px 0;scrollbar-gutter:stable;overflow-anchor:none}
 .pdf-page-slot{position:relative;margin:0 auto 18px}
 .pdf-page-slot .pdf-sheet{display:block}
+.pdf-sheet .textLayer{--scale-round-x:1px;--scale-round-y:1px;transform-origin:0 0}
+.pdf-sheet .textLayer span:not(.markedContent){font-size:calc(var(--total-scale-factor) * var(--font-height,0px));transform:rotate(var(--rotate,0deg)) scaleX(var(--scale-x,1))}
+.pdf-sheet .textLayer .markedContent{display:contents}
+.pdf-sheet .textLayer[data-main-rotation="90"]{transform:rotate(90deg) translateY(-100%)}
+.pdf-sheet .textLayer[data-main-rotation="180"]{transform:rotate(180deg) translate(-100%,-100%)}
+.pdf-sheet .textLayer[data-main-rotation="270"]{transform:rotate(270deg) translateX(-100%)}
+.pdf-toolbar{flex-wrap:wrap;gap:6px 12px}
+.pdf-zoom output{min-width:34px;text-align:center;font-variant-numeric:tabular-nums}
+.pdf-zoom .button{padding:5px 8px}
 .pdf-facsimile canvas{height:auto!important}
 @container (min-width:650px){
   .pdf-comparison{grid-template-columns:minmax(0,2fr) minmax(0,3fr)}

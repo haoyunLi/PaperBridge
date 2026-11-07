@@ -5,13 +5,13 @@ const http = require('node:http');
 const { _electron: electron } = require('playwright-core');
 const { clickTextOffset } = require('./reading-caret.cjs');
 
-function samplePdf(blank = false, variant = '', firstPage = '') {
+function samplePdf(blank = false, variant = '', firstPage = '', rotation = 0) {
   const stream = blank ? '' : firstPage || 'BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (This practice PDF contains selectable academic text for PaperBridge extraction.) Tj 0 -12 Td (It uses attention-) Tj 0 -12 Td (based inference.) Tj 1 0 0 1 72 52 Tm (Page one trailing sentence.) Tj ET';
   const secondStream = blank ? '' : `BT /F1 18 Tf 72 720 Td (Abstract) Tj 0 -30 Td /F1 12 Tf (The second page repeats the heading so annotations must retain their page${variant}.) Tj ET`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R 6 0 R] /Count 2 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792]${rotation ? ` /Rotate ${rotation}` : ''} /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 7 0 R >>',
@@ -408,6 +408,19 @@ async function run() {
     await page.getByRole('button', { name: 'Save note' }).click();
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-coral')?.size), 1);
     assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])].map(range => range.toString()).join()), 'Abstract');
+    const zoomLevel = page.locator('.pdf-zoom output');
+    const pdfScroll = page.locator('.pdf-continuous');
+    const paperHeading = page.locator('.textLayer[data-page="1"] span').filter({ hasText: /^Abstract$/ });
+    const fitHeadingSize = await paperHeading.evaluate(span => Number.parseFloat(getComputedStyle(span).fontSize));
+    await pdfScroll.evaluate(host => { host.scrollTop = host.firstElementChild.offsetTop + 80; });
+    await page.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
+    await page.waitForFunction(({ fontSize }) => {
+      const host = document.querySelector('.pdf-continuous');
+      const heading = [...host.querySelectorAll('.textLayer[data-page="1"] span')].find(span => span.textContent === 'Abstract');
+      return host.dataset.pdfZoom === '125' && Math.abs(host.scrollTop - host.firstElementChild.offsetTop - 100) < 2
+        && heading && Math.abs(Number.parseFloat(getComputedStyle(heading).fontSize) - fontSize * 1.25) < 0.1;
+    }, { fontSize: fitHeadingSize });
+    await page.waitForFunction(() => [...(CSS.highlights.get('paperbridge-coral') || [])].some(range => range.toString() === 'Abstract'));
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500, null, { timeout: 20000 });
     await page.waitForFunction(() => document.querySelectorAll('.textLayer[data-page="1"] span').length > 0, null, { timeout: 10000 });
@@ -415,6 +428,13 @@ async function run() {
       width: canvas.width, height: canvas.height, displayWidth: canvas.clientWidth, displayHeight: canvas.clientHeight
     }));
     const originalSize = await originalGeometry();
+    assert.equal(await zoomLevel.innerText(), '100%', 'Paper zoom should be independent of Original');
+    await pdfScroll.dispatchEvent('wheel', { ctrlKey: true, deltaY: -120, bubbles: true, cancelable: true });
+    await page.waitForFunction(width => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '125' &&
+      document.querySelector('.pdf-sheet canvas')?.clientWidth > width, originalSize.displayWidth);
+    await pdfScroll.press('Control+-');
+    await page.waitForFunction(width => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '100' &&
+      document.querySelector('.pdf-sheet canvas')?.clientWidth === width, originalSize.displayWidth);
     await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
     const appearancePopover = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
     await appearancePopover.getByRole('slider', { name: 'Reader font size', exact: true }).press('End');
@@ -455,6 +475,22 @@ async function run() {
     assert.match(await page.locator('.inspector blockquote').innerText(), /^Abstract$/);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the exact PDF inside Paper.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && document.querySelector('[aria-label="Paper display mode"]')?.value === 'source' && window.getSelection()?.toString() === 'Abstract');
+    assert.equal(await zoomLevel.innerText(), '125%');
+    await pdfScroll.press('Control+=');
+    await page.waitForFunction(() => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '150'
+      && window.getSelection()?.toString() === 'Abstract');
+    await pdfScroll.evaluate(host => { host.scrollLeft = host.scrollWidth; });
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the exact PDF inside Paper.' }).locator('button').first().click();
+    await page.waitForFunction(() => {
+      const host = document.querySelector('.pdf-continuous');
+      const selection = window.getSelection();
+      if (selection?.toString() !== 'Abstract' || !selection.rangeCount) return false;
+      const range = selection.getRangeAt(0).getBoundingClientRect();
+      const left = host.getBoundingClientRect().left;
+      return range.left >= left && range.right <= left + host.clientWidth;
+    });
+    await pdfScroll.press('Control+0');
+    await page.waitForFunction(() => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '100');
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'This note belongs to the original PDF page.' }).locator('button').first().click();
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Original' && window.getSelection()?.toString() === 'Abstract');
     await page.getByRole('button', { name: 'Next page' }).click();
@@ -650,6 +686,8 @@ async function run() {
     assert.equal(returnedToAnnotatedPdf, true, 'The original annotated PDF should remain in the library');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('button', { name: 'Original', exact: true }).click();
+    await page.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
+    await page.waitForFunction(() => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '125');
     await app.close();
     const paperFile = path.join(workspace, 'papers', pdfRecord.id + '.json');
     const legacyPdf = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
@@ -669,6 +707,7 @@ async function run() {
     app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const reopenedPage = await app.firstWindow();
     await reopenedPage.getByRole('heading', { name: 'practice.pdf' }).waitFor();
+    await reopenedPage.waitForFunction(() => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '125');
     assert.match(await reopenedPage.locator('.saved-annotations').innerText(), /This note belongs to the original PDF page\./);
     await reopenedPage.waitForFunction(() => document.querySelector('.pdf-toolbar')?.textContent.includes('page 1 of ') && document.querySelector('.textLayer[data-page="1"]'));
     await reopenedPage.waitForFunction(() => CSS.highlights.get('paperbridge-teal')?.size === 1);
@@ -743,6 +782,8 @@ async function run() {
     await reopenedPage.locator('.pdf-toolbar').getByRole('button', { name: 'Next page' }).click();
     await reopenedPage.locator('.pdf-toolbar').getByText(/page 2 of 2/).waitFor();
     const exactPdf = reopenedPage.locator('[data-pdf-scope="paperPdf"]');
+    await reopenedPage.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
+    await reopenedPage.waitForFunction(() => document.querySelector('[data-pdf-scope="paperPdf"]')?.dataset.pdfZoom === '125');
     await exactPdf.evaluate(host => { host.scrollTop += 75; });
     const pageTwoOffset = await exactPdf.evaluate(host => host.scrollTop - host.querySelector('[data-pdf-page="2"]').offsetTop);
     assert.ok(pageTwoOffset > 0);
@@ -760,6 +801,7 @@ async function run() {
     await reopenedPage.getByRole('button', { name: 'Back to previous reading location', exact: true }).click();
     await exactPdf.waitFor();
     await reopenedPage.locator('.pdf-toolbar').getByText(/page 2 of 2/).waitFor();
+    assert.equal(await exactPdf.getAttribute('data-pdf-zoom'), '125');
     await reopenedPage.waitForFunction(offset => {
       const host = document.querySelector('[data-pdf-scope="paperPdf"]');
       const slot = host?.querySelector('[data-pdf-page="2"]');
@@ -815,6 +857,22 @@ async function run() {
     await reopenedPage.locator('.source-text').getByText(/Right lower line 6/).waitFor();
     const lines = (await reopenedPage.locator('.source-text').allInnerTexts()).join('\n');
     assert.match(lines, /Shared heading[\s\S]*Left upper line 6[\s\S]*Right upper line 1[\s\S]*Right upper line 6[\s\S]*Table 1\.[\s\S]*Left lower line 6[\s\S]*Right lower line 1/);
+    const rotatedPath = path.join(artifacts, 'rotated-pdf.pdf');
+    fs.writeFileSync(rotatedPath, samplePdf(false, '', '', 90));
+    await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, rotatedPath);
+    await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
+    await reopenedPage.getByRole('heading', { name: 'rotated-pdf.pdf' }).waitFor();
+    await reopenedPage.getByRole('button', { name: 'Original', exact: true }).click();
+    await reopenedPage.locator('.textLayer[data-page="1"][data-main-rotation="90"]').waitFor();
+    await reopenedPage.getByRole('button', { name: 'Zoom in PDF', exact: true }).click();
+    await reopenedPage.waitForFunction(() => {
+      const host = document.querySelector('.pdf-continuous');
+      const sheet = host?.querySelector('.pdf-sheet');
+      const canvas = sheet?.querySelector('canvas')?.getBoundingClientRect();
+      const layer = sheet?.querySelector('.textLayer[data-main-rotation="90"]')?.getBoundingClientRect();
+      return host?.dataset.pdfZoom === '125' && canvas && layer && canvas.width > canvas.height
+        && ['left', 'top', 'width', 'height'].every(key => Math.abs(canvas[key] - layer[key]) < 2);
+    });
     console.log('Electron workflow verified: menus, shortcuts, source and cross-line PDF annotations, original-page comparison, portable export, scan guidance, restart recovery, and narrow-gutter reading order.');
   } finally { await app?.close(); ollama.close(); }
 }

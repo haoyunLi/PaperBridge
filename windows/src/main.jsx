@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -6,7 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
-import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle } from 'lucide-react';
+import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, ZoomIn, ZoomOut } from 'lucide-react';
 import { openPdf, extractPdf } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
@@ -42,6 +42,15 @@ const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
 const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text, value.anchors && pdfAnchorKey(value), value.renderedAnchor, value.displayMode, value.sourceMode]) : '';
 const pdfScrollKey = (scope, page) => `Pdf:${scope}:${page}`;
+const pdfZoomStep = 25;
+const pdfFitZoom = 100;
+const pdfMinZoom = 50;
+const pdfMaxZoom = 250;
+const maxPdfBitmapPixels = 8_000_000;
+const maxPdfBitmapSide = 4096;
+const pdfZoomPercent = value => Number.isFinite(value)
+  ? Math.max(pdfMinZoom, Math.min(pdfMaxZoom, Math.round(value / pdfZoomStep) * pdfZoomStep)) : pdfFitZoom;
+const pdfOffsetAtFit = (host, page, zoom) => Math.max(0, host.scrollTop - page.offsetTop) * pdfFitZoom / zoom;
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
 const sample = ['Abstract', 'This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.', '1 Introduction', 'Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.', '2 Methods', 'Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.', '3 Results', 'Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.', '4 Limitations', 'A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.', '5 Conclusion', 'Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action.'];
 const markdownPlugins = [remarkGfm, remarkMath];
@@ -346,6 +355,7 @@ function usePdfDocument(paper) {
 function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady }) {
   const canvas = useRef(null);
   const layer = useRef(null);
+  const finishedLayer = useRef(null);
   const highlightKey = useRef({});
   const [rendered, setRendered] = useState(false);
   useEffect(() => {
@@ -355,8 +365,13 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
     let textLayer;
     const surface = canvas.current;
     const root = layer.current;
-    setRendered(false);
-    if (root) { delete root.dataset.page; root.replaceChildren(); }
+    const previous = finishedLayer.current;
+    const reusable = root && previous?.pdf === pdf && previous.number === number;
+    if (!reusable) {
+      setRendered(false);
+      finishedLayer.current = null;
+      if (root) { delete root.dataset.page; root.replaceChildren(); }
+    }
     (async () => {
       const page = await pdf.getPage(number);
       if (cancelled) return;
@@ -364,17 +379,21 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
       const targetWidth = facsimile ? Math.min(850, 1600 * base.width / base.height) : width;
       const viewport = page.getViewport({ scale: targetWidth / base.width });
       onSize?.(number, base.height / base.width);
-      const ratio = window.devicePixelRatio || 1;
-      surface.width = Math.round(viewport.width * ratio);
-      surface.height = Math.round(viewport.height * ratio);
+      const ratio = Math.min(window.devicePixelRatio || 1, Math.sqrt(maxPdfBitmapPixels / (viewport.width * viewport.height)),
+        maxPdfBitmapSide / Math.max(viewport.width, viewport.height));
+      surface.width = Math.max(1, Math.floor(viewport.width * ratio));
+      surface.height = Math.max(1, Math.floor(viewport.height * ratio));
       surface.style.width = viewport.width + 'px';
       surface.style.height = viewport.height + 'px';
+      if (root) {
+        root.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
+        if (reusable) previous.textLayer.update({ viewport });
+      }
       task = page.render({ canvasContext: surface.getContext('2d'), canvas: surface, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
       await task.promise;
       if (cancelled) return;
       if (!root) { onReady?.(number, null); return; }
-      root.style.width = viewport.width + 'px';
-      root.style.height = viewport.height + 'px';
+      if (reusable) { onReady?.(number, Boolean(root.textContent.trim())); return; }
       const pdfjs = await import('pdfjs-dist');
       const textContentSource = await page.getTextContent();
       if (cancelled) return;
@@ -382,10 +401,11 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
       await textLayer.render();
       if (cancelled) return;
       root.dataset.page = String(number);
+      finishedLayer.current = { pdf, number, textLayer };
       setRendered(true);
       onReady?.(number, Boolean(root.textContent.trim()));
     })().catch(cause => { if (!cancelled) onReady?.(number, cause.message); });
-    return () => { cancelled = true; task?.cancel(); textLayer?.cancel(); };
+    return () => { cancelled = true; task?.cancel(); if (finishedLayer.current?.textLayer !== textLayer) textLayer?.cancel(); };
   }, [pdf, number, width, facsimile, onSize, onReady]);
   useEffect(() => {
     const root = layer.current;
@@ -461,18 +481,23 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const scroller = useRef(null);
   const activePage = useRef(0);
   const activeOffset = useRef(0);
+  const horizontalCenter = useRef(0.5);
   const activePageTop = useRef(0);
   const layoutWidth = useRef(0);
+  const lastFitWidth = useRef(0);
+  const lastWheelZoom = useRef(-Infinity);
   const scrollFrame = useRef(0);
   const scrollTimer = useRef(0);
   const lastJump = useRef(null);
   const lastRestore = useRef(null);
-  const [width, setWidth] = useState(0);
+  const [fitWidth, setFitWidth] = useState(0);
   const [sizes, setSizes] = useState({});
   const [statuses, setStatuses] = useState({});
   const [visible, setVisible] = useState([1, 1]);
   const [dragPage, setDragPage] = useState(null);
   const currentPage = Math.max(1, Math.min(pageNumber, pdf?.numPages ?? pageNumber));
+  const zoom = pdfZoomPercent(paper?.position?.pdfZoom?.[scope]);
+  const width = fitWidth * zoom / pdfFitZoom;
   const pinned = navigation ?? selected;
   const selectFirst = pinned?.page;
   const selectLast = pdfAnchors(pinned).at(-1)?.page ?? selectFirst;
@@ -482,7 +507,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   useLayoutEffect(() => {
     const host = scroller.current;
     if (!host || !pdf) return;
-    const resize = () => setWidth(Math.min(850, Math.max(280, host.clientWidth - 28)));
+    const resize = () => setFitWidth(Math.min(850, Math.max(1, host.clientWidth - 28)));
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host);
@@ -496,18 +521,21 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     const navigationId = navigation?.id;
     const jump = activePage.current !== currentPage || lastRestore.current !== restoreToken ||
       (navigationId && lastJump.current !== navigationId);
-    if (!jump && activePageTop.current === page.offsetTop && layoutWidth.current === width) return;
+    if (!jump && activePageTop.current === page.offsetTop && layoutWidth.current === width && lastFitWidth.current === fitWidth) return;
     clearTimeout(scrollTimer.current);
     cancelAnimationFrame(scrollFrame.current);
     activePage.current = currentPage;
     activePageTop.current = page.offsetTop;
-    layoutWidth.current = width;
     if (jump) activeOffset.current = navigationId ? 0 : position;
+    else if (lastFitWidth.current && lastFitWidth.current !== fitWidth) activeOffset.current *= fitWidth / lastFitWidth.current;
     lastJump.current = navigationId;
     lastRestore.current = restoreToken;
-    host.scrollTop = page.offsetTop + activeOffset.current;
+    host.scrollTop = page.offsetTop + activeOffset.current * zoom / pdfFitZoom;
+    if (layoutWidth.current !== width) host.scrollLeft = page.offsetLeft + horizontalCenter.current * width - host.clientWidth / 2;
+    layoutWidth.current = width;
+    lastFitWidth.current = fitWidth;
     setVisible([currentPage, pdfPageAt(host, host.scrollTop + host.clientHeight)]);
-  }, [pdf, currentPage, position, restoreToken, navigation?.id, width, sizes]);
+  }, [pdf, currentPage, position, restoreToken, navigation?.id, width, fitWidth, zoom, sizes]);
 
   useLayoutEffect(() => () => {
     cancelAnimationFrame(scrollFrame.current);
@@ -553,7 +581,12 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     selection.removeAllRanges();
     selection.addRange(range);
     const page = pdfPageElement(host, captured.page);
-    const withinPage = first.getBoundingClientRect().top - page.getBoundingClientRect().top - 18;
+    const target = first.getClientRects()[0] || first.getBoundingClientRect();
+    const withinPage = target.top - page.getBoundingClientRect().top - 18;
+    const hostLeft = host.getBoundingClientRect().left;
+    if (target.left < hostLeft || target.right > hostLeft + host.clientWidth) {
+      host.scrollLeft += target.left - hostLeft - 18;
+    }
     host.scrollTop = page.offsetTop + Math.max(0, withinPage);
     onNavigate(captured);
   }, [pdf, navigation?.id, statuses]);
@@ -569,8 +602,10 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       const page = top > 0 && host.scrollHeight - top - host.clientHeight < 2
         ? host.children.length
         : pdfPageAt(host, top + Math.min(36, host.clientHeight / 4));
-      activePageTop.current = pdfPageElement(host, page).offsetTop;
-      const offset = Math.max(0, top - activePageTop.current);
+      const slot = pdfPageElement(host, page);
+      activePageTop.current = slot.offsetTop;
+      horizontalCenter.current = (host.scrollLeft + host.clientWidth / 2 - slot.offsetLeft) / width;
+      const offset = pdfOffsetAtFit(host, slot, zoom);
       activeOffset.current = offset;
       setVisible(current => current[0] === page && current[1] === end ? current : [page, end]);
       clearTimeout(scrollTimer.current);
@@ -591,18 +626,52 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     window.getSelection()?.removeAllRanges();
     onPage(number, 0, true);
   }
+  function changeZoom(value) {
+    const next = pdfZoomPercent(value);
+    const host = scroller.current;
+    const page = pdfPageElement(host, currentPage);
+    if (!page || next === zoom) return;
+    activeOffset.current = pdfOffsetAtFit(host, page, zoom);
+    horizontalCenter.current = (host.scrollLeft + host.clientWidth / 2 - page.offsetLeft) / width;
+    onScrollSelection();
+    onPage(currentPage, activeOffset.current, false, next);
+  }
+  const zoomOnWheel = useEffectEvent(event => {
+    if (!event.ctrlKey || event.altKey || event.metaKey) return;
+    event.preventDefault();
+    const now = performance.now();
+    if (!event.deltaY || now - lastWheelZoom.current < 90) return;
+    lastWheelZoom.current = now;
+    changeZoom(zoom + (event.deltaY < 0 ? pdfZoomStep : -pdfZoomStep));
+  });
+  useEffect(() => {
+    const host = scroller.current;
+    if (!host) return;
+    const onWheel = event => zoomOnWheel(event);
+    host.addEventListener('wheel', onWheel, { passive: false });
+    return () => host.removeEventListener('wheel', onWheel);
+  }, [pdf]);
+  function zoomOnKey(event) {
+    if (!event.ctrlKey || event.altKey || event.metaKey) return;
+    const next = event.key === '+' || event.key === '=' ? zoom + pdfZoomStep
+      : event.key === '-' ? zoom - pdfZoomStep : event.key === '0' ? pdfFitZoom : null;
+    if (next == null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    changeZoom(next);
+  }
   const pageStatus = statuses[currentPage];
   const [start, end] = visible[0] === currentPage ? visible : [currentPage, currentPage];
   const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
   const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
   const ocrReady = Boolean(paper.mineruBlocks?.length || paper.sourceMode === 'mineru' && paper.blocks.length);
-  return <div className="pdf-panel">
-    <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} />
+  return <div className="pdf-panel" onKeyDown={zoomOnKey}>
+    <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} zoom={zoom} onZoom={changeZoom} />
     {pageStatus === false && <ScanNotice page ocrReady={ocrReady} onParse={onOcr} onSetup={onSetup}
       onReader={ocrReady || paper.blocks.length ? () => onReader(currentPage) : null} />}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
-    {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} tabIndex={0} aria-label="Continuous original PDF"
+    {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} data-pdf-zoom={zoom} tabIndex={0} aria-label="Continuous original PDF"
       onScroll={handleScroll} onMouseDown={event => {
         const number = pdfRangeEndpoint(event.target);
         if (event.button === 0 && Number.isInteger(number)) setDragPage(number);
@@ -618,8 +687,14 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     </div>}
   </div>;
 }
-function PdfToolbar({ page, count, onPage }) {
+function PdfToolbar({ page, count, onPage, zoom, onZoom }) {
   return <div className="pdf-toolbar"><span>Exact original PDF · page {page} of {count || '…'}</span><div className="row">
+    {onZoom && <div className="row pdf-zoom" role="group" aria-label="PDF zoom">
+      <button className="icon-button" aria-label="Zoom out PDF" title="Zoom out · Ctrl+-" disabled={!count || zoom <= pdfMinZoom} onClick={() => onZoom(zoom - pdfZoomStep)}><ZoomOut size={17} /></button>
+      <output aria-label="PDF zoom level">{zoom}%</output>
+      <button className="icon-button" aria-label="Zoom in PDF" title="Zoom in · Ctrl++" disabled={!count || zoom >= pdfMaxZoom} onClick={() => onZoom(zoom + pdfZoomStep)}><ZoomIn size={17} /></button>
+      <button className="button outline" aria-label="Fit PDF to window" title="Fit to window · Ctrl+0" disabled={!count || zoom === pdfFitZoom} onClick={() => onZoom(pdfFitZoom)}>Fit</button>
+    </div>}
     <button className="icon-button" aria-label="Previous page" disabled={!count || page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft size={17} /></button>
     <button className="icon-button" aria-label="Next page" disabled={!count || page >= count} onClick={() => onPage(page + 1)}><ChevronRight size={17} /></button>
   </div></div>;
@@ -994,7 +1069,7 @@ function App() {
     scrollByTab[key] = mainScrollRef.current?.scrollTop || 0;
     const pdfHost = mainScrollRef.current?.querySelector('.pdf-continuous');
     const pdfPage = pdfPageElement(pdfHost, pageNumber);
-    if (pdfPage) scrollByTab[pdfScrollKey(pdfHost.dataset.pdfScope, pageNumber)] = Math.max(0, pdfHost.scrollTop - pdfPage.offsetTop);
+    if (pdfPage) scrollByTab[pdfScrollKey(pdfHost.dataset.pdfScope, pageNumber)] = pdfOffsetAtFit(pdfHost, pdfPage, pdfZoomPercent(Number(pdfHost.dataset.pdfZoom)));
     let block = activeBlock;
     if (tab === 'Reader' && !search && mainScrollRef.current) {
       const top = mainScrollRef.current.getBoundingClientRect().top;
@@ -1080,7 +1155,7 @@ function App() {
     setPageNumber(number);
     commitPaper(current => ({ ...current, position: { ...current.position, page: number } }));
   }
-  function changePdfPage(scope, number, offset, manual) {
+  function changePdfPage(scope, number, offset, manual, zoom) {
     if (paperRef.current?.id !== paper.id || readingGeneration !== readingRestoration.current) return;
     if (manual) {
       void finishNoteEditing();
@@ -1091,9 +1166,10 @@ function App() {
     const key = pdfScrollKey(scope, number);
     commitPaper(current => {
       const position = current.position;
-      if (position?.page === number && position.scrollByTab?.[key] === offset) return current;
-      return { ...current, position: { ...position, page: number, scrollByTab: { ...position?.scrollByTab, [key]: offset } } };
-    }, { delay: manual ? 0 : 250, deferUndo: !manual });
+      if (zoom == null && position?.page === number && position.scrollByTab?.[key] === offset) return current;
+      return { ...current, position: { ...position, page: number, scrollByTab: { ...position?.scrollByTab, [key]: offset },
+        ...(zoom != null && { pdfZoom: { ...position?.pdfZoom, [scope]: zoom } }) } };
+    }, { delay: manual || zoom != null ? 0 : 250, deferUndo: !manual });
   }
   function selectPdf(anchor, scope) {
     return applyReadingSelection({ ...anchor, id: null, kind: 'source', scope });
