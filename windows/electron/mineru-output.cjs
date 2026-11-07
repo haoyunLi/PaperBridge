@@ -2,25 +2,93 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const yauzl = require('yauzl');
-const { rewriteAssetUrls, localAssetReference, assetFile } = require('./markdown-assets.cjs');
+const { rewriteAssetUrls, localAssetReference, assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
 
 const structuredOutput = 'structured_content.json';
 const maxMetadataBytes = 64 * 1024 * 1024;
 const maxImageBytes = 8_000_000;
+const maxArchiveEntries = 50_000;
+const maxAttachmentBytes = 256 * 1024 * 1024;
+const maxRetainedBytes = 1024 * 1024 * 1024;
+
+function archivePathKey(relative) {
+  if (!relative || /^[\\/]/.test(relative) || /[\\:\x00-\x1f<>"|?*]/.test(relative)) return null;
+  const parts = relative.split('/').filter(part => part && part !== '.');
+  const device = /^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])$/i;
+  if (parts.some(part => /[. ]$/.test(part) || device.test(part.split('.')[0].trimEnd()))) return null;
+  if (parts[0]?.toLowerCase() === mineruResultManifest) return null;
+  return parts.length ? parts.join('/').toLowerCase() : null;
+}
+
+function regularArchiveFile(entry) {
+  const host = entry.versionMadeBy >>> 8;
+  const unixType = (host === 3 || host === 19) ? (entry.externalFileAttributes >>> 16) & 0o170000 : 0;
+  return !entry.fileName.endsWith('/') && !(entry.externalFileAttributes & 0x410)
+    && (!unixType || unixType === 0o100000) && entry.canDecodeFileData();
+}
+
+async function unpackEntry(zip, entry, folder, checkActive) {
+  checkActive();
+  const destination = path.join(folder, entry.fileName);
+  await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+  const file = await fs.promises.open(destination, 'wx');
+  try {
+    await pipeline(await zip.openReadStreamPromise(entry), async function* (source) {
+      for await (const chunk of source) {
+        checkActive();
+        yield chunk;
+      }
+    }, file.createWriteStream());
+  } catch (error) {
+    await file.close().catch(() => {});
+    await fs.promises.unlink(destination).catch(() => {});
+    throw error;
+  }
+  return destination;
+}
 
 async function unpackMineruArchive(archive, folder, checkActive) {
-  const zip = await yauzl.openPromise(archive, { strictFileNames: true });
+  const zip = await yauzl.openPromise(archive, { strictFileNames: true, autoClose: false });
   try {
+    if (zip.entryCount > maxArchiveEntries) throw new Error('MinerU output contains too many archive entries.');
+    const entries = new Map();
     for await (const entry of zip.eachEntry()) {
       checkActive();
-      const name = entry.fileName;
-      const image = /^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/i.test(name);
-      // Keep full-size images for portable export. Only the preview has an inline size limit.
-      if (!image && name !== 'markdown.md' && name !== structuredOutput) continue;
-      const destination = path.join(folder, name === 'markdown.md' ? 'paper.md' : name);
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-      await pipeline(await zip.openReadStreamPromise(entry), fs.createWriteStream(destination, { flags: 'wx' }));
+      if (!regularArchiveFile(entry)) continue;
+      const key = archivePathKey(entry.fileName);
+      if (key) entries.set(key, entries.has(key) ? null : entry);
     }
+    const source = entries.get('markdown.md');
+    if (!source) throw new Error('MinerU finished without a unique Markdown file.');
+    if (source.uncompressedSize > maxMetadataBytes) throw new Error('The MinerU Markdown output is too large to read.');
+    checkActive();
+    await fs.promises.mkdir(folder);
+    const markdown = await unpackEntry(zip, source, folder, checkActive);
+    entries.delete('markdown.md');
+    const selected = new Set([structuredOutput]);
+    rewriteAssetUrls(await fs.promises.readFile(markdown, 'utf8'), url => {
+      const key = archivePathKey(localAssetReference(url)?.relative);
+      if (key && entries.has(key)) selected.add(key);
+      return url;
+    }, { includeLinks: true });
+    // Preserve the standard full-size figures as well as attachments named by the document.
+    for (const key of entries.keys()) if (/^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/.test(key)) selected.add(key);
+    let selectedBytes = 0;
+    for (const key of selected) {
+      const entry = entries.get(key);
+      const limit = key === structuredOutput ? maxMetadataBytes : maxAttachmentBytes;
+      if (!entry || entry.uncompressedSize > limit || selectedBytes + entry.uncompressedSize > maxRetainedBytes) continue;
+      selectedBytes += entry.uncompressedSize;
+      checkActive();
+      try {
+        await unpackEntry(zip, entry, folder, checkActive);
+      } catch {
+        // Optional unreadable files stay as missing links. Cancellation still stops the import.
+        checkActive();
+      }
+    }
+    checkActive();
+    return markdown;
   } finally { zip.close(); }
 }
 

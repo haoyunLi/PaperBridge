@@ -1,11 +1,10 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomBytes } = require('node:crypto');
-const { assetFile } = require('./markdown-assets.cjs');
+const { assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
 const { mineruMarkdownFiles, readMineruMarkdown } = require('./mineru-output.cjs');
 
 const resultsDirectory = 'mineru-results';
-const manifestFile = '.paperbridge-result.json';
 const digest = value => createHash('sha256').update(value).digest('hex');
 const validResourceId = value => typeof value === 'string' && /^[a-f0-9]{16}$/.test(value);
 
@@ -41,7 +40,7 @@ function keepMineruResult(root, paperId, markdownFile, markdown) {
     fs.cpSync(path.dirname(markdownFile), directory, { recursive: true, force: false, errorOnExist: true });
     const source = fs.readFileSync(path.join(directory, name));
     const manifest = { paperId, name, markdownDigest: digest(markdown), sourceDigest: digest(source) };
-    fs.writeFileSync(path.join(directory, manifestFile), JSON.stringify(manifest), { flag: 'wx' });
+    fs.writeFileSync(path.join(directory, mineruResultManifest), JSON.stringify(manifest), { flag: 'wx' });
     return resourceId;
   } catch (error) {
     removeMineruResult(root, resourceId);
@@ -54,7 +53,7 @@ function findPaperMineruMarkdown(root, paper) {
   try {
     if (Object.hasOwn(paper, 'mineruResourceId')) {
       const directory = resultDirectory(root, paper.mineruResourceId);
-      const marker = assetFile(directory, manifestFile);
+      const marker = assetFile(directory, mineruResultManifest);
       if (!marker || marker.size > 4096) return null;
       const manifest = JSON.parse(fs.readFileSync(marker.file, 'utf8'));
       if (manifest.paperId !== paper.id || manifest.markdownDigest !== digest(paper.mineruMarkdown)) return null;

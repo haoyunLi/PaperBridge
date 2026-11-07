@@ -16,6 +16,8 @@ In a MinerU bundle, the original edition uses the stored MinerU Markdown. Transl
 
 MinerU exports and recovered page references use the files from the saved extraction. Older workspaces reuse a local resource directory when its Markdown uniquely matches the saved source. If an attachment cannot be verified or found, the export keeps its link and reports it as missing.
 
+On the development branch, new MinerU 4.x ZIP imports retain local files referenced by the main Markdown, including CSV and supplemental Markdown. The export rewrites their paths and preserves query strings and fragments. Attachments are limited to 256 MiB per file and 1 GiB per archive. Re-extract an older PDF as a new copy to recover attachments omitted by a previous release.
+
 Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF text import, including scans and MinerU fallback. The import screen shows progress and lets you cancel without replacing the open paper. Portable Markdown export reuses completed pages across restarts and regenerates missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
 
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.

@@ -392,11 +392,9 @@ function registerHandlers() {
         child.on('close', code => { mineruJobs.detach(job, child); code === 0 ? resolve() : reject(new Error(`MinerU exited ${code}: ${log.slice(-2000)}`)); });
       });
       mineruJobs.check(job);
-      const resultFolder = detected.kitExecutable ? path.join(staging, 'result') : output;
-      if (detected.kitExecutable) {
-        await unpackMineruArchive(path.join(output, 'paper.zip'), resultFolder, () => mineruJobs.check(job));
-      }
-      const file = findMineruMarkdown(resultFolder, path.parse(stagedPdf).name);
+      const file = detected.kitExecutable
+        ? await unpackMineruArchive(path.join(output, 'paper.zip'), path.join(staging, 'result'), () => mineruJobs.check(job))
+        : findMineruMarkdown(output, path.parse(stagedPdf).name);
       mineruJobs.check(job);
       if (!file) throw new Error('MinerU finished without a Markdown file.');
       const markdown = readMineruMarkdown(file);

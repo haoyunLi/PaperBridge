@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints } = require('../electron/mineru-output.cjs');
+const { crc32, deflateRawSync } = require('node:zlib');
+const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('../electron/mineru-output.cjs');
 const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('../electron/mineru-resources.cjs');
+const { writeBundle } = require('../electron/bundle.cjs');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-output-'));
@@ -21,6 +23,134 @@ function fixture(t) {
     return file;
   };
 }
+
+function archive(entries) {
+  const locals = [];
+  const directory = [];
+  let offset = 0;
+  for (const { name, content, deflated = false, uncompressedSize, mode = 0o100644 } of entries) {
+    const filename = Buffer.from(name);
+    const source = Buffer.from(content);
+    const bytes = deflated ? deflateRawSync(source) : source;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x800, 6); // UTF-8 file names.
+    local.writeUInt16LE(deflated ? 8 : 0, 8);
+    local.writeUInt32LE(crc32(source), 14);
+    local.writeUInt32LE(bytes.length, 18);
+    local.writeUInt32LE(uncompressedSize ?? source.length, 22);
+    local.writeUInt16LE(filename.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50);
+    central.writeUInt16LE(0x314, 4); // Unix permissions and file type.
+    local.copy(central, 6, 4, 30);
+    central.writeUInt32LE((mode << 16) >>> 0, 38);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, filename, bytes);
+    directory.push(central, filename);
+    offset += local.length + filename.length + bytes.length;
+  }
+  const central = Buffer.concat(directory);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(central.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, central, end]);
+}
+
+test('MinerU 4.x ZIP keeps referenced attachments through saved resources and portable export', async t => {
+  const file = fixture(t);
+  const id = 'd'.repeat(64);
+  const csv = Buffer.from('method,score\nA,42\n');
+  const supplement = 'Supplementary material\n'.repeat(50);
+  const markdown = [
+    '# Main result',
+    '[Measurements](./data/%E8%AF%95%E9%AA%8C%20results.csv?view=table#rows)',
+    '[Appendix](supplements/paper.md)',
+    '<img src="figures/panel%201.png">',
+    '[Code only](https://example.org) `[Hidden](data/ignored.csv)`',
+    '[Duplicate](data/duplicate.csv) [Device](data/CON.txt)',
+    '[Link](data/symlink.csv) [Reserved](.paperbridge-result.json)',
+    '[Escape](%2e%2e%2foutside.csv)'
+  ].join('\n\n');
+  const zip = file('parser.zip', archive([
+    { name: 'data/试验 results.csv', content: csv, deflated: true },
+    { name: 'supplements/paper.md', content: supplement },
+    { name: 'figures/panel 1.png', content: 'Figure bytes' },
+    { name: 'images/standard.png', content: 'Standard MinerU figure' },
+    { name: 'data/ignored.csv', content: 'Unreferenced bytes' },
+    { name: 'data/duplicate.csv', content: 'One candidate' },
+    { name: 'data/Duplicate.csv', content: 'Conflicting candidate' },
+    { name: 'data/CON.txt', content: 'Reserved device path' },
+    { name: 'data/symlink.csv', content: '../outside.csv', mode: 0o120777 },
+    { name: '.paperbridge-result.json', content: 'Reserved application marker' },
+    { name: 'structured_content.json', content: '{"pages":[{"page_idx":4,"blocks":[{"content":"Main result"}]}]}' },
+    { name: 'markdown.md', content: markdown }
+  ]));
+  file('outside.csv', 'Do not change');
+  const source = await unpackMineruArchive(zip, file('result'), () => {});
+  assert.equal(source, file('result/markdown.md'));
+  assert.equal(fs.readFileSync(source, 'utf8'), markdown);
+  assert.deepEqual(fs.readdirSync(file('result/data')), ['试验 results.csv']);
+  assert.equal(fs.readFileSync(file('outside.csv'), 'utf8'), 'Do not change');
+  assert.equal(fs.existsSync(file('result/.paperbridge-result.json')), false);
+  assert.equal(fs.readFileSync(file('result/images/standard.png'), 'utf8'), 'Standard MinerU figure');
+  const embedded = readMineruMarkdown(source);
+  const mineruResourceId = keepMineruResult(file(''), id, source, embedded);
+  const restored = findPaperMineruMarkdown(file(''), { id, mineruResourceId, mineruMarkdown: embedded });
+  assert.deepEqual(readMineruPageHints(restored), [{ page: 5, text: 'Main result' }]);
+  const bundle = writeBundle(file(''), { name: 'Kit', type: 'text', sourceMode: 'mineru' },
+    [{ kind: 'original', name: 'Original', content: embedded }], null, path.dirname(restored));
+  const original = fs.readFileSync(path.join(bundle.folder, 'Original.md'), 'utf8');
+  const measurements = original.match(/\[Measurements\]\((assets\/[^?]+\.csv)\?view=table#rows\)/)?.[1];
+  const appendix = original.match(/\[Appendix\]\((assets\/[^)]+\.md)\)/)?.[1];
+  assert.ok(measurements && appendix);
+  assert.deepEqual(fs.readFileSync(path.join(bundle.folder, measurements)), csv);
+  assert.equal(fs.readFileSync(path.join(bundle.folder, appendix), 'utf8'), supplement);
+  assert.equal(bundle.assets, 3);
+  assert.ok(bundle.missingAssetPaths.includes('.paperbridge-result.json'));
+});
+
+test('MinerU ZIP skips oversized optional files and removes an attachment interrupted during extraction', async t => {
+  const file = fixture(t);
+  const markdown = '[Too large](large.bin) and [Data](data/result.csv)';
+  const zip = file('parser.zip', archive([
+    { name: 'markdown.md', content: markdown },
+    { name: 'large.bin', content: 'declared too large', deflated: true, uncompressedSize: 256 * 1024 * 1024 + 1 },
+    { name: 'data/result.csv', content: Buffer.alloc(512 * 1024, 0x61) }
+  ]));
+  const cancelledFile = file('cancelled/data/result.csv');
+  const cancelled = new Error('Parsing cancelled');
+  let interrupted = false;
+  await assert.rejects(unpackMineruArchive(zip, file('cancelled'), () => {
+    interrupted ||= fs.existsSync(cancelledFile) && fs.statSync(cancelledFile).size > 0;
+    if (interrupted) throw cancelled;
+  }), error => error === cancelled);
+  assert.equal(fs.existsSync(cancelledFile), false);
+  const source = await unpackMineruArchive(zip, file('retry'), () => {});
+  assert.equal(fs.readFileSync(source, 'utf8'), markdown);
+  assert.equal(fs.existsSync(file('retry/large.bin')), false);
+  assert.equal(fs.statSync(file('retry/data/result.csv')).size, 512 * 1024);
+});
+
+test('MinerU ZIP refuses archive paths outside staging and ambiguous primary Markdown', async t => {
+  const file = fixture(t);
+  const escaped = file('escaped.zip', archive([
+    { name: 'markdown.md', content: '# Main' },
+    { name: '../outside.txt', content: 'must not be written' }
+  ]));
+  await assert.rejects(unpackMineruArchive(escaped, file('escaped'), () => {}), /invalid relative path/);
+  assert.equal(fs.existsSync(file('outside.txt')), false);
+  const duplicate = file('duplicate.zip', archive([
+    { name: 'markdown.md', content: '# Main' },
+    { name: 'Markdown.md', content: '# Other main' }
+  ]));
+  await assert.rejects(unpackMineruArchive(duplicate, file('duplicate'), () => {}), /without a unique Markdown file/);
+  assert.equal(fs.existsSync(file('duplicate')), false);
+});
 
 test('MinerU selects the main Markdown over notes, fragments, hidden files and empty outputs', t => {
   const file = fixture(t);

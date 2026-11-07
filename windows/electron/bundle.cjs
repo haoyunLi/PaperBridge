@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { rewriteAssetUrls, localAssetReference, assetFile } = require('./markdown-assets.cjs');
+const { rewriteAssetUrls, localAssetReference, assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
 const facsimileHeadings = new Map([
   ['original', 'Extracted source text'],
@@ -55,7 +55,7 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
     const { relative, suffix } = reference;
     if (originalPdf && /^(?:\.\/)?original\.pdf$/i.test(relative)) return `original.pdf${suffix}`;
     const asset = assetFile(source, relative);
-    if (!asset) { missing.add(relative); return url; }
+    if (!asset || path.basename(asset.file).toLowerCase() === mineruResultManifest) { missing.add(relative); return url; }
     const digest = crypto.createHash('sha256').update(asset.file).digest('hex');
     const extension = path.extname(asset.file).toLowerCase();
     const name = `local-${digest}${/^\.[a-z0-9]{1,12}$/.test(extension) ? extension : ''}`;

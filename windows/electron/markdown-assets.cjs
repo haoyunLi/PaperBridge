@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const mineruResultManifest = '.paperbridge-result.json';
 
 const assetTokens = new RegExp([
   /^ {0,3}(?<fence>`{3,}|~{3,})[^\r\n]*(?:\r?\n[\s\S]*?(?:^ {0,3}\k<fence>[`~]*[ \t]*(?=\r?$)|(?![\s\S]))|$)/.source,
@@ -53,4 +54,4 @@ function assetFile(directory, relative) {
   } catch { return null; }
 }
 
-module.exports = { rewriteAssetUrls, localAssetReference, assetFile };
+module.exports = { rewriteAssetUrls, localAssetReference, assetFile, mineruResultManifest };
