@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## 第八十三阶段：公开 0.2.20 的真实 AMD 长段翻译（2026-11-07 UTC）
+
+第 82 阶段公开包验收完成后，使用同一校验通过的公开 Portable，在新隔离工作区翻译已提取真实 MinerU 论文的第 32 段（Encoder，660 字符，两条公式）。实际段落动作恰好发出 363 / 296 字素的两次请求，完整 payload 与预期匹配；两条公式、English→Simplified Chinese 元数据、其它全部输出/批注、PDF 和资源原件与副本均经关闭重启保全。报告 `test-artifacts/portable-0220-amd-mineru-Y0St0z/result.json` 为 `passed=true`，渲染错误为 0，无清理错误。
+
+本次新增 Ollama 日志明确记录 RX 7800 XT、ROCm gfx1101、35/35 层 GPU，模型与显存分配均为 2,881,948,220 字节。两次请求耗时 4.837 / 0.647 秒、生成速度约 129.5 / 129.4 tokens/秒；首次包含冷加载。原生窗口尺寸/DPR 下的 CDP renderer 截图已检查，完整中文与公式可见。position-wise 被译成“位置相关”，专业译文仍需审校；本轮不执行新的 MinerU 解析或环境安装，也不据此宣称所有论文或 NVIDIA 验证通过。完整证据与范围见 [AMD 报告](AMD_DEVICE_TEST.md)。
+
 ## 第八十二阶段：Windows 0.2.20 公开发布与升级验收（2026-11-07 UTC）
 
 [Windows 0.2.20](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.20) 已发布，源码标签为 `8315c8bcc606a875774a0c54b83dfed336b24567`，包含第 80–81 阶段的长段分块和独立图书馆索引。[标签 CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42359081106) 与[同提交 PR CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42359085515) 均成功，273 项单元、36 套桌面流程、安装包构建与打包启动通过。本地候选另通过单元、更新提示重启和打包启动。

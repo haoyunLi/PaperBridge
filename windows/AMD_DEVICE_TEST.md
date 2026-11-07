@@ -1,5 +1,13 @@
 # Windows AMD 真机回归（2026-09-20）
 
+2026-11-07 09:34 UTC：**公开 Windows 0.2.20 Portable 的真实长段翻译与重启通过**，报告 `test-artifacts/portable-0220-amd-mineru-Y0St0z/result.json`。公开文件 SHA-256 `e47e7fed40a9f11666e7a31660cca63aea17a0bb93a2bd40cbc1b6a0c41bf66a` 已与校验文件和 GitHub digest 核对。使用此前真实 MinerU 提取的 Attention Is All You Need（15 页、167 块），只翻译原本 pending 的第 32 段 Encoder，原 Markdown 660 字符，含两条公式。隔离设置明确预置 maxParagraphChars=500，不声称通过设置 UI 修改；已有原始工作区未改动。
+
+公开应用的实际段落菜单发送 **两次真实 Ollama 请求**，完整 payload（模型、system、prompt、语言、标题/样式/术语、stream 和 temperature）与预期精确匹配。保护后的正文分别为 **363 / 296 字素**；结果还原两条原公式，保存 English→Simplified Chinese，无残留保护标记。两次墙钟耗时 **4.837 秒 / 0.647 秒**，分别输出 80 / 66 tokens，模型生成速度约 **129.5 / 129.4 tokens/秒**；第一次含冷加载，不能把总耗时都当作生成时间。
+
+本次日志从调用前文件偏移读取新增行，明确记录 **AMD Radeon RX 7800 XT、ROCm gfx1101、35/35 层 GPU**，模型与显存分配均为 **2,881,948,220 字节**。适配器 WMI 的 memoryBytes 受其字段限制，不能把约 4 GiB 报告值当作此卡物理显存；本次 Ollama ROCm 设备日志给出 16,368 MiB。完整关闭重启后新译文、语言、全部其它块/输出/批注和原 PDF、MinerU 资源字节保持，renderer errors 为 0，无清理错误。中文及两条公式在 1306×758 CSS、DPR 1.25 的 CDP renderer 截图中完整可见；这是原生窗口尺寸下的渲染截图，不是 OS 桌面截屏。
+
+译文保留层数、残差连接、引用与模型维度，但将 position-wise 译为“位置相关”，专业措辞仍需人工审校。此次只证明本机这一段的真实请求、公式/资源保全和加速路径，不是整篇质量评测，也不是旧分块算法的失败样例。本轮不重新运行 MinerU/DirectML 解析、安装环境或测试 NVIDIA。用户 Ollama 未启停或重配，按服务自身策略保持模型驻留。
+
 2026-11-07 08:40 UTC：公开 Windows 0.2.19 Portable 完成新推理与重启验收（`test-artifacts/portable-0219-amd-4uExfj/result.json`）。仅翻译真实论文此前 pending 的第 22 段，热模型 1.094 秒、约 127.6 输出 token/秒；Ollama 0.40.15 / TranslateGemma 4B 报告 modelBytes = vramBytes = 2,881,948,220。新输出 English→Simplified Chinese 与旧第 17 段 Chinese/null 译文分别经语言切换和完整重启保留，原文、缓存与 PDF 哈希不变，renderer errors 为 0。此前冷启动生成 6.125 秒，当次新增日志确认 RX 7800 XT、ROCm gfx1101、35/35 层 GPU；首次报告因脚本把缺失空批注数组与 [] 判为不同而失败，原报告 `portable-0219-amd-YztbEf/result.json` 保留，修正空容器比较后独立重跑通过。两轮各一次生成；热运行没有新后端加载行，不冒充新的 ROCm 日志证据。译文保留 [21]/[32]、ht/ht−1 和顺序计算限制，个别措辞仍需审校；只代表本段论文和本机。环境与用户 Ollama 未修改。分块修复属于后续开发代码，不在此公开包内。
 
 2026-11-07：公开 Windows 0.2.19 便携版通过 SHA-256、校验文件和 GitHub digest 核对后，重新打开真实 Attention Is All You Need。首次加载与完整重启均保留原有 266 个 PDF 文字段落、第 17 段已存中文译文及字节不变的 15 页原 PDF；另用独立夹具验证选中段落与阅读位置、输出语言缓存及批注删除/撤销。原生窗口与明确标注为 CDP CSS 模拟的短视口截图均已检查。此次是公开产物与保存结果的兼容验证，模型请求为 0、renderer errors 为 0，不更新下方真实推理和 GPU 加速的证据。报告为 `test-artifacts/portable-0219-TdKMsM/result.json`，具体范围与限制见[全软件复查第 79 阶段](WHOLE_APP_REVIEW.md)。
