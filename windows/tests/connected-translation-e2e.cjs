@@ -51,6 +51,15 @@ async function run() {
   try {
     app = await launch();
     let page = await app.firstWindow();
+    const exportFullTranslation = async name => {
+      const destination = path.join(workspace, name);
+      await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath }); }, destination);
+      await page.getByRole('button', { name: 'More' }).click();
+      await page.locator('.modal-body').getByRole('button', { name: 'Export Options…', exact: true }).click();
+      await page.getByRole('button', { name: 'Full Translation Markdown', exact: true }).click();
+      await page.getByText('Exported ' + destination, { exact: true }).waitFor();
+      return fs.readFileSync(destination, 'utf8');
+    };
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill(paragraphs.join('\n\n'));
     await page.getByRole('button', { name: 'Open text', exact: true }).click();
@@ -70,6 +79,16 @@ async function run() {
     assert.match(await partial.innerText(), /Separate middle batch/);
     assert.match(await partial.innerText(), /Final unprocessed batch/);
     assert.doesNotMatch(await partial.innerText(), /Discard this late answer/);
+    const partialExport = await exportFullTranslation('full-translation-partial.md');
+    assert.match(partialExport, /^> 1 connected-translation batch\(es\) failed and were marked inline below\./);
+    assert.equal(partialExport.split('[Connected translation failed for').length - 1, 1);
+    assert.match(partialExport, /\[Connected translation failed for batch 2\]/);
+    assert.ok(partialExport.includes(`> Original text retained below.\n\n${paragraphs[2]}`), 'The failed excerpt remains available verbatim beside its failure marker');
+    assert.ok(partialExport.indexOf('第一批译文。') < partialExport.indexOf('[Connected translation failed for batch 2]'));
+    assert.ok(partialExport.includes(citations.join('\n\n')));
+    assert.ok(partialExport.includes(paragraphs.at(-1)), 'An interrupted batch retains its source without being labeled failed');
+    assert.doesNotMatch(partialExport, /failed for batch [13]\]|Discard this late answer/);
+    assert.doesNotMatch(await partial.innerText(), /Connected translation failed/, 'Export annotations must not rewrite the stored Reader draft');
     await app.close(); app = null;
 
     initialRun = false;
@@ -97,6 +116,10 @@ async function run() {
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'));
     assert.equal(saved.connectedBatchVersion, 1);
     assert.ok(saved.blocks.every(block => block.status === 'pending'), 'Plain connected translation should leave Reader output independent');
+    const completedExport = await exportFullTranslation('full-translation-completed.md');
+    assert.equal(completedExport, saved.connectedTranslation, 'Resuming successfully removes export failure markers without changing the completed text');
+    assert.doesNotMatch(completedExport, /Connected translation failed|batch\(es\) failed|Original text retained below/);
+    for (const text of ['第一批译文。', '第二批译文。', '第三批译文。', ...citations]) assert.ok(completedExport.includes(text));
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const reference = page.locator('#block-4');
     await reference.getByText(citations[0], { exact: true }).waitFor();
@@ -117,7 +140,7 @@ async function run() {
     const exported = fs.readFileSync(destination, 'utf8');
     assert.ok(exported.includes(citations.join('\n\n')));
     assert.doesNotMatch(exported, /\[Untranslated block [456]\]/);
-    console.log('Connected translation verified: excerpt batching, unlabelled references, appendix, restart resume and Markdown export.');
+    console.log('Connected translation verified: excerpt batching, references, restart resume, failed-batch export with original fallback and clean successful export.');
   } finally {
     heldResponse?.destroy();
     await app?.close();

@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -39,6 +40,7 @@ async function waitFor(predicate, label, timeout = 10000) {
 }
 
 async function paste(page, text, expectedText) {
+  await revealSidebarSource(page);
   await page.getByRole('button', { name: 'Paste Text' }).first().click();
   await page.locator('.paste-area').fill(text);
   await page.getByRole('button', { name: 'Open text' }).click();
@@ -47,6 +49,7 @@ async function paste(page, text, expectedText) {
 }
 
 async function startDelayedPdf(page, app, requestNumber) {
+  await revealSidebarSource(page);
   await page.getByRole('button', { name: 'Open PDF' }).first().click();
   await page.locator('.task-progress').getByText('MinerU is reconstructing the paper…').waitFor();
   try { await waitFor(() => app.evaluate((_, index) => global.__delayedMineru?.length >= index, requestNumber), `MinerU request ${requestNumber}`); }

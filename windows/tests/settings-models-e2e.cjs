@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -91,6 +92,7 @@ async function run() {
     pulls[index].response.end(`${JSON.stringify({ status: 'success', completed: 100, total: 100 })}\n`);
   }
   async function pastePaper(text, blockCount) {
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill(text);
     await page.getByRole('button', { name: 'Open text', exact: true }).click();

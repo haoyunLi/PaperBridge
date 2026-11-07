@@ -45,9 +45,9 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B02 | Paper / Reader / Overview / Full Translation 工作区 | Paper 完整文档预览、Reader、Overview（阅读地图、质量检查与双语摘要）、Full Translation，另有 Original；内部保留旧 `Summary` 状态值兼容已保存位置 | 对齐 | Original 是 Windows 额外的原生 PDF 工作区。 |
 | B03 | Paper 中切换精确 PDF 与 MinerU 结构化页面 | Paper 的 Original 模式直接复用精确 PDF 画布/文字层，Bilingual / Translation 显示完整结构文档；Windows 另保留 Original 标签 | 对齐 | Paper 内即可完成 Mac 对应切换，额外 Original 入口不改变 Paper 行为。 |
 | B04 | 双语、仅原文、仅译文三种阅读模式 | 双语、仅原文、仅译文并逐论文保存。Reader 顶部固定分段单选器，支持方向键。PDF 文字层的双语和译文模式附带可翻页的原页预览 | 对齐 | Electron 流程验证三模式切换、原页预览翻页与折叠，以及长文滚动后的工具栏和键盘切换。 |
-| B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 使用 Mac 同组五类规范化标题、问题提示和精确原文摘录；只在当前章节内找正文，无标题时回退开篇，并提供 Reader 精确跳转、Start Reading、View Original、翻译进度及来源免责声明 | 对齐 | 单元测试覆盖编号/罗马数字标题、拒绝宽松子串误匹配及不借用下一章节正文；Electron 实际验证段落跳转和 Original 模式。 |
-| B06 | 章节大纲跳转 | 侧栏 OUTLINE，跳转前清除 Reader 搜索 | 对齐 | 搜索后目录跳转已回归；复杂 MinerU 标题层级仍需验证。 |
-| B07 | 段落书签及侧栏文字预览 | 书签按钮与侧栏摘要 | 对齐 | 解析来源切换后位置应保持。 |
+| B05 | 问题、方法、证据、讨论、结论的原文阅读地图 | Overview 使用 Mac 同组五类规范化标题、问题提示和精确原文摘录；只在当前章节内找正文，无标题时回退开篇，并提供 Reader 精确跳转、Start Reading、View Original、翻译进度及来源免责声明 | 对齐 | 单元测试覆盖编号/罗马数字标题、拒绝宽松子串误匹配及不借用下一章节正文；Electron 实际验证段落跳转、Original 模式，以及 Translation 模式点击原文后切换双语并可按 Back 恢复。 |
+| B06 | 章节大纲跳转 | 独立按 Mac 规则识别行首标题，MinerU 显式标题优先；全部章节、Beginning 回退、两行全标题和真实段落编号，跳转前清除搜索 | 对齐 | 专项覆盖 65 个章节、同页多个标题、阅读历史、论文切换、980×620 和 200% 缩放。当前标记仍随 Windows 可见段落更新，Mac 独立选择状态待拆分。 |
+| B07 | 段落书签及侧栏文字预览 | 有书签时显示于大纲前，两行预览、Paragraph 编号与跳转箭头 | 对齐 | 现有来源切换、书签跳转和阅读历史桌面回归保留；长文大纲可独立滚动。 |
 | B08 | Reader 顶部搜索、清除后回到原位置 | 搜索固定在正文上方，支持 Ctrl+F、清除按钮和 Escape。搜索前记录段落及相对位置，筛选滚动不覆盖原阅读位置；目录、书签和来源跳转先清搜索 | 对齐 | Electron 覆盖 980/1320/1500px 窗口、切换显示模式和宽度后清除、跨标签 Find、过滤中重启、Back/Forward 及 150% 缩放。复杂图表重排仍列入真实文档验收。 |
 | B09 | Paper/PDF/Markdown/Reader 各自保存阅读位置 | 逐视图滚动位置、PDF 逐页滚动位置、段落和页码保存；Reader 滚动更新可见段落 | 部分 | 长文无点击滚动已验证当前章节更新；Markdown 内部锚点和复杂页面重排仍需验证。 |
 | B10 | 标注跳转校验锚点有效性 | 检查器验证 Reader 块、PDF 页码和 Markdown 引文。跨来源标注跳转接入前进和后退，恢复视图、阅读来源、搜索和滚动位置 | 部分 | 真实论文验证 PDF 文字层、MinerU 预览及精确 PDF 第 2 页往返。布局稳定后定位，失效锚点保留并提示检查。仍需更多复杂 PDF 与 Mac 真机并排验收。 |

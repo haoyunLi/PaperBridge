@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -23,6 +24,7 @@ async function waitFor(predicate, label, timeout = 10000) {
 }
 
 async function pastePaper(page, text, expectedBlocks) {
+  await revealSidebarSource(page);
   await page.getByRole('button', { name: 'Paste Text' }).first().click();
   await page.locator('.paste-area').fill(text);
   await page.getByRole('button', { name: 'Open text' }).click();

@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
@@ -174,7 +175,10 @@ async function run() {
     assert.equal(await page.locator('#block-2 .translation-text sup').count(), 1);
     assert.equal(await page.locator('#block-3 .source-text table td').count(), 2);
     assert.equal(await page.locator('#block-4 .source-text img').evaluate(img => img.naturalWidth), 1);
+    await revealSidebarSource(page);
     assert.match(await page.locator('.failed-stat').innerText(), /Failed\s+1/);
+    assert.match(await page.locator('.document-details .side-stat').filter({ hasText: 'Paragraphs' }).innerText(), /Paragraphs\s+5/);
+    assert.match(await page.locator('.document-details .side-stat').filter({ hasText: 'Skipped refs' }).innerText(), /Skipped refs\s+2/);
     await page.evaluate(() => {
       const paragraph = document.querySelector('#block-2 .source-text p');
       const range = document.createRange();

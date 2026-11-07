@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -64,6 +65,7 @@ async function run() {
     }, command);
 
     await expectMenus({ openPdf: true, summary: false, export: false, generateSummary: false, primaryTask: false, translateSelection: false, focusReading: false, toggleSidebar: false });
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill('Abstract\n\nThis paper studies deterministic menu state transitions.');
     await page.getByRole('button', { name: 'Open text', exact: true }).click();

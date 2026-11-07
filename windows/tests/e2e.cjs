@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -98,6 +99,7 @@ async function run() {
     await page.getByRole('button', { name: 'Install missing components' }).click();
     await page.getByText('Installation complete.', { exact: false }).waitFor({ timeout: 25000 });
     await page.locator('.modal-head .icon-button').click();
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.locator('button[title="Open library"]').click();
     await page.getByRole('button', { name: /Edit label for Welcome to PaperBridge/ }).click();
@@ -392,6 +394,7 @@ async function run() {
     await page.getByRole('button', { name: 'View release' }).click();
     assert.equal(await app.evaluate(() => global.__openedReleaseTag), 'windows-v0.3.0');
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, pdfPath);
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Open PDF' }).first().click();
     await page.getByText('Extracted', { exact: false }).first().waitFor({ timeout: 20000 });
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
@@ -809,6 +812,7 @@ async function run() {
     const blankPath = path.join(artifacts, 'scan-no-text.pdf');
     fs.writeFileSync(blankPath, samplePdf(true));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, blankPath);
+    await revealSidebarSource(reopenedPage);
     await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
     await reopenedPage.getByRole('heading', { name: 'scan-no-text.pdf' }).waitFor();
     await reopenedPage.locator('.scan-notice').getByText('No selectable text in this PDF').waitFor();
@@ -909,6 +913,7 @@ async function run() {
     const emptyMineruPath = path.join(artifacts, 'empty-mineru-result.pdf');
     fs.writeFileSync(emptyMineruPath, samplePdf(false, ' after empty OCR'));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, emptyMineruPath);
+    await revealSidebarSource(reopenedPage);
     await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
     await reopenedPage.getByRole('heading', { name: 'empty-mineru-result.pdf' }).waitFor();
     await reopenedPage.getByText('MinerU returned no readable blocks.', { exact: false }).waitFor();
@@ -927,6 +932,7 @@ async function run() {
     ].join(' ');
     fs.writeFileSync(columnsPath, samplePdf(false, '', layout));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, columnsPath);
+    await revealSidebarSource(reopenedPage);
     await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
     await reopenedPage.getByRole('heading', { name: 'narrow-gutter.pdf' }).waitFor();
     await reopenedPage.getByRole('button', { name: 'Reader', exact: true }).click();
@@ -936,6 +942,7 @@ async function run() {
     const rotatedPath = path.join(artifacts, 'rotated-pdf.pdf');
     fs.writeFileSync(rotatedPath, samplePdf(false, '', '', 90, [[60, 36, 552, 756], [72, 36, 72.1, 756]]));
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, rotatedPath);
+    await revealSidebarSource(reopenedPage);
     await reopenedPage.getByRole('button', { name: 'Open PDF' }).first().click();
     await reopenedPage.getByRole('heading', { name: 'rotated-pdf.pdf' }).waitFor();
     await reopenedPage.getByRole('button', { name: 'Original', exact: true }).click();

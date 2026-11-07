@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -138,6 +139,7 @@ async function run() {
   };
   const assertPasted = async (text, expected) => {
     const pastedId = sha256(text);
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Paste Text', exact: true }).click();
     await page.locator('.paste-area').fill(text);
     await page.getByRole('button', { name: 'Open text', exact: true }).click();
@@ -151,6 +153,7 @@ async function run() {
     await launch();
     await assertLegacy();
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, importFile);
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
     await waitFor(() => fs.existsSync(paperFile(id)), 'new PDF extraction saved', 30000);
     await page.locator('.import-progress-screen').waitFor({ state: 'detached', timeout: 30000 });

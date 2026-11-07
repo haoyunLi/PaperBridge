@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -183,7 +184,7 @@ async function run() {
 
     // A library-label operation started before the editor must not replace it
     // when its asynchronous load/save completes after the old dialog is closed.
-    await page.getByRole('button', { name: 'Open library', exact: true }).click();
+    await page.getByRole('button', { name: 'Paper Library', exact: true }).click();
     await page.getByRole('button', { name: `Edit label for ${other.name}`, exact: true }).click();
     await page.getByLabel('Tags, separated by commas', { exact: true }).fill('background-label');
     await app.evaluate(({ ipcMain }) => {
@@ -331,6 +332,7 @@ async function run() {
     await waitFor(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('command:openPdf')?.enabled === true), 'editor modal lock released after reset');
     assert.equal(fs.existsSync(paperFile(pdfId)), false);
     assert.deepEqual(fs.readFileSync(path.join(workspace, 'pdfs', `${pdfId}.pdf`)), pdfBytes, 'reset retains original PDF bytes');
+    await revealSidebarSource(page);
     await page.locator('.sidebar').getByRole('button', { name: 'Paste Text', exact: true }).click();
     await page.locator('.paste-area').fill('A fresh document opens after the old editor was reset.');
     await page.getByRole('button', { name: 'Open text', exact: true }).click();

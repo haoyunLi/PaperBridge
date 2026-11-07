@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -89,6 +90,7 @@ async function run() {
       await page.getByRole('textbox', { name: 'Paragraph source' }).fill(`${opening}\n\nAn additional introductory paragraph.`);
       await page.getByRole('dialog', { name: 'Repair Paragraph 1', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     };
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
     await page.getByRole('button', { name: 'Open text', exact: true }).click();

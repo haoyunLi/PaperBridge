@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -71,6 +72,7 @@ async function run() {
   try {
     app = await launch();
     let page = await app.firstWindow();
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill('Self-attention stabilizes the baseline attention score.');
     await page.getByRole('button', { name: 'Open text', exact: true }).click();

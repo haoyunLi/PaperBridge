@@ -42,6 +42,8 @@ import ReaderToolbar from './ReaderToolbar.jsx';
 import ReaderParagraph from './ReaderParagraph.jsx';
 import ReaderBlockActions from './ReaderBlockActions.jsx';
 import ParagraphEditor from './ParagraphEditor.jsx';
+import { documentOutline } from './documentOutline.mjs';
+import './document-outline.css';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
@@ -807,7 +809,7 @@ function OverviewView({ paper, busy, canSummarize, summarize, navigate, onSelect
       <div className="reading-guide-heading"><h2>Find your way into the paper.</h2><p>A map of detected sections with exact source excerpts. No model is used, and these passages are not an AI summary.</p></div>
       <div className="reading-guide-actions"><button className="button blue" disabled={!paragraphCount} onClick={onReader}>Start Reading</button><button className="button outline" onClick={onOriginal}>View Original</button><span>{translatedCount} / {paragraphCount} translated</span></div>
       {!entries.length && <p className="reading-guide-empty">{paragraphCount ? 'No suitable section passages were detected. Start in Reader and inspect the source directly.' : 'This document has no selectable text. You can still view its original pages; use MinerU/OCR to make scanned text readable by the analysis tools.'}</p>}
-      <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID)}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
+      <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID, { revealSource: true })}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
       <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
     </section>
     <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedOverview} setupSummary={setupSummary} />
@@ -2904,7 +2906,7 @@ function App() {
     [paper, selection, settings, explanationLanguage, glossary]);
   const selectionResults = lookupCache.get(lookupKey) || {};
   const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
-  const outline = useMemo(() => paper?.blocks.filter(block => block.heading) || [], [paper]);
+  const outline = useMemo(() => documentOutline(paper), [paper]);
   const sections = useMemo(() => sectionRanges(paper?.blocks || []), [paper]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
   const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper?.blocks, referenceIDs]);
@@ -2964,15 +2966,31 @@ function App() {
   }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, translatableCount > 0, canExport, checkingUpdates]);
 
   if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
+  const sidebarSource = <div className="side-group"><div className="side-label">SOURCE</div><button className="side-primary" onClick={openFile}><FilePlus2 size={16} /> Open PDF</button><button className="side-action" onClick={() => setModal('paste')}><FileText size={15} /> Paste Text</button><button className="side-action" onClick={loadPractice}><BookOpen size={15} /> Try a Practice Paper</button></div>;
   return <div data-display-mode={displayMode} style={workspaceStyle} onDragOver={event => { if ([...event.dataTransfer.types].includes('Files')) event.preventDefault(); }} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''} ${pendingImport ? 'importing' : ''}`}>
     {sidebar && !focus && !modal && <WorkspaceSplitter panel="sidebar" width={sidebarWidth} onResize={setSidebarWidth} />}
     {inspector && !focus && !modal && !pendingImport && !compactInspector && <WorkspaceSplitter panel="inspector" width={inspectorWidth} onResize={setInspectorWidth} />}
     <aside id="document-sidebar" className="sidebar" inert={Boolean(modal)}>
       <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
       <div className="sidebar-scroll">
-        <div className="side-group"><div className="side-label">SOURCE</div><button className="side-primary" onClick={openFile}><FilePlus2 size={16} /> Open PDF</button><button className="side-action" onClick={() => setModal('paste')}><FileText size={15} /> Paste Text</button><button className="side-action" onClick={loadPractice}><BookOpen size={15} /> Try a Practice Paper</button></div>
-        <div className="side-group"><div className="side-label">LIBRARY <button title="Open library" onClick={() => setModal('library')}><Library size={15} /></button></div><input className="side-search" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.blockCount} blocks</small></button>)}</div>
-        {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <><div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Blocks</span><b>{paper.blocks.length}</b></div><div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div><div className="side-group"><div className="side-label">OUTLINE</div>{outline.slice(0, 60).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}><span>{short(block.text, 48)}</span><small>{block.page || block.id}</small></button>)}{!outline.length && <p className="side-hint">No headings detected.</p>}</div><div className="side-group"><div className="side-label">BOOKMARKS</div>{paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row" key={block.id} onClick={() => navigate(block.id)}>{short(block.text, 52)}</button>)}</div></>}
+        {!paper && !pendingImport && sidebarSource}
+        <button className="sidebar-library-button" title="Open library" disabled={Boolean(pendingImport)} onClick={() => setModal('library')}><Library size={16} /> Paper Library</button>
+        {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <>
+          <details className="document-details">
+            <summary>Document &amp; Import</summary>
+            {sidebarSource}
+            <div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Paragraphs</span><b>{translatableCount}</b></div>{referenceIDs.size > 0 && <div className="side-stat"><span>Skipped refs</span><b>{referenceIDs.size}</b></div>}<div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div>
+          </details>
+          {paper.blocks.some(block => block.bookmark) && <nav className="side-group document-bookmarks" aria-label="Bookmarks">
+            <div className="side-label"><span><Bookmark size={14} /> BOOKMARKS</span></div>
+            {paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row bookmark-row" key={block.id} data-paragraph-id={block.id} title={block.text} onClick={() => navigate(block.id)}><span><span className="outline-title">{block.text}</span><small>Paragraph {block.id}</small></span><ChevronRight size={12} /></button>)}
+          </nav>}
+          <nav className="side-group document-outline" aria-label="Outline">
+            <div className="side-label"><span><List size={14} /> OUTLINE</span></div>
+            {outline.map(section => <button className="outline-row" key={section.id} data-paragraph-id={section.id} aria-current={activeBlock === section.id ? 'location' : undefined} title={section.title} onClick={() => navigate(section.id)}><span className="outline-title">{section.title}</span><small aria-label={`Paragraph ${section.id}`}>{section.id}</small></button>)}
+          </nav>
+        </>}
+        <div className="side-group recent-papers"><div className="side-label">RECENT PAPERS</div><input className="side-search" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.blockCount} blocks</small></button>)}</div>
       </div>
       <div className="sidebar-footer"><button onClick={() => openSetup()}><Download size={16} /> Local AI setup</button><button onClick={() => openSettings()}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
     </aside>

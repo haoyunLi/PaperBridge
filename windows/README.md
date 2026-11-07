@@ -14,6 +14,8 @@ The branch now groups paragraph editing, merging, sentence reflow and explicit r
 
 **Edit or Split** now opens a **Repair Paragraph** dialog. Insert blank lines to split the text, then choose **Save** or press **Ctrl+Enter**. **Cancel** or **Escape** keeps the saved source unchanged. The dialog protects its draft from background commands and delayed callbacks. Reopened papers also show **Saved on this PC** without changing their content timestamps. These changes are pending the next release.
 
+The development branch also restores the complete **Outline**, including sections beyond the former 60-item limit and a **Beginning** link when no headings are found. Entries keep their full titles, wrap to two lines, and show paragraph numbers. Bookmarks include their paragraph numbers; recent papers follow the document navigation. Overview source links reveal the original passage even when Reader was set to Translation. Analysis and Full Translation exports mark verified failed batches in place while retaining their original text, and explain the limits of summary quotation matching. These changes are pending the next public release.
+
 Version 0.2.15 adds original/translation language labels, bilingual dividers, full selected-card outlines and direct translation/setup buttons to Reader paragraphs. Compact headings keep their separate layout. Existing highlights and notes stay anchored to the passage text.
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.

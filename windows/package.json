@@ -16,6 +16,7 @@
     "test:reader-toolbar-e2e": "node tests/reader-toolbar-e2e.cjs",
     "test:reader-actions-e2e": "node tests/reader-actions-e2e.cjs",
     "test:paragraph-editor-e2e": "node tests/paragraph-editor-e2e.cjs",
+    "test:outline-e2e": "node tests/outline-e2e.cjs",
     "test:reading-history-e2e": "node tests/reading-history-e2e.cjs",
     "test:heading-parity-e2e": "node tests/heading-parity-e2e.cjs",
     "test:note-autosave-e2e": "node tests/note-autosave-e2e.cjs",

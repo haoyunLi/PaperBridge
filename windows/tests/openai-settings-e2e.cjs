@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -67,6 +68,7 @@ async function run() {
         return '在线测试译文';
       });
     });
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Try a Practice Paper', exact: true }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const firstBlock = page.locator('#block-1');

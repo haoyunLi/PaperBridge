@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 // Opt-in real NSIS lifecycle test. See installer-e2e.md before running.
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
@@ -318,6 +319,7 @@ async function run() {
       assert.equal(release.installerName, path.basename(source));
       record('Previous installed version showed the published update banner', { release });
     }
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2 .source-text').waitFor();

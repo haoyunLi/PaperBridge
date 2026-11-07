@@ -1,3 +1,4 @@
+const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -54,6 +55,7 @@ async function run() {
   };
   try {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
+    await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
     await page.locator('.paste-area').fill('Abstract\n\nThe original saved paper must survive a cancelled import.');
     await page.getByRole('button', { name: 'Open text', exact: true }).click();
