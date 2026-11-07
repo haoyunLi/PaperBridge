@@ -14,7 +14,7 @@
   &nbsp;·&nbsp;
   <a href="https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.19/PaperBridge-Windows-0.2.19-x64-Setup.exe"><strong>Download for Windows (preview)</strong></a>
+  <a href="https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.20/PaperBridge-Windows-0.2.20-x64-Setup.exe"><strong>Download for Windows (preview)</strong></a>
   &nbsp;·&nbsp;
   <a href="#build-from-source"><strong>Build from Source</strong></a>
 </p>
@@ -23,7 +23,7 @@
   <code>Native macOS</code> &nbsp; <code>SwiftUI</code> &nbsp; <code>Local-first</code> &nbsp; <code>PDFKit</code> &nbsp; <code>MinerU recommended</code> &nbsp; <code>Ollama</code> &nbsp; <code>OpenAI optional</code>
 </p>
 
-> **On macOS, OpenAI support requires PaperBridge 1.10.0 or later.** For Windows, see the separate [Windows setup guide](https://github.com/haoyunLi/PaperBridge/blob/windows-v0.2.19/windows/README.md). Ollama stays the default. Online text processing requires your own API key, selected models, and explicit permission for the current session.
+> **On macOS, OpenAI support requires PaperBridge 1.10.0 or later.** For Windows, see the separate [Windows setup guide](https://github.com/haoyunLi/PaperBridge/blob/windows/desktop-app/windows/README.md). Ollama stays the default. Online text processing requires your own API key, selected models, and explicit permission for the current session.
 
 `PaperBridge` is a native macOS desktop app built with SwiftUI and Xcode. It always preserves the source PDF with a built-in, model-free PDFKit facsimile, and can optionally use MinerU to create semantic Markdown and LaTeX. **Local Ollama remains the default.** You can explicitly choose OpenAI for online text processing with your own API key, task models, and session consent. PaperBridge never switches providers automatically.
 The bilingual reader remains available in aligned source/target order:
@@ -46,9 +46,9 @@ It can also:
 
 ## Windows Download (Preview)
 
-[Download Windows installer (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.19/PaperBridge-Windows-0.2.19-x64-Setup.exe) · [Download Windows portable (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.19/PaperBridge-Windows-0.2.19-x64-Portable.exe)
+[Download Windows installer (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.20/PaperBridge-Windows-0.2.20-x64-Setup.exe) · [Download Windows portable (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.20/PaperBridge-Windows-0.2.20-x64-Portable.exe)
 
-Both links download Windows **0.2.19 x64** directly. Setup installs for the current Windows user; Portable runs without installation. These are **unsigned development previews**, and Windows SmartScreen may show a warning. See the [Windows setup guide and feature differences](https://github.com/haoyunLi/PaperBridge/blob/windows-v0.2.19/windows/README.md) and [release notes / SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.19). The macOS instructions below do not imply feature parity with Windows.
+Both links download Windows **0.2.20 x64** directly. Setup installs for the current Windows user; Portable runs without installation. These are **unsigned development previews**, and Windows SmartScreen may show a warning. See the [Windows setup guide and feature differences](https://github.com/haoyunLi/PaperBridge/blob/windows/desktop-app/windows/README.md) and [release notes / SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.20). The macOS instructions below do not imply feature parity with Windows.
 
 ## New in 1.10.0
 
@@ -120,7 +120,7 @@ Each changed local JSON save retains one readable `.backup` beside it and automa
 ### Install the ready-made Mac app
 
 1. [Download PaperBridge.dmg](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), open it, and drag PaperBridge into Applications.
-2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. On Windows, [download the x64 installer](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.19/PaperBridge-Windows-0.2.19-x64-Setup.exe) or see [Windows Download (Preview)](#windows-download-preview) for the portable build and setup guide.
+2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. On Windows, [download the x64 installer](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.20/PaperBridge-Windows-0.2.20-x64-Setup.exe) or see [Windows Download (Preview)](#windows-download-preview) for the portable build and setup guide.
 3. Choose your route below. The setup guide can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
 | What you want to do | What to install |
