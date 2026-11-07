@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -61,10 +61,10 @@ async function run() {
       await page.getByText('Exported ' + destination, { exact: true }).waitFor();
       return fs.readFileSync(destination, 'utf8');
     };
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill(paragraphs.join('\n\n'));
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
-    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
+    await openWorkspaceView(page, 'Full Translation');
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
     await page.getByText('Translating full paper · batch 3 of 3', { exact: true }).waitFor();
     for (let attempt = 0; attempt < 100 && !heldResponse; attempt++) {
@@ -121,7 +121,7 @@ async function run() {
     assert.equal(completedExport, saved.connectedTranslation, 'Resuming successfully removes export failure markers without changing the completed text');
     assert.doesNotMatch(completedExport, /Connected translation failed|batch\(es\) failed|Original text retained below/);
     for (const text of ['第一批译文。', '第二批译文。', '第三批译文。', ...citations]) assert.ok(completedExport.includes(text));
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     const reference = page.locator('#block-4');
     await reference.getByText(citations[0], { exact: true }).waitFor();
     await reference.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
@@ -131,7 +131,7 @@ async function run() {
     assert.equal(await page.locator('.document-details .side-stat').filter({ has: page.getByText('Paragraphs', { exact: true }) }).locator('b').innerText(), '4');
     assert.equal(await page.locator('.document-details .side-stat').filter({ has: page.getByText('Translated', { exact: true }) }).locator('b').innerText(), '0');
     await page.locator('.document-details > summary').click();
-    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await openWorkspaceView(page, 'Paper');
     const preview = page.locator('[data-paper-block-id="4"]');
     await preview.getByText(citations[0], { exact: true }).waitFor();
     assert.equal(await preview.locator('.paper-preview-translation').count(), 0);

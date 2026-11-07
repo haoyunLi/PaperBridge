@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -25,9 +25,9 @@ async function waitFor(predicate, label, timeout = 10000) {
 
 async function pastePaper(page, text, expectedBlocks) {
   await revealSidebarSource(page);
-  await page.getByRole('button', { name: 'Paste Text' }).first().click();
+  await openPasteText(page);
   await page.locator('.paste-area').fill(text);
-  await page.getByRole('button', { name: 'Open text' }).click();
+  await loadPastedText(page, { view: 'Paper' });
   await page.locator('.paper-preview-block').first().waitFor();
   await page.waitForFunction(count => document.querySelectorAll('.paper-preview-block').length === count, expectedBlocks);
 }
@@ -86,7 +86,7 @@ async function waitForSavedExplanation(page) {
 }
 
 async function explainBlockIn(page, language) {
-  await page.getByRole('button', { name: 'Reader', exact: true }).click();
+  await openWorkspaceView(page, 'Reader');
   await page.locator('#block-2').click();
   await page.getByLabel('Explanation language').selectOption(language);
   await page.locator('.paragraph-explanation .inspector-link').click();
@@ -183,9 +183,9 @@ async function run() {
       left: parseFloat(getComputedStyle(list).paddingLeft), right: parseFloat(getComputedStyle(list).paddingRight)
     }));
     assert.deepEqual(readerWidth, { outer: 1200, card: 1156, left: 22, right: 22 }, 'reading width includes the macOS 22px padding on both sides');
-    await page.getByRole('button', { name: 'Paper', exact: true }).click();
+    await openWorkspaceView(page, 'Paper');
     await page.waitForFunction(() => Math.abs(document.querySelector('.document-preview').getBoundingClientRect().width - 1200) < 1);
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await page.getByRole('button', { name: 'Exit Focus Reading', exact: true }).click();
     await page.setViewportSize({ width: 980, height: 620 });
     await appearanceButton().click();

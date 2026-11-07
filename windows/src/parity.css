@@ -2,7 +2,7 @@
 .workspace > .header{padding:20px 22px 16px}
 .header > .title-row{min-height:64px}
 .title-row h1{margin-bottom:8px;line-height:1.25;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
-.title-row p{line-height:1.5;overflow-wrap:anywhere}
+.title-row > .title-wrap > p{line-height:1.5;overflow-wrap:anywhere}
 .header > .header-tools{margin-top:16px}
 @media(max-height:600px){
   .workspace > .header{padding-top:12px;padding-bottom:12px}

@@ -46,6 +46,8 @@ import { documentOutline } from './documentOutline.mjs';
 import './document-outline.css';
 import './sidebar-layout.css';
 import { SidebarLanguage, SidebarAIStatus } from './SidebarControls.jsx';
+import './compact-workspace.css';
+import SidebarSource from './SidebarSource.jsx';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
@@ -972,6 +974,8 @@ function App() {
   const onboardingBusyRef = useRef(false);
   const handleOnboardingBusy = useCallback(value => { onboardingBusyRef.current = value; setOnboardingBusy(value); }, []);
   const [paste, setPaste] = useState('');
+  const [pasteExpanded, setPasteExpanded] = useState(false);
+  const [pasteFocusRequest, setPasteFocusRequest] = useState(0);
   const [models, setModels] = useState([]);
   const [hardware, setHardware] = useState(null);
   const [mineruRuntime, setMineruRuntime] = useState(null);
@@ -1989,21 +1993,49 @@ function App() {
     token.mineruResource = null;
     setStatus(extractionWarning || `Extracted ${blocks.length} blocks${pageCount ? ` from ${pageCount} pages` : ''}. Compare uncertain passages with Original PDF.`);
   }
-  async function importText(text, name = 'Pasted Text') {
+  async function importText(text, name = 'Pasted Text', { practice = false } = {}) {
     if (!text.trim() || taskRef.current || editRef.current) return;
     const token = startTask('Preparing pasted text…');
     try {
-    const id = await sha256(text.trim());
-    const existing = await api.loadPaper(id);
-    requireActiveTask(token);
-    if (existing) await loadPaper(existing, { fromImport: true, token });
-    else { resetReadingHistory(); cancelParagraphEdit(); setUndo([]); commitPaper({ id, name, type: 'text', createdAt: new Date().toISOString(), blocks: blocksFromText(text), tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, position: { block: 1, page: 1, tab: 'Paper' }, extraction: 'Pasted text' }); setTab('Paper'); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch(''); }
-    setModal(''); setPaste('');
+      if (!await finishNoteEditing()) throw new Error('Retry the current paper save before loading pasted text.');
+      requireActiveTask(token);
+      const id = await sha256(text.trim());
+      requireActiveTask(token);
+      const existing = await api.loadPaper(id);
+      requireActiveTask(token);
+      // Notes remain editable while the lookup is pending. Flush again before
+      // replacing the paper, and prefer the latest same-paper snapshot.
+      if (!await finishNoteEditing()) throw new Error('Retry the current paper save before loading pasted text.');
+      requireActiveTask(token);
+      if (existing) {
+        const current = paperRef.current?.id === id ? paperRef.current : existing;
+        if (await loadPaper(current, { fromImport: true, token }) !== true) return;
+      } else {
+        const blocks = blocksFromText(text);
+        const references = referenceBlockIds(blocks);
+        const paragraphs = blocks.filter(block => !block.resource && !references.has(block.id));
+        const initialTab = paragraphs.length ? 'Summary' : 'Paper';
+        resetReadingHistory(); cancelParagraphEdit(); setUndo([]);
+        commitPaper({ id, name, type: 'text', sourceMode: 'text', createdAt: new Date().toISOString(), blocks,
+          tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current),
+          explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector,
+          position: { block: 1, page: 1, tab: initialTab }, extraction: 'Pasted text' });
+        setTab(initialTab); setExplanationLanguage('English'); setActiveBlock(1); setPageNumber(1); setSearch('');
+        setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+        setStatus(`Loaded ${name} with ${paragraphs.length} analysis paragraphs using Pasted text.${references.size ? ` Kept ${references.size} reference blocks in the document but excluded them from AI tasks.` : ''}`);
+      }
+      if (practice) setStatus('Loaded a fictional practice paper. No model is used until you choose an AI action.');
+      if (pasteExpanded) setDocumentDetailsExpanded(true);
     } catch (cause) { if (!token.cancelled) setError(cause.message); } finally { endTask(token); }
+  }
+  function openPasteText() {
+    if (taskRef.current || editRef.current) return;
+    setFocus(false); setSidebar(true); setDocumentDetailsExpanded(true); setPasteExpanded(true);
+    setPasteFocusRequest(request => request + 1);
   }
   function loadPractice() {
     if (paperRef.current) { setStatus('The practice paper is available from the empty workspace. Your open paper remains unchanged.'); return; }
-    importText(sample.join('\n\n'), 'Welcome to PaperBridge (practice sample)').catch(cause => setError(cause.message));
+    importText(sample.join('\n\n'), 'Welcome to PaperBridge (practice sample)', { practice: true }).catch(cause => setError(cause.message));
   }
   function startTask(label) { const token = { cancelled: false, ids: new Set(), paperId: paperRef.current?.id }; taskRef.current = token; setBusy({ label }); setProgress(null); setStatus(''); setError(''); return token; }
   function requireActiveTask(token) { if (token.cancelled || taskRef.current !== token) throw new Error('Cancelled'); }
@@ -2520,6 +2552,7 @@ function App() {
       setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
       void refreshModels(data.settings);
       setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setActiveBlock(1); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
+      setPaste(''); setPasteExpanded(false); setPasteFocusRequest(0);
       setModal(''); setStatus('Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
     } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
   }
@@ -3045,7 +3078,8 @@ function App() {
   }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, translatableCount > 0, canExport, checkingUpdates]);
 
   if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
-  const sidebarSource = <div className="side-group"><div className="side-label">SOURCE</div><button className="side-primary" onClick={openFile}><FilePlus2 size={16} /> Open PDF</button><button className="side-action" onClick={() => setModal('paste')}><FileText size={15} /> Paste Text</button><button className="side-action" onClick={loadPractice}><BookOpen size={15} /> Try a Practice Paper</button></div>;
+  const sidebarSource = <SidebarSource text={paste} onText={setPaste} expanded={pasteExpanded} onExpanded={setPasteExpanded}
+    focusRequest={pasteFocusRequest} busy={Boolean(busy)} onOpenPDF={openFile} onLoad={importText} onPractice={loadPractice} />;
   const sidebarAI = <SidebarAIStatus settings={settings} ollamaStatus={ollamaStatus} ollamaError={ollamaError} refreshingModels={refreshingModels}
     onRefreshModels={() => refreshModels(settingsRef.current)} openAIConsent={openAIState.consent} enabled={modal !== 'onboarding' && !pendingImport && (!paper || documentDetailsExpanded)}
     parserRevision={sidebarParserRevision} onOpenAISettings={() => openSettings(null, 'models')} onOpenSettings={() => openSettings(null, 'parsing')} />;
@@ -3109,7 +3143,7 @@ function App() {
         onScroll={saveMainScroll} onKeyDown={event => { handleReadingKey(event); handleMainScrollIntent(event); }}>
         {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
         {paper && tab !== 'Reader' && tab !== 'Summary' && !busy && status && <Notice className="workspace-status">{status}</Notice>}
-        {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={() => setModal('paste')}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
+        {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={openPasteText}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className={pdfFacsimile && displayMode !== 'source' ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.type === 'pdf' && displayMode === 'source' ? 'Exact native PDF rendering with selectable text and original page layout' : paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Reflowed selectable PDF text · exact pages remain available in Original mode' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
           {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
@@ -3201,8 +3235,8 @@ function App() {
     <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : selection.scope}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeNote={removeNote} removeHighlight={removeHighlight} removeViewNote={removeViewNote} removeViewHighlight={removeViewHighlight} removePdfNote={removePdfNote} removePdfHighlight={removePdfHighlight} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
-    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ paste: 'Paste text', settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
-      {modal === 'paste' && <><p>Paste a passage or complete paper. It stays on this computer.</p><textarea className="paste-area" value={paste} onChange={event => setPaste(event.target.value)} placeholder="Paste academic text here…" /><button className="button blue" onClick={() => importText(paste)}>Open text</button></>}
+    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}
       {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => { setSidebarParserRevision(value => value + 1); refreshModels(settingsRef.current); }}
         taskSetup={taskSetup} onChooseModels={() => openSettings(taskSetup)} />}

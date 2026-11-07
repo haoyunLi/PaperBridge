@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -66,9 +66,9 @@ async function run() {
 
     await expectMenus({ openPdf: true, summary: false, export: false, generateSummary: false, primaryTask: false, translateSelection: false, focusReading: false, toggleSidebar: false });
     await revealSidebarSource(page);
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill('Abstract\n\nThis paper studies deterministic menu state transitions.');
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
     await page.locator('.paper-preview-block').first().waitFor();
     await expectMenus({ summary: true, export: true, generateSummary: true, generateFullTranslation: true, primaryTask: true, undo: false, highlightSelection: false, focusReading: true, toggleSidebar: true });
 
@@ -107,7 +107,7 @@ async function run() {
     await button('Close dialog').click();
     await expectMenus({ focusReading: true, toggleSidebar: true });
 
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await page.locator('#block-2 .source-text').waitFor();
     await page.evaluate(() => {
       const source = document.querySelector('#block-2 .source-text');

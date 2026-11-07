@@ -18,8 +18,8 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 | --- | --- | --- | --- | --- |
 | A01 | 文件对话框打开 PDF | Open PDF 对话框 | 对齐 | 真实文件含空格、中文路径可打开。 |
 | A02 | 将 PDF 拖进窗口导入 | 窗口拖放 PDF 走同一导入与 SHA-256 去重；多文件选择首个 PDF | 对齐 | Electron 流程验证单文件、混合文件拖入及重复恢复；忙时不启动冲突导入。 |
-| A03 | 粘贴全文并按段落建文档 | Paste Text | 对齐 | 保留章节和段落顺序。 |
-| A04 | 无模型时试用虚构练习论文 | 有论文打开时保留原工作区并提示 | 对齐 | 练习论文只从空工作区创建。 |
+| A03 | 粘贴全文并按段落建文档 | Source 内联 Paste Text 折叠区、Load Text、Clear；会话草稿在成功、失败、取消和换论文后保留，忙时可编辑但禁用加载与清空 | 对齐 | 当前源码新增行为：有可分析正文的新文本进入 Overview；同文恢复原标签、修正文和批注。导入先保存旧文，再查询并在替换前再次保存，取消不清草稿；具体边界及待验证项见下方补充。 |
+| A04 | 无模型时试用虚构练习论文 | 有论文打开时保留原工作区并提示；新练习打开 Overview，并说明是虚构文档且尚未调用模型 | 对齐 | 练习论文只从空工作区创建，不覆盖粘贴草稿。新落页行为的桌面验证状态见下方补充。 |
 | A05 | 重复打开同一 PDF 恢复原工作区 | SHA-256 去重并载入保存文档 | 对齐 | 验证编辑、翻译、标注均未覆盖。 |
 | A06 | 重新提取为新的图书馆副本 | More 中重新提取为独立副本 | 对齐 | Electron 流程验证原副本保留且图书馆新增一项。 |
 | A07 | 导入时自动优先 MinerU | 默认 MinerU preferred，先探测并解析结构化正文，再处理 PDF 文字层 | 部分 | 真机已自动解析 15 页论文、单页扫描及两页双栏扫描。两页扫描验证了 AMD DirectML 路径。 |
@@ -39,6 +39,20 @@ macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key�
 
 Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[PDF 文本修复](../PaperBridge/Services/PDFTextExtractor.swift)、[Markdown 结构](../PaperBridge/Services/AcademicMarkdownProcessor.swift)、[原页归档](../PaperBridge/Services/PDFVisualArchiveService.swift)。Windows 证据：[导入与手动 MinerU](src/main.jsx)、[PDF.js 提取](src/pdf.mjs)、[Markdown 按行分段](src/academicMarkdown.mjs)、[原 PDF 复制](electron/main.cjs#L105)。
 
+### 当前源码补充：内联粘贴与保存边界
+
+本节记录 `d53c29d` 之后的源码变化，尚不代表公开 0.2.16 安装包已包含。[上一阶段 CI 42343260564](https://github.com/haoyunLi/PaperBridge/actions/runs/42343260564) 精确验证的是 `d53c29d`：201 项单元、31 套桌面及打包启动。它不作为本节新增桌面行为的通过证据。
+
+| 行为边界 | Mac 源码行为 | 当前 Windows 实现及验证范围 |
+| --- | --- | --- |
+| 草稿与 Clear | `manualInputText` 保存在阅读模型中；成功加载、失败、取消及切换论文不清空。Clear 只清草稿；清除保存数据会重置草稿。草稿不在 `PersistedWorkspace` 内。 | App 持有 `paste`，Source 从空工作区移到 Document & Import 后沿用同一值。成功导入保留草稿，Clear 不改论文；清除数据成功后重置草稿与展开状态。均不承诺跨应用重启保留草稿。 |
+| 空白和忙时操作 | Load 要求去除首尾空白后非空且不忙；Clear 按原始字符串是否为空及忙状态禁用。TextEditor 本身仍可编辑。 | 纯空白不能加载但可 Clear；工作期间 Load Text、Clear、Open PDF、练习按钮禁用，文本框可继续准备下一份草稿。PDF 导入期间 Source 由导入进度替代。 |
+| 新文与同文落页 | `applyLoadedPaper` 对新正文打开 Overview，对保存的同文恢复原工作区、批注、书签和修正文。练习经同一结果应用流程，但有专属完成消息。 | 新粘贴有可分析段落时打开 Overview，无可分析段落时打开 Paper；同一 SHA-256 恢复已存 tab 和内容，当前同文优先取最新内存快照。练习不改粘贴草稿。此次不改变 PDF 默认落页或旧记录的 tab。 |
+| 状态与引用计数 | 加载提示包含可分析段落数、解析方式、排除的引用块数和提取警告；练习另说明是虚构内容、未调用模型。 | 新文本报告 analysis paragraphs、Pasted text 与引用块数；计数使用现有引用识别，不修改原文、编号或标注。引用识别的剩余差异仍由 A19 跟踪。 |
+| 保存、失败、取消 | 加载前保存当前工作区；同一存储队列先写后读，避免恢复同文旧快照。 | 导入前和替换前 flush；flush 会继续等待期间新增的延迟/即时写入。旧文保存失败则保留当前论文和可重试状态；异步阶段后检查取消，不清掉新输入的草稿。Windows 保留了“保存失败不切文”的保护。 |
+
+证据：[Mac Source](../PaperBridge/ContentView.swift#L214)、[Mac 加载与练习](../PaperBridge/PaperReaderViewModel.swift#L787)、[恢复流程](../PaperBridge/PaperReaderViewModel.swift#L1545)、[Mac 串行存储](../PaperBridge/Services/WorkspaceStore.swift#L94)、[Windows Source](src/SidebarSource.jsx)、[导入与清除数据](src/main.jsx)、[保存队列](src/paperSaveQueue.mjs)。[保存队列单元](tests/paper-save-queue.test.cjs) 当前专项 5/5 通过，覆盖慢写期间新增笔记、后续写入失败及精确重试；[粘贴桌面专项](tests/paste-text-e2e.cjs) 已通过草稿/取消/同文恢复、慢写期间新笔记、清除失败与重试及 Practice 落页/零模型调用检查。全部 203 项单元、33 套桌面与打包启动通过；远端 CI 单独记录。这里不据此扩大历史统计或宣称整体一比一。
+
 ## B. 工作区、阅读与导航
 
 | ID | Mac 1.9 行为 | Windows 0.2 对应 | 状态 | 补齐与验收点 |
@@ -55,7 +69,7 @@ Mac 证据：[解析路由](../PaperBridge/PaperReaderViewModel.swift#L1547)、[
 | B10 | 标注跳转校验锚点有效性 | 检查器验证 Reader 块、PDF 页码和 Markdown 引文。跨来源标注跳转接入前进和后退，恢复视图、阅读来源、搜索和滚动位置 | 部分 | 真实论文验证 PDF 文字层、MinerU 预览及精确 PDF 第 2 页往返。布局稳定后定位，失效锚点保留并提示检查。仍需更多复杂 PDF 与 Mac 真机并排验收。 |
 | B11 | 显示/隐藏左右侧栏 | 论文工具栏两侧切换按钮，View 菜单或 Ctrl+Alt+S 切换左侧栏 | 对齐 | 手动从专注模式打开某一侧时退出专注并只显示该侧。面板切换保留当前阅读位置。 |
 | B12 | Focus Reading 退出后恢复进入前的面板状态 | 所有论文视图可用工具栏、View 菜单和 Ctrl+Alt+F 进入或退出专注阅读。普通退出恢复两侧偏好，跨论文采用当前论文的检查器设置。 | 对齐 | Electron 验证菜单、快捷键、跨视图和跨论文、非对称面板状态、对话框期间禁用和关闭查词卡。 |
-| B13 | 窄窗口检查器改为底部布局 | 小于 1400px 时切换为独立底部抽屉，按窗口高度限制为 190–340px。选区和解释/已存标注分成可独立滚动的两列，宽窗恢复本次会话的右栏宽度。 | 对齐 | Electron 验证 980×620、1320×820、1500×900 和运行时跨断点切换。更多 DPI 仍需目视验收。 |
+| B13 | 窄窗口检查器改为底部布局 | 通常在小于 1400px 时切换为 190–340px 底部抽屉，两列独立滚动，宽窗恢复右栏宽度。当前源码对 CSS 高度 ≤480px 增加临时覆盖面板，保留正文高度。 | 对齐 | 既有 Electron 覆盖 980×620、1320×820、1500×900 与跨断点切换。≤480px 覆盖面板是 Windows 缩放适配，不是 Mac 的像素等同实现；[短视口专项](tests/short-workspace-e2e.cjs) 已验证真实 980×620 窗口 200% 缩放、1600×440 宽矮窗口的笔记/滚动/关闭/专注恢复，完整原生截图已检查。更多 DPI 仍需目视验收。 |
 | B14 | 工具栏调节字号、行距、阅读宽度并重置 | Reading Appearance 弹层与设置页共用控件，紧凑标题也跟随字号与行距。新工作区与重置使用字号 16、额外行距 5、宽度 920，范围与 Mac 一致。旧字号、宽度和比例行距保留，主动选择额外行距后才转换。 | 对齐 | Electron 验证键盘、焦点、跨论文和重启、标题两侧外观、旧设置保留与主动转换。CSS 以 1.2em 基线加额外像素实现行距；Windows 字体度量仍与 AppKit 有差异。 |
 | B15 | 提取段落的质量提示与 Review 链接 | Overview 提取检查按阅读来源折叠，Review 打开双语 Reader；完整 MinerU 列表和引文按结构保护 | 对齐 | Electron 验证来源切换、展开状态和原文比对；单元验证新/旧结构类型、混合正文和过期 Markdown 不误消除警告。旧分段器拆散的列表续行仍需后续处理。 |
 | B16 | 结构化 Markdown 公式/表格本地预览 | React Markdown、KaTeX、GFM，加受限 HTML 渲染 | 部分 | 15 页论文的 11 处上标、4 张表、5 张图、5 个独立公式已在 Paper/Reader 验证；更多排版仍待验收。 |
@@ -167,8 +181,8 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G11 | 后台下载及进度、取消 | 引导与 SetupPanel 显示进度及取消。验证阶段退出或中断可恢复旧版；已验证的新版可保留。检测会避开其他实例正在修复的环境。 | 部分 | AMD 真机验证正常退出、预下载取消及验证前后强制终止，随后用 DirectML 解析双页扫描。整机断电和其他设备仍待验收。 |
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单。Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E/F/S 及旧 Ctrl+L。菜单项随论文、任务、选区和更新检查状态动态启停。 | 部分 | 单元和 Electron 覆盖空白页、论文、选区、忙碌任务、专注与左侧栏、撤销及重开引导。其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
-| G14 | 签名更新源检查及应用内更新 | 每日检查 Windows 专属 GitHub Release，识别版本化 x64 Setup；更新提示在重启和短期离线后保留 | 部分 | 公开安装版 0.2.13 检测到 0.2.14，安装新版后显示已是当前版本。签名后的应用内下载、验证与安装仍待 Windows 证书。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 0.2.14 的两个公开下载均通过 SHA-256 核对。0.2.13 检测到更新并升级，保留论文和标注。0.2.14 便携版恢复了 MinerU 的原页定位。发布包当前未签名。 |
+| G14 | 签名更新源检查及应用内更新 | 默认启动检查，成功后 24 小时内不重复联网；只识别带完整 x64 Setup 的 Windows 正式 Release。Settings 和 Help 可手动检查，重启/短期离线保留新版提示 | 部分 | 公开 0.2.15 已实测提示并升级到 0.2.16，新版显示已是当前版本。当前 View release 打开 GitHub 下载页；应用内自动下载、签名验证与安装尚未实现。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 公开 0.2.16 两个下载的校验文件与 GitHub digest 一致。0.2.15→0.2.16 升级保留论文、标注和阅读外观，卸载保留工作区；便携版恢复真实论文及已存 AMD 译文。发布包当前未签名，本轮开发修改尚未发布。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 

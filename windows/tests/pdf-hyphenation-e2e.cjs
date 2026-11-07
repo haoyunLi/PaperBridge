@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -122,7 +122,7 @@ async function run() {
   };
   const assertLegacy = async () => {
     await page.getByRole('heading', { name: legacy.name, exact: true }).waitFor({ timeout: 20000 });
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     assert.equal(await page.locator('#block-1 .source-text').textContent(), legacyText);
     assert.equal(await page.locator('#block-1 .source-text mark').textContent(), quote);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: note.body }).locator('button').first().click();
@@ -140,13 +140,13 @@ async function run() {
   const assertPasted = async (text, expected) => {
     const pastedId = sha256(text);
     await revealSidebarSource(page);
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill(text);
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
     await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
     await waitFor(() => fs.existsSync(paperFile(pastedId)), 'pasted source saved');
     assert.deepEqual(readPaper(pastedId).blocks.map(block => block.text), expected);
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     assert.deepEqual(await page.locator('.source-text').allTextContents(), expected);
   };
   try {
@@ -158,7 +158,7 @@ async function run() {
     await waitFor(() => fs.existsSync(paperFile(id)), 'new PDF extraction saved', 30000);
     await page.locator('.import-progress-screen').waitFor({ state: 'detached', timeout: 30000 });
     await page.getByRole('heading', { name: 'spaced-fragments.pdf', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     const imported = readPaper(id);
     assert.equal(imported.sourceMode, 'pdf');
     assert.equal(imported.extraction, 'PDF.js');
@@ -171,7 +171,7 @@ async function run() {
     assert.deepEqual(fs.readFileSync(path.join(workspace, 'pdfs', `${id}.pdf`)), bytes);
     await page.screenshot({ path: path.join(workspace, 'repaired-reader.png') });
 
-    await page.getByRole('button', { name: 'Original', exact: true }).click();
+    await openWorkspaceView(page, 'Original');
     await page.waitForFunction(() => document.querySelector('.textLayer[data-page="1"]'));
     const originalText = await page.locator('.textLayer[data-page="1"]').textContent();
     assert.ok(originalText.includes('We report re- sults from an attention- based inference.'));

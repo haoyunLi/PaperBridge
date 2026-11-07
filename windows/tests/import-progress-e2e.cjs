@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
@@ -56,11 +56,11 @@ async function run() {
   try {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await revealSidebarSource(page);
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill('Abstract\n\nThe original saved paper must survive a cancelled import.');
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
     await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await page.locator('#block-1').getByTitle('Bookmark heading').click();
     await waitFor(() => fs.readdirSync(path.join(workspace, 'papers')).some(name => name.endsWith('.json')), 'original paper save');
     const paperFile = path.join(workspace, 'papers', fs.readdirSync(path.join(workspace, 'papers')).find(name => name.endsWith('.json')));
@@ -131,7 +131,7 @@ async function run() {
     await drop('fallback.pdf', fallbackText);
     await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
     assert.ok(fs.existsSync(archivePage(fallbackText)), 'PDF fallback should prepare pages before saving the imported paper');
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await page.getByText('The selectable text survives a failed MinerU process.', { exact: true }).waitFor();
     await app.evaluate(() => { globalThis.__mineruScenario = 'probe-error'; });
     await drop('probe-fallback.pdf', 'The selectable text survives a failed MinerU probe.');
@@ -157,7 +157,7 @@ async function run() {
       markdown, resourceId, pageHints: [{ page: 1, text: 'A parsed title' }, { page: 1, text: passage }]
     });
     await page.getByText(/Extracted 2 blocks from 1 pages/).waitFor();
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await page.locator('#block-2 .block-header').getByLabel('Block 2, page 1', { exact: true }).waitFor();
     assert.equal(fs.existsSync(archivePage(structuredPdfText)), false, 'Successful MinerU imports keep their structured source');
     const exports = path.join(workspace, 'exports');
@@ -178,6 +178,17 @@ async function run() {
     assert.equal((await app.evaluate(() => globalThis.__discardedMineruResults)).length, 2);
 
     await chooseMode('pdfOnly');
+    // Inline paste keeps Document & Import expanded. Its read-only status card
+    // independently probes MinerU whenever import progress remounts the sidebar.
+    // Close that disclosure so this strict counter observes the import pipeline,
+    // not an unrelated status refresh after cancellation or successful import.
+    const documentDetails = page.locator('.document-details');
+    if (await documentDetails.getAttribute('open') !== null) {
+      await page.locator('.sidebar-parser-status .sidebar-refresh').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => document.querySelector('.sidebar-parser-status .sidebar-refresh')?.getAttribute('aria-busy') === 'false');
+      await documentDetails.locator(':scope > summary').click();
+    }
+    assert.equal(await documentDetails.getAttribute('open'), null);
     const probes = await app.evaluate(() => globalThis.__mineruStatusCalls);
     await page.evaluate(() => {
       const toBlob = HTMLCanvasElement.prototype.toBlob;

@@ -225,14 +225,14 @@ async function run() {
     assert.equal(await row(181).locator('span').textContent(), longTitle, 'visual wrapping must retain the full heading text');
     const documentDetails = page.locator('.document-details');
     const openPdf = documentDetails.getByRole('button', { name: 'Open PDF', exact: true, includeHidden: true });
-    const pasteText = documentDetails.getByRole('button', { name: 'Paste Text', exact: true, includeHidden: true });
+    const pasteText = documentDetails.locator('.sidebar-paste > summary');
     assert.equal(await documentDetails.getAttribute('open'), null, 'Document & Import begins collapsed');
     assert.equal(await openPdf.isVisible(), false, 'loaded papers keep import controls collapsed');
     assert.equal(await pasteText.isVisible(), false);
-    await documentDetails.locator('summary').click();
+    await documentDetails.locator(':scope > summary').click();
     await openPdf.waitFor({ state: 'visible' });
     assert.equal(await pasteText.isVisible(), true);
-    await documentDetails.locator('summary').click();
+    await documentDetails.locator(':scope > summary').click();
     await openPdf.waitFor({ state: 'hidden' });
     stage('initial 980px outline geometry and screenshot');
     await viewport({ width: 980, height: 620 });

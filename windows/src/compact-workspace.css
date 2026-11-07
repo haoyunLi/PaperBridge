@@ -1,0 +1,76 @@
+/* Page zoom can turn a normal Windows window into a very short CSS viewport.
+   Keep reading space available and let the inspector cover it temporarily. */
+@media (max-height: 480px) {
+  .app, .app.no-inspector {
+    grid-template-columns: var(--document-sidebar-width) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .app.no-sidebar, .app.no-sidebar.no-inspector, .app.focus { grid-template-columns: minmax(0, 1fr); }
+  .sidebar { grid-row: 1; }
+  .workspace { grid-column: 2; grid-row: 1; }
+  .app.no-sidebar .workspace, .app.focus .workspace { grid-column: 1; }
+  .inspector-splitter { display: none; }
+
+  .workspace > .header { padding: 8px 8px 7px; }
+  .header > .title-row { min-height: 0; gap: 6px; }
+  .title-row .icon-button { width: 26px; height: 26px; }
+  .title-row h1 {
+    display: block;
+    -webkit-line-clamp: unset;
+    margin-bottom: 2px;
+    padding-left: 7px;
+    border-left-width: 3px;
+    font-size: 18px;
+    line-height: 1.25;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .title-row > .title-wrap > p { margin-left: 10px; font-size: 10px; line-height: 1.3; }
+  .header > .header-tools { flex-wrap: nowrap; gap: 6px; margin-top: 7px; }
+  .header-tools .tabs { overflow-x: auto; scrollbar-width: thin; }
+  .header-tools .tabs button { padding: 5px 7px; }
+  .header-tools .toolbar-actions { flex: none; gap: 4px; }
+  .header-tools .toolbar-actions .button { padding: 6px 7px; font-size: 11px; }
+
+  .workspace-status-rail { max-height: 48px; padding: 3px 8px 0; }
+  .workspace-status-rail > .save-status:not(.error) { margin-bottom: 3px; }
+  .workspace > .reader-top { flex-wrap: nowrap; gap: 6px; padding: 6px 8px; }
+  .reader-top .reader-display-modes { flex: 0 1 240px; min-width: 224px; }
+  .reader-top .reader-display-modes span { padding: 4px 5px; }
+  .reader-top .reader-search { min-width: 110px; }
+  .reader-top .reader-search .search { padding-top: 6px; padding-bottom: 6px; }
+  .reader-top .undo-button { padding: 5px; }
+
+  /* Geometry must beat the legacy .app.no-sidebar .inspector width. Keep
+     display separate so no-inspector, Focus Reading and import hiding win. */
+  .app > #research-inspector {
+    position: fixed;
+    z-index: 7;
+    inset: 8px 8px 8px auto;
+    grid-column: auto;
+    grid-row: auto;
+    width: min(400px, calc(100vw - 16px));
+    height: calc(100dvh - 16px);
+    max-height: calc(100dvh - 16px);
+    padding: 0;
+    overflow: hidden;
+    flex-direction: column;
+    background: #fffdf8;
+    border: 1px solid #cfc6b8;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px #12203340;
+  }
+  .inspector.inspector-sidebar { display: flex; }
+  #research-inspector > .inspector-title { flex: none; padding: 10px 12px; margin: 0; border-bottom: 1px solid #e6dfd5; }
+  #research-inspector > .inspector-body { display: block; flex: 1; min-height: 0; overflow: auto; }
+  #research-inspector .inspector-primary, #research-inspector .inspector-supporting { display: block; overflow: visible; margin: 0; }
+  #research-inspector .inspector-supporting { border-left: 0; }
+  #research-inspector .inspector-scroll { display: block; padding: 12px; overflow: visible; }
+  #research-inspector .inspector-section { min-width: 0; max-width: none; }
+  #research-inspector .paragraph-explanation, #research-inspector .saved-annotations { margin: 0 12px 12px; }
+}
+
+@media (max-height: 480px) and (max-width: 800px) {
+  .app, .app.no-inspector, .app.no-sidebar, .app.no-sidebar.no-inspector, .app.focus { grid-template-columns: minmax(0, 1fr); }
+  .workspace, .app.no-sidebar .workspace { grid-column: 1; }
+}

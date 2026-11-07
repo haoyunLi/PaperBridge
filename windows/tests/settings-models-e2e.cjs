@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -93,9 +93,9 @@ async function run() {
   }
   async function pastePaper(text, blockCount) {
     await revealSidebarSource(page);
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill(text);
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
     await page.waitForFunction(count => document.querySelectorAll('.paper-preview-block').length === count, blockCount);
   }
   async function checkSettingsNavigation(screenshot) {

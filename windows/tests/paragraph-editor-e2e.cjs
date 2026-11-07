@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -333,9 +333,9 @@ async function run() {
     assert.equal(fs.existsSync(paperFile(pdfId)), false);
     assert.deepEqual(fs.readFileSync(path.join(workspace, 'pdfs', `${pdfId}.pdf`)), pdfBytes, 'reset retains original PDF bytes');
     await revealSidebarSource(page);
-    await page.locator('.sidebar').getByRole('button', { name: 'Paste Text', exact: true }).click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill('A fresh document opens after the old editor was reset.');
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
     await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
     const result = { passed: true, workspace, requests: requests.length, checked: [
       'dialog focus, grapheme count, IME and blank-save guard', 'Enter newline and Ctrl+Enter save',

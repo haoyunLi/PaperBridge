@@ -110,7 +110,7 @@ async function run() {
   const refreshParser = () => ai().getByRole('button', { name: 'Refresh MinerU status', exact: true });
   const openDetails = async () => {
     const details = page.locator('.document-details');
-    if (await details.getAttribute('open') === null) await details.locator('summary').click();
+    if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
     await from().waitFor();
   };
   const closeSettings = () => page.getByRole('button', { name: 'Close dialog', exact: true }).click();

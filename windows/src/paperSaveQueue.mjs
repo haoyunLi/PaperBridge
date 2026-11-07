@@ -52,9 +52,14 @@ export function createPaperSaveQueue({ save, onState = () => {}, onSaved = () =>
       return request.revision;
     },
     async flush() {
-      startPending();
-      await chain;
-      return state.status !== 'error';
+      for (;;) {
+        startPending();
+        const operation = chain;
+        await operation;
+        // Edits made while a write was in flight belong to this flush too.
+        // A caller may replace the current paper only once they are saved.
+        if (!pending && operation === chain) return state.status !== 'error';
+      }
     },
     async retry() {
       if (!failed) return state.status !== 'error';

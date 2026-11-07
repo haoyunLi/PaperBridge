@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -91,10 +91,10 @@ async function run() {
       await page.getByRole('dialog', { name: 'Repair Paragraph 1', exact: true }).getByRole('button', { name: 'Save', exact: true }).click();
     };
     await revealSidebarSource(page);
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
+    await openWorkspaceView(page, 'Overview');
     await page.getByRole('button', { name: 'Generate summary' }).click();
     await page.getByText('Summary saved. Only exact-match source quotations are linked.', { exact: true }).waitFor();
     const summaries = page.locator('.summary-card');
@@ -156,14 +156,14 @@ async function run() {
     await verified.locator('summary').press('Space');
     await verified.getByText(opening, { exact: true }).waitFor({ state: 'hidden' });
     assert.notEqual(await unverified.getAttribute('open'), null);
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await openWorkspaceView(page, 'Overview');
     await readTail(2);
     assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
 
     regenerate = 'cutoff';
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await openWorkspaceView(page, 'Overview');
     await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
     await page.getByText(/The summary response was cut off/).waitFor();
     assert.match(await summaries.first().innerText(), /Final limitation/);
@@ -177,13 +177,13 @@ async function run() {
     assert.match(await summaries.first().innerText(), /Final limitation/);
 
     const staleNotice = /The source text changed after this summary was generated/;
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     await splitOpening();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await openWorkspaceView(page, 'Overview');
     await page.getByText(staleNotice).waitFor();
     await readTail(3);
     await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await openWorkspaceView(page, 'Overview');
     assert.equal(await page.getByText(staleNotice).count(), 0);
     await readTail(2);
     await splitOpening();
@@ -191,7 +191,7 @@ async function run() {
     app = null;
     app = await launch();
     page = await app.firstWindow();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await openWorkspaceView(page, 'Overview');
     await page.getByText(staleNotice).waitFor();
     assert.equal(await page.locator('.evidence-claim[open]').count(), 0);
     await readTail(3);

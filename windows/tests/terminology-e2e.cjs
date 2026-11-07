@@ -1,4 +1,4 @@
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
@@ -73,10 +73,10 @@ async function run() {
     app = await launch();
     let page = await app.firstWindow();
     await revealSidebarSource(page);
-    await page.getByRole('button', { name: 'Paste Text', exact: true }).first().click();
+    await openPasteText(page);
     await page.locator('.paste-area').fill('Self-attention stabilizes the baseline attention score.');
-    await page.getByRole('button', { name: 'Open text', exact: true }).click();
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await loadPastedText(page, { view: 'Paper' });
+    await openWorkspaceView(page, 'Reader');
     await page.locator('#block-1 .source-text').waitFor();
     await selectText(page, '#block-1 .source-text', 'Self-attention');
     const draft = page.getByPlaceholder('Approved translation');
@@ -103,7 +103,7 @@ async function run() {
     await page.locator('.inspector').getByRole('button', { name: 'Translate', exact: true }).click();
     await page.getByText('Selection translated.', { exact: true }).waitFor();
     assert.deepEqual(dictionary(prompts[1]), [{ source: '自注意力', translation: 'self-attention' }]);
-    await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
+    await openWorkspaceView(page, 'Full Translation');
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
     await page.getByText('Connected full-paper translation saved.', { exact: true }).waitFor();
     assert.match(prompts[2], /Paper excerpt:/);
@@ -126,7 +126,7 @@ async function run() {
     await app.close(); app = null;
     app = await launch();
     page = await app.firstWindow();
-    await page.getByRole('button', { name: 'Reader', exact: true }).click();
+    await openWorkspaceView(page, 'Reader');
     assert.match(await page.locator('#block-1 .translation-text.done').innerText(), /此处使用自注意力/);
     await page.getByRole('button', { name: 'Saved Terminology', exact: true }).click();
     assert.equal(await page.locator('.term-row').count(), 3);
