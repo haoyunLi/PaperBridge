@@ -145,6 +145,59 @@ async function run() {
     await page.keyboard.press('Escape');
     await expectMenus({ translateSelection: false, explainSelection: false, highlightSelection: false });
 
+    const sidebarDivider = page.getByRole('separator', { name: 'Resize Document Sidebar' });
+    const inspectorDivider = page.getByRole('separator', { name: 'Resize Research Inspector' });
+    const dragDivider = async (divider, delta) => {
+      const box = await divider.boundingBox();
+      assert.ok(box);
+      const x = box.x + box.width / 2, y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + delta, y, { steps: 5 });
+      await page.mouse.up();
+    };
+    await page.setViewportSize({ width: 980, height: 620 });
+    await sidebarDivider.waitFor();
+    assert.equal((await sidebar.boundingBox()).width, 264);
+    await sidebarDivider.press('Home');
+    assert.equal((await sidebar.boundingBox()).width, 240);
+    await dragDivider(sidebarDivider, 90);
+    assert.equal((await sidebar.boundingBox()).width, 300);
+    assert.equal(await inspectorDivider.isVisible(), false);
+    await inspector.locator('.inspector-body').waitFor();
+    assert.match(await inspector.getAttribute('class'), /inspector-drawer/);
+    const compact = await page.locator('.main-scroll').evaluate(host => host.scrollWidth <= host.clientWidth);
+    assert.ok(compact, 'Resizing the document sidebar must leave the compact reading area within the window');
+    const statusRail = page.locator('.workspace-status-rail');
+    const savedIndicator = statusRail.getByText('Saved on this PC', { exact: true });
+    await savedIndicator.waitFor();
+    const [railBox, savedBox] = await Promise.all([statusRail.boundingBox(), savedIndicator.boundingBox()]);
+    assert.ok(railBox.height <= 35 && railBox.x + railBox.width - (savedBox.x + savedBox.width) <= 24,
+      'The saved indicator should use a compact line aligned to the right');
+    await sidebarDivider.blur();
+    await page.screenshot({ path: path.join(artifacts, 'resizable-layout-980.png') });
+
+    await page.setViewportSize({ width: 1500, height: 900 });
+    await inspectorDivider.waitFor();
+    assert.equal((await inspector.boundingBox()).width, 330);
+    await dragDivider(inspectorDivider, -110);
+    assert.equal((await inspector.boundingBox()).width, 420);
+    await inspectorDivider.press('Home');
+    assert.equal((await inspector.boundingBox()).width, 280);
+    await inspectorDivider.press('ArrowLeft');
+    assert.equal((await inspector.boundingBox()).width, 288);
+    await inspectorDivider.blur();
+    await page.screenshot({ path: path.join(artifacts, 'resizable-layout-1500.png') });
+    await clickMenu('focusReading');
+    await expectPanels(false, false);
+    assert.equal(await sidebarDivider.isVisible(), false);
+    assert.equal(await inspectorDivider.isVisible(), false);
+    await button('Exit Focus Reading').click();
+    await expectPanels(true, true);
+    assert.equal((await sidebar.boundingBox()).width, 300);
+    assert.equal((await inspector.boundingBox()).width, 288);
+    await page.setViewportSize({ width: 1320, height: 820 });
+
     // Only environment discovery is stubbed; menu state always comes from the live renderer.
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('setup:status');
@@ -161,7 +214,7 @@ async function run() {
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     await page.locator('.onboarding-modal').waitFor({ state: 'detached' });
     await expectMenus({ summary: true, export: true, generateSummary: true });
-    console.log('Live renderer changes drove native menus, including direct analysis export, selection, highlight/undo, delayed translation, and Getting Started.');
+    console.log('Live renderer changes drove native menus, including analysis export, resizable panels, focus, selection, delayed translation, and Getting Started.');
   } finally {
     await app?.close();
     ollama.closeAllConnections();
