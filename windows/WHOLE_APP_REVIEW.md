@@ -6,6 +6,8 @@
 
 162 项单元测试和桌面回归通过。测试从主进程检查定位发生时索引已含两页，覆盖取消选择目录、停止渲染、页面写入失败、索引写入失败、缺失附件及资源管理器不可用。Windows 真机用两页 ResNet 和测试补充附件，通过系统 Shell 接口确认文件资源管理器选中实际完成的包。Windows 0.2.14 汇集第五十六和第五十七阶段。
 
+GitHub 发布通过 162 项单元测试、23 套桌面回归及打包启动检查。公开安装版和便携版的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开便携版恢复保存的 MinerU 解析和 35 条页码提示。0.2.13 安装版提示更新，升级到 0.2.14 后恢复论文、高亮和笔记，卸载测试副本后隔离工作区保留。GitHub 首页的两个直链均已更新。 [Windows 0.2.14](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.14) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42326506084)
+
 ## 第五十六阶段：保留 MinerU 4.x ZIP 引用的附件（2026-11-07 UTC）
 
 从 MinerU 4.x ZIP 读取主 Markdown 后，保留正文引用的本地文件、标准图像和页码伴随文件。补充 Markdown 不会被选成正文。解包排除越界路径、重复路径、设备名、符号链接和内部清单。取消时清理未写完的文件。附加资源每个文件上限 256 MiB，总计 1 GiB。已导入的旧工作区可用独立新副本重新提取缺少的附件。
