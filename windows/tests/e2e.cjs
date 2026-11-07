@@ -617,8 +617,7 @@ async function run() {
     const bundleFolders = () => fs.readdirSync(artifacts).filter(name => name.startsWith('practice-PaperBridge'));
     const beforeExport = new Set(bundleFolders());
     await exportBundle();
-    await page.waitForFunction(() => /Exported \d+ Markdown files|Bundle export incomplete/.test(document.body.innerText), null, { timeout: 30000 });
-    assert.match(await page.locator('.main-scroll').innerText(), /Exported/, 'Bundle export should complete without an error');
+    await page.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
     const bundle = path.join(artifacts, bundleFolders().find(name => !beforeExport.has(name)));
     assert.deepEqual(fs.readFileSync(path.join(bundle, 'original.pdf')), fs.readFileSync(pdfPath));
     assert.ok(fs.existsSync(path.join(bundle, 'pages', 'page-001.png')));
@@ -767,6 +766,9 @@ async function run() {
     await reopenedPage.waitForFunction(() => document.querySelector('.pdf-sheet canvas')?.width > 500);
     await reopenedPage.locator('.scan-notice').getByText('No selectable text on this PDF page').waitFor();
     await reopenedPage.screenshot({ path: path.join(artifacts, 'scan-guidance.png') });
+    await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, artifacts);
+    await exportBundle(reopenedPage);
+    await reopenedPage.getByText(/Reused 2 archived PDF page image\(s\)/).waitFor();
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('mineru:status');
       ipcMain.handle('mineru:status', () => ({ compatible: false, executable: '' }));

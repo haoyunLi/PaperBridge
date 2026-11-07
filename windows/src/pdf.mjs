@@ -15,6 +15,33 @@ export async function openPdf(bytes) {
   }
 }
 
+export async function renderPagePng(pdf, pageNumber, token) {
+  let page;
+  let canvas;
+  try {
+    page = await pdf.getPage(pageNumber);
+    if (token.cancelled) return null;
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: Math.min(1.5, 1800 / Math.max(base.width, base.height)) });
+    canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const render = page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport });
+    token.cancelRender = () => render.cancel();
+    await render.promise;
+    if (token.cancelled) return null;
+    const image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    return image && !token.cancelled ? new Uint8Array(await image.arrayBuffer()) : null;
+  } catch {
+    // A damaged page does not prevent preserving the other pages and exact PDF.
+    return null;
+  } finally {
+    token.cancelRender = null;
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+    page?.cleanup();
+  }
+}
+
 export async function extractPdf(pdf, onPage, checkActive) {
   const pages = [];
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {

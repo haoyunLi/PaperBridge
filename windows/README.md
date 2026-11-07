@@ -2,7 +2,7 @@
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
-Download the Windows x64 development preview from the [Windows 0.2.11 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.11). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
+Download the Windows x64 development preview from the [Windows 0.2.12 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.12). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
 
 Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. Zoom with the PDF toolbar, **Ctrl+mouse wheel**, or **Ctrl+Plus/Minus**. Press **Ctrl+0** or choose **Fit** to fit the PDF to the window. Each view remembers its zoom for the current paper. PDF annotations remain anchored while scaling, and opening a saved annotation also brings its text into view horizontally.
 
@@ -10,7 +10,7 @@ Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. 
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.
 
-Portable Markdown export archives PDF page images locally as it renders them. Later exports of the same PDF reuse completed pages across restarts and regenerate missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
+Version 0.2.12 prepares PNG previews for the first 120 original pages during PDF text import, including scans and MinerU fallback. The import screen shows progress and lets you cancel without replacing the open paper. Portable Markdown export reuses completed pages across restarts and regenerates missing or damaged entries. Each bundle includes its own images and exact original PDF. Clearing saved PaperBridge data removes the page archive.
 
 The Paper Library lists recently opened papers first, with their translation progress and tags. A library label changes how the paper appears in the library. The document title and export filename still use the original name.
 

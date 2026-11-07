@@ -7,7 +7,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Merge, Scissors, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, ZoomIn, ZoomOut } from 'lucide-react';
-import { openPdf, extractPdf } from './pdf.mjs';
+import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
@@ -1744,6 +1744,38 @@ function App() {
       return typeof result === 'string' ? { markdown: result, pageHints: [] } : result;
     } finally { token.mineruRequest = null; }
   }
+  async function archiveImportedPages(imported, pdf, token, warnings) {
+    const requestId = crypto.randomUUID();
+    setBusy({ label: 'Preparing original PDF page images…' });
+    setPendingImport(current => current ? { ...current, stage: 'Preparing original PDF page images' } : current);
+    setProgress(null);
+    try {
+      const archive = await api.preparePageArchive({ id: imported.id, fingerprint: imported.fingerprint, pageCount: pdf.numPages, requestId });
+      requireActiveTask(token);
+      if (!archive) throw new Error('Page archive unavailable.');
+      const { limit } = archive;
+      const cached = new Set(archive.cachedPages);
+      let unavailable = 0;
+      for (let pageNumber = 1; pageNumber <= limit; pageNumber++) {
+        setProgress({ done: pageNumber - 1, total: limit });
+        setPendingImport(current => current ? { ...current, stage: `Preparing original PDF page images · ${pageNumber} of ${limit}` } : current);
+        if (cached.has(pageNumber) && await api.archivePdfPage({ requestId, pageNumber })) {
+          requireActiveTask(token);
+          continue;
+        }
+        requireActiveTask(token);
+        const bytes = await renderPagePng(pdf, pageNumber, token);
+        requireActiveTask(token);
+        if (!bytes || !await api.archivePdfPage({ requestId, pageNumber, bytes })) unavailable++;
+        requireActiveTask(token);
+      }
+      if (limit < pdf.numPages) warnings.push(`PNG previews were limited to the first ${limit} pages. The exact original PDF contains all ${pdf.numPages} pages.`);
+      if (unavailable) warnings.push(`Could not prepare preview images for ${unavailable} page(s). The exact original PDF is available.`);
+    } catch {
+      requireActiveTask(token);
+      warnings.push('Could not prepare the PDF page archive. The exact original PDF is available.');
+    } finally { await api.finishPageArchive(requestId).catch(() => {}); }
+  }
   async function ingestPdf(imported, token) {
     requireActiveTask(token);
     if (imported.existing) { await loadPaper(imported.existing, { fromImport: true, token }); return; }
@@ -1773,20 +1805,23 @@ function App() {
     let pdfBlocks = [];
     let pageCount = 0;
     try {
-      setBusy({ label: 'Reading PDF text layer…' });
-      setPendingImport(current => current ? { ...current, stage: 'Reading selectable PDF text' } : current);
-      pdf = await openPdf(imported.bytes);
-      requireActiveTask(token);
-      pageCount = pdf.numPages;
-      pdfBlocks = await extractPdf(pdf, (done, total) => {
-        setProgress({ done, total });
-        setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current);
-      }, () => requireActiveTask(token));
-      if (!pdfBlocks.length && !mineruBlocks) warnings.push('No selectable text found. The exact original PDF is available. Use MinerU for OCR.');
-    } catch (cause) {
-      requireActiveTask(token);
-      if (!pdf && !mineruBlocks) throw cause;
-      warnings.push(`The selectable PDF text could not be read: ${cause.message} The original file is preserved.`);
+      try {
+        setBusy({ label: 'Reading PDF text layer…' });
+        setPendingImport(current => current ? { ...current, stage: 'Reading selectable PDF text' } : current);
+        pdf = await openPdf(imported.bytes);
+        requireActiveTask(token);
+        pageCount = pdf.numPages;
+        pdfBlocks = await extractPdf(pdf, (done, total) => {
+          setProgress({ done, total });
+          setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current);
+        }, () => requireActiveTask(token));
+        if (!pdfBlocks.length && !mineruBlocks) warnings.push('No selectable text found. The exact original PDF is available. Use MinerU for OCR.');
+      } catch (cause) {
+        requireActiveTask(token);
+        if (!pdf && !mineruBlocks) throw cause;
+        warnings.push(`The selectable PDF text could not be read: ${cause.message} The original file is preserved.`);
+      }
+      if (pdf && !mineruBlocks) await archiveImportedPages(imported, pdf, token, warnings);
     } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
     mineruBlocks = locateMineruPages(mineruBlocks, pageHints, pdfBlocks, pageCount);
     const blocks = mineruBlocks || pdfBlocks;
@@ -1862,8 +1897,8 @@ function App() {
     const token = taskRef.current;
     if (!token) return;
     token.cancelled = true;
+    token.cancelRender?.();
     if (token.kind === 'bundleExport') {
-      token.cancelRender?.();
       setStatus('Stopping page export…');
       return;
     }
@@ -2270,27 +2305,9 @@ function App() {
             if (token.cancelled) break;
             const pdfDocument = await loadPdf();
             if (token.cancelled) break;
-            let image;
-            try {
-              const page = await pdfDocument.getPage(pageNumber);
-              if (token.cancelled) break;
-              const base = page.getViewport({ scale: 1 });
-              const viewport = page.getViewport({ scale: Math.min(1.5, 1800 / Math.max(base.width, base.height)) });
-              const canvas = document.createElement('canvas');
-              canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-              const render = page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport });
-              token.cancelRender = () => render.cancel();
-              await render.promise;
-              if (!token.cancelled) image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-            } catch {
-              // A damaged page does not prevent exporting the other pages and exact PDF.
-            } finally {
-              token.cancelRender = null;
-            }
+            const bytes = await renderPagePng(pdfDocument, pageNumber, token);
             if (token.cancelled) break;
-            if (image) {
-              const bytes = new Uint8Array(await image.arrayBuffer());
-              if (token.cancelled) break;
+            if (bytes) {
               await api.exportBundlePage({ ...destination, pageNumber, bytes });
               pageImages++;
             } else missingPages++;

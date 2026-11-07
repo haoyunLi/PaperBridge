@@ -31,6 +31,7 @@ let openAIClient = null;
 let openAIConsent = false;
 let openAIRevision = 0;
 let activeBundle = null;
+let activeImportArchive = null;
 let menuState = normalizeMenuState({});
 let closeReady = false;
 let closeRequested = false;
@@ -104,7 +105,7 @@ function importPdfBytes(bytes, name) {
   const destination = store.pdfPath(id);
   fs.mkdirSync(path.dirname(destination), { recursive: true });
   if (!fs.existsSync(destination)) fs.writeFileSync(destination, source);
-  return { id, name: path.basename(String(name || 'Paper.pdf')), existing: store.paper(id), bytes: new Uint8Array(source) };
+  return { id, fingerprint: id, name: path.basename(String(name || 'Paper.pdf')), existing: store.paper(id), bytes: new Uint8Array(source) };
 }
 
 async function pullOllamaModel(baseURL, model, signal, update) {
@@ -209,6 +210,7 @@ function registerHandlers() {
   ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
   ipcMain.handle('paper:save', (_event, paper) => { store.savePaper(paper); return store.list(); });
   ipcMain.handle('paper:clear-data', () => {
+    activeImportArchive = null;
     revokeOpenAIConsent();
     store.clearData();
   });
@@ -221,13 +223,43 @@ function registerHandlers() {
   ipcMain.handle('pdf:import-bytes', (_event, { bytes, name }) => importPdfBytes(bytes, name));
   ipcMain.handle('pdf:copy-as-new', (_event, { id, name }) => {
     const bytes = fs.readFileSync(store.pdfPath(safeId(id)));
-    const newId = crypto.createHash('sha256').update(bytes).update(crypto.randomUUID()).digest('hex');
+    const hash = crypto.createHash('sha256').update(bytes);
+    const fingerprint = hash.copy().digest('hex');
+    const newId = hash.update(crypto.randomUUID()).digest('hex');
     const destination = store.pdfPath(newId);
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.writeFileSync(destination, bytes);
-    return { id: newId, name: `${path.basename(String(name || 'Paper.pdf'))} (new extraction)`, bytes: new Uint8Array(bytes), existing: null };
+    return { id: newId, fingerprint, name: `${path.basename(String(name || 'Paper.pdf'))} (new extraction)`, bytes: new Uint8Array(bytes), existing: null };
   });
   ipcMain.handle('pdf:read', (_event, id) => new Uint8Array(fs.readFileSync(store.pdfPath(safeId(id)))));
+  ipcMain.handle('pdf:prepare-page-archive', async (event, { id, fingerprint, pageCount, requestId }) => {
+    const pdfFile = store.pdfPath(safeId(id));
+    if (typeof fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(fingerprint)
+        || !Number.isSafeInteger(pageCount) || pageCount < 1 || typeof requestId !== 'string' || !requestId) {
+      throw new Error('Invalid PDF page archive request.');
+    }
+    const job = { requestId, sender: event.sender, limit: Math.min(pageCount, maximumPreviewPages) };
+    activeImportArchive = job;
+    const archive = await createPageArchive(store.root, pdfFile, {
+      expectedFingerprint: fingerprint, isCurrent: () => activeImportArchive === job && !event.sender.isDestroyed()
+    });
+    if (!archive || activeImportArchive !== job) return null;
+    job.archive = archive;
+    archive.savePageCount(pageCount);
+    return { cachedPages: archive.status().cachedPages, limit: job.limit };
+  });
+  ipcMain.handle('pdf:archive-page', (event, { requestId, pageNumber, bytes }) => {
+    const job = activeImportArchive;
+    if (!job?.archive || requestId !== job.requestId || event.sender !== job.sender) return false;
+    if (!Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > job.limit) throw new Error('Invalid PDF page number.');
+    if (bytes == null) return Boolean(job.archive.readPage(pageNumber));
+    const png = bytes instanceof Uint8Array ? Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength) : null;
+    if (!png || !validPageImage(png)) throw new Error('Invalid page image.');
+    return job.archive.savePage(pageNumber, png);
+  });
+  ipcMain.handle('pdf:finish-page-archive', (event, requestId) => {
+    if (activeImportArchive && activeImportArchive.requestId === requestId && activeImportArchive.sender === event.sender) activeImportArchive = null;
+  });
   ipcMain.handle('markdown:export', async (_event, { name, content }) => {
     const result = await dialog.showSaveDialog(window, { title: 'Export Markdown', defaultPath: `${String(name || 'PaperBridge').replace(/[<>:"/\\|?*]/g, '-')}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] });
     if (result.canceled) return null;

@@ -281,11 +281,13 @@ test('PDF page archives share exact PDF bytes, detect damaged entries and clear 
     archive.savePageCount(2);
     const copy = path.join(root, 'new extraction.pdf');
     fs.copyFileSync(pdf, copy);
-    const same = await createPageArchive(root, copy);
+    const same = await createPageArchive(root, copy, { expectedFingerprint: hash });
     assert.deepEqual(same.status(), { cachedPageCount: 2, cachedPages: [1] });
     assert.deepEqual(same.readPage(1), image);
     assert.equal(same.readPage(2), null);
     fs.appendFileSync(copy, ' changed');
+    assert.equal(await createPageArchive(root, copy, { expectedFingerprint: hash }), null);
+    assert.equal(await createPageArchive(root, copy, { isCurrent: () => false }), null);
     const changed = await createPageArchive(root, copy);
     assert.deepEqual(changed.status(), { cachedPageCount: 0, cachedPages: [] });
     assert.equal(same.matches(fs.readFileSync(copy)), false);

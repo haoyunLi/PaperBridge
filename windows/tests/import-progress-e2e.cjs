@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
@@ -41,6 +42,13 @@ async function run() {
     await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
     await page.getByLabel('PDF extraction mode').selectOption(mode);
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  };
+  const fallbackText = 'The selectable text survives a failed MinerU process.';
+  const cancelledArchiveText = 'Cancel while the original page image is being prepared.';
+  const paperId = text => createHash('sha256').update(samplePdf(text)).digest('hex');
+  const archivePage = text => {
+    const cache = path.join(workspace, 'pdf-page-cache');
+    return path.join(cache, fs.readdirSync(cache)[0], paperId(text), 'page-001.png.entry');
   };
   try {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
@@ -107,8 +115,9 @@ async function run() {
 
     await chooseMode('mineruPreferred');
     await app.evaluate(() => { globalThis.__mineruScenario = 'parser-error'; });
-    await drop('fallback.pdf', 'The selectable text survives a failed MinerU process.');
+    await drop('fallback.pdf', fallbackText);
     await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
+    assert.ok(fs.existsSync(archivePage(fallbackText)), 'PDF fallback should prepare pages before saving the imported paper');
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByText('The selectable text survives a failed MinerU process.', { exact: true }).waitFor();
     await app.evaluate(() => { globalThis.__mineruScenario = 'probe-error'; });
@@ -125,15 +134,34 @@ async function run() {
     await page.getByText(/Extracted 2 blocks from 1 pages/).waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-2').getByText('PAGE 1 · BLOCK 2', { exact: true }).waitFor();
+    assert.equal(fs.existsSync(archivePage('The source page is the original first page.')), false, 'Successful MinerU imports keep their structured source');
 
     await chooseMode('pdfOnly');
     const probes = await app.evaluate(() => globalThis.__mineruStatusCalls);
+    await page.evaluate(() => {
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
+        HTMLCanvasElement.prototype.toBlob = toBlob;
+        window.releaseImportPage = () => toBlob.call(this, callback, ...options);
+      };
+    });
+    await drop('cancelled-archive.pdf', cancelledArchiveText);
+    await page.waitForFunction(() => typeof window.releaseImportPage === 'function');
+    await page.getByRole('main').getByText('Preparing original PDF page images · 1 of 1', { exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await page.getByRole('heading', { name: 'structured-with-pages.pdf', exact: true }).waitFor();
     await drop('pdf-only.pdf', 'The PDF only mode reads the selectable text layer.');
     await page.getByText(/Extracted \d+ blocks from 1 pages/).waitFor();
+    await page.evaluate(() => { window.releaseImportPage(); delete window.releaseImportPage; });
+    assert.equal(await page.evaluate(id => window.paperBridge.loadPaper(id), paperId(cancelledArchiveText)), null);
+    assert.equal(fs.existsSync(archivePage(cancelledArchiveText)), false, 'Cancelled page output must be ignored');
+    await drop('cancelled-archive.pdf', cancelledArchiveText);
+    await page.getByText(/Extracted \d+ blocks from 1 pages/).waitFor();
+    assert.ok(fs.existsSync(archivePage(cancelledArchiveText)), 'Reimport should complete the unfinished archive');
     assert.equal(await app.evaluate(() => globalThis.__mineruStatusCalls), probes, 'PDF-only imports should not probe MinerU');
     await page.locator('.library-row').filter({ hasText: /^fallback\.pdf/ }).click();
     await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
-    console.log('Import verified: mode-specific failures, persisted fallback reason, no OCR in PDF-only mode, and late-result isolation across imports.');
+    console.log('Import verified: strict and fallback modes, PDF-only page preparation, and isolation from late parser and page-image results.');
   } finally { await app.close().catch(() => {}); }
 }
 

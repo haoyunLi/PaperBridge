@@ -31,15 +31,17 @@ function writeEntry(file, bytes) {
   try {
     fs.writeFileSync(temporary, Buffer.concat([digest(bytes), bytes]), { flag: 'wx' });
     fs.renameSync(temporary, file);
-  } catch { /* The export still works when its cache is unavailable. */ }
+    return true;
+  } catch { return false; }
   finally { try { fs.unlinkSync(temporary); } catch { /* Rename or write already finished. */ } }
 }
 
-async function createPageArchive(root, pdfFile) {
+async function createPageArchive(root, pdfFile, { expectedFingerprint, isCurrent } = {}) {
   try {
     const hash = crypto.createHash('sha256');
     for await (const chunk of fs.createReadStream(pdfFile)) hash.update(chunk);
     const fingerprint = hash.digest('hex');
+    if ((expectedFingerprint && fingerprint !== expectedFingerprint) || (isCurrent && !isCurrent())) return null;
     const versionRoot = path.join(cacheRoot(root), format);
     const folder = path.join(versionRoot, fingerprint);
     for (const directory of [cacheRoot(root), versionRoot, folder]) {
@@ -67,7 +69,7 @@ async function createPageArchive(root, pdfFile) {
         const bytes = readEntry(pageFile(number), maxPageBytes);
         return bytes && validPageImage(bytes) ? bytes : null;
       },
-      savePage(number, bytes) { writeEntry(pageFile(number), bytes); },
+      savePage(number, bytes) { return writeEntry(pageFile(number), bytes); },
       savePageCount(pageCount) { if (pageCount > 0) writeEntry(countFile, Buffer.from(String(pageCount))); }
     };
   } catch { return null; }
