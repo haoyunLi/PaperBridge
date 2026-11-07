@@ -245,7 +245,8 @@ async function run() {
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
     await chooseSettings(page, 'English', 'Simplified Chinese', modelA);
     await waitForSavedExplanation(page);
-    await page.locator('#block-2 button[title="Edit source"]').click();
+    await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.locator('#block-2 .edit-area textarea').fill('Paper A revised text invalidates the old explanation.');
     await page.locator('#block-2 .edit-area').getByRole('button', { name: 'Save edit' }).click();
     assert.equal(await page.locator('.paragraph-explanation p').count(), 0);
@@ -255,7 +256,8 @@ async function run() {
     const original = readPaper(textA).blocks[1];
     assert.equal(original.status, 'ok');
     await page.locator('#block-2 button[title="Bookmark"]').click();
-    await page.locator('#block-2 button[title="Edit source"]').click();
+    await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     const editor = page.locator('#block-2 .edit-area');
     await editor.locator('textarea').fill(`${original.text}\n\nA new paragraph with a\nmanual line break.`);
     await editor.getByRole('button', { name: 'Save edit' }).click();

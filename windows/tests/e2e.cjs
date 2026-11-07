@@ -242,7 +242,8 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.waitForSelector('.block');
     assert.ok((await page.locator('.block').count()) >= 8);
-    await page.locator('.block').nth(1).locator('button[title="Translate or retry block"]').click();
+    await page.locator('.block').nth(1).getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     await page.locator('.block').nth(1).locator('.translation-text.done').waitFor({ timeout: 15000 });
     assert.match(await page.locator('.block').nth(1).locator('.translation-text.done').innerText(), /本地测试译文/);
     await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Original', exact: true }).check();

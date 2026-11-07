@@ -74,11 +74,13 @@ async function run() {
       const tableCaption = blocks.find(block => block.text.startsWith('Table 1:'));
       const table = blocks.find(block => block.resource && block.sourceMarkdown.startsWith('<table'));
       assert.ok(caption && image && tableCaption && table);
-      await page.locator(`#block-${caption.id} button[title="Translate or retry block"]`).click();
+      await page.locator(`#block-${caption.id}`).getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
       await page.locator(`#block-${caption.id} .translation-text.done`).waitFor({ timeout: 120000 });
       captionTranslation = await page.locator(`#block-${caption.id} .translation-text.done`).innerText();
       assert.ok(captionTranslation.trim().length > 5);
-      await page.locator(`#block-${tableCaption.id} button[title="Translate or retry block"]`).click();
+      await page.locator(`#block-${tableCaption.id}`).getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
       await page.locator(`#block-${tableCaption.id} .translation-text.done`).waitFor({ timeout: 120000 });
       tableCaptionTranslation = await page.locator(`#block-${tableCaption.id} .translation-text.done`).innerText();
       assert.ok(tableCaptionTranslation.trim().length > 5);

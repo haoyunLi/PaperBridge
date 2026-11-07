@@ -104,6 +104,10 @@ test('translation range counts exactly the unfinished queue including headings',
   assert.deepEqual(translationRangeIds(blocks, null, references), [1, 4]);
   assert.deepEqual(translationRangeIds(blocks, [2, 3, 4, 5], references), [4]);
   assert.deepEqual(translationRangeIds(blocks, [], references), []);
+  assert.deepEqual(translationRangeIds(blocks, [2], references, 2), [2], 'an explicit single-paragraph retry may replace an existing result');
+  assert.deepEqual(translationRangeIds(blocks, [2], references, 1), [], 'retrying another paragraph must not bypass completed filtering');
+  assert.deepEqual(translationRangeIds(blocks, [3], references, 3), [], 'resources remain protected');
+  assert.deepEqual(translationRangeIds(blocks, [5], references, 5), [], 'excluded references remain protected');
 });
 
 test('MinerU imports require readable structured text while preserving companion resources', async () => {

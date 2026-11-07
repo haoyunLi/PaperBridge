@@ -182,6 +182,7 @@ async function run() {
     await button('Close dialog').click();
     await button('Reader').click();
     await page.locator('#block-2').getByTitle('Explain full paragraph').click();
+    await page.locator('.paragraph-explanation').getByRole('button', { name: 'Explain full paragraph', exact: true }).click();
     await page.getByText(/To download: explain-fixture:1b/).waitFor();
     assert.deepEqual(await app.evaluate(() => global.__taskSetupChecks.at(-1).models), ['explain-fixture:1b']);
     await button('Close dialog').click();

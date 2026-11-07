@@ -59,7 +59,8 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const readerText = (await page.locator('.block').allInnerTexts()).join('\n');
     const ocrBlock = page.locator('.reader-list .block').filter({ hasText: 'Researchers measured how a ceramic sample reacted' });
-    await ocrBlock.getByTitle('Translate or retry block').click();
+    await ocrBlock.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     const translated = ocrBlock.locator('.translation-text.done');
     await translated.waitFor({ timeout: 180000 });
     const translation = await translated.innerText();

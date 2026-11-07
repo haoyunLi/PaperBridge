@@ -40,6 +40,7 @@ import './parity.css';
 import './save-status.css';
 import ReaderToolbar from './ReaderToolbar.jsx';
 import ReaderParagraph from './ReaderParagraph.jsx';
+import ReaderBlockActions from './ReaderBlockActions.jsx';
 
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
@@ -2013,11 +2014,16 @@ function App() {
   function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) {
     return matchingGlossaryTerms(glossary, text, from, to);
   }
-  async function translateBlocks(ids, { sharedFull = false } = {}) {
+  function retryBlock(id) {
+    if (!paperRef.current || busy || taskRef.current) return;
+    if (translationSetup) { openTaskSetup(translationSetup); return; }
+    void translateBlocks([id], { retryId: id });
+  }
+  async function translateBlocks(ids, { sharedFull = false, retryId = null } = {}) {
     if (!paperRef.current || busy || taskRef.current) return;
     const token = startTask('Translating paragraphs…');
     const references = referenceBlockIds(paperRef.current.blocks);
-    const eligible = new Set(translationRangeIds(paperRef.current.blocks, ids, references));
+    const eligible = new Set(translationRangeIds(paperRef.current.blocks, ids, references, retryId));
     const queue = paperRef.current.blocks.filter(block => eligible.has(block.id));
     if (!queue.length) {
       if (sharedFull) commitPaper(withSharedMarkdownTranslation);
@@ -2139,6 +2145,18 @@ function App() {
     try { await ingestPdf(await api.copyPdfAsNew({ id: paper.id, name: paper.name }), token); }
     catch (cause) { if (!token.cancelled) setError(cause.message); }
     finally { endTask(token); }
+  }
+  function selectParagraphForExplanation(id) {
+    const current = paperRef.current;
+    if (!current?.blocks.some(block => block.id === id && !block.resource)) return;
+    void finishNoteEditing();
+    if (taskRef.current?.kind === 'selection') cancelTask();
+    window.getSelection()?.removeAllRanges();
+    selectionRef.current = null;
+    setSelection(null); setNoteDraft(''); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+    setQuickTermOpen(false); setTermDraft(''); setSelectionLookup({ status: '', error: '' });
+    setActiveBlock(id); setFocus(false); setInspector(true);
+    if (!search && current.position?.block !== id) commitPaper(paper => ({ ...paper, position: { ...paper.position, block: id } }));
   }
   async function explainBlock(id) {
     const block = paperRef.current?.blocks.find(item => item.id === id);
@@ -2748,6 +2766,14 @@ function App() {
     setActiveBlock(start + 1);
     revealChangedReaderBlock(start + 1);
   }
+  function beginEditingBlock(id) {
+    const current = paperRef.current;
+    if (!current || busy || taskRef.current || current.sourceMode === 'mineru') return;
+    const block = current.blocks.find(block => block.id === id);
+    if (!block) return;
+    setActiveBlock(id);
+    setEdit({ id, text: block.text });
+  }
   function saveEdit() {
     const block = paper.blocks[edit.id - 1];
     const replacements = editedParagraphs(block, edit.text);
@@ -2990,13 +3016,13 @@ function App() {
           const original = <BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />;
           const translation = !block.resource && !referenceIDs.has(block.id) && (block.status === 'ok'
             ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" />
-            : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
-              ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}>Retry</button></span>
-              : block.heading ? <span className="pending">Translation pending · select the translate button to begin</span>
-                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); translationSetup ? openTaskSetup(translationSetup) : translateBlocks([block.id]); }}>{translationSetup ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
-          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (!search && paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><div className="row"><button className={`mini-action ${block.bookmark ? 'bookmarked' : ''}`} title={block.heading ? 'Bookmark heading' : 'Bookmark'} onClick={event => { event.stopPropagation(); bookmark(block.id); }}><Bookmark size={15} fill={block.bookmark ? 'currentColor' : 'none'} /></button><button className="mini-action" title={block.heading ? 'Edit or split heading' : 'Edit source'} disabled={paper.sourceMode === 'mineru'} onClick={event => { event.stopPropagation(); setEdit({ id: block.id, text: block.text }); }}><Pencil size={15} /></button>{!referenceIDs.has(block.id) && (!block.heading || block.status !== 'ok' && displayMode !== 'source') && <button className="mini-action" title={block.heading ? block.status === 'failed' ? 'Retry heading' : 'Translate heading' : 'Translate or retry block'} onClick={event => { event.stopPropagation(); translateBlocks([block.id]); }}><Languages size={15} /></button>}<button className="mini-action" title={block.heading ? 'Explain heading' : 'Explain full paragraph'} disabled={block.resource} onClick={event => { event.stopPropagation(); setActiveBlock(block.id); explainBlock(block.id); }}><Sparkles size={15} /></button></div></div>
-          {issue && edit?.id !== block.id && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => setEdit({ id: block.id, text: block.text })} onCompare={() => compareOriginal(block.page)} />}
-          {edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
+            : block.heading ? block.status === 'failed' && <p className="heading-failure">{block.error || 'Heading translation failed. Retry when ready.'}</p>
+              : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
+                ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
+                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => { setActiveBlock(block.id); if (!search && paper.position?.block !== block.id) commitPaper(current => ({ ...current, position: { ...current.position, block: block.id } })); }}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} isFirst={block.id === paper.blocks[0]?.id} isLast={block.id === paper.blocks.at(-1)?.id} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeBlock(block.id)} onMergeNext={() => mergeNextBlock(block.id)} onReflow={() => reflowParagraph(block.id)} /></div>
+          {issue && edit?.id !== block.id && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
+          {edit?.id === block.id ? <div className="edit-area" onClick={event => event.stopPropagation()}><textarea aria-label="Paragraph source" disabled={!!busy} value={edit.text} onChange={event => setEdit({ ...edit, text: event.target.value })} /><div className="row"><button className="button blue" disabled={!!busy} onClick={saveEdit}>Save edit</button><button className="button ghost" onClick={() => setEdit(null)}>Cancel</button><button className="button ghost" disabled={!!busy} onClick={() => splitBlock(block.id)}><Scissors size={15} /> Split</button><button className="button ghost" disabled={!!busy} onClick={() => reflowParagraph(block.id)}>Reflow at full sentences</button><button className="button ghost" disabled={!!busy || block.id === 1} onClick={() => mergeBlock(block.id)}><Merge size={15} /> Merge previous</button><button className="button ghost" disabled={!!busy || block.id >= paper.blocks.length} onClick={() => mergeNextBlock(block.id)}><Merge size={15} /> Merge next</button></div></div> : block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}
         {paper && tab === 'Original' && <PdfView
           key={paper.id}

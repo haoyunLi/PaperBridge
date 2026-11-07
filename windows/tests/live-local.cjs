@@ -103,7 +103,8 @@ async function run() {
     await page.getByRole('button', { name: 'Try a Practice Paper' }).first().click();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('.block').nth(1).waitFor();
-    await page.locator('.block').nth(1).locator('button[title="Translate or retry block"]').click();
+    await page.locator('.block').nth(1).getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     await page.locator('.block').nth(1).locator('.translation-text.done').waitFor({ timeout: 180000 });
     uiTranslation = await page.locator('.block').nth(1).locator('.translation-text.done').innerText();
     assert.match(uiTranslation, /[\u3400-\u9fff]/);
@@ -137,6 +138,7 @@ async function run() {
     console.log(`PaperBridge selection translation: ${uiSelection}`);
     await page.keyboard.press('Escape');
     await page.locator('.block').nth(1).locator('button[title="Explain full paragraph"]').click();
+    await page.locator('.paragraph-explanation').getByRole('button', { name: 'Explain full paragraph', exact: true }).click();
     await page.locator('.paragraph-explanation p').waitFor({ timeout: 60000 });
     uiExplanation = await page.locator('.paragraph-explanation p').innerText();
     assert.ok(uiExplanation.length > 20);

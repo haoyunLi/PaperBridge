@@ -147,13 +147,19 @@ async function run() {
     }, 'heading annotations and bookmark');
 
     const requestCountBeforeExplanation = requests.length;
-    await page.locator('#block-1 button[title="Explain heading"]').click();
+    await page.locator('#block-1').getByRole('button', { name: 'Heading actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Explain Heading', exact: true }).click();
+    await page.locator('.paragraph-explanation').getByRole('button', { name: 'Explain heading', exact: true }).waitFor();
+    assert.equal(requests.length, requestCountBeforeExplanation, 'choosing a heading opens the inspector without starting AI');
+    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), '', 'paragraph explanation clears the old translation selection');
+    await page.locator('.paragraph-explanation').getByRole('button', { name: 'Explain heading', exact: true }).click();
     await waitFor(() => requests.length > requestCountBeforeExplanation, 'heading explanation request');
     assert.match(requests.at(-1).system, /Explain this whole academic paragraph/i);
     await waitFor(() => Object.values(JSON.parse(fs.readFileSync(paperFile, 'utf8')).paragraphExplanations || {})
       .some(result => result.output === 'This heading introduces the paper summary.'), 'saved heading explanation');
     await page.locator('.paragraph-explanation').getByText('This heading introduces the paper summary.', { exact: true }).waitFor();
-    await page.locator('#block-1 button[title="Edit or split heading"]').click();
+    await page.locator('#block-1').getByRole('button', { name: 'Heading actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split', exact: true }).click();
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Split', exact: true }).waitFor();
     await page.locator('#block-1 .edit-area').getByRole('button', { name: 'Cancel', exact: true }).click();
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Late Paper block remains annotatable.' }).locator('button').first().click();

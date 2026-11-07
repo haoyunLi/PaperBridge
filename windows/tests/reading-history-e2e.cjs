@@ -297,7 +297,8 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const translated = page.locator('#block-8');
     holdTranslation = true;
-    await translated.locator('button[title="Translate or retry block"]').click();
+    await translated.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     await waitFor(() => typeof finishTranslation === 'function', 'translation request to start');
     await back.click();
     await page.getByText('Finish or stop the current task before switching the reading source.', { exact: true }).waitFor();
@@ -361,7 +362,8 @@ async function run() {
     await back.click();
     await page.locator('.quality-list[open]').waitFor();
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
-    await page.locator('#block-4 button[title="Edit source"]').click();
+    await page.locator('#block-4').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.locator('#block-4 .edit-area textarea').fill(`${blocks[3].text} Revised.`);
     await page.getByRole('button', { name: 'Save edit', exact: true }).click();
     assert.equal(await back.isDisabled(), true, 'a structure repair must clear Back');

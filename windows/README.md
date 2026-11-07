@@ -10,6 +10,8 @@ Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. 
 
 The development branch also repairs spaced fragments such as `re- sults` in newly imported PDF text and pasted text, following the macOS rules and keeping compounds such as `model-based`. Existing saved text and annotation positions stay unchanged. This improvement is not yet included in the public 0.2.15 executables.
 
+The branch now groups paragraph editing, merging, sentence reflow and explicit retranslation in the **Paragraph actions** menu. The lightbulb opens the paragraph in Research Inspector; choose **Explain full paragraph** there to generate an explanation. Headings use separate **Translate Heading** and **Heading actions** controls, with fixed 21/19-pixel source/translation typography and wrapping layouts. These changes are also pending the next public Windows release.
+
 Version 0.2.15 adds original/translation language labels, bilingual dividers, full selected-card outlines and direct translation/setup buttons to Reader paragraphs. Compact headings keep their separate layout. Existing highlights and notes stay anchored to the passage text.
 
 From a scanned page, **Open OCR Reader** opens the first located OCR passage on that page. **Back** restores the original PDF page and scroll position.

@@ -84,7 +84,8 @@ async function run() {
       }, { block, tail });
     };
     const splitOpening = async () => {
-      await page.locator('#block-1 button[title="Edit source"]').click();
+      await page.locator('#block-1').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+      await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
       await page.getByRole('textbox', { name: 'Paragraph source' }).fill(`${opening}\n\nAn additional introductory paragraph.`);
       await page.getByRole('button', { name: 'Save edit', exact: true }).click();
     };

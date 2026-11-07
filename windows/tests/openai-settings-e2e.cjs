@@ -159,7 +159,9 @@ async function run() {
     await openModels();
     await page.getByLabel('AI provider').selectOption('ollama');
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
-    await firstBlock.getByText('Translation pending', { exact: false }).waitFor();
+    await firstBlock.getByTitle('Translate heading', { exact: true }).waitFor();
+    assert.equal(await firstBlock.getAttribute('data-heading-status'), 'pending');
+    assert.equal(await firstBlock.locator('.translation-text').count(), 0, 'the local variant must not display the saved OpenAI heading translation');
     await openModels();
     await page.getByLabel('AI provider').selectOption('openai');
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();

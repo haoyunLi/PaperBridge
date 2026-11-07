@@ -100,7 +100,9 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const reference = page.locator('#block-4');
     await reference.getByText(citations[0], { exact: true }).waitFor();
-    assert.equal(await reference.getByTitle('Translate or retry block').count(), 0);
+    await reference.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    assert.equal(await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).count(), 0);
+    await page.keyboard.press('Escape');
     assert.match(await page.locator('.reader-summary').innerText(), /0 of 4 blocks translated/);
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     const preview = page.locator('[data-paper-block-id="4"]');

@@ -29,9 +29,9 @@ export function sectionRanges(blocks) {
   return sections;
 }
 
-export function translationRangeIds(blocks, requestedIds = null, excluded = referenceBlockIds(blocks)) {
+export function translationRangeIds(blocks, requestedIds = null, excluded = referenceBlockIds(blocks), retryId = null) {
   const requested = Array.isArray(requestedIds) ? new Set(requestedIds) : null;
-  return blocks.filter(block => (!requested || requested.has(block.id)) && block.status !== 'ok' && !block.resource && !excluded.has(block.id)).map(block => block.id);
+  return blocks.filter(block => (!requested || requested.has(block.id)) && (block.status !== 'ok' || block.id === retryId) && !block.resource && !excluded.has(block.id)).map(block => block.id);
 }
 
 export function qualityIssues(blocks, excluded = new Set()) {

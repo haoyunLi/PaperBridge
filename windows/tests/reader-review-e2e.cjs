@@ -276,7 +276,8 @@ async function run() {
     await page.locator('.inspector button[title="Cobalt highlight"]').click();
     await waitFor(() => readPaper().blocks[1].translationHighlights?.some(item => item.text === translationQuote), 'saved translated highlight');
     const beforeEdit = readPaper().blocks[1];
-    await page.locator('#block-2 button[title="Edit source"]').click();
+    await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.getByRole('button', { name: 'Reflow at full sentences', exact: true }).click();
     const sourceHighlight = page.locator('.annotation-row').filter({ hasText: sourceQuote });
     const translatedHighlight = page.locator('.annotation-row').filter({ hasText: translationQuote });
@@ -292,7 +293,8 @@ async function run() {
     assert.doesNotMatch(await translatedHighlight.innerText(), /review needed/);
     await waitFor(() => readPaper().blocks.length === document.blocks.length && !readPaper().blocks[1].translationHighlights?.[0]?.needsReview, 'undo restores the translated anchor');
 
-    await page.locator('#block-2 button[title="Edit source"]').click();
+    await page.locator('#block-2').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     await page.getByLabel('Paragraph source').fill('The passage was rewritten to describe a different research mechanism.');
     await page.getByRole('button', { name: 'Save edit', exact: true }).click();
     await sourceHighlight.getByText(/source changed, review needed/).waitFor();

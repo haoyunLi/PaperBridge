@@ -91,7 +91,8 @@ async function run() {
     await page.getByText('Term saved for future translations.', { exact: true }).waitFor();
     assert.deepEqual(readTerms(), [initialTerms[0], initialTerms[2], initialTerms[3], entry('Self-attention', '自注意机制')]);
 
-    await page.locator('#block-1 button[title="Translate or retry block"]').click();
+    await page.locator('#block-1').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     const translation = page.locator('#block-1 .translation-text.done');
     await translation.waitFor();
     const forward = [{ source: 'Self-attention', translation: '自注意机制' }, { source: 'attention', translation: '注意力' }];
