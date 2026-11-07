@@ -3,12 +3,24 @@ import { ArrowRightLeft, Cloud, Cpu, FileText, Languages, RefreshCw, Settings2 }
 import './sidebar-controls.css';
 
 export function SidebarLanguage({ settings, languages, disabled, onChange }) {
+  const [savedLanguages, setSavedLanguages] = useState([]);
+  const currentLanguages = [settings.sourceLanguage, settings.targetLanguage]
+    .filter(language => typeof language === 'string' && language.trim());
+  const options = [...new Set([...languages, ...savedLanguages, ...currentLanguages])];
+  useEffect(() => {
+    // Keep old saved values available after choosing another language so users
+    // can return to their existing translation cache without rewriting settings.
+    setSavedLanguages(previous => {
+      const next = [...new Set([...previous, ...currentLanguages.filter(language => !languages.includes(language))])];
+      return next.length === previous.length ? previous : next;
+    });
+  }, [languages, settings.sourceLanguage, settings.targetLanguage]);
   return <section className="side-group sidebar-language" aria-label="Translation languages">
     <div className="side-label"><span><Languages size={14} /> LANGUAGE</span></div>
     <fieldset disabled={disabled}>
-      <label>From<select aria-label="Sidebar from language" value={settings.sourceLanguage} onChange={event => onChange({ sourceLanguage: event.target.value })}>{languages.map(language => <option key={language}>{language}</option>)}</select></label>
+      <label>From<select aria-label="Sidebar from language" value={settings.sourceLanguage} onChange={event => onChange({ sourceLanguage: event.target.value })}>{options.map(language => <option key={language}>{language}</option>)}</select></label>
       <button className="side-action sidebar-swap" aria-label="Swap languages" onClick={() => onChange({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={13} /> Swap</button>
-      <label>To<select aria-label="Sidebar to language" value={settings.targetLanguage} onChange={event => onChange({ targetLanguage: event.target.value })}>{languages.map(language => <option key={language}>{language}</option>)}</select></label>
+      <label>To<select aria-label="Sidebar to language" value={settings.targetLanguage} onChange={event => onChange({ targetLanguage: event.target.value })}>{options.map(language => <option key={language}>{language}</option>)}</select></label>
     </fieldset>
   </section>;
 }

@@ -26,6 +26,22 @@ async function selectText(page, selector, start, end) {
   }, { selector, start, end });
 }
 
+async function assertHeadingAppearance(page, size, line) {
+  await page.waitForFunction(({ size, line }) => {
+    const source = document.querySelector('#block-1.heading-block > .source-text');
+    const translation = document.querySelector('#block-1.heading-block > .translation-text.done');
+    return source && translation && [source, translation].every(node => {
+      const style = getComputedStyle(node);
+      return style.fontSize === size && style.lineHeight === line;
+    });
+  }, { size, line });
+  const weights = await page.locator('#block-1').evaluate(node => ({
+    source: getComputedStyle(node.querySelector('.source-text')).fontWeight,
+    translation: getComputedStyle(node.querySelector('.translation-text')).fontWeight
+  }));
+  assert.deepEqual(weights, { source: '700', translation: '400' });
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
@@ -116,6 +132,16 @@ async function run() {
     assert.equal(await page.locator('#block-1 button[title="Retry heading"]').count(), 1);
     await page.locator('#block-1 button[title="Retry heading"]').click();
     await page.locator('#block-1 .translation-text.done').getByText('摘要', { exact: true }).waitFor();
+    // Mac's readingAppearance environment overrides both heading point sizes
+    // and line spacing while retaining the source/translation font weights.
+    await assertHeadingAppearance(page, '16px', '24.2px');
+    await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+    await page.getByRole('slider', { name: 'Reader font size', exact: true }).focus();
+    await page.keyboard.press('End');
+    await page.getByRole('slider', { name: 'Line spacing', exact: true }).focus();
+    await page.keyboard.press('End');
+    await page.keyboard.press('Escape');
+    await assertHeadingAppearance(page, '24px', '40.8px');
     assert.match(await page.locator('.reader-summary').innerText(), /1 of 4 blocks translated/);
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
     await page.locator('.modal').getByRole('button', { name: 'Translation Range', exact: true }).click();
@@ -200,7 +226,21 @@ async function run() {
     assert.match(exports[1].content, /^Abstract\n\n摘要\n\n## Study design\n\n\*Not translated\*/);
     assert.ok(requests.some(payload => /Explain this whole academic paragraph/i.test(payload.system || '')));
     await page.screenshot({ path: path.join(artifacts, 'heading-parity-reader.png') });
-    console.log('Heading parity checks passed: full Paper preview, source/bilingual/translation modes, late-block and translated-side annotations, compact rendering, classification, retry, actions and exports.');
+    await app.close(); app = null;
+    const settingsFile = path.join(workspace, 'settings.json');
+    const savedSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    fs.writeFileSync(settingsFile, JSON.stringify({ ...savedSettings, fontSize: 25, lineSpacing: null, lineHeight: 1.9 }));
+    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    const reopened = await app.firstWindow();
+    await reopened.setViewportSize({ width: 1320, height: 820 });
+    await reopened.getByRole('heading', { name: 'Heading parity fixture' }).waitFor({ timeout: 20000 });
+    await reopened.getByRole('button', { name: 'Reader', exact: true }).click();
+    await assertHeadingAppearance(reopened, '25px', '47.5px');
+    const legacySettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    assert.equal(legacySettings.lineHeight, 1.9, 'rendering headings must not reinterpret legacy proportional spacing');
+    assert.equal(legacySettings.lineSpacing, null);
+    await reopened.screenshot({ path: path.join(artifacts, 'heading-parity-legacy-appearance.png') });
+    console.log('Heading parity checks passed: full Paper preview, source/bilingual/translation modes, late-block and translated-side annotations, compact rendering, shared appearance sliders, legacy proportional spacing after restart, classification, retry, actions and exports.');
   } finally {
     await app?.close();
     ollama.closeAllConnections();

@@ -22,6 +22,7 @@ async function run() {
   fs.mkdirSync(path.join(workspace, 'papers'));
   const id = crypto.createHash('sha256').update('Sidebar language fixture A').digest('hex');
   const secondId = crypto.createHash('sha256').update('Sidebar language fixture B').digest('hex');
+  const legacyId = crypto.createHash('sha256').update('Sidebar legacy language fixture').digest('hex');
   const model = 'translategemma:4b';
   const requests = [], tags = [], pulls = [];
   let generationMode = 'success', tagMode = 'success', heldGeneration;
@@ -62,11 +63,15 @@ async function run() {
   const second = { ...paper, id: secondId, name: 'Sidebar paper B',
     blocks: [{ ...block, text: 'Paper B keeps its independent language direction and reviewed translation.', status: 'ok', translation: 'Paper B saved translation.' }],
     taskSettings: { ...settings, sourceLanguage: 'Japanese', targetLanguage: 'English' } };
+  const legacy = { ...paper, id: legacyId, name: 'Sidebar legacy language',
+    blocks: [{ ...block, status: 'ok', translation: 'Reviewed legacy Chinese translation.' }],
+    taskSettings: { ...settings, targetLanguage: 'Chinese' } };
   const paperFile = paperId => path.join(workspace, 'papers', `${paperId}.json`);
   const readPaper = (paperId = id) => JSON.parse(fs.readFileSync(paperFile(paperId), 'utf8'));
   const readSettings = () => JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json'), 'utf8'));
   fs.writeFileSync(paperFile(id), JSON.stringify(paper));
   fs.writeFileSync(paperFile(secondId), JSON.stringify(second));
+  fs.writeFileSync(paperFile(legacyId), JSON.stringify(legacy));
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify(settings));
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
   let app, page;
@@ -133,6 +138,7 @@ async function run() {
     assert.equal(await app.evaluate(() => globalThis.__sidebarParser.requests.length), 0, 'collapsed loaded-paper controls do not probe an invisible parser');
     await openDetails();
     await direction('English', 'Simplified Chinese');
+    assert.equal(await from().locator('option').count(), 11, 'standard language choices remain unchanged');
     await ai().getByText('Ollama ready', { exact: true }).waitFor();
     await ai().getByText('MinerU ready', { exact: true }).waitFor();
     await translated('Sidebar translation 1.');
@@ -175,6 +181,29 @@ async function run() {
     await direction('English', 'French');
     assert.equal(readPaper().blocks[0].translation, 'Sidebar translation 2.');
     assert.equal(readPaper(secondId).taskSettings.sourceLanguage, 'German');
+
+    const beforeLegacyRequests = requests.length;
+    await page.locator('.library-row').filter({ hasText: legacy.name }).click();
+    await page.getByRole('heading', { name: legacy.name, exact: true }).waitFor();
+    await direction('English', 'Chinese', legacyId);
+    assert.equal(await to().locator('option:checked').textContent(), 'Chinese', 'legacy language must not display the first standard option');
+    assert.deepEqual(readPaper(legacyId).blocks, legacy.blocks, 'displaying an old language must preserve its saved output');
+    for (const control of [from(), to()]) assert.equal(await control.locator('option').evaluateAll(options =>
+      options.filter(option => option.value === 'Chinese').length), 1, 'legacy option appears once on each side');
+    await swap().click();
+    await direction('Chinese', 'English', legacyId);
+    await swap().click();
+    await direction('English', 'Chinese', legacyId);
+    await waitFor(() => readPaper(legacyId).blocks[0].translation === legacy.blocks[0].translation, 'swapping back restores the legacy language cache');
+    await to().selectOption('French');
+    await direction('English', 'French', legacyId);
+    await waitFor(() => readPaper(legacyId).blocks[0].status === 'pending', 'known language selects its separate empty variant');
+    await to().selectOption('Chinese');
+    await direction('English', 'Chinese', legacyId);
+    await waitFor(() => readPaper(legacyId).blocks[0].status === 'ok' && readPaper(legacyId).blocks[0].translation === legacy.blocks[0].translation, 'returning to a retained legacy option restores its cache');
+    assert.equal(requests.length, beforeLegacyRequests, 'displaying, swapping and restoring legacy languages must not run AI');
+    await page.locator('.library-row').filter({ hasText: 'Sidebar paper A' }).click();
+    await direction('English', 'French');
 
     await openSettings('Models');
     await page.getByLabel('Model to download').fill('sidebar-download-fixture:1b');
@@ -306,8 +335,18 @@ async function run() {
     await waitFor(() => readPaper().blocks[0].translation === 'Sidebar translation 2.', 'restart and provider round trip retain the local language variant');
     assert.equal(requests.length, 3);
     assert.equal(await app.evaluate(() => globalThis.__sidebarParser.onlineRequests), 0);
+    await page.locator('.library-row').filter({ hasText: legacy.name }).click();
+    await direction('English', 'Chinese', legacyId);
+    await app.close(); app = null;
+    await launch();
+    await openDetails();
+    await direction('English', 'Chinese', legacyId);
+    assert.equal(await to().locator('option:checked').textContent(), 'Chinese');
+    assert.equal(readPaper(legacyId).blocks[0].translation, legacy.blocks[0].translation);
+    assert.equal(requests.length, 3, 'legacy language restart retains saved translation without inference');
     const result = { passed: true, translationRequests: requests.length, layouts, assertions: [
       'sidebar languages and Settings share per-paper output variants', 'atomic swap and per-paper restoration',
+      'legacy language display, swap, switch-back cache and restart',
       'busy and model-download gates', 'Ollama refresh progress failure retry without inference',
       'MinerU refresh is read-only and ignores stale paths', 'direct Models and Parsing navigation',
       'OpenAI consent independent of stored key and revoked on restart', 'no plaintext key exposure',
