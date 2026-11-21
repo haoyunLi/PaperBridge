@@ -1,6 +1,21 @@
 import { countCharacters, sectionRanges } from './documentOutline.mjs';
 import { compoundSuffixes, repairSpacedHyphenation } from './spacedHyphenation.mjs';
 
+export const practiceParagraphs = [
+  "Abstract",
+  "This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.",
+  "1 Introduction",
+  "Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.",
+  "2 Methods",
+  "Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.",
+  "3 Results",
+  "Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.",
+  "4 Limitations",
+  "A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.",
+  "5 Conclusion",
+  "Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action."
+];
+
 const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|acknowledg(?:e)?ments|摘要|引言|方法|结果|讨论|结论)\s*$/i;
 const leadingNamedSection = /^(?:(?:\d+(?:\.\d+)*)\s+)?(?:abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|experiments?|evaluation|results?|discussion|conclusions?|appendix|acknowledg(?:e)?ments)(?:[.:])?\s+/i;
 const pdfCaption = /^(?:figure|fig\.|table)\s+\d+[.:]/i;

@@ -18,7 +18,9 @@ struct Reference {
     static func main() throws {
         let fixtureURL = URL(fileURLWithPath: CommandLine.arguments[1])
         let fixtures = try JSONDecoder().decode(Fixtures.self, from: Data(contentsOf: fixtureURL))
-        let papers: [[String: Any]] = fixtures.papers.map { fixture in
+        let sample = Fixtures.Paper(name: "built-in practice",
+                                   blocks: ReadingGuideBuilder.sampleParagraphs.map { Fixtures.Paper.Block(text: $0, sourceMarkdown: nil) })
+        let papers: [[String: Any]] = (fixtures.papers + [sample]).map { fixture in
             let paragraphs = fixture.blocks.map(\.text)
             let segments: [PaperMarkdownSegment] = fixture.blocks.enumerated().compactMap { index, block in
                 guard let source = block.sourceMarkdown,
@@ -48,7 +50,7 @@ struct Reference {
                                          .replacingOccurrences(of: "After", with: "后文")
             return try AcademicMarkdownProcessor.restoreProtectedTokens(in: translated, from: payload)
         }
-        let data = try JSONSerialization.data(withJSONObject: ["papers": papers, "markdown": markdown], options: [.sortedKeys])
+        let data = try JSONSerialization.data(withJSONObject: ["papers": papers, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs], options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
     }
 }

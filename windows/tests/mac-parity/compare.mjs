@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { sectionRanges, overviewSectionIds, qualityIssues } from '../../src/paper.mjs';
-import { readingMap } from '../../src/text.mjs';
+import { blocksFromText, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-assert.deepEqual(reference.papers.map(paper => paper.name), fixtures.papers.map(paper => paper.name));
-for (const [index, fixture] of fixtures.papers.entries()) {
+const practice = blocksFromText(practiceParagraphs.join('\n\n'));
+assert.deepEqual(practice.map(block => block.text), reference.practice, 'Built-in practice paper text and segmentation');
+const papers = [...fixtures.papers, { name: 'built-in practice', blocks: practice }];
+assert.deepEqual(reference.papers.map(paper => paper.name), papers.map(paper => paper.name));
+for (const [index, fixture] of papers.entries()) {
   const blocks = fixture.blocks.map((block, index) => ({ ...block, id: index + 1 }));
   const sections = sectionRanges(blocks);
   const actual = {
@@ -26,4 +29,4 @@ const restored = fixtures.markdown.map(source => {
 });
 assert.deepEqual(restored, reference.markdown);
 assert.deepEqual(restored, fixtures.markdown.map(source => source.replaceAll('Before', '前文').replaceAll('After', '后文')));
-console.log(`Matched native macOS results for ${fixtures.papers.length} papers and ${restored.length} protected Markdown translations.`);
+console.log(`Matched native macOS results for ${papers.length} papers and ${restored.length} protected Markdown translations.`);

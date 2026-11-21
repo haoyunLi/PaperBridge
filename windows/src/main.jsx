@@ -10,7 +10,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
-import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
+import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
@@ -67,7 +67,6 @@ const pdfZoomPercent = value => Number.isFinite(value)
   ? Math.max(pdfMinZoom, Math.min(pdfMaxZoom, Math.round(value / pdfZoomStep) * pdfZoomStep)) : pdfFitZoom;
 const pdfOffsetAtFit = (host, page, zoom) => Math.max(0, host.scrollTop - page.offsetTop) * pdfFitZoom / zoom;
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
-const sample = ['Abstract', 'This is a fictional practice document, not a published study. Use it to explore source-linked reading, translation, highlights, and notes without importing a personal paper.', '1 Introduction', 'Reading a paper across languages involves more than translating its sentences. Readers need to connect a claim to the method and evidence that support it.', '2 Methods', 'Start with the reading map, then open the linked source passage. Translate one paragraph when needed, or translate the whole document with a local Ollama model.', '3 Results', 'Selecting a phrase opens tools for translation, explanation, highlighting, and notes. This practice document contains no measured results or claims about model accuracy.', '4 Limitations', 'A summary is a reading aid, not a substitute for evidence. PDF text extraction and local models can make mistakes; compare uncertain passages with the Original PDF when one is available.', '5 Conclusion', 'Keep useful passages in bookmarks, retain your notes, and export the material you want to revisit. This sample requires no model until you choose an AI action.'];
 const markdownPlugins = [remarkGfm, remarkMath];
 const markdownSchema = {
   ...defaultSchema,
@@ -2127,7 +2126,7 @@ function App() {
   }
   function loadPractice() {
     if (paperRef.current) { setStatus('The practice paper is available from the empty workspace. Your open paper remains unchanged.'); return; }
-    importText(sample.join('\n\n'), 'Welcome to PaperBridge (practice sample)', { practice: true }).catch(cause => setError(cause.message));
+    importText(practiceParagraphs.join('\n\n'), 'Welcome to PaperBridge (practice sample)', { practice: true }).catch(cause => setError(cause.message));
   }
   function startTask(label) { const token = { cancelled: false, ids: new Set(), paperId: paperRef.current?.id }; taskRef.current = token; setBusy({ label }); setProgress(null); setStatus(''); setError(''); return token; }
   function requireActiveTask(token) { if (token.cancelled || taskRef.current !== token) throw new Error('Cancelled'); }
