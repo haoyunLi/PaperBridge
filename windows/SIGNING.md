@@ -4,13 +4,13 @@ PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Porta
 
 ## 允许运行后没有看到窗口
 
-想先读一篇论文，可以在仓库首页选择 **Download Windows portable (.exe)**。确认下载的文件名以 `-x64-Portable.exe` 结尾，然后从文件资源管理器打开。首次引导里选 **Skip setup** 即可导入 PDF。若选择的是 `-x64-Setup.exe`，请先完成安装，再到开始菜单打开 **PaperBridge**。再次打开已启动的阅读器会把原窗口带到前台。[Windows 下载入口](https://github.com/haoyunLi/PaperBridge#windows-download-preview)
+想先读一篇论文，可以在仓库首页选择 **Download Windows portable (.exe)**。确认下载的文件名以 `-x64-Portable.exe` 结尾，然后从文件资源管理器打开。首次引导里选 **Skip setup** 即可导入 PDF。若选择的是 `-x64-Setup.exe`，请先完成安装，再到开始菜单打开 **PaperBridge**。再次打开已启动的阅读器会把原窗口带到前台。请使用 0.2.36 或更新的便携版，较早版本重复打开时可能清理第一个窗口仍在使用的临时资源。[Windows 下载入口](https://github.com/haoyunLi/PaperBridge#windows-download-preview)
 
 如果点「仍要运行」后仍然没有窗口，请记下文件名、Windows 显示的完整提示，以及发生时间。可以在「事件查看器 → Windows 日志 → 应用程序」里查找同一时间有关 `PaperBridge.exe` 的错误。如果有记录，异常代码和故障模块名称可帮助定位。旧版在带有 `ELECTRON_RUN_AS_NODE` 环境变量的系统上曾出现静默退出。公开版已修复这一问题，发布测试也覆盖了这种环境。[启动验收记录](WHOLE_APP_REVIEW.md)
 
 ## 免费分发与可选签名
 
-现有 GitHub 下载采用免费的未签名 EXE。开发者无需提交身份材料即可发布。Windows 可能在首次打开时询问是否运行，便携版也适用相同的系统策略。
+现有 GitHub 下载采用免费的未签名 EXE。开发者无需提交身份材料即可发布。Windows 可能在首次打开时询问是否运行，便携版也适用相同的系统策略。如果提示明确写着 **Smart App Control** 已阻止该应用，或系统管理员已禁止运行，设备可能不会提供「仍要运行」。普通 SmartScreen 的「未知发布者」提示可以按页面顶部的说明处理。[微软的 SmartScreen 说明](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 
 如果以后希望免费提供经过签名的版本，可以考虑以下渠道。
 

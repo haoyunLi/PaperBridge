@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 0.2.36 公开便携版（2026-11-21）
+
+公开便携版检测到 AMD Radeon RX 7800 XT（专用显存 17,163,091,968 字节）。在没有 NVIDIA CUDA 驱动的这台机器上，Ollama 为 TranslateGemma 4B 分配了 2,881,948,220 字节显存。由公开包完成的两页 *emcee v3* 中文译稿含一批正文及按原文保留的七个参考文献块。使用该包内的应用导出了 4,844 字节 Markdown，逐字核对了工作区译稿。便携版重启后能读回译稿和原始 PDF。记录在 `test-artifacts/emcee-AMD-3bVqTM/result.json`。[0.2.36 公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.36)
+
 ## 0.2.35 公开便携版（2026-11-21）
 
 在 RX 7800 XT 上从 GitHub 公开便携版导入两页 *emcee v3* PDF。新提取产生 28 个块。Ollama 加载 TranslateGemma 4B，报告 `size_vram = 2881948220` 字节。全文翻译完成一批正文，参考文献标题及六项条目均保留原文。英文标题完整译为“emcee v3：用于仿射不变的 MCMC 的 Python 组合采样工具包”。提取的英文作者行保留单位上标，模型在中文作者行中省略了部分编号。

@@ -1,5 +1,15 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.36 便携版重复启动（2026-11-21）
+
+公开 0.2.35 的便携版把同一版本的两次启动解压到同一临时目录。最小化并再次打开时，虽然原窗口能恢复，第二次启动退出后，第一个进程目录里的 76 个文件中有 69 个已消失，包括语言文件和 PDF 使用的原生模块。0.2.36 为每次启动分配独立临时目录。同样操作后，所有 76 个文件仍在，原窗口还可以重新载入。另在第一次打开时连续启动两次，保留下来的阅读器能进入引导及练习论文。记录为 `test-artifacts/double-open-BuqFD7`、`test-artifacts/double-open-oaIeOD` 和 `test-artifacts/simultaneous-vB6PYS`。
+
+本轮发布把两项回归加入自动验收。无调试参数的启动会最小化窗口，重新打开同一个 EXE，再核对原窗口和所有运行文件。另用实际便携 EXE 在第二次打开后首次导入 *emcee v3*，检查标题及原 PDF 页面的绘制结果。全新 Windows runner 从最终公开地址重新下载了两个 EXE，并分别通过首次引导及重复启动测试。[打包及 PDF 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44891648826/job/136808650292) · [公开文件验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44891648826/job/136810460172)
+
+Edge 从 GitHub 首页下载的两个 EXE 均带互联网标记，SHA-256 匹配发布记录。公开 0.2.35 便携版自动发现新版，后台下载的文件也与发布资产一致。0.2.35 安装版显示了更新提示，覆盖升级和卸载后保留了旧论文、笔记、高亮及阅读设置。0.2.36 的离线读者可跳过 AI 配置，导入中文文件名的 PDF，添加笔记并重启恢复。记录在 `test-artifacts/browser-download-0.2.36-zYMh9Y`、`test-artifacts/public035-to036-portable-update-he16Yc`、`test-artifacts/i-mwq8oxw7-dz4/report.json` 和 `test-artifacts/public036-reader-without-models-qMlP69`。[AMD 实测](AMD_DEVICE_TEST.md)
+
+首次并行启动多个互相独立的自动化测试工作区时，有两个测试启动器提前退出。单独运行这两项均通过。普通单工作区的重复启动已经单独验证。受影响电脑原先在资源管理器中确认运行后没有窗口的具体原因仍未确定。
+
 ## Windows 0.2.35 全文分批、期刊版式和公开下载（2026-11-21）
 
 在相同输入下，两端的全文分批器对五组边界样例及一篇公开期刊论文给出了逐字相同的批次。论文对照使用 macOS PDFKit 提取的十个正文段落。Windows 另从原 PDF 独立导入，《emcee v3》标题从两块合为一块，作者上标回到对应姓名旁，左栏日期和版权信息与正文分开。两个版本的第一页保留相同的非空白字符，第二页内容和顺序一致。ResNet 和 Transformer 分别仍有 339 和 266 个块。ResNet 第三页还修复了词内的排版断词。原提取存档继续使用原来的段落编号。在公开版之间升级后点击标题笔记，仍能选中旧记录第 2 块的 `affine-invariant MCMC`。记录见 `test-artifacts/journal-corpus-foYPlC` 和 `test-artifacts/journal-title-note-jaQjJW`。[原论文](https://doi.org/10.21105/joss.01864) · [两端对照和发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44890535898)

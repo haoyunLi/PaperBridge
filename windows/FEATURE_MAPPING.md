@@ -2,7 +2,7 @@
 
 当前验收目标是功能与可执行操作的一对一对应；排版按 Windows 字体、窗口大小及显示缩放适配。Mac 的尺寸和间距作为设计参考，不以像素一致作为功能对齐的条件。
 
-Windows 0.2.35 的 111 项中有 **61 项对齐、50 项部分对齐**。A10 增加期刊侧栏、长标题与作者单位上标的实测。C16 增加 macOS 原生全文分批对照，并验证旧版译稿能从中断处继续。部分条目同时包含已实现的功能和待验证的设备或文档场景。macOS 1.9.1 和 1.10 的增量项目单独列在下方。
+Windows 0.2.36 的 111 项中有 **61 项对齐、50 项部分对齐**。A10 增加期刊侧栏、长标题与作者单位上标的实测。C16 增加 macOS 原生全文分批对照，并验证旧版译稿能从中断处继续。部分条目同时包含已实现的功能和待验证的设备或文档场景。macOS 1.9.1 和 1.10 的增量项目单独列在下方。
 
 首次审计的固定基线：macOS 1.9 commit `73951d9` 与本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式签名仍需验证。
 
@@ -184,7 +184,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单。Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E/F/S 及旧 Ctrl+L。菜单项随论文、任务、选区和更新检查状态动态启停。 | 部分 | 单元和 Electron 覆盖空白页、论文、选区、忙碌任务、专注与左侧栏、撤销及重开引导。其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
 | G14 | 签名更新源检查及应用内更新 | 默认启动检查，成功后 24 小时内不重复联网；只识别带完整 x64 Setup 的 Windows 正式 Release。Settings 和 Help 可手动检查，重启/短期离线保留新版提示 | 部分 | 公开 0.2.29 的安装版和便携版均检测并后台下载了真正发布的 0.2.30。两份文件分别匹配相应 GitHub 发布资产的 SHA-256，保留了互联网来源标记。安装版另验证显示下载文件时的复核。发布者签名及自动安装重启仍有差距。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 公开 0.2.34 的两份文件均经仓库首页下载和哈希校验，并在全新 Windows 环境通过启动测试。0.2.33 便携版提示并下载了 0.2.34。安装版从 0.2.33 升级、重启、卸载后保留论文、笔记和高亮。0.2.34 便携版离线导入了中文文件名的两页 PDF 并恢复了笔记，RX 7800 XT 实测翻译通过。当前发布未签名，受管设备的运行权限取决于设备策略。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 0.2.36 两份 EXE 已通过仓库首页下载、哈希与全新 Windows 环境启动测试。重复打开便携版可以还原窗口并保留运行文件，随后可导入及显示 PDF。0.2.35 的安装版和便携版均自动提示新版本。安装版覆盖升级及卸载后保留论文和标注。0.2.36 便携版验收包括离线阅读、笔记恢复及 RX 7800 XT 全文翻译。当前发布未签名，受管设备的运行权限取决于设备策略。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 
