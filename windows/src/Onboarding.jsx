@@ -27,7 +27,7 @@ function ReadinessRow({ title, detail, ready, optional }) {
   return <div className={`onboarding-readiness ${ready ? 'ready' : ''}`}><span aria-hidden="true">{ready ? <Check size={18} /> : optional ? '—' : '!'}</span><div><strong>{title} {optional && <small>Optional</small>}</strong><p>{detail}</p></div></div>;
 }
 
-export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup, progress, pullProgress, models = emptyModels, onModelsChanged, onBusyChange }) {
+export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup, progress, pullProgress, models = emptyModels, onInstall, onDownload, onBackgroundStatus, onBusyChange }) {
   const identity = setupIdentity(settings.ollamaBaseURL, settings.mineruExecutable);
   const [diagnosisState, setDiagnosis] = useState(null);
   const [modelState, setKnownModels] = useState({ identity, values: models });
@@ -110,17 +110,17 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
     if (busy || ownOperation.current) return;
     ownOperation.current = true; setOperation({ kind }); onBusyChange?.(true); setError(''); setMessage(''); setCancelling(false);
     try {
-      const result = await api.setupInstall(config({ components: { ollama: kind === 'ollama', models: false, mineru: kind === 'mineru' }, repairMineru }));
-      const patch = {};
-      if (kind === 'mineru' && result.mineruExecutable) patch.mineruExecutable = result.mineruExecutable;
-      if (kind === 'mineru' && result.mineruBackend) patch.mineruBackend = result.mineruBackend;
-      if (Object.keys(patch).length) onSettings(patch);
-      await onModelsChanged?.();
-      await refresh(patch.mineruExecutable ? { mineruExecutable: patch.mineruExecutable } : {});
-      if (mounted.current) setMessage(result.warning || `${kind === 'ollama' ? 'Ollama' : 'MinerU'} setup completed.`);
+      const result = await onInstall(config({ components: { ollama: kind === 'ollama', models: false, mineru: kind === 'mineru' }, repairMineru }));
+      const detail = result.warning || `${kind === 'ollama' ? 'Ollama' : 'MinerU'} setup completed.`;
+      if (mounted.current) {
+        setMessage(detail);
+        await refresh();
+      } else onBackgroundStatus(detail);
     } catch (cause) {
-      await refresh();
-      if (mounted.current) setError(cause.message);
+      if (mounted.current) {
+        setError(cause.message);
+        await refresh();
+      } else onBackgroundStatus(cause.message);
     } finally {
       ownOperation.current = false;
       if (mounted.current) { setOperation(null); setCancelling(false); }
@@ -139,11 +139,11 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
     if (!ollamaReady) { setError('Start Ollama before downloading a model.'); return; }
     ownOperation.current = true; setOperation({ kind: 'model', id: model.id }); onBusyChange?.(true); setCancelling(false);
     try {
-      await api.pullModel({ baseURL: settingsRef.current.ollamaBaseURL, model: model.id });
-      const available = await api.listModels(settingsRef.current.ollamaBaseURL);
-      if (!available.includes(model.id)) throw new Error('The download finished, but Ollama has not listed the model yet. Refresh to check before selecting it.');
-      if (mounted.current) { setKnownModels({ identity, values: available }); useModel(model, available); }
-      await onModelsChanged?.();
+      const result = await onDownload(model);
+      if (mounted.current) {
+        if (result.error) setError(result.error);
+        else setMessage(result.message);
+      }
     } catch (cause) { if (mounted.current) setError(cause.message); }
     finally { ownOperation.current = false; if (mounted.current) { setOperation(null); setCancelling(false); } }
   }
@@ -165,7 +165,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
   return <section className="onboarding" aria-labelledby="onboarding-page-title" data-onboarding-page={page}>
     <aside className="onboarding-rail"><div className="onboarding-brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><span>Getting started</span></div></div>
       <ol>{steps.map((step, index) => { const Icon = step.icon; return <li key={step.title} className={index === page ? 'current' : index < page ? 'visited' : ''} aria-current={index === page ? 'step' : undefined}><span>{index < page ? <Check size={16} /> : <Icon size={16} />}</span><b>{step.title}</b></li>; })}</ol>
-      <p className="onboarding-private"><LockKeyhole size={15} /> Documents stay on this PC</p>
+      <p className="onboarding-private"><LockKeyhole size={15} /> Local AI runs on this PC</p>
     </aside>
     <div className="onboarding-main"><div className="onboarding-content" ref={scrollHost}>
       <div className="onboarding-topline"><span>Step {page + 1} of {steps.length}</span><button className="button ghost" disabled={checking || busy} onClick={() => { setError(''); refresh(); }}><RefreshCw size={14} />{checking ? 'Checking…' : 'Refresh status'}</button></div>
@@ -176,7 +176,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
           ['03', 'MinerU parser', 'Optional structured extraction for reading order, figures, tables, formulas, and OCR.'],
           ['04', 'Explanation model', 'An optional assistant for summaries, explanations, and selected-text lookup.']
         ].map(([number, title, detail]) => <article key={number}><small>{number}</small><h3>{title}</h3><p>{detail}</p></article>)}</div>
-        <Callout title="Local after setup">Internet is used for tool/model downloads and update checks. Paper text, notes, translations, summaries, and explanations stay on this PC. You can open and read a PDF before installing AI tools.</Callout></>}
+        <Callout title="Local after setup">You can open and annotate a PDF immediately. With Ollama, AI tasks run on this PC. Using OpenAI requires enabling it in Settings and granting permission for the session.</Callout></>}
       {page === 1 && <><Heading eyebrow="REQUIRED FOR LOCAL AI" title="Start with Ollama.">Install the official signed Windows runtime or start the copy already on this PC.</Heading>
         <div className="onboarding-tool-card"><ReadinessRow title={ollamaReady ? 'Ollama is ready' : diagnosis?.ollama?.installed ? 'Ollama is installed' : 'Ollama runtime'} ready={ollamaReady} detail={ollamaReady ? 'Connected to the local API.' : diagnosis?.ollama?.installed ? 'Start the existing installation to use local AI.' : 'The official Windows installer will be downloaded when you click Install.'} />
           {!ollamaReady && <button className="button blue" disabled={busy || checking || !diagnosis} onClick={() => installComponent('ollama')}><Download size={15} />{diagnosis?.ollama?.installed ? 'Start Ollama' : 'Install Ollama'}</button>}
@@ -203,6 +203,13 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
         <button className="button danger" disabled={cancelling} onClick={cancel}><Square size={13} />{cancelling ? 'Cancelling…' : operation?.kind === 'model' || externalPull ? 'Cancel download' : 'Cancel setup'}</button>
       </div>}
       {error && <p className="onboarding-error" role="alert">{error}</p>}{message && <p className="onboarding-message" role="status">{message}</p>}
-    </div><footer className="onboarding-footer"><button className="button ghost" disabled={busy} onClick={() => onFinish('skip')}>Skip setup</button><button className="button ghost onboarding-advanced" disabled={busy} onClick={onOpenSetup}><Settings2 size={14} />Advanced setup</button><span />{page > 0 && <button className="button outline" disabled={busy} onClick={() => changePage(page - 1)}>Back</button>}<button className="button blue" disabled={busy} onClick={() => page === 5 ? onFinish('openPdf') : changePage(page + 1)}>{page === 5 ? 'Finish & Open PDF' : 'Continue'}<ArrowRight size={15} /></button></footer></div>
+    </div><footer className="onboarding-footer">
+      {busy && <button className="button outline" onClick={() => onFinish('background')}>Continue in Background</button>}
+      {page < 3 && <button className="button ghost" disabled={busy} onClick={() => onFinish('skip')}>Skip setup</button>}
+      <button className="button ghost onboarding-advanced" disabled={busy} onClick={onOpenSetup}><Settings2 size={14} />Advanced setup</button>
+      <span />
+      {page > 0 && <button className="button outline" disabled={busy} onClick={() => changePage(page - 1)}>Back</button>}
+      <button className="button blue" disabled={busy} onClick={() => page === 5 ? onFinish('openPdf') : changePage(page + 1)}>{page === 5 ? 'Finish & Open PDF' : 'Continue'}<ArrowRight size={15} /></button>
+    </footer></div>
   </section>;
 }

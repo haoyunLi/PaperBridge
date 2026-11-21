@@ -1399,19 +1399,33 @@ function App() {
     else openSettings(issue);
   }
   async function finishOnboarding(action = 'done') {
-    if (onboardingBusyRef.current || finishingOnboarding.current) return;
+    if ((onboardingBusyRef.current && action !== 'background') || finishingOnboarding.current) return;
     finishingOnboarding.current = true; setOnboardingFinishing(true); setOnboardingSaveError('');
     try {
       updateSettings({ onboardingCompletedVersion: ONBOARDING_VERSION });
       const saved = settingsRef.current;
       settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(saved));
       await settingsSaveChain.current;
+      handleOnboardingBusy(false);
       if (action === 'setup') openSetup();
       else setModal('');
       if (action === 'openPdf') openFile();
       if (action === 'practice') loadPractice();
     } catch (cause) { setOnboardingSaveError(`Could not save setup progress: ${cause.message}`); }
     finally { finishingOnboarding.current = false; setOnboardingFinishing(false); }
+  }
+  async function installGuideComponent(request) {
+    const previousBackend = settingsRef.current.mineruBackend;
+    const result = await api.setupInstall(request);
+    if (request.components.mineru && settingsRef.current.mineruExecutable === request.mineruExecutable) {
+      const change = {};
+      if (result.mineruExecutable) change.mineruExecutable = result.mineruExecutable;
+      if (result.mineruBackend && settingsRef.current.mineruBackend === previousBackend) change.mineruBackend = result.mineruBackend;
+      if (Object.keys(change).length) updateSettings(change);
+      setSidebarParserRevision(value => value + 1);
+    }
+    await refreshModels(settingsRef.current);
+    return result;
   }
   function dismissModal() {
     if (modal === 'paragraphEdit') { cancelParagraphEdit(); return; }
@@ -1662,7 +1676,7 @@ function App() {
     catch (cause) { setModelDownloadError(cause.message); }
   }
   async function downloadModel(requestedModel = pullModel.trim() || 'translategemma:4b', recommendation = null) {
-    if (pullRef.current || taskRef.current) return;
+    if (pullRef.current || taskRef.current) return { error: 'Finish or cancel the current task before downloading a model.' };
     pullRef.current = true; setPulling(true); setCancellingPull(false); setPullProgress(null); setError(''); setModelDownloadMessage(''); setModelDownloadError('');
     const config = settingsRef.current;
     const paperId = paperRef.current?.id;
@@ -1670,13 +1684,21 @@ function App() {
       await api.pullModel({ baseURL: config.ollamaBaseURL, model: requestedModel });
       const { models: available } = await refreshModels(config);
       let message = 'Model downloaded. Choose its task in Settings.';
-      if (recommendation && settingsRef.current.ollamaBaseURL === config.ollamaBaseURL && paperRef.current?.id === paperId) {
+      if (recommendation && !taskRef.current && settingsRef.current.ollamaBaseURL === config.ollamaBaseURL && paperRef.current?.id === paperId) {
         updateSettings(modelSettingsPatch(settingsRef.current, recommendation, available));
         message = `${recommendation.title} downloaded and selected for ${recommendation.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`;
       }
       setPullProgress(null); setStatus(message); setModelDownloadMessage(message);
+      return { message };
+    } catch (cause) {
+      if (/cancel|abort/i.test(cause.message)) {
+        const message = 'Model download cancelled.';
+        setStatus(message); setModelDownloadMessage(message); setPullProgress(null);
+        return { error: message };
+      }
+      setError(cause.message); setModelDownloadError(cause.message);
+      return { error: cause.message };
     }
-    catch (cause) { if (/cancel|abort/i.test(cause.message)) { setStatus('Model download cancelled.'); setModelDownloadMessage('Model download cancelled.'); setPullProgress(null); } else { setError(cause.message); setModelDownloadError(cause.message); } }
     finally { pullRef.current = false; setPulling(false); setCancellingPull(false); }
   }
   async function cancelModelDownload() {
@@ -3492,7 +3514,7 @@ function App() {
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
 
-      {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onModelsChanged={() => refreshModels(settingsRef.current)} onBusyChange={handleOnboardingBusy} />}
+      {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onInstall={installGuideComponent} onDownload={model => { setPullModel(model.id); return downloadModel(model.id, model); }} onBackgroundStatus={setStatus} onBusyChange={handleOnboardingBusy} />}
       {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstalled={() => { setSidebarParserRevision(value => value + 1); refreshModels(settingsRef.current); }}
         taskSetup={taskSetup} onChooseModels={() => openSettings(taskSetup)} />}
       {modal === 'settings' && <SettingsPanel key={taskSetup ? 'task' : `manual-${settingsSection}`} initialSection={settingsSection} settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)} taskSetup={taskSetup}

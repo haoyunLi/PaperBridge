@@ -71,6 +71,7 @@ async function run() {
       return { label: button.textContent.trim(), visible: rect.width > 0 && rect.height > 0 && rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight, unobstructed: Boolean(hit && button.contains(hit)) };
     }));
     assert.ok(checks.length >= 3);
+    assert.ok(checks.some(check => check.label === 'Advanced setup'), 'Advanced setup must remain reachable at smaller sizes');
     for (const check of checks) { assert.equal(check.visible, true, `${width}x${height}: ${check.label} is within viewport`); assert.equal(check.unobstructed, true, `${width}x${height}: ${check.label} is clickable`); }
     if (screenshot) await page.screenshot({ path: path.join(artifacts, screenshot) });
   }
@@ -86,7 +87,7 @@ async function run() {
         busy: Boolean(state.pending), hardware: { systemMemoryBytes: 32 * 1024 ** 3, adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU' }] },
         ollama: { installed: state.runtimeReady, running: state.runtimeReady, models: state.installed },
         mineru: { installed: state.mineruReady, compatible: state.mineruReady, executable: fixture.managedMineru, version: 'MinerU test fixture', runtime: { cuda: false } },
-        plan: { gpu: { reason: 'Mock AMD hardware: MinerU uses its CPU pipeline.' } }
+        plan: { ollama: !state.runtimeReady, models: [], mineru: !state.mineruReady, gpu: { reason: 'Mock AMD hardware: MinerU uses its CPU pipeline.' } }
       }));
       ipcMain.handle('setup:install', (_event, payload) => {
         if (state.pending) throw new Error('Mock setup is already running.');
@@ -142,7 +143,7 @@ async function run() {
     await assertPage(index);
     assert.equal(savedSettings().onboardingCompletedVersion, 0);
   }
-  async function completeSetup() {
+  async function completeSetup(inGuide = true) {
     const payload = await app.evaluate(({ BrowserWindow }, managedMineru) => {
       const state = global.__onboardingMock;
       const pending = state.pending;
@@ -158,15 +159,15 @@ async function run() {
     setupPayloads.push(payload);
     if (payload.components.ollama) runtimeReady = true;
     if (payload.components.mineru) mineruReady = true;
-    await waitFor(() => onboarding().getByRole('button', { name: 'Continue', exact: true }).isEnabled(), 'setup to release navigation');
+    if (inGuide) await waitFor(() => onboarding().getByRole('button', { name: 'Continue', exact: true }).isEnabled(), 'setup to release navigation');
     return payload;
   }
-  async function finishPull(index) {
+  async function finishPull(index, inGuide = true) {
     const pull = pulls[index];
     installed.add(pull.payload.model);
     await app.evaluate((_electron, models) => { global.__onboardingMock.installed = models; }, [...installed]);
     pull.response.end(`${JSON.stringify({ status: 'success', completed: 100, total: 100 })}\n`);
-    await waitFor(() => onboarding().getByRole('button', { name: 'Continue', exact: true }).isEnabled(), 'model download to release navigation');
+    if (inGuide) await waitFor(() => onboarding().getByRole('button', { name: 'Continue', exact: true }).isEnabled(), 'model download to release navigation');
   }
   const roles = settings => [settings.summaryModel, settings.explainModel, settings.quickLookupModel];
 
@@ -178,6 +179,32 @@ async function run() {
     assert.equal(await app.evaluate(() => global.__onboardingMock.requests.length), 0, 'First launch must not install tools');
     await assertFooter(1320, 820, 'onboarding-welcome-1320x820.png');
     await assertFooter(980, 620, 'onboarding-welcome-980x620.png');
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.setContentSize(980, 620);
+      window.webContents.setZoomFactor(1.5);
+    });
+    await page.waitForFunction(() => innerWidth < 700);
+    const advanced = onboarding().getByRole('button', { name: 'Advanced setup', exact: true });
+    assert.equal(await advanced.isVisible(), true, 'Advanced setup at 150% zoom');
+    await advanced.click({ trial: true });
+    await page.screenshot({ path: path.join(artifacts, 'onboarding-welcome-zoom150.png') });
+    for (let index = 1; index <= 5; index++) {
+      await next(index);
+      if (index >= 3) assert.equal(await onboarding().getByRole('button', { name: 'Skip setup', exact: true }).count(), 0);
+    }
+    assert.equal(savedSettings().onboardingCompletedVersion, 0, 'Moving past optional components keeps the guide open');
+    assert.equal(pulls.length, 0, 'Skipping optional components must not download them');
+    assert.equal(await app.evaluate(() => global.__onboardingMock.requests.length), 0);
+    await onboarding().getByRole('heading', { name: 'PDF reading is ready. AI setup is incomplete.' }).waitFor();
+    for (let index = 4; index >= 0; index--) {
+      await onboarding().getByRole('button', { name: 'Back', exact: true }).click();
+      await assertPage(index);
+    }
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));
+    await cdp.detach();
 
     await next(1);
     await onboarding().getByRole('button', { name: 'Install Ollama', exact: true }).click();
@@ -246,7 +273,7 @@ async function run() {
     await assertFooter(1320, 820, 'onboarding-ready-1320x820.png');
     await assertFooter(980, 620, 'onboarding-ready-980x620.png');
 
-    await onboarding().getByRole('button', { name: 'Skip setup', exact: true }).click();
+    await onboarding().getByRole('button', { name: 'Finish without opening a PDF', exact: true }).click();
     await onboarding().waitFor({ state: 'detached' });
     assert.equal(savedSettings().onboardingCompletedVersion, 1);
     await restart(null);
@@ -260,6 +287,59 @@ async function run() {
     await waitFor(() => fs.existsSync(path.join(workspace, 'papers')) && fs.readdirSync(path.join(workspace, 'papers')).some(file => file.endsWith('.json')), 'practice paper saved');
     assert.equal(savedSettings().onboardingCompletedVersion, 1);
     assert.equal(pulls.length, 3, 'Finishing with a practice paper must not launch AI');
+
+    async function openGuideAt(step) {
+      await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Getting Started guide', exact: true }).click();
+      for (let index = 1; index <= step; index++) await next(index);
+    }
+    async function continueReading() {
+      await onboarding().getByRole('button', { name: 'Continue in Background', exact: true }).click();
+      await onboarding().waitFor({ state: 'detached' });
+      await page.locator('.title-wrap h1').getByText('Welcome to PaperBridge (practice sample)', { exact: true }).waitFor();
+    }
+    // An explicit exit from the guide leaves the current job accessible from Settings.
+    await openGuideAt(2);
+    await onboarding().locator('[data-model-id="translategemma:27b"] button').click();
+    await waitFor(() => pulls.length === 4, 'guide model download before backgrounding');
+    await continueReading();
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Models', exact: true }).click();
+    await page.getByRole('button', { name: 'Cancel download', exact: true }).click();
+    await waitFor(() => pulls[3].closed, 'background download cancelled from Settings');
+    assert.equal(savedSettings().translationModel, 'translategemma:4b');
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+
+    await openGuideAt(2);
+    await onboarding().locator('[data-model-id="translategemma:27b"] button').click();
+    await waitFor(() => pulls.length === 5, 'single new stream after cancellation');
+    await continueReading();
+    await finishPull(4, false);
+    await waitFor(() => savedSettings().translationModel === 'translategemma:27b', 'background download selects requested translation model');
+    assert.deepEqual(roles(savedSettings()), Array(3).fill('gemma3:4b'));
+
+    await openGuideAt(3);
+    await onboarding().getByRole('button', { name: 'Repair / update MinerU', exact: true }).click();
+    await onboarding().getByRole('button', { name: 'Cancel setup', exact: true }).waitFor();
+    await continueReading();
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Detect and install local AI', exact: true }).click();
+    await page.locator('.setup-panel').getByRole('button', { name: /Cancel/ }).click();
+    await waitFor(() => app.evaluate(() => !global.__onboardingMock.pending), 'background installer cancellation from setup panel');
+    assert.equal(savedSettings().mineruExecutable, managedMineru);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+
+    await openGuideAt(3);
+    await onboarding().getByRole('button', { name: 'Repair / update MinerU', exact: true }).click();
+    await continueReading();
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
+    const customParser = path.join(workspace, 'custom', 'mineru.exe');
+    await page.getByLabel('MinerU executable', { exact: true }).fill(customParser);
+    await completeSetup(false);
+    await waitFor(() => savedSettings().mineruExecutable === customParser, 'preserve later parser choice after background repair');
+    assert.equal(await page.getByLabel('MinerU executable', { exact: true }).inputValue(), customParser);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
     // A slow settings save keeps the guide modal, and repeated finish clicks open one dialog.
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
@@ -304,7 +384,7 @@ async function run() {
     assert.equal(await app.evaluate(() => global.__onboardingFinish.imports), 1);
     assert.deepEqual(errors, [], 'Renderer must not throw');
     fs.writeFileSync(path.join(artifacts, 'onboarding-actions.json'), JSON.stringify({ cancelledSetup, setupPayloads, pulls: pulls.map(pull => pull.payload), settings: savedSettings() }, null, 2));
-    console.log('Onboarding passed: real first-launch/resume/skip persistence, Settings reopening, six steps, isolated installs/repair, streamed download cancellation and model roles, busy dismissal and keyboard focus guards, practice completion, delayed-save duplicate completion, and usable footer at 1320x820 / 980x620.');
+    console.log('Onboarding passed: real first-launch/resume/skip persistence, Settings reopening, six steps, isolated installs/repair, streamed download cancellation and model roles, busy dismissal and keyboard focus guards, practice completion, delayed-save duplicate completion, optional steps at 150% zoom, background downloads and repair, cancellation from Settings, and usable footer at 1320x820 / 980x620.');
   } finally {
     if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'onboarding-final.png') }).catch(() => {});
     await app?.close();
