@@ -63,7 +63,16 @@ func nativeScannedNotebook(pdf: URL) throws -> [String: Any] {
         }
         let channels = [sample.redComponent, sample.greenComponent, sample.blueComponent]
         guard zip(channels, color).allSatisfy({ abs($0.0 * 255 - CGFloat($0.1)) < 18 }) else {
-            throw failure("Wrong scan swatch on page \(index + 1)")
+            let raster = NSBitmapImageRep(data: tiff)!
+            var grid: [[Int]] = []
+            for y in 1...5 {
+                for x in 1...5 {
+                    if let c = raster.colorAt(x: x * raster.pixelsWide / 6, y: y * raster.pixelsHigh / 6)?.usingColorSpace(.sRGB) {
+                        grid.append([c.redComponent, c.greenComponent, c.blueComponent].map { Int($0 * 255) })
+                    }
+                }
+            }
+            throw failure("Wrong scan swatch on page \(index + 1), \(image.pixelsWide)x\(image.pixelsHigh), center \(channels), grid \(grid)")
         }
     }
     guard let second = document.page(at: 1) else { throw failure("Missing second page") }
