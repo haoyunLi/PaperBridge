@@ -61,7 +61,9 @@ export function stitchPageBlocks(blocks) {
     const technicalContinuation = /[\p{L}\p{N}][-‐]$/u.test(left)
       && /^[\p{Lu}\p{N}][\p{L}\p{N}-]*\s+\p{Ll}/u.test(right)
       && !(/\p{N}[-‐]$/u.test(left) && /^\p{N}/u.test(right));
-    const continuation = proseContinuation || technicalContinuation;
+    const listContinuation = /^[•‣◦]\s/u.test(right) && /(?:^|[:：]\s*)[•‣◦]\s/u.test(left)
+      && /[,;，；](?:\s+(?:and|or))?$/iu.test(left);
+    const continuation = proseContinuation || technicalContinuation || listContinuation;
     if (adjacent && prose && continuation && (left.length >= 20 || /[‐-]$/.test(left))) {
       previous.text = joinPdfText(left, right);
       previous.endPage = block.page;

@@ -1,6 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('cross-page bullets continue an unfinished list and preserve the following body paragraph', async () => {
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  const row = (text, x, y) => ({ text, x, y, height: 10 });
+  const items = blocksFromLines([row('• The second option uses a', 30, 100), row('different kernel.', 42, 88),
+    row('lowercase prose begins at the body margin.', 18, 70)], 2);
+  assert.equal(items.length, 2);
+  const previous = { page: 1, text: 'The options include: • The first kernel,' };
+  const joined = stitchPageBlocks([previous, ...items]);
+  assert.equal(joined.length, 2);
+  assert.equal(joined[0].endPage, 2);
+  assert.equal(joined[1].text, 'lowercase prose begins at the body margin.');
+  assert.equal(stitchPageBlocks([{ ...previous, text: previous.text + ' and' }, ...items]).length, 2);
+  // A trailing comma alone, a complete list, or a skipped page is insufficient.
+  for (const left of ['The sample mean increased,', 'These are the options: • A finished list.']) {
+    assert.equal(stitchPageBlocks([{ page: 1, text: left }, ...items]).length, 3);
+  }
+  assert.equal(stitchPageBlocks([{ ...previous, page: 0 }, ...items]).length, 3);
+  const aligned = blocksFromLines([row('• The first sentence.', 30, 100), row('another sentence of that item.', 42, 82)], 2);
+  assert.equal(aligned.length, 1);
+});
+
 test('pasted numbered sections and bibliography entries retain their source text and navigation targets', async () => {
   const { blocksFromText } = await import('../src/text.mjs');
   const { documentOutline } = await import('../src/documentOutline.mjs');

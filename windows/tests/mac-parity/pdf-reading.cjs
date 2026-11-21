@@ -88,6 +88,18 @@ async function checkJournalSidebar(app, page, prompts) {
   assert.deepEqual(metadata.filter(text => text.startsWith('•')), ['• Review', '• Repository', '• Archive', '• @benjaminrose', '• @mattpitkin']);
   assert.ok(metadata.join(' ').includes('Submitted: 28 October 2019 Published: 17 November 2019'));
   assert.ok(metadata.join(' ').includes('Creative Commons Attribution'));
+  const moves = blocks.findIndex(block => block.text.startsWith('The most important new feature'));
+  assert.ok(moves > summary);
+  assert.equal(blocks[moves].page, 1);
+  assert.equal(blocks[moves].endPage, 2);
+  assert.equal((blocks[moves].text.match(/•/g) || []).length, 3);
+  assert.ok(blocks[moves + 1].text.startsWith('emcee has been widely used'));
+  assert.equal(blocks[moves + 1].page, 2);
+  if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
+    const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8')).publishedPaper;
+    assert.deepEqual(blocks.slice(moves, moves + 2).map(block => block.text), native.paragraphs.slice(-2),
+      'Both the cross-page list and the following lowercase paragraph match PDFKit');
+  }
   const body = blocks.slice(summary + 1, refs).map(block => block.text).join(' ');
   assert.ok(body.startsWith('emcee is a Python library implementing a class of affine-invariant ensemble samplers'));
   assert.doesNotMatch(body, /Published:|Software\s*• Review|Creative Commons Attribution/);

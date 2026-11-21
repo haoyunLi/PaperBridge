@@ -116,6 +116,7 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   if (!preserveOrder) sorted.sort((a, b) => b.y - a.y || a.x - b.x);
   const blocks = [];
   let group = [];
+  let bulletIndent = null;
   const flush = () => {
     const text = joinLines(group);
     const raw = group.map(line => cleanLine(line.text || line)).filter(Boolean).join('\n');
@@ -125,6 +126,7 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
       blocks.push(block);
     }
     group = [];
+    bulletIndent = null;
   };
   const widths = sorted.map(line => line.height || 12).sort((a, b) => a - b);
   const typicalHeight = widths[Math.floor(widths.length / 2)] || 12;
@@ -137,7 +139,13 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     const startsFootnote = line.raisedNoteMarker && line.height <= Math.max(typicalHeight, previous?.height || 0) * 0.9;
     const continuesFootnote = group[0]?.raisedNoteMarker && previous && Math.abs(line.height - previous.height) <= line.height * 0.1
       && gap >= 0 && gap <= line.height * 1.45;
-    if (previous && (startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && !continuesFootnote && gap > typicalHeight * 1.1))) flush();
+    const startsBullet = /^[•‣◦]\s/u.test(line.text);
+    // A return to the body margin after a hanging list can start with a lowercase name.
+    const afterList = bulletIndent !== null && /^[\p{L}\p{N}]/u.test(line.text) &&
+      /[.!?。！？][”’"')\]]*$/u.test(previous?.text || '') &&
+      line.x < bulletIndent - typicalHeight * 0.6 && gap > typicalHeight * 1.3;
+    if (previous && (afterList || startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && !continuesFootnote && gap > typicalHeight * 1.1))) flush();
+    if (startsBullet) bulletIndent = line.x;
     group.push(line);
     // A short title-cased fragment such as "The English-" can be the first
     // physical line of body prose. Keep a close lowercase continuation with it.
