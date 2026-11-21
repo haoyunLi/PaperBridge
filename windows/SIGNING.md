@@ -2,12 +2,14 @@
 
 PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Portable）。普通个人电脑允许未签名应用时，两种版本都可运行。请从项目的 GitHub Release 下载实际的 `.exe` 文件。如果 Windows 显示「未知发布者」，请先核对文件来源和该版本的 SHA-256。如果设备允许，而且你信任这一份下载，可以在「更多信息」中选择「仍要运行」。组织管理的设备按管理员的应用策略执行。
 
+如果看到的是 **Open File – Security Warning（打开文件－安全警告）**，先核对对话框里的文件名与刚从项目发布页下载的文件是否一致。信任该文件时，选 **Run（运行）**。Windows 等待这个选择期间，PaperBridge 主窗口还不会出现。切到该对话框即可查看。Setup 和 Portable 都可能出现这一步。
+
 ### 怎样核对下载的文件
 
-从同一 GitHub Release 下载 EXE 及同名的 `.exe.sha256` 文件，在它们所在的文件夹打开 PowerShell。以 0.2.40 便携版为例，把第一行的文件名换成实际下载的版本或安装版名称，再运行以下命令。显示 `True` 表示 EXE 的内容与该发布页给出的 SHA-256 一致。
+从同一 GitHub Release 下载 EXE 及同名的 `.exe.sha256` 文件，在它们所在的文件夹打开 PowerShell。以 0.2.44 便携版为例，把第一行的文件名换成实际下载的版本或安装版名称，再运行以下命令。显示 `True` 表示 EXE 的内容与该发布页给出的 SHA-256 一致。
 
 ```powershell
-$file = 'PaperBridge-Windows-0.2.40-x64-Portable.exe'
+$file = 'PaperBridge-Windows-0.2.44-x64-Portable.exe'
 $expected = ((Get-Content -LiteralPath "$file.sha256" -Raw).Trim() -split '\s+')[0]
 (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $expected
 ```

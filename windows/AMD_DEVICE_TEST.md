@@ -1,5 +1,15 @@
 # Windows AMD 真机回归
 
+## 0.2.44 学术数字、否定含义与译稿恢复（2026-11-21）
+
+从公开便携版粘贴四段英文物理测量样例，逐段使用本地 TranslateGemma 4B 翻译。译文保留了 24 次独立曝光、15.0 °C、532.1 ± 0.3 nm、95% 置信区间 0.92 至 1.08、偏移量由 −3.2 mV 变为 +1.4 mV，以及两组 10⁻³ s 数值。第二段明确译出“并未提高信噪比”。首段中文把曝光次数放在句末，读起来略生硬。四段译文重启后逐字一致。模型已加载时，四次点击到保存分别为 510、450、439 和 576 毫秒。计时只覆盖本机这四个短段落。
+
+设置页在本机识别 16 GiB RX 7800 XT 及核显。两页 *emcee v3* 的全文翻译和导出保留了 13 位作者署名，导出的 4,777 字节 Markdown 与保存的译稿一致。Ollama 报告模型显存用量为 2,881,948,220 字节。两种窗口大小、五档显示缩放下，长标题均有两行空间，元数据和阅读工具栏保持间距。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.44) · [期刊原文](https://doi.org/10.21105/joss.01864)
+
+## 0.2.43 公开便携版与 RX 7800 XT（2026-11-21）
+
+本机通过 Local AI setup 识别 RX 7800 XT。公开包用本地 TranslateGemma 4B 翻译两页 *emcee v3*，核对了 13 位作者署名、参考文献及导出的 4,796 字节 Markdown。退出重开后译稿恢复，原 PDF 的哈希相同。另测光谱学段落，已存术语“通量定标”进入请求并出现在译文中。Ollama 报告模型占用 2,881,948,220 字节显存。[0.2.43 发布记录](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.43) · [期刊原文](https://doi.org/10.21105/joss.01864)
+
 ## 0.2.42 公开便携版与 RX 7800 XT（2026-11-21）
 
 从 GitHub 下载并校验便携版，在本机 Ollama 上用 TranslateGemma 4B 重译两页 *emcee v3*。28 个阅读块中，全文完成一批中文正文，保留了参考文献标题和六条引文。13 位作者的署名和单位编号在 Reader、全文译稿和导出中保持一致。Markdown 共 4,828 字节，逐字匹配工作区译稿。重新打开后译稿仍在，原 PDF 的 SHA-256 一致。单段光谱学测试也从印刷连字 `ﬂux calibration` 匹配到术语库的 `flux calibration`，译文中使用了指定的“通量定标”。两次测试的模型显存用量均为 2,881,948,220 字节。记录为 `test-artifacts/emcee-AMD-uaO8Bt/result.json` 和 `test-artifacts/search-amd-B8HzQ9/result.json`。[0.2.42 公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.42) · [原期刊论文](https://doi.org/10.21105/joss.01864)
