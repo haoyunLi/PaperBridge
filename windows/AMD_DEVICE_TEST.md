@@ -1,4 +1,6 @@
-# Windows AMD 真机回归（2026-09-20）
+# Windows AMD 真机回归
+
+2026-11-20（美国中部），从 GitHub 公开下载的 [0.2.25 Portable](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.25) 在 RX 7800 XT 上用 Ollama 的 `translategemma:4b` 翻译了一段真实论文。程序识别出约 16 GiB 独显和 512 MiB 核显，Ollama 本次新增日志确认使用 ROCm。模型分配与显存分配同为 2,881,948,220 字节，两次请求耗时 4.62 秒和 0.65 秒，生成速度分别约 129.8 和 130.3 tokens/s。两处公式与源文本一致，关闭并重新打开后译文和批注保留。模型把 “position-wise” 译成了“位置相关的”，此处应理解为“逐位置的”。完整记录在 `test-artifacts/portable-0225-amd-mineru-O2Bfwz/result.json`。
 
 2026-11-20（美国中部）在 RX 7800 XT 和同机 AMD 核显上验证显存识别。Win32_VideoController 的 32 位 AdapterRAM 为独显返回 4,293,918,720 字节。按显示适配器匹配驱动的 64 位记录后，独显得到 17,163,091,968 字节，核显得到 536,870,912 字节。真实桌面应用的 Models 和 Local AI setup 均分别显示 16 GiB、512 MiB。NVIDIA 驱动回补、同型号双卡和不可用显存有模拟回归。报告为 `test-artifacts/amd-inventory-wl4HR6/report.json`。
 

@@ -1,6 +1,10 @@
 # Windows 全软件功能复查：2026-09-20
 
-## 段首章节、摘要与结论范围（开发分支）
+## Windows 0.2.25 公开下载验收
+
+[发布工作流](https://github.com/haoyunLi/PaperBridge/actions/runs/44869113723) 的构建与公开下载复测均通过。后者在另一台全新 Windows 机器下载两份 EXE，核对 SHA-256，启动便携版及安装后的程序，验证首次引导和安装版再次启动时恢复窗口。在本机，Edge 从仓库首页实际下载两份文件，均带互联网来源标记，文件哈希与 Release 一致。公开 0.2.24 安装版检查到了 0.2.25，升级和重启后原论文、笔记及高亮保留。浏览器和升级记录分别在 `test-artifacts/browser-download-0.2.25-ZxcWoP/result.json` 和 `test-artifacts/i-mwpyauo6-p4o/report.json`。本机公开便携版的生成速度、公式和译例见 [AMD 真机回归](AMD_DEVICE_TEST.md)。
+
+## 段首章节、摘要与结论范围（0.2.25）
 
 macOS 1.10.0 会识别正文首行或段首的章节标题，并将“Concluding Remarks”纳入摘要与结论的翻译范围。Windows 现在同时读取结构化标题和正文中可识别的标题，区分无标题的完整文档与第一节之前的开篇材料。参考文献和资源不生成可选章节。各节待译块只计算一次，范围计数和入队共用块 ID。一个实际的 Electron 导入测试分别保留正文内嵌的 Abstract、识别 Concluding Remarks，同时排除 Abstraction Mechanisms 及参考文献，核对了 3 次请求的原文、落盘 ID 和完成后的按钮状态。提取质量检查也按可见字符计数，识别全角数字，并跳过有效段首标题。
 
