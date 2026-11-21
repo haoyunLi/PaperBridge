@@ -75,7 +75,8 @@ async function run() {
   ];
   const paper = { id, name: 'Paragraph editor fixture', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), inspectorOpen: false,
-    taskSettings: settings, blocks, position: { tab: 'Reader', block: 2, displayMode: 'bilingual' } };
+    taskSettings: settings, blocks, connectedTranslation: '保存的全文译稿。', connectedStale: false,
+    position: { tab: 'Reader', block: 2, displayMode: 'bilingual' } };
   const other = { ...paper, id: otherId, name: 'Other untouched paper', blocks: [{ ...defaults, id: 1,
     text: 'The other library document must never receive an editor draft.', translation: 'Other saved translation.' }] };
   const pdfBytes = fixturePdf();
@@ -265,6 +266,7 @@ async function run() {
     await page.keyboard.press('Control+Enter');
     await dialog().waitFor({ state: 'hidden' });
     await waitFor(() => readPaper().blocks.length === 4, 'split saved');
+    assert.equal(readPaper().connectedStale, true);
     const split = readPaper().blocks;
     assert.deepEqual(split.map(item => item.text), [blocks[0].text, 'First sentence.', 'Second sentence.', blocks[2].text]);
     assert.equal(split[0].translation, blocks[0].translation);
@@ -283,6 +285,8 @@ async function run() {
     await waitFor(() => readPaper().blocks[3].translation === '编辑后生成且应保留的新译文。', 'unrelated post-edit translation');
     await page.locator('.reader-top .undo-button').click();
     await waitFor(() => readPaper().blocks.length === 3, 'undo saved');
+    assert.equal(readPaper().connectedStale, false);
+    assert.equal(readPaper().connectedTranslation, paper.connectedTranslation);
     const restored = readPaper().blocks;
     assert.equal(restored[1].text, blocks[1].text);
     assert.equal(restored[1].translation, blocks[1].translation);

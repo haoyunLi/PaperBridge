@@ -4,6 +4,7 @@ import { firstSelectableParagraphID, isSelectableParagraphID, resolveSelectedPar
 import { normalizeSearchOrigin } from './readingHistory.mjs';
 
 const blockFields = ['bookmark', 'notes', 'highlights', 'translationHighlights'];
+const draftFields = ['connectedTranslation', 'connectedBlocks', 'connectedBatchVersion', 'connectedLanguage', 'connectedLanguageConflict', 'connectedShared'];
 const documentFields = ['pdfNotes', 'pdfHighlights', 'viewNotes', 'viewHighlights'];
 const clone = value => value === undefined ? undefined : structuredClone(value);
 const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right);
@@ -62,6 +63,10 @@ export function createUndoEntry(before, after, range) {
   if (!sameSources(before.blocks, after.blocks)) {
     return { ...base, type: 'structure', beforeBlocks: clone(before.blocks), afterBlocks: clone(after.blocks), range,
       beforeSummary: clone(before.summary), afterSummary: clone(after.summary),
+      // Draft generation replaces its text and batches. Holding these values
+      // lets undo recognize the same draft without copying it for every edit.
+      beforeDraft: before.connectedTranslation ? Object.fromEntries(draftFields.map(field => [field, before[field]])) : null,
+      beforeDraftStale: Boolean(before.connectedStale),
       beforeSelectedParagraphID: resolveSelectedParagraphID(before), beforePosition: readingPositionSnapshot(before.position) };
   }
   const blocks = before.blocks.flatMap((block, index) => {
@@ -280,6 +285,9 @@ export function applyUndoEntry(current, entry) {
   return { ...current, blocks,
     selectedParagraphID,
     ...(summary !== undefined && { summary }),
-    ...(current.connectedTranslation ? { connectedStale: true } : {}),
+    ...(current.connectedTranslation ? {
+      connectedStale: entry.beforeDraftStale || !entry.beforeDraft || draftFields.some(field =>
+        current[field] !== entry.beforeDraft[field] && !equal(current[field], entry.beforeDraft[field]))
+    } : {}),
     ...((position !== undefined || Object.hasOwn(current, 'position')) && { position }) };
 }

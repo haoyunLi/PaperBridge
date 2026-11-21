@@ -5,6 +5,32 @@ const paperHelpers = import('../src/paper.mjs');
 
 function paper(blocks, extra = {}) { return { id: 'test-paper', blocks: blocks.map((block, index) => ({ id: index + 1, status: 'pending', ...block })), ...extra }; }
 
+test('undo restores the freshness of a matching full draft and keeps newer results for review', async () => {
+  const { createUndoEntry, applyUndoEntry } = await undo;
+  const source = paper([{ text: 'First. Second.' }], {
+    connectedTranslation: '第一。第二。', connectedBlocks: [{ source: 'First. Second.', output: '第一。第二。', status: 'ok' }],
+    connectedLanguage: { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' }
+  });
+  for (const stale of [false, true]) {
+    const before = { ...source, connectedStale: stale };
+    const after = { ...before, blocks: paper([{ text: 'First.' }, { text: 'Second.' }]).blocks, connectedStale: true };
+    const entry = createUndoEntry(before, after);
+    const restored = applyUndoEntry(structuredClone(after), entry);
+    assert.equal(restored.connectedStale, stale);
+    assert.deepEqual(restored.connectedBlocks, before.connectedBlocks);
+    for (const changed of [
+      { connectedTranslation: 'A newer draft' },
+      { connectedBlocks: [{ source: 'First.', output: '第一。', status: 'ok' }] },
+      { connectedLanguage: { sourceLanguage: 'English', targetLanguage: 'Japanese' } }
+    ]) {
+      const current = { ...after, ...changed };
+      const result = applyUndoEntry(current, entry);
+      assert.equal(result.connectedStale, true);
+      for (const key of Object.keys(changed)) assert.deepEqual(result[key], current[key]);
+    }
+  }
+});
+
 test('undoing a bookmark keeps translations, summaries, explanation caches and settings written later', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const before = paper([{ text: 'One sentence.' }, { text: 'Another sentence.' }]);
