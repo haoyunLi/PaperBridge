@@ -99,6 +99,15 @@ async function checkJournalSidebar(app, page, prompts) {
     const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8')).publishedPaper;
     assert.deepEqual(blocks.slice(moves, moves + 2).map(block => block.text), native.paragraphs.slice(-2),
       'Both the cross-page list and the following lowercase paragraph match PDFKit');
+    const { summarySourceBlocks, summarySourceBatches } = await import('../../src/paper.mjs');
+    const batches = summarySourceBatches(summarySourceBlocks(blocks));
+    assert.equal(batches.length, native.summaryBatches.length);
+    // The Windows extractor retains the printed sidebar and full byline. Source IDs point into each edition’s own Reader.
+    const closingBlocks = blocks.slice(moves - 1, moves + 2);
+    assert.deepEqual(batches.at(-1).slice(-3), closingBlocks.map(({ id, text }) => ({ id, text })));
+    const nativeClosing = closingBlocks.map(({ text }, i) => `[P${native.paragraphs.length - 2 + i}]\n${text}`).join('\n\n');
+    assert.ok(native.summaryBatches.at(-1).endsWith(nativeClosing), 'Each shared closing paragraph has its own summary evidence label');
+    assert.ok(batches.flat().every(block => block.id < blocks[refs].id), 'The journal bibliography is excluded');
   }
   const body = blocks.slice(summary + 1, refs).map(block => block.text).join(' ');
   assert.ok(body.startsWith('emcee is a Python library implementing a class of affine-invariant ensemble samplers'));

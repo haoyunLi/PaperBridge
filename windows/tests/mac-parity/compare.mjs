@@ -144,11 +144,13 @@ for (const [index, fixture] of fixtures.summaryEvidence.entries()) {
     reference.summaryEvidence[index].map(q => q.normalize('NFC')), fixture.name);
   assert.deepEqual(claim.sources, fixture.valid ? [{ paragraphID: 1, quote: text }] : [], fixture.name);
 }
+function taggedSummaryBatches(blocks) {
+  return summarySourceBatches(blocks).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
+}
 assert.equal(reference.summaryBatches.length, fixtures.summaryBatches.length);
 for (const [index, { name, paragraphs }] of fixtures.summaryBatches.entries()) {
   const blocks = paragraphs.map(({ text, repeat = 1, prefix = '', suffix = '' }, i) => ({ id: i + 1, text: prefix + text.repeat(repeat) + suffix }));
-  const rendered = summarySourceBatches(blocks).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
-  assert.deepEqual(rendered, reference.summaryBatches[index], name);
+  assert.deepEqual(taggedSummaryBatches(blocks), reference.summaryBatches[index], name);
 }
 
 const connectedSources = paragraphs => planConnectedBatches(paragraphs.map((text, i) => ({ id: i + 1, text }))).map(batch => batch.source);
@@ -161,6 +163,8 @@ const published = reference.publishedPaper;
 const publishedBytes = readFileSync(new URL('./emcee-v3.pdf', import.meta.url));
 assert.equal(createHash('sha256').update(publishedBytes).digest('hex'), published.sha256);
 assert.ok(published.paragraphs.join(' ').includes('emcee') && published.paragraphs.length > 5);
+const nativeBlocks = published.paragraphs.map((text, i) => ({ id: i + 1, text }));
+assert.deepEqual(taggedSummaryBatches(nativeBlocks), published.summaryBatches, 'Exact summary inputs and source IDs for the native-extracted journal article');
 for (const { limit, chunks } of published.paragraphChunks) {
   assert.deepEqual(published.paragraphs.map(text => chunkText(text, limit)), chunks,
     'Per-paragraph translation of the native-extracted emcee paper at ' + limit + ' characters');
