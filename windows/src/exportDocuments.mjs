@@ -30,11 +30,33 @@ function quoteTranslation(target, targetLanguage) {
   return `> **${targetLanguage ? `${targetLanguage} translation` : 'Translation'}**\n>\n${quote}`;
 }
 
+function analysisSummary(paper) {
+  const { summary } = paper;
+  if (!summary) return '';
+  const heading = (language, fallback) => knownLanguage(language) ? labeled('Whole-paper summary', language) : fallback;
+  const sections = [
+    `## ${heading(summary.sourceLanguage, 'Source summary')}\n\n${summary.source || ''}`,
+    `## ${heading(summary.targetLanguage, 'Target summary')}\n\n${summary.target || ''}`
+  ];
+  if (summaryNeedsTextRefresh(paper)) sections.push('> ' + legacySummaryTextNotice);
+  const claims = revalidateSummaryClaims(summary.claims, paper.blocks);
+  if (claims) {
+    sections.push('### Summary source passages\n> AI interpretation is unverified. Matching a quotation confirms its location, not whether it supports the claim.');
+    for (const [index, claim] of claims.entries()) {
+      sections.push(`**Claim ${index + 1}**: ${claim.text}`);
+      if (!claim.sources.length) sections.push('No source link validated.');
+      for (const source of claim.sources) {
+        const quote = source.quote.split(/\r\n|\r|\n/).map(line => '> ' + line).join('\n');
+        sections.push(`Original paragraph ${source.paragraphID}:\n${quote}`);
+      }
+    }
+  }
+  return sections.join('\n\n');
+}
+
 function analysisDocument(paper, references) {
   const eligible = paper.blocks.filter(block => !block.resource && !references.has(block.id));
   const annotations = analysisAnnotations(paper, new Set(eligible.map(block => block.id)));
-  const evidence = (revalidateSummaryClaims(paper.summary?.claims, paper.blocks) || []).map((claim, index) =>
-    `### Claim ${index + 1}: ${claim.text}\n\n${claim.sources?.length ? claim.sources.map(source => `- Block ${source.paragraphID}: “${source.quote}”`).join('\n') : '- No exact source quotation validated.'}`).join('\n\n');
   const paragraphs = eligible.map(block => {
     const translation = block.status === 'ok' ? block.translationMarkdown || block.translation
       : block.error ? `[Translation failed] ${block.error}` : '[Translation unavailable]';
@@ -44,13 +66,10 @@ function analysisDocument(paper, references) {
   }).join('\n\n');
   const connectedLanguage = normalizeOutputLanguage(paper.connectedLanguage);
   const draft = paper.connectedTranslation
-    ? `\n\n## ${labeled('Connected Full Translation', connectedLanguage?.targetLanguage)}\n\n${connectedTranslationMarkdown(paper)}` : '';
-  const referenceNotice = references.size ? '> The reference section was excluded from translation.\n\n' : '';
-  const sourceNotice = (summaryNeedsTextRefresh(paper) ? '> ' + legacySummaryTextNotice + '\n\n' : '')
-    + (Array.isArray(paper.summary?.claims) ? '> AI interpretation is unverified. Matching a quotation confirms its location, not whether it supports the claim.\n\n' : '');
-  const summaryHeading = (side, fallback) => knownLanguage(paper.summary?.[`${side}Language`])
-    ? labeled('Whole-paper summary', paper.summary[`${side}Language`]) : fallback;
-  return `# ${paper.name}\n\n${referenceNotice}## ${summaryHeading('source', 'Source summary')}\n\n${paper.summary?.source || ''}\n\n## ${summaryHeading('target', 'Target summary')}\n\n${paper.summary?.target || ''}\n\n## Checked sources\n\n${sourceNotice}${evidence || 'No exact source quotations validated.'}${draft}${paragraphs ? `\n\n## Paragraphs\n\n${paragraphs}` : ''}${annotations.appendix ? `\n\n${annotations.appendix}` : ''}`;
+    ? `## ${labeled('Connected Full Translation', connectedLanguage?.targetLanguage)}\n\n${connectedTranslationMarkdown(paper)}` : '';
+  const referenceNotice = references.size ? '> The reference section was excluded from translation.' : '';
+  return [`# ${paper.name}`, referenceNotice, analysisSummary(paper), draft, paragraphs && `## Paragraphs\n\n${paragraphs}`, annotations.appendix]
+    .filter(Boolean).join('\n\n');
 }
 
 export function markdownDocuments(input, _legacyTargetLanguage, kind) {

@@ -191,19 +191,26 @@ test('summary exports distinguish verified quote locations from interpretation a
     { text: 'An unlinked interpretation.', sources: [] }
   ] };
   const analysis = markdownDocuments(paper, 'French', 'analysis')[0].content;
-  assert.ok(analysis.includes(`## Checked sources\n\n${disclaimer}\n\n### Claim 1:`));
-  assert.match(analysis, /- Block 1: “Repeated exact source\.”/);
+  assert.ok(analysis.includes(`### Summary source passages\n${disclaimer}\n\n**Claim 1**:`));
+  assert.match(analysis, /Original paragraph 1:\n> Repeated exact source\./);
   assert.doesNotMatch(analysis, /A quotation no longer in this source/);
-  assert.match(analysis, /### Claim 2: An unlinked interpretation\.\n\n- No exact source quotation validated\./);
+  assert.ok(analysis.includes('**Claim 2**: An unlinked interpretation.\n\nNo source link validated.'));
   assert.equal(byKind(markdownDocuments(paper, 'French')).analysis, analysis);
   for (const claims of [[], [{ text: 'No sources supplied.' }]]) {
     const empty = markdownDocuments({ ...paper, summary: { ...paper.summary, claims } }, 'French', 'analysis')[0].content;
     assert.ok(empty.includes(disclaimer));
-    assert.match(empty, /No exact source quotation/);
+    assert.equal(empty.includes('No source link validated.'), claims.length > 0);
   }
   const legacy = markdownDocuments({ ...paper, summary: { source: 'Legacy plain summary.', target: 'Legacy translation.' } }, 'French', 'analysis')[0].content;
   assert.match(legacy, /Legacy plain summary/);
-  assert.doesNotMatch(legacy, /undefined|null|Claim 1:/);
+  assert.doesNotMatch(legacy, /undefined|null|Summary source passages|Claim 1|No source link validated/);
+  const absent = markdownDocuments({ ...paper, summary: null }, 'French', 'analysis')[0].content;
+  assert.doesNotMatch(absent, /summary|source passages|source link validated/i);
+  const quote = 'The first exact line.\n\n# A second source line';
+  const multiline = { ...paper, blocks: [{ id: 1, text: quote }], summary: { ...paper.summary,
+    claims: [{ text: 'Interpretation.', sources: [{ paragraphID: 1, quote }] }] } };
+  const exported = markdownDocuments(multiline, undefined, 'analysis')[0].content;
+  assert.ok(exported.includes('Original paragraph 1:\n> The first exact line.\n> \n> # A second source line'));
 });
 
 const pair = targetLanguage => ({ sourceLanguage: 'English', targetLanguage });
