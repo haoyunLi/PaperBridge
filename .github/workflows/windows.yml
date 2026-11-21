@@ -38,12 +38,36 @@ jobs:
           if ($env:GITHUB_REF_NAME -ne "windows-v$packageVersion") {
             throw "Tag $env:GITHUB_REF_NAME must match Windows package version $packageVersion"
           }
-      - run: npm run dist
+      - name: Build Windows preview
+        if: ${{ !(startsWith(github.ref, 'refs/tags/windows-v') && vars.WINDOWS_SIGNING_MODE == 'azure') }}
+        run: npm run dist
+      - name: Build and sign the release with Azure Artifact Signing
+        if: startsWith(github.ref, 'refs/tags/windows-v') && vars.WINDOWS_SIGNING_MODE == 'azure'
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+          WINDOWS_SIGNING_ENDPOINT: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          WINDOWS_SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          WINDOWS_SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.WINDOWS_SIGNING_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.WINDOWS_SIGNING_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_SIGNING_CLIENT_SECRET }}
+        run: npm run dist:signed
       - name: Verify release binaries and write checksums
         id: release-assets
         shell: pwsh
+        env:
+          SIGNING_MODE: ${{ vars.WINDOWS_SIGNING_MODE }}
+          PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $signatureNote = 'Unsigned Windows preview.'
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:SIGNING_MODE) {
+            if ($env:SIGNING_MODE -ne 'azure') { throw 'Unknown Windows signing mode' }
+            $files = @('release/win-unpacked/PaperBridge.exe', "release/PaperBridge-Windows-$version-x64-Setup.exe", "release/PaperBridge-Windows-$version-x64-Portable.exe")
+            ./scripts/check-publisher.ps1 -Files $files -Publisher $env:PUBLISHER
+            $signatureNote = "Timestamped Windows publisher signature verified for $env:PUBLISHER."
+          }
+          "signature_note=$signatureNote" >> $env:GITHUB_OUTPUT
           foreach ($target in @('Setup', 'Portable')) {
             $name = "PaperBridge-Windows-$version-x64-$target.exe"
             $binary = Get-Item -LiteralPath "release/$name" -ErrorAction Stop
@@ -62,6 +86,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - run: npm run test:packaged
+      - name: Launch final Portable and installed Setup application
+        timeout-minutes: 8
+        shell: pwsh
+        run: ./tests/check-distribution.ps1 -Directory release -Version (Get-Content package.json -Raw | ConvertFrom-Json).version
       - name: Preserve failed desktop screenshots
         if: failure()
         uses: actions/upload-artifact@v4
@@ -93,7 +121,7 @@ jobs:
 
             - **Setup** installs PaperBridge for the current Windows user.
             - **Portable** runs directly after download.
-            - Each executable has a SHA-256 checksum. The binaries are unsigned.
+            - Each executable has a SHA-256 checksum. ${{ steps.release-assets.outputs.signature_note }}
 
             You can open and annotate PDFs immediately. Use **Local AI setup** to install Ollama and the translation model when you first need local AI. MinerU is optional for scanned PDFs and structured extraction.
 
@@ -103,3 +131,34 @@ jobs:
             windows/release/PaperBridge-Windows-*-x64-*.exe.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-public-download:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: windows-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and open both public Windows executables
+        shell: pwsh
+        working-directory: windows
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $dir = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'Public downloads')
+          $release = Invoke-RestMethod "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME"
+          foreach ($kind in @('Portable', 'Setup')) {
+            $name = "PaperBridge-Windows-$version-x64-$kind.exe"
+            $asset = @($release.assets | Where-Object name -eq $name)
+            if ($asset.Count -ne 1) { throw "Expected exactly one $name" }
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/$name"
+            $file = Join-Path $dir.FullName $name
+            Invoke-WebRequest $url -OutFile $file -MaximumRetryCount 3
+            Invoke-WebRequest "$url.sha256" -OutFile "$file.sha256" -MaximumRetryCount 3
+            $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset[0].digest -cne "sha256:$hash" -or (Get-Content "$file.sha256" -Raw).Trim() -cne "$hash  $name") {
+              throw "Public checksum mismatch for $name"
+            }
+          }
+          ./tests/check-distribution.ps1 -Directory $dir.FullName -Version $version

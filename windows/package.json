@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.21",
+  "version": "0.2.22",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -54,7 +54,8 @@
     "test:live-ocr": "node tests/live-ocr.cjs",
     "test:packaged": "node tests/packaged.cjs",
     "pack": "npm run build && electron-builder --win dir",
-    "dist": "npm run build && electron-builder --win nsis portable"
+    "dist": "npm run build && electron-builder --win nsis portable",
+    "dist:signed": "npm run build && node scripts/dist-signed.cjs"
   },
   "dependencies": {
     "katex": "^0.16.22",
@@ -81,6 +82,9 @@
   "build": {
     "appId": "net.paperbridges.windows",
     "productName": "PaperBridge",
+    "electronFuses": {
+      "runAsNode": false
+    },
     "directories": {
       "output": "release"
     },

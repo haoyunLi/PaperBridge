@@ -37,6 +37,19 @@ async function run() {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.locator('.welcome').waitFor({ timeout: 20000 });
+    await app.evaluate(({ ipcMain }) => {
+      const bootstrap = ipcMain._invokeHandlers.get('bootstrap');
+      ipcMain.removeHandler('bootstrap');
+      let failOnce = true;
+      ipcMain.handle('bootstrap', (...args) => {
+        if (failOnce) { failOnce = false; throw new Error('Workspace read failed for this launch'); }
+        return bootstrap(...args);
+      });
+    });
+    await page.reload();
+    await page.getByRole('alert').getByText(/Workspace read failed for this launch/).waitFor();
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await page.locator('.welcome').waitFor();
     await app.evaluate(({ ipcMain }, fixture) => {
       global.__startupSetupConfigs = [];
       global.__startupModelConfigs = [];

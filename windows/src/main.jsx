@@ -3191,7 +3191,10 @@ function App() {
       canLookupSelection: Boolean(selection) && !menuBusy, canExport, checkingUpdates }).catch(cause => setError(cause.message));
   }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, translatableCount > 0, canExport, checkingUpdates]);
 
-  if (!ready || !settings) return <div className="loading">Opening PaperBridge…</div>;
+  if (!ready || !settings) return error
+    ? <main className="loading"><section role="alert"><h1>Could not open your workspace</h1><p>{error}</p>
+      <button className="button blue" onClick={() => window.location.reload()}>Try again</button></section></main>
+    : <div className="loading">Opening PaperBridge…</div>;
   const sidebarSource = <SidebarSource text={paste} onText={setPaste} expanded={pasteExpanded} onExpanded={setPasteExpanded}
     focusRequest={pasteFocusRequest} busy={Boolean(busy)} onOpenPDF={openFile} onLoad={importText} onPractice={loadPractice} />;
   const sidebarAI = <SidebarAIStatus settings={settings} ollamaStatus={ollamaStatus} ollamaError={ollamaError} refreshingModels={refreshingModels}

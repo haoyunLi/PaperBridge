@@ -496,12 +496,30 @@ function createWindow() {
     event.preventDefault();
     requestRendererClose(false);
   });
-  if (process.env.VITE_DEV_SERVER_URL) window.loadURL(process.env.VITE_DEV_SERVER_URL);
-  else if (!app.isPackaged && process.env.NODE_ENV !== 'production') window.loadURL('http://127.0.0.1:5173');
-  else window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  return developmentBuild
+    ? window.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173')
+    : window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
 }
 
-app.whenReady().then(() => {
+function showStartupError(error) {
+  dialog.showErrorBox('PaperBridge could not open', error.message || String(error));
+  app.exit(1);
+}
+
+// A second Explorer launch should bring the existing reader back to the front.
+if (app.isPackaged && !app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!window || window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  });
+  app.whenReady().then(startApp).catch(showStartupError);
+}
+
+async function startApp() {
   app.setName(developmentBuild ? 'PaperBridge Dev' : 'PaperBridge');
   if (developmentBuild && !process.env.PAPERBRIDGE_WORKSPACE) app.setPath('userData', path.join(app.getPath('appData'), 'PaperBridge Dev'));
   store = createStore(process.env.PAPERBRIDGE_WORKSPACE || path.join(app.getPath('userData'), 'workspace'));
@@ -514,9 +532,9 @@ app.whenReady().then(() => {
     emit: progress
   });
   registerHandlers();
-  createWindow();
-  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-});
+  await createWindow();
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow().catch(showStartupError); });
+}
 app.on('before-quit', event => {
   if (window && !window.isDestroyed() && !closeReady) {
     event.preventDefault();
