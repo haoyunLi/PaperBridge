@@ -1,10 +1,16 @@
 # Windows AMD 真机回归
 
+## 0.2.27 公开便携版 · 2026-11-20（美国中部）
+
+从 GitHub 下载的 0.2.27 在 RX 7800 XT 上运行 `translategemma:4b`，实测显示公式及代码中的 `$&` 原样保存并重启恢复。在真实论文的编码器段落，应用按术语表译作“逐位置全连接前馈网络”，两次请求耗时 0.79 秒和 0.68 秒，生成速度约 129 tokens/s。Ollama 报告模型占用与显存占用均为 2,881,948,220 字节。包含公式、引用和论文资源的重启验证通过。术语表的同版本有无对照见下方 0.2.26 记录。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.27) · 本机报告 `test-artifacts/public-0.2.27-amd-protected-U0NUxy/result.json`、`test-artifacts/portable-0227-amd-glossary-q1hk0o/result.json`。
+
 ## 0.2.26 公开便携版 · 2026-11-20（美国中部）
 
 同一台 RX 7800 XT 以 `translategemma:4b` 在公开 0.2.25 和 0.2.26 上翻译同一段包含显示公式及代码的英语测试文本。两次模型原始回复相同。旧版把双美元公式保存成单美元，并把代码中的 `$&` 写成占位符。新版在阅读器保存并重启后保留了 `$$E = m c^2$$` 和 `const sample = "$&"`。新版单次请求耗时 4.76 秒，约 131 tokens/s。两次本机原始报告分别为 `test-artifacts/public-0.2.25-amd-protected-r3id4p/result.json` 和 `test-artifacts/public-0.2.26-amd-protected-qSJZsU/result.json`。
 
-在另一份已保存的真实 MinerU 论文上，新版重译 Transformer 编码器段落，两次请求耗时 1.79 秒和 0.66 秒。Ollama 报告模型占用与显存占用均为 2,881,948,220 字节。公式、引用、论文资源和重启恢复验证通过。模型仍将 *position-wise* 译为“位置相关的”，该处应按上下文理解为“逐位置的”。这次运行复用了已加载的模型，后端加载日志见下方 0.2.25 的独立记录。[公开发布](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.26) · 本机报告 `test-artifacts/portable-0226-amd-mineru-9dwTMg/result.json`。
+在另一份已保存的真实 MinerU 论文上，新版重译 Transformer 编码器段落，两次请求耗时 1.79 秒和 0.66 秒。Ollama 报告模型占用与显存占用均为 2,881,948,220 字节。公式、引用、论文资源和重启恢复验证通过。模型将原文 *positionwise* 译为“位置相关的”，该处应按上下文理解为“逐位置的”。这次运行复用了已加载的模型，后端加载日志见下方 0.2.25 的独立记录。[公开发布](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.26) · 本机报告 `test-artifacts/portable-0226-amd-mineru-9dwTMg/result.json`。
+
+在同一版本、同一论文和模型上，给隔离工作区添加英语 → 简体中文术语 `positionwise fully connected feed-forward network` → `逐位置全连接前馈网络`，再重译同一段。请求中包含该术语，译文逐字采用指定译法，公式和引用保留，重启再次打开仍一致。原论文库和原术语表保持原样。本机报告 `test-artifacts/portable-0226-amd-glossary-gNFxYQ/result.json`。
 
 2026-11-20（美国中部），从 GitHub 公开下载的 [0.2.25 Portable](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.25) 在 RX 7800 XT 上用 Ollama 的 `translategemma:4b` 翻译了一段真实论文。程序识别出约 16 GiB 独显和 512 MiB 核显，Ollama 本次新增日志确认使用 ROCm。模型分配与显存分配同为 2,881,948,220 字节，两次请求耗时 4.62 秒和 0.65 秒，生成速度分别约 129.8 和 130.3 tokens/s。两处公式与源文本一致，关闭并重新打开后译文和批注保留。模型把 “position-wise” 译成了“位置相关的”，此处应理解为“逐位置的”。完整记录在 `test-artifacts/portable-0225-amd-mineru-O2Bfwz/result.json`。
 

@@ -1,5 +1,13 @@
 # Windows 全软件功能复查：2026-09-20
 
+## Windows 0.2.27 公开下载、更新与首次使用
+
+Edge 在仓库首页下载了两份已发布的 EXE。大小与 SHA-256 均匹配 Release，两份下载均保留互联网来源标记。全新 Windows runner 下载公开文件并实际打开便携版和安装后的程序。本机从公开 0.2.26 收到 0.2.27 提示，升级后重启并恢复旧论文、阅读设置、笔记和高亮。隔离工作区让 Ollama、MinerU 均不可用，首次跳过引导，拖入带中文文件名的双页 PDF，添加笔记及高亮后重启恢复。[发布工作流](https://github.com/haoyunLi/PaperBridge/actions/runs/44871977308) · [发布与 SHA-256](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.27)
+
+0.2.27 的新版提示和 Settings → Updates 使用当前运行版本的类型。已安装版直接下载 Setup；便携版仅在目标版本已有可下载的 Portable 时显示对应按钮。下载在系统浏览器中进行。Electron 的重启测试捕获按钮交给浏览器的 URL，并对照实际公开 0.2.27 的文件清单核对两种地址。使用隔离的新版本缓存，另在打包的程序和公开便携版上验证按钮文字与“稍后”之后的设置入口。本机报告为 `test-artifacts/i-mwpzjjaw-ttg/report.json`、`test-artifacts/browser-download-0.2.27-cww7w3/result.json`、`test-artifacts/public027-reader-without-models-WDHTZd/result.json` 和 `test-artifacts/public-027-edition-o9aMs5/result.json`。
+
+macOS Swift 与 Windows 的对照已加入两端实际内置的十二段练习文档。正文、分段、章节、阅读地图、提取提示和来源段号都通过比较。连同其他六组论文输入及四组 Markdown 还原样例，均使用各自平台的生产实现。[macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44872342773/job/136749535977)
+
 ## Windows 0.2.26 公开下载及 macOS 对照
 
 Edge 从仓库首页重新下载了 Setup 和 Portable。两份 EXE 的 SHA-256 与 GitHub Release 和附带校验文件一致，Windows 的互联网来源标记均为 ZoneId=3。独立的全新 Windows runner 打开公开便携版及安装后的应用并验证首次引导。在本机从公开 0.2.25 检测到 0.2.26，升级和重启后可重新打开旧论文及原有笔记、高亮。自动测试覆盖公开二进制的启动，Windows 对每台设备显示的安全确认仍由使用者操作。[发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44870849946) · [AMD 真实推理及公式对照](AMD_DEVICE_TEST.md)
