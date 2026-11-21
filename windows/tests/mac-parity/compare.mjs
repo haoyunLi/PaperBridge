@@ -13,6 +13,7 @@ const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const searchBlocks = fixtures.readerSearch.blocks.map(({ source, translation }, index) => ({ id: index + 1, text: source, translation }));
 assert.deepEqual(fixtures.readerSearch.queries.map(query => filteredReaderBlocks(searchBlocks, query).map(block => block.id)),
   reference.readerSearch, 'Search the source and translation independently, using native case and accent boundaries');
+console.log(`Verified ${fixtures.readerSearch.queries.length} Reader queries against native macOS search.`);
 const practice = blocksFromText(practiceParagraphs.join('\n\n'));
 assert.deepEqual(practice.map(block => block.text), reference.practice, 'Built-in practice paper text and segmentation');
 const papers = [...fixtures.papers, { name: 'built-in practice', blocks: practice }];

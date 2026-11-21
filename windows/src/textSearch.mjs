@@ -19,19 +19,19 @@ export function searchKey(value) {
 // halfway through the characters produced by its Unicode case fold.
 export function searchableText(raw = '') {
   const source = canonical(raw);
+  if (ascii.test(source)) {
+    const key = source.toLowerCase();
+    return { includes: needle => key.includes(needle) };
+  }
   let key = '';
   const inside = new Set();
-  if (ascii.test(source)) {
-    key = source.toLowerCase();
-  } else {
-    for (const character of source) {
-      const mapping = lookupFolding(character.codePointAt(0));
-      if (!mapping) key += character;
-      else {
-        for (const [index, point] of mapping.entries()) {
-          if (index) inside.add(key.length);
-          key += String.fromCodePoint(point);
-        }
+  for (const character of source) {
+    const mapping = lookupFolding(character.codePointAt(0));
+    if (!mapping) key += character;
+    else {
+      for (const [index, point] of mapping.entries()) {
+        if (index) inside.add(key.length);
+        key += String.fromCodePoint(point);
       }
     }
   }
@@ -40,7 +40,9 @@ export function searchableText(raw = '') {
       if (!needle) return true;
       if (marksOnly.test(needle)) return (raw ?? '').includes(needle);
       for (let at = key.indexOf(needle); at >= 0; at = key.indexOf(needle, at + 1)) {
-        if (!inside.has(at) && !inside.has(at + needle.length)) return true;
+        const end = at + needle.length;
+        // Uncomposed marks such as the macron in x̄ belong to the preceding base.
+        if (!inside.has(at) && !inside.has(end) && !/^\p{M}/u.test(key.slice(end, end + 2))) return true;
       }
       return false;
     }
