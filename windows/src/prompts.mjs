@@ -76,16 +76,17 @@ export function protectMarkdown(markdown) {
 }
 
 export function restoreMarkdown(translated, tokens, retryTarget = 'block') {
-  const message = `The model changed a protected formula, figure, or link. Retry this ${retryTarget}.`;
+  const invalidMarkers = () => Object.assign(new Error(`The model changed a protected formula, figure, or link. Retry this ${retryTarget}.`),
+    { code: 'PROTECTED_MARKDOWN_CHANGED' });
   let index = 0;
   // A single callback pass restores original bytes, including $$, $& and
   // literal placeholder names inside the paper or its code samples.
   const result = translated.replace(/__PAPERBRIDGE_TOKEN_\d+__/g, marker => {
     const expected = tokens[index++];
-    if (!expected || expected[0] !== marker) throw new Error(message);
+    if (!expected || expected[0] !== marker) throw invalidMarkers();
     return expected[1];
   });
-  if (index !== tokens.length) throw new Error(message);
+  if (index !== tokens.length) throw invalidMarkers();
   return result;
 }
 

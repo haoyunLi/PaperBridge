@@ -26,6 +26,7 @@ async function run() {
   const excerpts = [];
   let heldResponse;
   let initialRun = true;
+  let omitRetryMarker = true;
   const ollama = http.createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [{ model }] }));
@@ -36,6 +37,15 @@ async function run() {
     const prompt = JSON.parse(body).prompt;
     const excerpt = prompt.split('Paper excerpt:\n').at(-1);
     excerpts.push(excerpt);
+    if (prompt.includes('<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>') && prompt.includes('Formula fixture B')) {
+      if (omitRetryMarker) { response.statusCode = 503; return response.end('{}'); }
+      return response.end(JSON.stringify({ response: '续译', done: true }));
+    }
+    if (excerpt.startsWith('Formula fixture')) {
+      const incomplete = excerpt.includes('Formula fixture B');
+      const translation = incomplete ? '缺失公式。' : '保留公式 ' + (excerpt.match(/__PAPERBRIDGE_TOKEN_\d+__/g) || []).join(' ');
+      return response.end(JSON.stringify({ response: translation, done: true }));
+    }
     if (initialRun && excerpt.startsWith('Separate middle batch.')) {
       response.statusCode = 503;
       return response.end('{}');
@@ -265,6 +275,34 @@ async function run() {
     const exported = fs.readFileSync(destination, 'utf8');
     assert.ok(exported.includes(citations.join('\n\n')));
     assert.doesNotMatch(exported, /\[Untranslated block [456]\]/);
+    const formulas = ['Formula fixture A. ' + 'A measured variable. '.repeat(48) + '$x_1$.',
+      'Formula fixture B. ' + 'A fitted coefficient. '.repeat(48) + '$$y = 2$$.'];
+    await openPasteText(page);
+    await page.locator('.paste-area').fill(formulas.join('\n\n'));
+    const formulaId = await loadPastedText(page, { view: 'Paper' });
+    await openWorkspaceView(page, 'Full Translation');
+    const resume = page.getByRole('button', { name: 'Resume unfinished batches', exact: true });
+    const offset = excerpts.length;
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await resume.waitFor();
+    const formulaFile = path.join(workspace, 'papers', formulaId + '.json');
+    const formulaDraft = () => JSON.parse(fs.readFileSync(formulaFile, 'utf8')).connectedBlocks[0];
+    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.errorCode === 'PROTECTED_MARKDOWN_CHANGED', formulaId);
+    assert.equal(formulaDraft().output, formulas.join('\n\n'));
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    const retry = page.getByRole('button', { name: 'Resume unfinished batches', exact: true });
+    await retry.click();
+    await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'hidden' });
+    assert.equal(excerpts.length - offset, 4);
+    assert.equal(formulaDraft().output, formulas.join('\n\n'), 'A partial retry cannot replace a complete source batch');
+    omitRetryMarker = false;
+    await retry.click();
+    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'ok', formulaId);
+    assert.equal(formulaDraft().output, '保留公式 $x_1$\n\n续译 $$y = 2$$.');
+    assert.equal(excerpts.length - offset, 7);
+    assert.deepEqual(excerpts.slice(-3), excerpts.slice(-6, -3));
     console.log('Connected translation verified: excerpt batching, references, unknown legacy resume, failed-batch original fallback, language variants, contradictory metadata surviving Resume/restart and clearing only after full regeneration.');
   } finally {
     heldResponse?.destroy();

@@ -30,7 +30,7 @@ import { readerLineHeight } from '../electron/reading-appearance.mjs';
 import { modelSettingsPatch } from './modelCatalog.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
-import { connectedBatchVersion, pendingConnectedBatches, planConnectedBatches, restoreConnectedExcerpt } from './connectedTranslation.mjs';
+import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
 import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
@@ -2492,16 +2492,39 @@ function App() {
         if (batch.status === 'ok') continue;
         requireActiveTask(token);
         setBusy({ label: `Translating full paper · batch ${done + 1} of ${translationCount}` });
+        const localRetry = isLocalMarkupRetry(batch, previous?.[index], config.aiProvider);
         try {
-          const protectedExcerpt = protectMarkdown(batch.source);
-          const prompt = connectedTranslationPrompt(protectedExcerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(protectedExcerpt.text));
-          const answer = await generate(translationModel, prompt, translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage)), token);
-          const output = restoreConnectedExcerpt(answer, protectedExcerpt.tokens);
+          const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
+          let output = '';
+          const parts = connectedRetryExcerpts(batch, localRetry);
+          for (const [partIndex, part] of parts.entries()) {
+            requireActiveTask(token);
+            if (parts.length > 1) setBusy({ label: `Retrying batch ${done + 1} · part ${partIndex + 1} of ${parts.length}` });
+            const excerpt = protectMarkdown(part.source);
+            const prompt = connectedTranslationPrompt(excerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(excerpt.text, config.sourceLanguage, config.targetLanguage));
+            const answer = await generate(translationModel, prompt, instructions, token);
+            let translated;
+            try {
+              translated = restoreConnectedExcerpt(answer, excerpt.tokens);
+            } catch (error) {
+              if (!localRetry || error.code !== 'PROTECTED_MARKDOWN_CHANGED' || !excerpt.tokens.length) throw error;
+              translated = await translateAroundMarkup(excerpt, async selection => {
+                const prompt = strictSelectionTranslationPrompt(selection, config.sourceLanguage, config.targetLanguage,
+                  matchingTerms(selection, config.sourceLanguage, config.targetLanguage));
+                const result = await generate(translationModel, prompt, instructions, token);
+                if (isLikelyOverexpandedSelection(result, selection)) throw new Error('The model expanded the excerpt instead of translating it.');
+                return result;
+              });
+            }
+            output += part.separator + translated;
+          }
           batches[index] = { ...batch, output, translationLanguage: normalizeOutputLanguage(config), status: 'ok' };
         } catch (cause) {
           if (token.cancelled) return;
           if (config.aiProvider === 'openai' && isGlobalOpenAIError(cause.message)) throw cause;
-          batches[index] = { ...batch, status: 'failed', error: cause.message };
+          batches[index] = { ...batch, status: 'failed', error: cause.message,
+            ...(cause.code === 'PROTECTED_MARKDOWN_CHANGED' && { errorCode: cause.code }),
+            ...(localRetry && { retryProtectedMarkup: true }) };
         }
         saveDraft(batches);
         setProgress({ done: ++done, total: translationCount });

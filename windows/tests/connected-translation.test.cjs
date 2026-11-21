@@ -23,6 +23,44 @@ test('connected translation groups adjacent paragraphs and leaves resources and 
   ]);
 });
 
+test('explicit local formula retries preserve paragraph separators and whole protected Markdown', async () => {
+  const { connectedRetryExcerpts, isLocalMarkupRetry, restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
+  const { protectMarkdown } = await import('../src/prompts.mjs');
+  const formula = '$$N = 6\n\nx = 9$$';
+  const source = 'Intro '.repeat(170) + formula + '\r\n \r\n' + 'Next '.repeat(160) + '`sample`\n\nEnd.';
+  const batch = { kind: 'translation', source };
+  const failed = { ...batch, errorCode: 'PROTECTED_MARKDOWN_CHANGED', status: 'failed' };
+  const pieces = connectedRetryExcerpts(batch, isLocalMarkupRetry(batch, failed, 'ollama'));
+  assert.equal(pieces.length, 3);
+  assert.equal(pieces.map(part => part.separator + part.source).join(''), source);
+  assert.ok(pieces[0].source.endsWith(formula));
+  assert.equal(pieces[1].separator, '\r\n \r\n');
+  const legacy = { ...batch, status: 'failed', error: 'The model changed a protected formula, figure, or link. Retry this batch.' };
+  assert.equal(isLocalMarkupRetry(batch, legacy, 'ollama'), true);
+  for (const [saved, provider] of [[undefined, 'ollama'], [failed, 'openai'], [{ ...failed, source: 'Old' }, 'ollama'],
+    [{ ...failed, status: 'ok' }, 'ollama'], [{ ...failed, errorCode: 'NETWORK' }, 'ollama']]) {
+    assert.equal(isLocalMarkupRetry(batch, saved, provider), false);
+  }
+  const protectedFormula = protectMarkdown(formula);
+  assert.throws(() => restoreConnectedExcerpt('Lost formula.', protectedFormula.tokens), { code: 'PROTECTED_MARKDOWN_CHANGED' });
+});
+
+test('last-resort local translation takes protected bytes and split technical words from the source', async () => {
+  const { protectMarkdown } = await import('../src/prompts.mjs');
+  const { translateAroundMarkup } = await import('../src/connectedTranslation.mjs');
+  const source = 'Learn pre-so<u>ftmax</u> with $x_1$.\r\n\r\nCompare `$&` and $$y = 2$$.';
+  const seen = [];
+  const translated = await translateAroundMarkup(protectMarkdown(source), async text => {
+    seen.push(text);
+    return { Learn: '学习', with: '使用', Compare: '比较', and: '与' }[text];
+  });
+  assert.deepEqual(seen, ['Learn', 'with', 'Compare', 'and']);
+  assert.equal(translated, '学习 pre-so<u>ftmax</u> 使用 $x_1$.\r\n\r\n比较 `$&` 与 $$y = 2$$.');
+  for (const answer of ['', '__PAPERBRIDGE_TOKEN_1__', '<img src=x>']) {
+    await assert.rejects(translateAroundMarkup(protectMarkdown('Compare $x$.'), async () => answer), /could not translate/);
+  }
+});
+
 test('long excerpts preserve punctuation, Unicode, and whole protected figures at a batch boundary', async () => {
   const { planConnectedBatches, restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
   const { protectMarkdown } = await import('../src/prompts.mjs');
