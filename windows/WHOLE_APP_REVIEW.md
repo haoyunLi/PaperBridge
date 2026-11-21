@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.30 公开下载与升级（2026-11-21）
+
+在仓库首页用 Edge 下载 x64 Setup 和 Portable，两个 EXE 的 SHA-256、大小和版本均符合 GitHub Release，均为未签名发布，也都保留了 Windows 互联网来源标记。GitHub 在独立 Windows 环境中打开两个公开下载并验证首次引导。本机在模型不可用的隔离工作区中跳过引导，导入带中文文件名的两页 PDF，添加笔记和高亮，重启后均可恢复。原先报告的手动系统确认后无窗口，仍需该设备的交互结果来确认具体原因。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.30) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44879565255/job/136773656470)
+
+0.2.29 的真实安装版与便携版各自发现 0.2.30。在设置中开启后台下载，收到的文件分别与新版本 Setup 和 Portable 的公开 SHA-256 相同，均保留 `ZoneId=3`。安装版还核对了交给资源管理器的实际文件。使用公开 Setup 完成升级并重启后，旧版创建的 12 个练习段落、笔记、高亮、阅读外观和图书馆标签完整。卸载隔离安装后再次核对了论文和索引。报告为 `test-artifacts/i-mwq36h8b-gz8/report.json`、`test-artifacts/public029-to030-portable-update-6TUmXM/result.json`、`test-artifacts/public030-reader-without-models-W3pRyp/result.json` 和 `test-artifacts/browser-download-0.2.30-a1L3pT/result.json`。[AMD 全文译稿验收](AMD_DEVICE_TEST.md)
+
 ## Windows 0.2.29 公开下载、后台更新与阅读定位（2026-11-21）
 
 在仓库首页用 Edge 下载 Setup 和 Portable。两份文件均为未签名的 x64 EXE，SHA-256 与 GitHub 发布资产及对应校验文件相符，都保留了互联网来源标记 `ZoneId=3`。GitHub 的独立 Windows runner 从公开地址下载两份文件，启动便携版及安装后的应用，均进入首次引导。本机便携版跳过引导，在模型服务不可用时导入带中文文件名的两页 PDF，保存笔记和高亮并在重启后恢复。[公开文件与校验值](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.29) · [公开下载和启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44877257309/job/136766249081)

@@ -14,7 +14,7 @@ PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Porta
 
 如果以后希望免费提供经过签名的版本，可以考虑以下渠道。
 
-- 使用 MSIX 向 Microsoft Store 提交。商店认证通过后由微软为商店包签名，用户从商店安装。现有 GitHub EXE 继续沿用自己的发布流程。[微软的分发与签名选项](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)
+- 美国个人开发者可以从微软的个人开发者注册入口免费开通 Microsoft Store 账户。本人需要使用证件和自拍完成身份核验。将 MSIX 提交至商店，认证通过后由微软为商店包签名，用户从商店安装。GitHub 下载的 EXE 有独立的签名状态。[个人免费注册与核验步骤](https://learn.microsoft.com/en-us/windows/apps/publish/whats-new-individual-developer) · [微软的分发与签名选项](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)
 - SignPath Foundation 为符合条件的开源项目提供免费签名。申请要求包括 OSI 认可的许可证、满足组件来源要求和逐次人工批准签名。当前仓库根目录没有声明项目许可证，是否采用开源许可由著作权人决定。[基金会申请条件](https://signpath.org/terms)
 
 ## 美国个人开发者申请

@@ -1,5 +1,13 @@
 # Windows AMD 真机回归
 
+## 0.2.30 公开便携版与开发分支（2026-11-21）
+
+RX 7800 XT 上的公开便携版通过键盘选中全文译稿中的“注”，再以鼠标选中“注意力函数”，回译为“Attention function”。应用通过本机 Ollama 返回选区解释。三次依次切换高亮颜色后仍只有一条高亮。保存笔记、将术语改为“注意力映射函数”、关闭软件并重新生成译稿，旧引文消失时，批注列表提示需要复核，笔记和高亮再次重启后仍在。此次输入为《Attention Is All You Need》的第 35、42 段，4 次模型请求均使用 `translategemma:4b`，Ollama 报告模型及显存占用均为 2,881,948,220 字节。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.30) · 本机报告 `test-artifacts/public030-amd-regenerated-notes-6OWhmi/result.json`。
+
+较长样例取自同一论文第 35 至 76 段中的 36 段文字，分成三批。公开 0.2.30 在本地模型漏掉受保护标记时保留了该批次的原文。显式续译后，三批中原有的 25、14 和 7 处公式或标记均按原顺序保留。不过，模型还将一个 29 字符的小标题扩写到 553 字符，并添加了一段原文没有的 Softmax 公式代码，因此公开包未通过这次严格的译稿保真检查。记录位于 `test-artifacts/public030-amd-regenerated-multi-znRKAX/result.json`。随后复制这份真实译稿到隔离工作区，在同一公开便携版中标注首段术语并改词重译。新的三批译文保留全部 46 处原有标记。旧选区在其他位置仍有三处相同引文，界面提示复核，重启后笔记与高亮均保留。本机报告 `test-artifacts/public030-captured-annotation-L1rZxA/result.json` 分别记录批注结果与初译中额外的公式。
+
+开发分支拒绝模型自行添加的公式、代码、链接和明显的标题扩写。以公开版真实返回的 553 字符回答回放时命中了校验。再在同一台机器上用相同的 36 段原文完成初译、改术语、重生成及重启。两份完整译稿逐批保留了原有的全部 46 处标记，未出现新增标记。重译后旧引文在其他位置出现三次，批注列表提示需要复核，保存的笔记内容及颜色都可恢复。两轮合计 43 次本地模型请求，耗时合计约 61 秒。该结果针对这份节选和这次模型输出。[开发分支修复](https://github.com/haoyunLi/PaperBridge/commit/0267dd4) · 本机报告 `test-artifacts/development030-amd-regenerated-multi-6kyCiq/result.json`。
+
 ## 0.2.29 公开便携版与开发分支对照（2026-11-21）
 
 从 GitHub 下载的便携版在 RX 7800 XT 上使用 `translategemma:4b` 翻译 Transformer 编码器段落。两次请求分别生成 80 和 66 个 token，实测生成速度为 126.4 和 128.6 tokens/s。模型采用了术语表中的“逐位置全连接前馈网络”。Ollama 报告模型与显存占用均为 2,881,948,220 字节。重启后保存的原文、公式和译文通过校验。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.29) · 本机报告 `test-artifacts/portable-0229-amd-glossary-66b6sG/result.json`。
