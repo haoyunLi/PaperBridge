@@ -303,8 +303,7 @@
     {
       "name": "numerical range across pages",
       "left": "The range of scores was 12-",
-      "right": "3 in the source table.",
-      "windowsText": "The range of scores was 12-3 in the source table."
+      "right": "3 in the source table."
     },
     {
       "name": "same-page style compound across pages",

@@ -40,9 +40,10 @@ export function stitchPageBlocks(blocks) {
       !/^(?:(?:figure|table|references|bibliography)\b|fig\.\s*\d|[图表]\s*\d|\[\d+\]|\d+[.)]\s)/iu.test(right);
     const proseContinuation = /[\p{Ll}‐-]$/u.test(left) && /^[\p{Ll},;:)]/u.test(right);
     // Technical tokens can resume with a digit or capital at the top of the
-    // next page. Require following prose so an isolated label stays separate.
+    // next page. Keep isolated labels and two adjacent numeric entries separate.
     const technicalContinuation = /[\p{L}\p{N}][-‐]$/u.test(left)
-      && /^[\p{Lu}\p{N}][\p{L}\p{N}-]*\s+\p{Ll}/u.test(right);
+      && /^[\p{Lu}\p{N}][\p{L}\p{N}-]*\s+\p{Ll}/u.test(right)
+      && !(/\p{N}[-‐]$/u.test(left) && /^\p{N}/u.test(right));
     const continuation = proseContinuation || technicalContinuation;
     if (adjacent && prose && continuation && (left.length >= 20 || /[‐-]$/.test(left))) {
       previous.text = joinPdfText(left, right);
