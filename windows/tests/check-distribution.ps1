@@ -1,5 +1,5 @@
 # Run only on disposable CI machines: NSIS creates per-user registry entries.
-param([Parameter(Mandatory)][string] $Directory, [Parameter(Mandatory)][string] $Version)
+param([Parameter(Mandatory)][string] $Directory, [Parameter(Mandatory)][string] $Version, [string] $MacReference)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
     throw 'Actual installation requires a fresh GitHub-hosted Windows runner.'
@@ -24,6 +24,19 @@ try {
         throw "Installed version $installedVersion does not match release $Version"
     }
     & "$PSScriptRoot/launch-distribution.ps1" -Executable $exe -CheckRelaunch
+    if ($MacReference) {
+        $previousExecutable = $env:PAPERBRIDGE_TEST_EXECUTABLE
+        $previousReference = $env:PAPERBRIDGE_MAC_REFERENCE
+        try {
+            $env:PAPERBRIDGE_TEST_EXECUTABLE = $exe
+            $env:PAPERBRIDGE_MAC_REFERENCE = (Resolve-Path -LiteralPath $MacReference).Path
+            node "$PSScriptRoot/import-modes-e2e.cjs"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the native PDF import comparison' }
+        } finally {
+            $env:PAPERBRIDGE_TEST_EXECUTABLE = $previousExecutable
+            $env:PAPERBRIDGE_MAC_REFERENCE = $previousReference
+        }
+    }
 } finally {
     $uninstall = Join-Path $install 'Uninstall PaperBridge.exe'
     if (Test-Path -LiteralPath $uninstall) { Run-NSIS $uninstall "/S /currentuser _?=$install" }

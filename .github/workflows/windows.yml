@@ -197,7 +197,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Download and open both public Windows executables
+      - name: Download and verify both public Windows executables
         id: public-download
         shell: pwsh
         working-directory: windows
@@ -232,7 +232,6 @@ jobs:
             }
             $feed.files[$kind] = [ordered]@{ size = $download.Length; sha256 = $hash }
           }
-          ./tests/check-distribution.ps1 -Directory $dir.FullName -Version $version
           "portable=$(Join-Path $dir.FullName "PaperBridge-Windows-$version-x64-Portable.exe")" >> $env:GITHUB_OUTPUT
           "release_feed=$($feed | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
       - uses: actions/setup-node@v4
@@ -241,7 +240,12 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: windows/package-lock.json
-      - name: Read a paper offline with the publicly downloaded Portable
+      - uses: actions/download-artifact@v4
+        if: steps.public-download.outputs.portable != ''
+        with:
+          name: mac-reading-reference
+          path: ${{ runner.temp }}/mac-reference
+      - name: Open both public downloads and check the installed reader against macOS
         if: steps.public-download.outputs.portable != ''
         shell: pwsh
         working-directory: windows
@@ -250,6 +254,15 @@ jobs:
         run: |
           npm ci --ignore-scripts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          ./tests/check-distribution.ps1 -Directory (Split-Path $env:PUBLIC_PORTABLE) -Version $version -MacReference (Join-Path $env:RUNNER_TEMP 'mac-reference/mac-reference.json')
+      - name: Read a paper offline with the publicly downloaded Portable
+        if: steps.public-download.outputs.portable != ''
+        shell: pwsh
+        working-directory: windows
+        env:
+          PUBLIC_PORTABLE: ${{ steps.public-download.outputs.portable }}
+        run: |
           node tests/portable-relaunch-pdf.cjs "$env:PUBLIC_PORTABLE"
 
   publish-update-feed:
