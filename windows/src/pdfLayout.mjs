@@ -12,10 +12,14 @@ function textRows(items, left, bottom, width) {
     const height = item.height || 12;
     // Superscript numbers often have their own baseline and are emitted
     // directly after the name, word or formula they qualify. Keep that row.
-    const raisedSuffix = !vertical && previousText && !previousText.vertical &&
+    const adjacent = !vertical && previousText && !previousText.vertical && Math.abs(x - previousText.end) <= height * 0.5;
+    const raisedNumber = adjacent &&
       /^[\p{Nd}]+(?:\s*[,–-]\s*\p{Nd}+)*$/u.test(item.str.trim()) && /\p{L}/u.test(previousText.text) &&
-      height < previousText.height * 0.88 && y > previousText.y + height * 0.18 && y < previousText.y + previousText.height * 0.75 &&
-      Math.abs(x - previousText.end) <= height * 0.5;
+      height < previousText.height * 0.88 && y > previousText.y + height * 0.18 && y < previousText.y + previousText.height * 0.75;
+    // A publisher may draw the numeric affiliation and its contribution symbol in separate fonts.
+    const raisedSuffix = raisedNumber || (adjacent && previousText.raisedSuffix &&
+      /^[*†‡§¶☯]{1,3}$/u.test(item.str.trim()) && Math.abs(y - previousText.y) <= height * 0.2 &&
+      Math.abs(height - previousText.height) <= height * 0.2);
     let row = raisedSuffix ? previousText.row : rows.find(candidate => candidate.vertical === vertical && Math.abs(candidate.y - y) < Math.max(2, height * 0.4));
     if (!row) {
       row = { y, items: [], vertical };
@@ -25,7 +29,7 @@ function textRows(items, left, bottom, width) {
     const spaceBefore = previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
     const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore };
     row.items.push(placed);
-    previousText = { ...placed, vertical, row };
+    previousText = { ...placed, vertical, row, raisedSuffix };
   }
   return rows.sort((a, b) => b.y - a.y);
 }
@@ -96,7 +100,7 @@ function journalSidebarBoundary(rows, width) {
     if (vertical) continue;
     for (const item of items) {
       if (item.x > width * 0.15) break;
-      const label = /^(doi|editors?|reviewers?|received|submitted|accepted|published|licen[cs]e)\s*(?::|$)/i.exec(item.text.trim());
+      const label = /^(doi|citation|editors?|reviewers?|received|submitted|accepted|published|copyright|funding|competing interests|licen[cs]e)\s*(?::|$)/i.exec(item.text.trim());
       if (label) {
         labels.add(label[1].toLowerCase());
         top = Math.max(top, y);
@@ -139,10 +143,17 @@ export function pageLines(content, [left, bottom, right, top]) {
   for (const row of physicalRows) row.items.sort((a, b) => a.x - b.x);
   const sidebar = journalSidebarBoundary(physicalRows, width);
   if (sidebar !== null) {
+    // PLOS draws this white text underneath its first-page logo. Limit removal to
+    // the known repeated placeholder in the publisher's editorial margin.
+    const hasPlosLogo = physicalRows.some(row => row.items.some(item => /10\.1371\/journal\./i.test(item.text))) &&
+      physicalRows.filter(row => row.items.some(item => item.x < sidebar && item.text === 'a1111111111')).length >= 3;
     return physicalRows.flatMap(({ y, items, vertical }) => {
-      if (vertical || items.some(item => item.x < sidebar && item.end > sidebar)) return [lineFromItems(items, y, vertical, pageHeight)];
+      if (vertical) return [lineFromItems(items, y, true, pageHeight)];
+      if (items.some(item => item.x < sidebar && item.end > sidebar)) {
+        return splitDistantItems(items, width).map(group => lineFromItems(group, y, false, pageHeight));
+      }
       const article = items.filter(item => item.x >= sidebar);
-      const margin = items.filter(item => item.x < sidebar);
+      const margin = items.filter(item => item.x < sidebar && !(hasPlosLogo && item.text === 'a1111111111'));
       const lines = [];
       if (margin.length) lines.push({ ...lineFromItems(margin, y, false, pageHeight), journalMetadata: true });
       if (article.length) lines.push(lineFromItems(article, y, false, pageHeight));
@@ -202,7 +213,7 @@ export function pdfReadingGroups(lines) {
   if (lines.some(line => line.journalMetadata)) {
     const metadata = lines.filter(line => line.journalMetadata).map(line => /^\s*•/u.test(line.text) ? { ...line, independent: true } : line);
     const article = lines.filter(line => !line.journalMetadata);
-    const section = article.findIndex(line => /^(?:\d+\.?\s+)?(?:abstract|summary|introduction)\s*$/i.test(line.text));
+    const section = article.findIndex(line => /^(?:\d+\.?\s+)?(?:abstract|summary|overview|introduction)\s*$/i.test(line.text));
     return section >= 0 ? [...publicationFrontMatter(article.slice(0, section)), metadata, article.slice(section)] : [article, metadata];
   }
   if (!lines.some(line => line.lane)) return [lines];
