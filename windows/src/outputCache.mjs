@@ -1,7 +1,7 @@
 // Keep results under the settings that produced them, as macOS workspaces do.
 import { reviewSavedReferenceCoverage } from './references.mjs';
 import { activeAIModel, aiCacheNamespace } from './aiSettings.mjs';
-import { analysisSourceText, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { analysisSourceText, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { migrateOutputLanguages, normalizeOutputLanguage } from './outputLanguages.mjs';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -126,7 +126,7 @@ function switchDocumentOutputs(current, destination, previous, next) {
 
 function switchPaperOutputs(current, destination, previous, next, destinationSettings = previous) {
   const paragraphs = switchParagraphOutputs(destination, destinationSettings, next);
-  const restored = reviewSavedReferenceCoverage(switchDocumentOutputs(current, paragraphs, previous, next));
+  const restored = restoreStructuredTranslations(reviewSavedReferenceCoverage(switchDocumentOutputs(current, paragraphs, previous, next)));
   if (restored.connectedShared && !restored.connectedStale && usesSharedMarkdown(restored)
       && translationKey(destinationSettings) !== translationKey(next)) return withSharedMarkdownTranslation(restored);
   return restored;

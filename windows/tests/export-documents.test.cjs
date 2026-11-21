@@ -1,6 +1,29 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('restore plain-only structured translations without replacing independent drafts or existing Markdown', async () => {
+  const { parsedMarkdownBlocks, restoreStructuredTranslations } = await import('../src/academicMarkdown.mjs');
+  const source = '## Title\n\n2) Compare readings.\n\n> Keep dry.';
+  const blocks = parsedMarkdownBlocks(source).map((block, index) => ({
+    ...block, translation: ['## 标题', '2) 比较读数。', '> 保持干燥。\n记录时间。'][index], status: 'ok'
+  }));
+  const old = blocks.map(block => block.translation).join('\n\n');
+  const paper = { sourceMode: 'mineru', blocks, connectedShared: true, connectedTranslation: old };
+  const recovered = restoreStructuredTranslations(paper);
+  assert.deepEqual(recovered.blocks.map(block => block.translationMarkdown), ['## 标题', '2) 比较读数。', '> 保持干燥。\n> 记录时间。']);
+  assert.equal(recovered.connectedTranslation, recovered.blocks.map(block => block.translationMarkdown).join('\n\n'));
+  assert.equal(restoreStructuredTranslations(recovered), recovered);
+  for (const overrides of [{ connectedTranslation: 'Edited draft' }, { connectedStale: true },
+    { connectedShared: false }, { connectedLanguageConflict: true }]) {
+    const variant = { ...paper, ...overrides };
+    assert.equal(restoreStructuredTranslations(variant).connectedTranslation, variant.connectedTranslation);
+  }
+  const explicit = { ...paper, blocks: blocks.map(block => ({ ...block, translationMarkdown: 'Custom Markdown' })) };
+  assert.equal(restoreStructuredTranslations(explicit), explicit);
+  const failed = { ...paper, blocks: blocks.map(block => ({ ...block, status: 'failed' })) };
+  assert.equal(restoreStructuredTranslations(failed), failed);
+});
+
 const modules = Promise.all([
   import('../src/exportDocuments.mjs'), import('../src/connectedTranslation.mjs'),
   import('../src/academicMarkdown.mjs'), import('../src/outputCache.mjs')

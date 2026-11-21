@@ -1,4 +1,4 @@
-import { usesSharedMarkdown, completedBlockTranslation } from './academicMarkdown.mjs';
+import { usesSharedMarkdown, completedBlockTranslation, restoreStructuredTranslations } from './academicMarkdown.mjs';
 import { analysisAnnotations, annotationsMarkdown } from './annotationsMarkdown.mjs';
 import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, legacySummaryTextNotice } from './paper.mjs';
 import { connectedTranslationMarkdown } from './connectedTranslationExport.mjs';
@@ -54,7 +54,7 @@ function analysisDocument(paper, references) {
 }
 
 export function markdownDocuments(input, _legacyTargetLanguage, kind) {
-  const paper = migrateOutputLanguages(input);
+  const paper = restoreStructuredTranslations(migrateOutputLanguages(input));
   const references = referenceBlockIds(paper.blocks);
   const structured = usesSharedMarkdown(paper);
   const facsimile = !kind && paper.type === 'pdf' && !structured;

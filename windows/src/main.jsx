@@ -11,7 +11,7 @@ import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOf
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
-import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { reviewSavedReferenceCoverage } from './references.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -1382,7 +1382,7 @@ function App() {
     if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
     // Capture the saved output's language before missing task settings are filled
     // from the current global configuration. Unknown historical output stays so.
-    loaded = reviewSavedReferenceCoverage(migrateOutputLanguages(loaded));
+    loaded = restoreStructuredTranslations(reviewSavedReferenceCoverage(migrateOutputLanguages(loaded)));
     let pagesMigrated = false;
     if (loaded.mineruMarkdown && loaded.mineruPageMapVersion !== mineruPageMapVersion) {
       const pageHints = await api.cachedMineruPages(loaded.id).catch(() => []);

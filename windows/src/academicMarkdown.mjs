@@ -40,9 +40,48 @@ export function completedBlockTranslation(block, references) {
     ? block.translationMarkdown || block.translation || '' : '';
 }
 
-export function withSharedMarkdownTranslation(paper) {
+function sharedMarkdownText(blocks, references) {
+  return blocks.map(block => completedBlockTranslation(block, references) || block.sourceMarkdown || block.text).join('\n\n');
+}
+
+// Older structured records may contain a plain translation without its Markdown.
+function restoreBlockStructure(block) {
+  if (block.status !== 'ok' || typeof block.translation !== 'string' || block.translationMarkdown || !block.sourceMarkdown) return block;
+  const kind = markdownBlockKind(block);
+  const text = block.translation.trim();
+  if (!text) return block;
+  let markdown;
+  if (kind === 'heading') {
+    const prefix = block.sourceMarkdown.trimStart().match(/^#{1,6}\s+/u)?.[0];
+    if (!prefix) return block;
+    markdown = prefix + text.replace(/^#{1,6}[ \t]+/, '');
+  } else if (kind === 'list') {
+    const prefix = block.sourceMarkdown.match(/^\s*(?:[-+*]|\d+[.)])\s+/u)?.[0];
+    if (!prefix) return block;
+    markdown = text.startsWith(prefix.trimStart()) ? prefix + text.slice(prefix.trimStart().length) : prefix + text;
+  } else if (kind === 'quote') {
+    markdown = text.split(/\r?\n/).map(line => /^>[ \t]?/.test(line) ? line : '> ' + line).join('\n');
+  } else return block;
+  return { ...block, translationMarkdown: markdown };
+}
+
+export function restoreStructuredTranslations(paper) {
+  if (!Array.isArray(paper?.blocks) || !usesSharedMarkdown(paper) || !paper.blocks.some(b => b.status === 'ok' && b.translation && !b.translationMarkdown)) return paper;
   const references = referenceBlockIds(paper.blocks);
-  const markdown = paper.blocks.map(block => completedBlockTranslation(block, references) || block.sourceMarkdown || block.text).join('\n\n');
+  const blocks = paper.blocks.map(block => block.resource || references.has(block.id) ? block : restoreBlockStructure(block));
+  if (!blocks.some((block, index) => block !== paper.blocks[index])) return paper;
+
+  // A saved draft may belong to a different language or have been edited. Only
+  // reconstruct it when its entire content matches this Reader's former output.
+  const refresh = paper.connectedShared && !paper.connectedStale && !paper.connectedLanguageConflict
+    && paper.connectedTranslation === sharedMarkdownText(paper.blocks, references);
+  return { ...paper, blocks, ...(refresh && { connectedTranslation: sharedMarkdownText(blocks, references) }) };
+}
+
+export function withSharedMarkdownTranslation(paper) {
+  paper = restoreStructuredTranslations(paper);
+  const references = referenceBlockIds(paper.blocks);
+  const markdown = sharedMarkdownText(paper.blocks, references);
   const translated = paper.blocks.filter(block => completedBlockTranslation(block, references));
   const connectedLanguage = translated.length ? commonOutputLanguage(translated.map(block => block.translationLanguage))
     : normalizeOutputLanguage(paper.taskSettings);
