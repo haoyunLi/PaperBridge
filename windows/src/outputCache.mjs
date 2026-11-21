@@ -1,4 +1,5 @@
 // Keep results under the settings that produced them, as macOS workspaces do.
+import { reviewSavedReferenceCoverage } from './references.mjs';
 import { activeAIModel, aiCacheNamespace } from './aiSettings.mjs';
 import { analysisSourceText, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { migrateOutputLanguages, normalizeOutputLanguage } from './outputLanguages.mjs';
@@ -87,7 +88,7 @@ function switchDocumentOutputs(current, destination, previous, next) {
         source, text: current.connectedTranslation, blocks: current.connectedBlocks, stale: current.connectedStale,
         connectedLanguage: normalizeOutputLanguage(current.connectedLanguage),
         connectedLanguageConflict: current.connectedLanguageConflict === true,
-        shared: current.connectedShared, batchVersion: current.connectedBatchVersion, notes, highlights
+        contentsChecked: current.connectedContentsChecked, shared: current.connectedShared, batchVersion: current.connectedBatchVersion, notes, highlights
       } };
     }
     const saved = variantFor(variants.connected, to, connectedKey(next));
@@ -99,7 +100,7 @@ function switchDocumentOutputs(current, destination, previous, next) {
       connectedLanguage: normalizeOutputLanguage(match?.connectedLanguage),
       connectedLanguageConflict: match?.connectedLanguageConflict === true,
       connectedStale: Boolean(match && (match.stale || !exact)), connectedShared: match?.shared || false,
-      connectedBatchVersion: match?.batchVersion ?? null,
+      connectedBatchVersion: match?.batchVersion ?? null, connectedContentsChecked: match?.contentsChecked === true,
       viewNotes: [...(result.viewNotes || []).filter(item => !isConnected(item)), ...(match?.notes || [])],
       viewHighlights: [...(result.viewHighlights || []).filter(item => !isConnected(item)), ...(match?.highlights || [])]
     });
@@ -125,7 +126,7 @@ function switchDocumentOutputs(current, destination, previous, next) {
 
 function switchPaperOutputs(current, destination, previous, next, destinationSettings = previous) {
   const paragraphs = switchParagraphOutputs(destination, destinationSettings, next);
-  const restored = switchDocumentOutputs(current, paragraphs, previous, next);
+  const restored = reviewSavedReferenceCoverage(switchDocumentOutputs(current, paragraphs, previous, next));
   if (restored.connectedShared && !restored.connectedStale && usesSharedMarkdown(restored)
       && translationKey(destinationSettings) !== translationKey(next)) return withSharedMarkdownTranslation(restored);
   return restored;

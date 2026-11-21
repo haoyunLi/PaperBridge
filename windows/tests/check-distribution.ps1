@@ -32,6 +32,8 @@ try {
             $env:PAPERBRIDGE_MAC_REFERENCE = (Resolve-Path -LiteralPath $MacReference).Path
             node "$PSScriptRoot/import-modes-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the native PDF import comparison' }
+            node "$PSScriptRoot/connected-translation-e2e.cjs"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed app failed connected translation and bibliography checks' }
         } finally {
             $env:PAPERBRIDGE_TEST_EXECUTABLE = $previousExecutable
             $env:PAPERBRIDGE_MAC_REFERENCE = $previousReference

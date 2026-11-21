@@ -31,6 +31,24 @@ function applyOutputs(paper, label) {
     summary: generated.summary, viewNotes: generated.viewNotes, viewHighlights: generated.viewHighlights };
 }
 
+test('restoring a language variant identifies outputs made with the earlier contents filter', async () => {
+  const { switchOutputSettings } = await outputCache;
+  const { blocksFromText } = await import('../src/text.mjs');
+  const contents = require('./mac-parity/fixtures.json').bibliographies.find(f => f.paragraphs[0] === 'Contents');
+  const blocks = blocksFromText(contents.paragraphs.join('\n\n'));
+  const other = { ...settings, targetLanguage: 'German' };
+  for (const checked of [false, true]) {
+    const source = { ...paperWithOutputs(), blocks, connectedContentsChecked: checked,
+      summary: { source: 'Existing summary', contentsChecked: checked } };
+    const blank = switchOutputSettings(source, settings, other);
+    const restored = switchOutputSettings(blank, other, settings);
+    assert.equal(Boolean(restored.summary.stale), !checked);
+    assert.equal(Boolean(restored.connectedStale), !checked);
+    assert.equal(restored.connectedTranslation, source.connectedTranslation);
+    assert.deepEqual(restored.viewNotes, source.viewNotes);
+  }
+});
+
 function assertGeneratedOutputs(paper, label) {
   const expected = paperWithOutputs(label);
   for (const key of ['blocks', 'connectedTranslation', 'connectedBlocks', 'connectedLanguage', 'summary', 'viewNotes', 'viewHighlights', 'pdfNotes']) {

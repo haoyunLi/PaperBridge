@@ -145,6 +145,24 @@ test('pasted bibliography boundaries drive the translation queue and summary wit
   }
 });
 
+test('contents links keep body paragraphs available in Markdown and in saved documents', async () => {
+  const { referenceBlockIds, reviewSavedReferenceCoverage } = await import('../src/references.mjs');
+  const { parsedMarkdownBlocks } = await import('../src/academicMarkdown.mjs');
+  const blocks = parsedMarkdownBlocks([
+    '# Table of Contents', 'Introduction ........ 1', '## References', '## Introduction',
+    'Calibration was repeated independently.', '## References',
+    '[1] Ng, A. (2021). Instrument calibration. Journal of Testing.', '## Appendix A', 'Additional observations.'
+  ].join('\n\n'));
+  assert.deepEqual([...referenceBlockIds(blocks)], [6, 7]);
+  const old = { blocks, summary: { source: 'Saved summary' }, connectedTranslation: 'Saved translation' };
+  assert.deepEqual(reviewSavedReferenceCoverage(old), { ...old, summary: { ...old.summary, stale: true }, connectedStale: true });
+  const fresh = { ...old, summary: { ...old.summary, contentsChecked: true }, connectedContentsChecked: true };
+  assert.equal(reviewSavedReferenceCoverage(fresh), fresh);
+  const genuine = { ...old, blocks: [blocks[0], blocks[5], blocks[6], ...blocks.slice(7)] };
+  assert.deepEqual([...referenceBlockIds(genuine.blocks)], [6, 7], 'an actual citation directly follows the heading');
+  assert.equal(reviewSavedReferenceCoverage(genuine), genuine);
+});
+
 test('a split author list stays in references before a lettered appendix in a two-column PDF', async () => {
   const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
   const body = { id: 1, text: 'We measured the temperature of the chamber.' };

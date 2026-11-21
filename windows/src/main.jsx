@@ -13,6 +13,7 @@ import { translationSystem, selectionTranslationSystem, translationPrompt, selec
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
+import { reviewSavedReferenceCoverage } from './references.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry, recordUndoEntry, remainingUndoEntries, remapPositionAfterStructureChange } from './paperUndo.mjs';
 import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
@@ -1370,7 +1371,7 @@ function App() {
     if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
     // Capture the saved output's language before missing task settings are filled
     // from the current global configuration. Unknown historical output stays so.
-    loaded = migrateOutputLanguages(loaded);
+    loaded = reviewSavedReferenceCoverage(migrateOutputLanguages(loaded));
     let pagesMigrated = false;
     if (loaded.mineruMarkdown && loaded.mineruPageMapVersion !== mineruPageMapVersion) {
       const pageHints = await api.cachedMineruPages(loaded.id).catch(() => []);
@@ -2521,7 +2522,7 @@ function App() {
         targetSummary = claimsMarkdown(translations);
       }
       requireActiveTask(token);
-      commitPaper(paper => ({ ...paper, summary: { source: sourceSummary, target: targetSummary, claims, markdownTextVersion: markdownSummaryTextVersion, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } }));
+      commitPaper(paper => ({ ...paper, summary: { source: sourceSummary, target: targetSummary, claims, contentsChecked: true, markdownTextVersion: markdownSummaryTextVersion, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } }));
       setStatus('Summary saved. Only exact-match source quotations are linked.');
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
@@ -2548,7 +2549,7 @@ function App() {
         connectedLanguage: inheritedLanguageConflict ? null
           : commonOutputLanguage(batches.filter(batch => batch.kind === 'translation').map(batch => batch.translationLanguage))
             || (batches.every(batch => batch.kind === 'original') && config.sourceLanguage === config.targetLanguage ? normalizeOutputLanguage(config) : null),
-        connectedBatchVersion: batchVersion, connectedShared: false, connectedStale: false
+        connectedBatchVersion: batchVersion, connectedContentsChecked: true, connectedShared: false, connectedStale: false
       }));
       if (config.sourceLanguage === config.targetLanguage) {
         const source = current.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');

@@ -85,7 +85,9 @@ function implicitStart(entries) {
   return -1;
 }
 
-export function referenceBlockIds(blocks) {
+const contentsHeading = /^(?:table of contents|contents)\s*[:.]?$/i;
+
+function referenceEntries(blocks) {
   const entries = blocks.flatMap((block, index) => {
     const text = String(block.text || '').trim().replace(/^#{1,6}\s+/, '');
     if (!text || block.resource) return [];
@@ -95,6 +97,36 @@ export function referenceBlockIds(blocks) {
     return [{ index, text, heading: block.heading || /^#{1,6}\s/.test(block.sourceMarkdown || ''),
       entry: isReferenceEntry(text), explicit: Boolean(label && (!rest || inline)), inline }];
   });
+  let inContents = false;
+  for (const [i, item] of entries.entries()) {
+    if (inContents && item.explicit && !item.inline) {
+      const next = entries[i + 1];
+      // A bare "References" in the contents can sit directly before the
+      // opening section. A citation following the same label starts a real list.
+      if (next && !next.entry && (next.heading || detectedSectionTitle(next.text))) {
+        item.contentsLink = true;
+        item.explicit = false;
+      }
+    }
+    inContents = contentsHeading.test(item.text) || (inContents &&
+      (item.heading || item.explicit || item.contentsLink || /\s(?:\.{2,}\s*)?\d+$/u.test(item.text)));
+  }
+  return entries;
+}
+
+// Keep earlier outputs readable while offering regeneration for the recovered body.
+export function reviewSavedReferenceCoverage(paper) {
+  const summary = paper.summary && !paper.summary.stale && !paper.summary.contentsChecked;
+  const connected = (paper.connectedTranslation || paper.connectedBlocks?.length) &&
+    !paper.connectedShared && !paper.connectedStale && !paper.connectedContentsChecked;
+  if ((!summary && !connected) || !paper.blocks?.some(block => contentsHeading.test(block.text?.trim())) ||
+      !referenceEntries(paper.blocks).some(entry => entry.contentsLink)) return paper;
+  return { ...paper, ...(summary && { summary: { ...paper.summary, stale: true } }),
+    ...(connected && { connectedStale: true }) };
+}
+
+export function referenceBlockIds(blocks) {
+  const entries = referenceEntries(blocks);
   const ids = new Set();
   let start = entries.findIndex(item => item.explicit);
   if (start < 0) start = implicitStart(entries);

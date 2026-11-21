@@ -60,7 +60,10 @@ async function run() {
     onboardingCompletedVersion: 1, autoCheckUpdates: false, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
     ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
-  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const launch = () => electron.launch({ ...(executablePath && { executablePath }),
+    args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root,
+    env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app;
   try {
     app = await launch();
@@ -291,6 +294,18 @@ async function run() {
     assert.deepEqual(methodRequests, [methods.paragraphs.slice(0, 5).join('\n\n'), methods.paragraphs.slice(7).join('\n\n')]);
     const methodsExport = await exportFullTranslation('methods-after-bibliography.md');
     assert.ok(methodsExport.includes(methods.paragraphs.slice(5, 7).join('\n\n')));
+
+    const contents = require('./mac-parity/fixtures.json').bibliographies.find(f => f.paragraphs[0] === 'Contents');
+    await openPasteText(page);
+    await page.locator('.paste-area').fill(contents.paragraphs.join('\n\n'));
+    const contentsId = await loadPastedText(page, { view: 'Paper' });
+    await openWorkspaceView(page, 'Full Translation');
+    const beforeContents = excerpts.length;
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedContentsChecked === true &&
+      (await window.paperBridge.loadPaper(id)).connectedBlocks.every(b => b.status === 'ok'), contentsId);
+    assert.deepEqual(excerpts.slice(beforeContents), [contents.paragraphs.slice(0, 5).join('\n\n'), contents.paragraphs.slice(7).join('\n\n')]);
+    assert.ok((await exportFullTranslation('article-with-contents.md')).includes(contents.paragraphs.slice(5, 7).join('\n\n')));
 
     const formulas = ['Formula fixture A. ' + 'A measured variable. '.repeat(48) + '$x_1$.',
       'Formula fixture B. ' + 'A fitted coefficient. '.repeat(48) + '$$y = 2$$.'];

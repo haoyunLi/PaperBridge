@@ -369,6 +369,42 @@
         6,
         7
       ]
+    },
+    {
+      "name": "emcee excerpt ending in three citations with lowercase surname particles",
+      "paragraphs": [
+        "Introduction",
+        "We compared sampling methods.",
+        "Both teams examined the same data.",
+        "The estimates agreed.",
+        "The checks were repeated.",
+        "Speagle, J. S. (2019). dynesty: A Dynamic Nested Sampling Package for Estimating Bayesian Posteriors and Evidences. arXiv e-prints, arXiv:1904.02180. Retrieved from http://arxiv.org/abs/1904.02180",
+        "ter Braak, C. J. F. (2006). A Markov Chain Monte Carlo version of the genetic algorithm Differential Evolution: easy Bayesian computing for real parameter spaces. Statistics and Computing, 16(3), 239–249. doi:10.1007/s11222-006-8769-1",
+        "ter Braak, C. J. F., & Vrugt, J. A. (2008). Differential evolution Markov chain with snooker updater and fewer chains. Statistics and Computing, 18(4), 435–446. doi:10.1007/s11222-008-9104-9"
+      ],
+      "referenceIds": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "a contents entry before the article and its actual bibliography",
+      "paragraphs": [
+        "Contents",
+        "References",
+        "Introduction",
+        "We calibrated each sensor independently.",
+        "All three sensors produced repeatable measurements.",
+        "References",
+        "[1] Ng, A. (2021). Calibration stability. Journal of Testing.",
+        "Appendix A",
+        "The appendix records the individual measurements."
+      ],
+      "referenceIds": [
+        6,
+        7
+      ]
     }
   ],
   "resourceBoundaries": [
