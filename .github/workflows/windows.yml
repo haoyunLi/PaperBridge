@@ -188,6 +188,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Download and open both public Windows executables
+        id: public-download
         shell: pwsh
         working-directory: windows
         run: |
@@ -210,9 +211,30 @@ jobs:
             $file = Join-Path $dir.FullName $name
             Invoke-WebRequest $url -OutFile $file -MaximumRetryCount 3
             Invoke-WebRequest "$url.sha256" -OutFile "$file.sha256" -MaximumRetryCount 3
+            $download = Get-Item -LiteralPath $file
+            if ($download.Length -ne $asset[0].size -or $download.VersionInfo.ProductVersion -notin @($version, "$version.0")) {
+              throw "Unexpected size or product version for $name"
+            }
             $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($asset[0].digest -cne "sha256:$hash" -or (Get-Content "$file.sha256" -Raw).Trim() -cne "$hash  $name") {
               throw "Public checksum mismatch for $name"
             }
           }
           ./tests/check-distribution.ps1 -Directory $dir.FullName -Version $version
+          "portable=$(Join-Path $dir.FullName "PaperBridge-Windows-$version-x64-Portable.exe")" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-node@v4
+        if: steps.public-download.outputs.portable != ''
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - name: Read a paper offline with the publicly downloaded Portable
+        if: steps.public-download.outputs.portable != ''
+        shell: pwsh
+        working-directory: windows
+        env:
+          PUBLIC_PORTABLE: ${{ steps.public-download.outputs.portable }}
+        run: |
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/portable-relaunch-pdf.cjs "$env:PUBLIC_PORTABLE"
