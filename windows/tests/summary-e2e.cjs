@@ -12,8 +12,8 @@ async function run() {
   const workspace = fs.mkdtempSync(path.join(artifacts, 'summary-e2e-'));
   const summaryModel = 'summary-test:latest';
   const translationModel = 'translation-test:latest';
-  const opening = 'The team calibrated each sensor before collecting the baseline measurements.';
-  const tail = 'At the end of the study the test failed under low visibility conditions.';
+  const opening = 'The team calibrated each sensor in the Montre\u0301al laboratory before collecting baseline measurements and repeating the procedure at a second site.';
+  const tail = 'At the end of the Montre\u0301al study the test failed under low visibility conditions.';
   const unvalidated = 'The appendix reported a separate measurement without a confidence interval.';
   const longParagraph = `${'Repeated measurements reproduced the control. '.repeat(340)}${tail} ${unvalidated}`;
   const references = 'This reference entry must never be sent to the summary model.';
@@ -40,7 +40,7 @@ async function run() {
       answer = { claims: [
         claim('', 2, tail),
         payload.includes(opening) ? claim('Opening procedure', 'P1', 'Model paraphrase') : claim('A measurement was repeated'),
-        payload.includes(tail) ? claim('Final limitation', 2, tail) : claim('Reject evidence from a different excerpt', 2, tail),
+        payload.includes(tail) ? claim('Final limitation', 2, tail.normalize('NFC')) : claim('Reject evidence from a different excerpt', 2, tail),
         claim('Method detail'), claim('Study context')
       ] };
     } else if (prompt.startsWith('Consolidate these partial summary claims')) {
@@ -52,9 +52,10 @@ async function run() {
         claim('Do not add a new citation during consolidation', 2, unvalidated),
         claim('Retained context')
       ] };
+      for (const entry of answer.claims) for (const source of entry.sources) source.quote = source.quote.normalize('NFC');
     } else if (prompt.startsWith('Claim:')) {
       requests.push({ kind: 'quote', model, prompt });
-      answer = prompt.startsWith('Claim: Opening procedure') ? opening : tail;
+      answer = prompt.startsWith('Claim: Opening procedure') ? `“${opening.normalize('NFC')}”` : tail;
     } else {
       requests.push({ kind: 'translation', model, prompt });
       answer = `摘要译文 ${++translated}`;

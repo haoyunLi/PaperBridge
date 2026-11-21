@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
+import { parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
@@ -22,6 +22,23 @@ for (const [index, fixture] of papers.entries()) {
     issues: qualityIssues(blocks).map(({ id, reason }) => ({ id, reason }))
   };
   assert.deepEqual(actual, reference.papers[index], fixture.name);
+}
+
+assert.equal(reference.summaryEvidence.length, fixtures.summaryEvidence.length);
+for (const [index, fixture] of fixtures.summaryEvidence.entries()) {
+  const text = fixture.source.repeat(fixture.repeat ?? 1);
+  const quote = fixture.quote.repeat(fixture.repeat ?? 1);
+  const output = JSON.stringify({ claims: [{ text: 'Study result', sources: [{ paragraphID: 1, quote }] }] });
+  const [claim] = parseSummaryClaims(output, [{ id: 1, text }]);
+  assert.deepEqual(claim.sources.map(source => source.quote.normalize('NFC')),
+    reference.summaryEvidence[index].map(q => q.normalize('NFC')), fixture.name);
+  assert.deepEqual(claim.sources, fixture.valid ? [{ paragraphID: 1, quote: text }] : [], fixture.name);
+}
+assert.equal(reference.summaryBatches.length, fixtures.summaryBatches.length);
+for (const [index, { name, paragraphs }] of fixtures.summaryBatches.entries()) {
+  const blocks = paragraphs.map(({ text, repeat = 1 }, i) => ({ id: i + 1, text: text.repeat(repeat) }));
+  const rendered = summarySourceBatches(blocks).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
+  assert.deepEqual(rendered, reference.summaryBatches[index], name);
 }
 
 assert.equal(reference.bibliographies.length, fixtures.bibliographies.length);
@@ -76,4 +93,4 @@ const restored = fixtures.markdown.map(source => {
 });
 assert.deepEqual(restored, reference.markdown);
 assert.deepEqual(restored, fixtures.markdown.map(source => source.replaceAll('Before', '前文').replaceAll('After', '后文')));
-console.log(`Checked ${papers.length} papers, ${fixtures.bibliographies.length} bibliography boundaries, ${restored.length} translations, ${fixtures.merges.length} merges, ${fixtures.reflows.length} reflows and ${fixtures.pageBoundaries.length} page boundaries against native macOS. ${preservedWindowsJoins} joins preserved Windows scientific punctuation.`);
+console.log(`Checked ${reference.summaryEvidence.length} summary citations, ${reference.summaryBatches.length} summary batch fixtures, ${papers.length} papers, ${fixtures.bibliographies.length} bibliography boundaries, ${restored.length} translations, ${fixtures.merges.length} merges, ${fixtures.reflows.length} reflows and ${fixtures.pageBoundaries.length} page boundaries against native macOS. ${preservedWindowsJoins} joins preserved Windows scientific punctuation.`);

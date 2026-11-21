@@ -5,19 +5,20 @@ import { markdownBlockKind } from './academicMarkdown.mjs';
 
 export { referenceBlockIds };
 
-const libraryLabelSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+function characterPrefix(text, limit) {
+  if (text.length <= limit) return text;
+  for (const { index } of graphemes.segment(text)) {
+    if (limit-- === 0) return text.slice(0, index);
+  }
+  return text;
+}
 
 export function libraryLabel(title, tags) {
-  const limit = (value, count) => {
-    const trimmed = value.trim();
-    for (const { index } of libraryLabelSegmenter.segment(trimmed)) {
-      if (count-- === 0) return trimmed.slice(0, index);
-    }
-    return trimmed;
-  };
   return {
-    libraryTitle: limit(title, 200),
-    tags: [...new Set(tags.split(',').map(tag => limit(tag, 40)).filter(Boolean))].sort().slice(0, 20)
+    libraryTitle: characterPrefix(title.trim(), 200),
+    tags: [...new Set(tags.split(',').map(tag => characterPrefix(tag.trim(), 40)).filter(Boolean))].sort().slice(0, 20)
   };
 }
 
@@ -54,27 +55,38 @@ export function summarySourceBlocks(blocks) {
   return blocks.filter(block => !block.heading && !block.resource && !references.has(block.id) && block.text?.trim());
 }
 
+function summaryPieces(text) {
+  // Mac reserves 100 characters of each 6,000-character batch for framing.
+  // Slice the source itself so an exact quote can always lead back to it.
+  const limit = 5900;
+  if (text.length <= limit) return [text.trim()];
+  const boundaries = [0];
+  for (const { index, segment } of graphemes.segment(text)) boundaries.push(index + segment.length);
+  const pieces = [];
+  for (let start = 0; start < boundaries.length - 1;) {
+    let end = Math.min(start + limit, boundaries.length - 1);
+    if (end < boundaries.length - 1) {
+      const excerpt = text.slice(boundaries[start], boundaries[end]);
+      const midpoint = boundaries[start + Math.floor(limit / 2)] - boundaries[start];
+      const sentence = [...excerpt.matchAll(/[.!?](?=\s)|[。！？]/g)].at(-1);
+      const space = excerpt.search(/\s\S*$/);
+      const preferredEnd = sentence && sentence.index >= midpoint ? sentence.index + 1 : space >= midpoint ? space + 1 : excerpt.length;
+      const offset = boundaries[start] + preferredEnd;
+      while (boundaries[end] > offset) end--;
+    }
+    pieces.push(text.slice(boundaries[start], boundaries[end]).trim());
+    start = end;
+  }
+  return pieces;
+}
+
 export function summarySourceBatches(blocks) {
   const batches = [];
-  let batch = [];
-  let length = 0;
+  let batch = [], length = 0;
   for (const { id, text } of blocks) {
-    const labelLength = `[P${id}]\n`.length;
-    const maxText = 6000 - labelLength;
-    for (let start = 0; start < text.length;) {
-      let end = Math.min(start + maxText, text.length);
-      if (end < text.length) {
-        const excerpt = text.slice(start, end);
-        const sentence = [...excerpt.matchAll(/[.!?](?=\s)|[。！？]/g)].at(-1);
-        const space = excerpt.search(/\s\S*$/);
-        if (sentence && sentence.index >= maxText / 2) end = start + sentence.index + 1;
-        else if (space >= maxText / 2) end = start + space + 1;
-        if (/[\uD800-\uDBFF]/.test(text[end - 1])) end--;
-      }
-      const piece = text.slice(start, end).trim();
-      start = end;
+    for (const piece of summaryPieces(text)) {
       if (!piece) continue;
-      const size = labelLength + piece.length;
+      const size = `[P${id}]\n`.length + countCharacters(piece);
       if (length && length + 2 + size > 6000) {
         batches.push(batch);
         batch = [];
@@ -101,24 +113,65 @@ function summarySourceId(source) {
   return typeof id === 'string' && /^P?\d+$/i.test(id) ? Number(id.replace(/^P/i, '')) : id;
 }
 
+// Return the spelling in the document so Reader selection and exports use its
+// original UTF-16 offsets even if the model composed an accent differently.
+export function summaryQuoteMatch(text, quote, { unique = false } = {}) {
+  if (typeof text !== 'string' || typeof quote !== 'string' || !quote) return null;
+  const normalized = text.normalize('NFC');
+  const needle = quote.normalize('NFC');
+  const first = normalized.indexOf(needle);
+  if (first < 0) return null;
+  const segments = graphemes.segment(normalized);
+  let match = -1;
+  for (let start = first; start >= 0; start = normalized.indexOf(needle, start + 1)) {
+    const end = start + needle.length;
+    if (segments.containing(start).index !== start || (end < normalized.length && segments.containing(end).index !== end)) continue;
+    if (match >= 0) return null;
+    match = start;
+    if (!unique) break;
+  }
+  if (match < 0) return null;
+  const end = match + needle.length;
+  if (normalized === text) return { text: text.slice(match, end), offset: match };
+  let normalizedOffset = 0, offset = 0;
+  for (const { segment, index } of graphemes.segment(text)) {
+    if (normalizedOffset === match) offset = index;
+    normalizedOffset += segment.normalize('NFC').length;
+    if (normalizedOffset === end) return { text: text.slice(offset, index + segment.length), offset };
+  }
+  return null;
+}
+
+export function validatedSummaryQuote(text, quote) {
+  if (typeof quote !== 'string' || quote.length < 20) return null;
+  const length = countCharacters(quote, 501);
+  if (length < 20 || length > 500) return null;
+  return summaryQuoteMatch(text, quote)?.text ?? null;
+}
+
 export function parseSummaryClaims(output, blocks, allowedSources = null) {
   const trimmed = String(output || '').trim();
   if (!trimmed) return [];
   const records = summaryRecords(trimmed);
-  if (!records) return [{ text: trimmed.slice(0, 3000), sources: [] }];
+  if (!records) return [{ text: characterPrefix(trimmed, 3000), sources: [] }];
   const byId = Map.groupBy(blocks, block => block.id);
-  const allowed = allowedSources && new Set(allowedSources.map(source => `${source.paragraphID}|${source.quote}`));
+  const allowed = allowedSources && new Set(allowedSources.map(source => `${source.paragraphID}|${source.quote.normalize('NFC')}`));
   return records.map(claim => {
-    const text = claim.text.trim().slice(0, 1200);
+    const text = characterPrefix(claim.text.trim(), 1200);
     const seen = new Set();
     const sources = (Array.isArray(claim.sources) ? claim.sources : []).flatMap(source => {
       const paragraphID = summarySourceId(source);
-      const quote = source?.quote;
-      const key = `${paragraphID}|${quote}`;
-      if (!Number.isInteger(paragraphID) || typeof quote !== 'string' || quote.length < 20 || quote.length > 500 || seen.has(key)) return [];
-      if (!byId.get(paragraphID)?.some(block => block.text.includes(quote)) || (allowed && !allowed.has(key))) return [];
-      seen.add(key);
-      return [{ paragraphID, quote }];
+      if (!Number.isInteger(paragraphID) || typeof source?.quote !== 'string') return [];
+      const key = `${paragraphID}|${source.quote.normalize('NFC')}`;
+      if (seen.has(key) || (allowed && !allowed.has(key))) return [];
+      for (const block of byId.get(paragraphID) || []) {
+        const quote = validatedSummaryQuote(block.text, source.quote);
+        if (quote !== null) {
+          seen.add(key);
+          return [{ paragraphID, quote }];
+        }
+      }
+      return [];
     }).slice(0, 2);
     return { text, sources };
   });
@@ -138,8 +191,10 @@ export function claimsMarkdown(claims) {
 export function revalidateSummaryClaims(claims, blocks) {
   if (!Array.isArray(claims)) return null;
   const byId = new Map(blocks.map(block => [block.id, block]));
-  return claims.map(claim => ({ ...claim, sources: (Array.isArray(claim?.sources) ? claim.sources : []).filter(source =>
-    typeof source?.quote === 'string' && source.quote.length && byId.get(source.paragraphID)?.text.includes(source.quote)) }));
+  return claims.map(claim => ({ ...claim, sources: (Array.isArray(claim?.sources) ? claim.sources : []).flatMap(source => {
+    const quote = summaryQuoteMatch(byId.get(source?.paragraphID)?.text, source?.quote)?.text;
+    return quote ? [{ ...source, quote }] : [];
+  }) }));
 }
 
 export function remapSummaryEvidence(summary, before, after, { start, beforeEnd, afterEnd }) {
@@ -152,18 +207,17 @@ export function remapSummaryEvidence(summary, before, after, { start, beforeEnd,
     const seen = new Set();
     const sources = claim.sources.flatMap(source => {
       const index = indices.get(source.paragraphID);
-      let target;
-      if (index < start) target = after[index];
-      else if (index >= beforeEnd) target = after[index + afterEnd - beforeEnd];
-      else {
-        const candidates = replacement.filter(block => block.text.includes(source.quote));
-        if (candidates.length === 1) target = candidates[0];
-      }
-      if (!target?.text.includes(source.quote)) return [];
-      const key = `${target.id}|${source.quote}`;
+      const candidates = index < start ? [after[index]] : index >= beforeEnd ? [after[index + afterEnd - beforeEnd]] : replacement;
+      const matches = candidates.flatMap(block => {
+        const quote = summaryQuoteMatch(block?.text, source.quote)?.text;
+        return quote ? [{ ...source, paragraphID: block.id, quote }] : [];
+      });
+      if (matches.length !== 1) return [];
+      const [match] = matches;
+      const key = `${match.paragraphID}|${match.quote.normalize('NFC')}`;
       if (seen.has(key)) return [];
       seen.add(key);
-      return [{ ...source, paragraphID: target.id }];
+      return [match];
     });
     return { ...claim, sources };
   }) };

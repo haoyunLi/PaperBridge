@@ -12,6 +12,7 @@ on:
       - '.github/workflows/windows.yml'
       - 'PaperBridge/Models.swift'
       - 'PaperBridge/Services/TextProcessing.swift'
+      - 'PaperBridge/Services/SummaryEvidence.swift'
       - 'PaperBridge/Services/PaperReadingAnalysis.swift'
       - 'PaperBridge/Services/ReadingGuideBuilder.swift'
       - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
@@ -21,6 +22,7 @@ on:
       - '.github/workflows/windows.yml'
       - 'PaperBridge/Models.swift'
       - 'PaperBridge/Services/TextProcessing.swift'
+      - 'PaperBridge/Services/SummaryEvidence.swift'
       - 'PaperBridge/Services/PaperReadingAnalysis.swift'
       - 'PaperBridge/Services/ReadingGuideBuilder.swift'
       - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
@@ -36,7 +38,7 @@ jobs:
         run: |
           xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift \
             PaperBridge/Services/PaperReadingAnalysis.swift PaperBridge/Services/ReadingGuideBuilder.swift \
-            PaperBridge/Services/AcademicMarkdownProcessor.swift windows/tests/mac-parity/Reference.swift \
+            PaperBridge/Services/AcademicMarkdownProcessor.swift PaperBridge/Services/SummaryEvidence.swift windows/tests/mac-parity/Reference.swift \
             -o "$RUNNER_TEMP/paperbridge-reference"
           "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
       - uses: actions/upload-artifact@v4

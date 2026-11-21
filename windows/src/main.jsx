@@ -8,7 +8,7 @@ import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnc
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -2401,8 +2401,9 @@ function App() {
           const excerpts = batch.filter(block => candidates[index]?.includes(block.id));
           for (const { id, text } of excerpts) {
             const answer = await generate(summaryModel, summaryQuotePrompt(claim.text, id, text), 'Select only an exact supporting quote from the supplied passage, or return NONE.', token);
-            const quote = answer.trim().replace(/^["“‘]|["”’]$/g, '');
-            if (quote.length >= 20 && quote.length <= 500 && text.includes(quote)) {
+            const candidate = answer.trim();
+            const quote = validatedSummaryQuote(text, candidate) ?? validatedSummaryQuote(text, candidate.replace(/^["“‘]|["”’]$/g, ''));
+            if (quote !== null) {
               claim.sources = [{ paragraphID: id, quote }];
               break;
             }
@@ -2898,10 +2899,9 @@ function App() {
     if (!block || (quote && !block.text.includes(quote))) return;
     if (!quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
     if (quote) {
-      const text = anchorText(block, 'source');
-      const offset = text.indexOf(quote);
-      if (offset >= 0 && offset === text.lastIndexOf(quote)) {
-        navigateBlockAnnotation(id, { text: quote, offset, scope: 'reader' }, 'source', 'evidence');
+      const match = summaryQuoteMatch(anchorText(block, 'source'), quote, { unique: true });
+      if (match) {
+        navigateBlockAnnotation(id, { ...match, scope: 'reader' }, 'source', 'evidence');
         return;
       }
     }

@@ -9,6 +9,20 @@ private struct Fixtures: Decodable {
         let name: String
         let blocks: [Block]
     }
+    struct Evidence: Decodable {
+        let source: String
+        let quote: String
+        let `repeat`: Int?
+    }
+    struct Batch: Decodable {
+        struct Paragraph: Decodable {
+            let text: String
+            let `repeat`: Int?
+        }
+        let paragraphs: [Paragraph]
+    }
+    let summaryEvidence: [Evidence]
+    let summaryBatches: [Batch]
     struct Bibliography: Decodable {
         let paragraphs: [String]
     }
@@ -67,6 +81,18 @@ struct Reference {
             return ["name": fixture.name, "sections": ranges, "overview": PaperReadingAnalysis.overviewParagraphIDs(in: sections),
                     "guide": guide, "issues": issues]
         }
+        let evidence = try fixtures.summaryEvidence.map { fixture -> [String] in
+            let paragraph = String(repeating: fixture.source, count: fixture.repeat ?? 1)
+            let quote = String(repeating: fixture.quote, count: fixture.repeat ?? 1)
+            let paper = PaperDocument(name: "Summary", checksum: "summary", cleanedText: paragraph,
+                                      paragraphs: [paragraph], excludedReferenceParagraphs: [], referenceSectionTitle: nil)
+            let object: [String: Any] = ["claims": [["text": "Study result", "sources": [["paragraphID": 1, "quote": quote]]]]]
+            let output = String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+            return SummaryEvidence.parse(output, paper: paper, providedText: "[P1]\n" + paragraph).flatMap(\.sources).map(\.quote)
+        }
+        let summaryBatches = fixtures.summaryBatches.map { fixture in
+            SummaryEvidence.sourceBatches(fixture.paragraphs.map { String(repeating: $0.text, count: $0.repeat ?? 1) })
+        }
         let bibliographies = fixtures.bibliographies.map { fixture in
             let result = TextProcessing.excludeReferenceSection(from: fixture.paragraphs)
             return ["body": result.bodyParagraphs, "references": result.referenceParagraphs]
@@ -97,7 +123,7 @@ struct Reference {
             return paragraphs.count > 1 ? paragraphs : [fixture.text]
         }
         let pageBoundaries = fixtures.pageBoundaries.map { TextProcessing.stitchPageParagraphs([[$0.left], [$0.right]]) }
-        let output: [String: Any] = ["papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let output: [String: Any] = ["summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))

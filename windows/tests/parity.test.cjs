@@ -244,6 +244,37 @@ test('summary excerpts keep original paragraph IDs and whole Unicode characters 
   assert.deepEqual(parseSummaryClaims(response, batches.at(-1))[0].sources, [{ paragraphID: 2, quote: tail }]);
 });
 
+test('summary evidence preserves source spelling, complete Unicode characters, and previously verified citations', async () => {
+  const { parseSummaryClaims, revalidateSummaryClaims, remapSummaryEvidence, validatedSummaryQuote, summaryQuoteMatch } = await import('../src/paper.mjs');
+  const fixtures = require('./mac-parity/fixtures.json').summaryEvidence;
+  for (const fixture of fixtures) {
+    const text = fixture.source.repeat(fixture.repeat ?? 1);
+    const quote = fixture.quote.repeat(fixture.repeat ?? 1);
+    assert.equal(validatedSummaryQuote(text, quote), fixture.valid ? text : null, fixture.name);
+  }
+  const source = 'Le cafe\u0301 contient exactement trois mesures.';
+  const blocks = [{ id: 2, text: 'Début. ' + source + ' Fin.' }];
+  const canonical = { paragraphID: 2, quote: source.normalize('NFC') };
+  const actual = { paragraphID: 2, quote: source };
+  const output = text => JSON.stringify({ claims: [{ text, sources: [canonical, actual] }] });
+  const title = 'a'.repeat(1199) + '👩🏽‍🔬';
+  assert.deepEqual(parseSummaryClaims(output(title + 'extra'), blocks, [canonical]), [{ text: title, sources: [actual] }]);
+  assert.deepEqual(parseSummaryClaims(output(title), blocks, [{ ...canonical, paragraphID: 1 }])[0].sources, []);
+  assert.deepEqual(parseSummaryClaims(output(title), [{ id: 2, text: 'A different excerpt.' }, { id: 1, text: source }])[0].sources, []);
+  const unstructured = 'a'.repeat(2999) + '👩🏽‍🔬';
+  assert.equal(parseSummaryClaims(unstructured + 'extra', blocks)[0].text, unstructured);
+  const partial = 'A long observation by a researcher 👩';
+  assert.equal(validatedSummaryQuote(partial + '🏽‍🔬.', partial), null);
+  assert.equal(validatedSummaryQuote(partial + '🏽‍🔬. ' + partial + '.', partial), partial);
+  assert.equal(summaryQuoteMatch(source + ' ' + canonical.quote, canonical.quote, { unique: true }), null);
+  assert.deepEqual(summaryQuoteMatch(blocks[0].text, canonical.quote, { unique: true }),
+    { text: source, offset: blocks[0].text.indexOf(source) });
+  const claims = [{ text: 'Finding', sources: [canonical] }];
+  assert.deepEqual(revalidateSummaryClaims(claims, blocks)[0].sources, [actual]);
+  assert.deepEqual(remapSummaryEvidence({ claims }, blocks, [{ id: 1, text: canonical.quote }],
+    { start: 0, beforeEnd: 1, afterEnd: 1 }).claims[0].sources, [{ ...canonical, paragraphID: 1 }]);
+});
+
 test('structured Markdown editions preserve the source, unfinished passages, and ready translations', async () => {
   const { markdownDocuments } = await import('../src/exportDocuments.mjs');
   const blocks = [

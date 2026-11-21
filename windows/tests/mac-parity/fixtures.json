@@ -1,4 +1,94 @@
 {
+  "summaryEvidence": [
+    {
+      "name": "decomposed accent in PDF text",
+      "source": "Le café contient exactement trois mesures.",
+      "quote": "Le café contient exactement trois mesures.",
+      "valid": true
+    },
+    {
+      "name": "decomposed accent in model output",
+      "source": "Le café contient exactement trois mesures.",
+      "quote": "Le café contient exactement trois mesures.",
+      "valid": true
+    },
+    {
+      "name": "ten supplementary characters",
+      "source": "🧪",
+      "quote": "🧪",
+      "repeat": 10,
+      "valid": false
+    },
+    {
+      "name": "twenty ideographs",
+      "source": "𠀀",
+      "quote": "𠀀",
+      "repeat": 20,
+      "valid": true
+    },
+    {
+      "name": "five hundred ideographs",
+      "source": "𠀀",
+      "quote": "𠀀",
+      "repeat": 500,
+      "valid": true
+    },
+    {
+      "name": "more than five hundred graphemes",
+      "source": "é",
+      "quote": "é",
+      "repeat": 501,
+      "valid": false
+    },
+    {
+      "name": "case and accents are significant",
+      "source": "La surface du béton dépasse la limite mesurée.",
+      "quote": "La surface du beton depasse la limite mesuree.",
+      "valid": false
+    },
+    {
+      "name": "compatibility-equivalent scientific units stay distinct",
+      "source": "The temperature rose by 25 ℉ during the second trial.",
+      "quote": "The temperature rose by 25 °F during the second trial.",
+      "valid": false
+    }
+  ],
+  "summaryBatches": [
+    {
+      "name": "no split inside a decomposed grapheme",
+      "paragraphs": [
+        {
+          "text": "é",
+          "repeat": 5901
+        }
+      ]
+    },
+    {
+      "name": "short preface shares the first long paragraph batch",
+      "paragraphs": [
+        {
+          "text": "Background observations."
+        },
+        {
+          "text": "𠀀",
+          "repeat": 6001
+        }
+      ]
+    },
+    {
+      "name": "combined emoji count as one character",
+      "paragraphs": [
+        {
+          "text": "👩🏽‍🔬",
+          "repeat": 1800
+        },
+        {
+          "text": "方法",
+          "repeat": 1800
+        }
+      ]
+    }
+  ],
   "bibliographies": [
     {
       "name": "title-first and institutional DOI entries without a References heading",
