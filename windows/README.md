@@ -1,5 +1,18 @@
 # PaperBridge for Windows (development preview)
 
+## Download for Windows x64
+
+| Edition | How to open it | Download |
+| --- | --- | --- |
+| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.58/PaperBridge-Windows-0.2.58-x64-Portable.exe) |
+| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.58/PaperBridge-Windows-0.2.58-x64-Setup.exe) |
+
+You can open and annotate a PDF immediately. Choose **Local AI setup** to detect your hardware and install the components for translation or scanned PDFs. The app checks for updates automatically by default.
+
+Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.58 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.58) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
+
+## Windows and macOS features
+
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
@@ -85,10 +98,6 @@ The [0.2.19 release build](https://github.com/haoyunLi/PaperBridge/actions/runs/
 Version 0.2.18 gives paper titles more vertical space and up to two visible lines, with the complete title available on hover. Long Inspector content and the entire document sidebar scroll naturally; narrow sidebars scale the brand to keep it visible. Reader and Overview use consistent content insets. In very short viewports, the title becomes a single line and the Inspector opens over the workspace to keep reading space available. A narrow Document sidebar has a fixed **Close** button, including during PDF import, so its controls remain accessible with a mouse.
 
 Version 0.2.18 also puts **Paste Text** in the sidebar. **Load Text** opens a new text paper in Overview, or restores an existing paper's saved view and edits. The draft stays available after loading; **Clear** only clears the input. You can prepare the next draft while a task runs. Opening a pasted paper waits for current notes to save, including edits made during that wait; a failed save keeps the current paper available for retry.
-
-Download the Windows x64 development preview from the [Windows 0.2.58 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.58). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt. If Windows allows the file to run and you still see no window, check which edition you opened and record any matching application error. [Windows launch troubleshooting](SIGNING.md#允许运行后没有看到窗口)
-
-Code signing identifies the publisher and lets Windows verify the signed file's integrity. It does not change PaperBridge's features, translation quality or GPU acceleration. An unsigned executable can encounter startup restrictions on managed PCs or devices using Smart App Control; a newly signed release can also show a SmartScreen reputation warning. See [Microsoft's signing and reputation guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation). SHA-256 checksums verify downloaded bytes and do not replace a publisher signature.
 
 Version 0.2.11 adds separate zoom for exact PDFs in **Paper** and **Original**. Zoom with the PDF toolbar, **Ctrl+mouse wheel**, or **Ctrl+Plus/Minus**. Press **Ctrl+0** or choose **Fit** to fit the PDF to the window. Each view remembers its zoom for the current paper. PDF annotations remain anchored while scaling, and opening a saved annotation also brings its text into view horizontally.
 
