@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 0.2.28 公开便携版 · 2026-11-21（美国中部）
+
+RX 7800 XT 使用 `translategemma:4b` 翻译《Attention Is All You Need》的编码器段落。该段包含公式及术语表中的 `positionwise fully connected feed-forward network`，最终保存的译文采用“逐位置全连接前馈网络”。两次模型请求分别生成 80 和 66 个 token，从发出请求到收到结果分别耗时 4.88 秒和 0.67 秒，生成阶段实测 129.2 和 129.6 tokens/s。Ollama 报告模型大小及显存占用均为 2,881,948,220 字节。关掉并重开软件后，译文、原文和引用资源通过校验。这次使用已安装的本地模型，数据限于该论文段落和这台设备。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.28) · 本机报告 `test-artifacts/portable-0228-amd-glossary-ed2grF/result.json`。
+
 ## 0.2.27 公开便携版 · 2026-11-20（美国中部）
 
 从 GitHub 下载的 0.2.27 在 RX 7800 XT 上运行 `translategemma:4b`，实测显示公式及代码中的 `$&` 原样保存并重启恢复。在真实论文的编码器段落，应用按术语表译作“逐位置全连接前馈网络”，两次请求耗时 0.79 秒和 0.68 秒，生成速度约 129 tokens/s。Ollama 报告模型占用与显存占用均为 2,881,948,220 字节。包含公式、引用和论文资源的重启验证通过。术语表的同版本有无对照见下方 0.2.26 记录。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.27) · 本机报告 `test-artifacts/public-0.2.27-amd-protected-U0NUxy/result.json`、`test-artifacts/portable-0227-amd-glossary-q1hk0o/result.json`。

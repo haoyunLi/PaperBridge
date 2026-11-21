@@ -1,4 +1,14 @@
-# Windows 全软件功能复查：2026-09-20
+# Windows 全软件功能复查
+
+## Windows 0.2.28 公开下载与阅读器验收（2026-11-21）
+
+在本机通过 Edge 点击 GitHub 首页的安装版和便携版，两个文件的 SHA-256 均匹配发布资产和随附校验文件，签名状态均为 `NotSigned`，两个文件都保留了互联网来源标记 `ZoneId=3`。GitHub 的全新 Windows 环境使用这两个公开下载启动便携版和安装版，均打开首次引导。自动化直接启动 EXE，实际用户在自己设备上处理系统安全确认。[发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44874706096) · [版本及校验文件](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.28)
+
+在本机隔离目录中，0.2.27 安装版的“下载安装程序”按钮给出了 0.2.28 Setup 的公开地址。测试捕获交给外部浏览器的地址，另用隔离的 Edge 下载并核对 SHA-256。升级和重启后，旧版实际创建的论文、笔记、高亮及阅读外观仍可恢复。0.2.27 便携版在空更新缓存下自动发现 0.2.28，在横幅和设置中提供便携版入口。0.2.28 便携版在无可用模型或解析服务时，完成了跳过向导、导入带中文文件名的两页 PDF、标注及重启恢复。本机报告位于 `test-artifacts/i-mwq0v8sd-jn8/report.json`、`test-artifacts/public027-to028-portable-update-KhjJ31/result.json` 及 `test-artifacts/public028-reader-without-models-1GhQSQ/result.json`。
+
+同一份 PDF 在公开 0.2.27 中被读成 `3- D`、`GPT- 4` 和 `12- 3`。公开 0.2.28 在物理行接缝恢复为 `3D`、`GPT-4` 和 `12-3`。在 15 页的《Attention Is All You Need》中逐一比较 266 段，段号及页码都保留，唯一正文变化是 `Berkeley- Parser` 变成 `Berkeley-Parser`。`English-to-German` 保留了两个连字符。通过界面合并第 22 段再撤销、关闭并重开后，校对了全部段落及原 PDF 的 SHA-256。本机报告为 `test-artifacts/public-0.2.28-real-pdf-x9yUOx/result.json`。
+
+发布工作流以 macOS 生产 Swift 为参照，对比了 7 组论文、4 组带 Markdown 的译文、23 组段落合并和 9 组重排。五条批注样例覆盖重复片段、译文标注和原选区变化后需要复核的情况。五个断词样例单列 Windows 对科学标记和算术符号的处理。[平台对照和桌面测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44874706096/job/136756851374)
 
 ## Windows 0.2.27 公开下载、更新与首次使用
 
