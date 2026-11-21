@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.60 目录里的 References 与文末引文（2026-11-21）
+
+用相同输入运行原生 Mac 的参考文献过滤和 Windows 的导入、逐段翻译队列及摘要输入。五组样例逐段比对，其中一组保留目录和引言、排除文末引文、恢复附录。另一组用 emcee 论文末尾的三条真实引文测试省略 References 标题的摘录。Windows 桌面测试同时检查了发往模型的全文批次，并核对了导出文件中的引用原文。[macOS 对照运行](https://github.com/haoyunLi/PaperBridge/actions/runs/44931093054/job/136927660482) · [AMD 旧稿恢复记录](AMD_DEVICE_TEST.md)
+
+Edge 从仓库首页取得 0.2.60 的两份未签名 EXE，均保留 Internet 区域标记，文件大小与 SHA-256 和 GitHub 资产一致。便携版可离线导入期刊 PDF。独立 Windows 环境从公开安装包启动后验证了五种 PDF 导入结果和全文翻译。实机从 0.2.59 安装版收到更新提示，覆盖升级后重新打开旧论文，原高亮、笔记与阅读外观均保留。[公开安装包验证](https://github.com/haoyunLi/PaperBridge/actions/runs/44931093054/job/136929960596)
+
 ## 0.2.59 启用 OCR 与 PDF 导入模式（2026-11-21）
 
 在 RX 7800 XT 上将公开 0.2.58 设为「仅 PDF 文字层」。从本地缓存实际安装 MinerU 4.1.7 后程序报告完成，DirectML 也通过验证，但导入一页图像型扫描件仍得到 0 个可读段落。0.2.59 安装成功后会启用「优先 MinerU，失败时使用 PDF 文字」。首次向导和「本地 AI 安装」都可以直接使用已检测并通过验证的解析器。用户在安装期间另选的模式会保留。[AMD 真机记录](AMD_DEVICE_TEST.md)
