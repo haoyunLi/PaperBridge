@@ -127,6 +127,8 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - run: npm run test:packaged
+      - name: Open a PDF after launching Portable twice
+        run: node tests/portable-relaunch-pdf.cjs
       - name: Launch final Portable and installed Setup application
         timeout-minutes: 8
         shell: pwsh

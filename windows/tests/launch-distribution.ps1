@@ -87,6 +87,11 @@ public static extern bool ShowWindowAsync(System.IntPtr hwnd, int command);
 public static extern bool IsIconic(System.IntPtr hwnd);
 '@
         }
+        # Both NSIS Portable launches must leave the active reader's runtime intact.
+        $appDirectory = Split-Path -Parent $windowProcess.Path
+        $runtimeFiles = @(Get-ChildItem -LiteralPath $appDirectory -File -Recurse |
+            Select-Object FullName, Length)
+        if ($runtimeFiles.Count -eq 0) { throw 'Could not inspect the running reader files' }
         $handle = $windowProcess.MainWindowHandle
         $null = [PaperBridgeSmoke.WindowState]::ShowWindowAsync($handle, 6)
         $deadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -101,7 +106,11 @@ public static extern bool IsIconic(System.IntPtr hwnd);
             Start-Sleep -Milliseconds 100
         }
         if ($windowProcess.HasExited -or [PaperBridgeSmoke.WindowState]::IsIconic($handle)) { throw 'The existing reader was not restored' }
-        Write-Output 'Verified the second launch restored the existing reader window'
+        foreach ($file in $runtimeFiles) {
+            $current = Get-Item -LiteralPath $file.FullName -ErrorAction SilentlyContinue
+            if (!$current -or $current.Length -ne $file.Length) { throw "Second launch changed a running reader file: $($file.FullName)" }
+        }
+        Write-Output "Verified second launch restored the existing reader and retained its $($runtimeFiles.Count) runtime files"
     }
     if (!$windowProcess.CloseMainWindow() -or !$launcher.WaitForExit(20000)) { throw 'The application did not close normally' }
     if ($launcher.ExitCode -ne 0) { throw "Unexpected exit code $($launcher.ExitCode)" }

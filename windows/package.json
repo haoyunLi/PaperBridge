@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.35",
+  "version": "0.2.36",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -109,6 +109,7 @@
       "allowToChangeInstallationDirectory": false
     },
     "portable": {
+      "unpackDirName": true,
       "artifactName": "PaperBridge-Windows-${version}-${arch}-Portable.${ext}"
     }
   }
