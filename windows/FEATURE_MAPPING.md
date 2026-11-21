@@ -2,7 +2,9 @@
 
 当前验收目标是功能与可执行操作的一对一对应；排版按 Windows 字体、窗口大小及显示缩放适配。Mac 的尺寸和间距作为设计参考，不以像素一致作为功能对齐的条件。
 
-固定基线：macOS 1.9 commit `73951d9` 与本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式签名仍需验证。
+截至 Windows 0.2.25 发布后的开发分支，下表 111 行当前标记为 **58 项对齐、53 项部分对齐**。这是逐行状态计数。部分条目同时包含已实现的功能和待验证的设备或文档场景。macOS 1.9.1 和 1.10 的增量项目单独列在下方。
+
+首次审计的固定基线：macOS 1.9 commit `73951d9` 与本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式签名仍需验证。
 
 macOS 1.9.1 的 12 项新增行为单独记录在 [MAC_1_9_1_GAPS.md](MAC_1_9_1_GAPS.md)，当前为 **12 对齐、0 部分、0 缺失**。笔记可靠性、50 条 Back / Forward 与完整位置恢复，以及独立标题分类、紧凑双语翻译/重试、标注、解释和导出均有专项自动化证据；这里的 111 项历史统计不回写。
 
@@ -182,7 +184,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单。Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E/F/S 及旧 Ctrl+L。菜单项随论文、任务、选区和更新检查状态动态启停。 | 部分 | 单元和 Electron 覆盖空白页、论文、选区、忙碌任务、专注与左侧栏、撤销及重开引导。其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
 | G14 | 签名更新源检查及应用内更新 | 默认启动检查，成功后 24 小时内不重复联网；只识别带完整 x64 Setup 的 Windows 正式 Release。Settings 和 Help 可手动检查，重启/短期离线保留新版提示 | 部分 | 公开 0.2.18 已实测提示并升级到 0.2.19，新版显示已是当前版本。0.2.25 后的源码在 Updates 设置中提供新版及历史发行入口。Later 收起横幅后仍可从设置找回同一版本，同日缓存检查尊重该选择。应用内自动下载、签名验证与安装仍待实现。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 公开 0.2.19 两个下载的校验文件与 GitHub digest 一致。0.2.18→0.2.19 升级保留论文、标注和阅读外观，完整重启与卸载保留工作区；便携版通过首次加载及完整重启保留真实论文、已存 AMD 译文和原 PDF。独立夹具验证选择/视口、输出语言缓存及批注删除/撤销。发布包当前未签名；本次为保存数据兼容验收，没有新增模型推理。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 公开 0.2.25 的两份文件均经仓库首页下载和哈希校验，并在全新 Windows 环境通过启动测试。0.2.24 实际提示 0.2.25，升级、重启、卸载均保留笔记和高亮。便携版在无可用 Ollama 和 MinerU 的隔离工作区完成首次跳过引导、导入带中文文件名的双页 PDF、做笔记、重启恢复。另在 RX 7800 XT 上完成真实翻译。当前发布未签名，受管设备的运行权限取决于设备策略。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 
