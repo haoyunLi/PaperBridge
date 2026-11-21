@@ -43,6 +43,9 @@ async function run() {
   const id = 'a'.repeat(64);
   const figure = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=';
   const formula = 'A stack of $N = 6$ identical layers.';
+  const protectedFormula = '$$z^2 = 4$$';
+  const protectedCode = "`const sample = '$&'`";
+  const protectedExample = protectedFormula + ' with ' + protectedCode + '.';
   const translated = '阿什什<sup>∗</sup>报告了一个测量结果。 ' + formula;
   const resourceDirectory = path.join(workspace, 'mineru', id, 'paper', 'auto');
   fs.mkdirSync(path.join(resourceDirectory, 'images'), { recursive: true });
@@ -58,7 +61,7 @@ async function run() {
     '<table><thead><tr><th>Method</th><th>Score</th></tr></thead><tbody><tr><td>Attention</td><td>42<img src="images/table%20cell.png" alt="Table panel"></td></tr></tbody></table>',
     `![Figure](${figure})`,
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
-    'A paragraph whose previous translation failed.',
+    'A paragraph whose previous translation failed. ' + protectedExample,
     'Repeat repeat repeat.',
     '## References',
     '[1] Reference entry remains in the original language. [Measurements](data/measurements.csv#rows) [Missing appendix](data/missing.csv)'
@@ -86,6 +89,7 @@ async function run() {
   }));
   const requests = [];
   let failOnce = true;
+  let duplicateMarkerOnce = true;
   const model = 'translategemma:4b';
   const ollama = http.createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json');
@@ -105,6 +109,10 @@ async function run() {
     }
     const markdown = input.split('Markdown block:\n').at(-1)
       .replace('Research title', '研究标题').replace('A paragraph whose previous translation failed.', '已恢复的段落译文。');
+    if (duplicateMarkerOnce && input.includes('previous translation failed')) {
+      duplicateMarkerOnce = false;
+      return response.end(JSON.stringify({ response: markdown + ' __PAPERBRIDGE_TOKEN_0__', done: true }));
+    }
     response.end(JSON.stringify({ response: markdown, done: true }));
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
@@ -254,15 +262,24 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-1 .translation-text').getByText('研究标题', { exact: true }).waitFor();
     await page.locator('#block-6 .failure').getByRole('button', { name: 'Retry', exact: true }).click();
-    await page.locator('#block-6 .translation-text').getByText('已恢复的段落译文。', { exact: true }).waitFor();
+    await page.locator('#block-6 .failure').getByText(/changed a protected formula/).waitFor();
+    const failed = (await page.evaluate(id => window.paperBridge.loadPaper(id), id)).blocks[5];
+    assert.equal(failed.status, 'failed');
+    assert.ok(!failed.translationMarkdown);
+    assert.ok(failed.sourceMarkdown.endsWith(protectedExample));
+    await page.locator('#block-6 .failure').getByRole('button', { name: 'Retry', exact: true }).click();
+    await page.locator('#block-6 .translation-text').getByText(/已恢复的段落译文/).first().waitFor();
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
-    await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
-    assert.equal(requests.length, 5, 'A Reader retry should update the full draft without regenerating other blocks');
+    await draft.getByText(/已恢复的段落译文/).first().waitFor();
+    assert.equal(requests.length, 6, 'Two Reader retries affect only the failed block');
+    const recovered = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
+    assert.equal(recovered.blocks[5].translationMarkdown, '已恢复的段落译文。 ' + protectedExample);
+    assert.ok(recovered.connectedTranslation.includes(protectedExample));
     await draft.focus();
     await page.evaluate(() => window.getSelection().removeAllRanges());
     await page.keyboard.press('Shift+ArrowRight');
     assert.equal(await page.locator('.inspector blockquote').textContent(), '研');
-    assert.equal(await selectFormula(draft.locator('p').filter({ has: page.locator('.katex') })), formulaQuote);
+    assert.equal(await selectFormula(draft.locator('p').filter({ hasText: 'stack of', has: page.locator('.katex') })), formulaQuote);
     await page.locator('.inspector .highlight.coral').click();
     await page.locator('.inspector textarea').fill('Full translation formula selection');
     await page.getByRole('button', { name: 'Save note' }).click();
@@ -297,7 +314,7 @@ async function run() {
       return saved?.connectedShared && saved.position?.tab === 'Full Translation' && saved.connectedTranslation.includes('已恢复的段落译文');
     }, id);
     await page.reload();
-    await draft.getByText('已恢复的段落译文。', { exact: true }).waitFor();
+    await draft.getByText(/已恢复的段落译文/).first().waitFor();
     for (const note of ['Paper formula selection', 'Reader formula selection', 'Formula in summarySource', 'Formula in summaryTarget', 'Full translation formula selection']) {
       await page.locator('.saved-annotations .annotation-row').filter({ hasText: note }).locator('button').first().click();
       await page.waitForFunction(({ quote, note }) => {
@@ -322,7 +339,7 @@ async function run() {
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'A changed summary annotation' }).locator('button').first().click();
     await page.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
     await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.viewNotes.find(item => item.id === 'shifted-summary')?.needsReview, id);
-    assert.equal(requests.length, 5, 'Reopening a completed draft should not issue model requests');
+    assert.equal(requests.length, 6, 'Reopening a completed draft should not issue model requests');
 
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     await page.getByLabel('Paper display mode').selectOption('bilingual');
@@ -483,6 +500,7 @@ async function run() {
       assert.ok(edition.includes(`![Figure](${panel})`));
       assert.ok(edition.includes(`[Measurements](${data}#rows)`));
       assert.ok(edition.includes('$N = 6$'));
+      assert.ok(edition.includes(protectedExample));
     }
     console.log('Markdown rendering, annotations, shared translation and portable export of HTML figures and supplementary files verified.');
   } finally {

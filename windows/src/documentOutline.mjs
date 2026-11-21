@@ -76,3 +76,17 @@ export function documentOutline(paper) {
   if (detected.length) return detected;
   return readable.length ? [{ id: readable[0].id, title: 'Beginning' }] : [];
 }
+
+export function sectionRanges(blocks, excluded = referenceBlockIds(blocks)) {
+  const sections = [];
+  for (const block of blocks) {
+    if (block.resource || excluded.has(block.id) || !block.text?.trim()) continue;
+    const label = block.text.replace(/^#{1,6}\s+/, '').trim();
+    const explicitHeading = /^#{1,6}[ \t]+\S/u.test(block.sourceMarkdown?.trim() || '');
+    const title = explicitHeading ? label : detectedSectionTitle(label) || (block.heading ? label : '');
+    if (title || !sections.length) sections.push({ title, startId: block.id, ids: [] });
+    sections.at(-1).ids.push(block.id);
+  }
+  if (sections.length && !sections[0].title) sections[0].title = sections.length === 1 ? 'Document' : 'Opening material';
+  return sections;
+}

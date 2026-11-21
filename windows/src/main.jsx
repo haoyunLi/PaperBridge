@@ -796,8 +796,8 @@ function ReaderQualityWarning({ issue, structured, busy, onEdit, onCompare }) {
   </div>;
 }
 
-function OverviewView({ paper, busy, status, canSummarize, summarize, navigate, onSelect, expandedOverview, issues, onOriginal, onReader, translatedCount, paragraphCount, setupSummary }) {
-  const entries = readingMap(paper.blocks);
+function OverviewView({ paper, sections, busy, status, canSummarize, summarize, navigate, onSelect, expandedOverview, issues, onOriginal, onReader, translatedCount, paragraphCount, setupSummary }) {
+  const entries = useMemo(() => readingMap(paper.blocks, sections), [paper.blocks, sections]);
   const qualityKey = JSON.stringify([paperArticleSource(paper).mode, 'quality']);
   return <div className="content-column overview-layout">
     {!busy && status && <Notice className="workspace-status">{status}</Notice>}
@@ -815,7 +815,7 @@ function OverviewView({ paper, busy, status, canSummarize, summarize, navigate, 
       <div className="reading-guide-heading"><h2>Find your way into the paper.</h2><p>A map of detected sections with exact source excerpts. No model is used, and these passages are not an AI summary.</p></div>
       <div className="reading-guide-actions"><button className="button blue" disabled={!paragraphCount} onClick={onReader}>Start Reading</button><button className="button outline" onClick={onOriginal}>View Original</button><span>{translatedCount} / {paragraphCount} translated</span></div>
       {!entries.length && <p className="reading-guide-empty">{paragraphCount ? 'No suitable section passages were detected. Start in Reader and inspect the source directly.' : 'This document has no selectable text. You can still view its original pages; use MinerU/OCR to make scanned text readable by the analysis tools.'}</p>}
-      <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID, { revealSource: true })}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{short(entry.excerpt, 360)}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
+      <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID, { revealSource: true })}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{entry.excerpt}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
       <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
     </section>
     <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedOverview} setupSummary={setupSummary} />
@@ -2225,8 +2225,16 @@ function App() {
           if (config.sourceLanguage !== config.targetLanguage) {
             const parts = chunkText(protectedBlock?.text || block.text, Number(config.maxParagraphChars) || 1800);
             const translated = [];
-            for (const part of parts) translated.push(await generate(translationModel, protectedBlock ? markdownTranslationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)) : translationPrompt(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part)), translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage)), token));
-            output = protectedBlock ? restoreMarkdown(translated.join('\n'), protectedBlock.tokens) : translated.join(' ');
+            const promptForPart = protectedBlock ? markdownTranslationPrompt : translationPrompt;
+            const instructions = translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage));
+            for (const part of parts) {
+              const prompt = promptForPart(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
+              const answer = await generate(translationModel, prompt, instructions, token);
+              translated.push(protectedBlock
+                ? restoreMarkdown(answer, protectedBlock.tokens.filter(([marker]) => part.includes(marker)))
+                : answer);
+            }
+            output = translated.join(protectedBlock ? '\n' : ' ');
           }
           if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: protectedBlock ? output : null,
             translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '' });
@@ -3394,7 +3402,7 @@ function App() {
           onSetup={() => openSetup()}
           onReader={openPdfReader}
         />}
-        {paper && tab === 'Summary' && <OverviewView paper={paper} busy={busy} status={status} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={paper.blocks.filter(block => block.status === 'ok').length} paragraphCount={paper.blocks.length} setupSummary={summarySetup ? () => openTaskSetup(summarySetup) : null} />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} sections={sections} busy={busy} status={status} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={translatedCount} paragraphCount={translatableCount} setupSummary={summarySetup ? () => openTaskSetup(summarySetup) : null} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading">
             <div><h2>Connected full translation</h2><p>{structuredFull

@@ -29,6 +29,32 @@ test('Markdown translation also protects HTML, fenced code, bracket formulas, an
   assert.throws(() => restoreMarkdown(protectedBlock.text.replace(protectedBlock.tokens[0][0], ''), protectedBlock.tokens));
 });
 
+test('restoration preserves dollar syntax and literal marker names verbatim across Markdown outputs', async () => {
+  const { protectMarkdown, restoreMarkdown } = await import('../src/prompts.mjs');
+  const { restoreConnectedExcerpt, planConnectedBatches } = await import('../src/connectedTranslation.mjs');
+  const original = [
+    'Display math $$x + y = 2$$ and literals __PAPERBRIDGE_TOKEN_0__ and __PAPERBRIDGE_TOKEN_19__.',
+    '~~~text', "$& $$ $` $' __PAPERBRIDGE_TOKEN_1__", '~~~',
+    '![Plot](plots/plot-$&.png)'
+  ].join('\n');
+  const { text, tokens } = protectMarkdown(original);
+  assert.equal(restoreMarkdown(text, tokens), original);
+  assert.equal(restoreConnectedExcerpt(text, tokens), original);
+  const long = 'Before '.repeat(900) + original;
+  assert.ok(planConnectedBatches([{ id: 1, text: long }]).map(batch => batch.source).join(' ').includes(original));
+});
+
+test('both paragraph and connected translations reject altered marker sequences', async () => {
+  const { protectMarkdown, restoreMarkdown } = await import('../src/prompts.mjs');
+  const { restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
+  const { tokens } = protectMarkdown('First $a$ and then $b$.');
+  const [[first], [second]] = tokens;
+  for (const invalid of [first, first + first + second, second + first, first + second + '__PAPERBRIDGE_TOKEN_92__']) {
+    assert.throws(() => restoreMarkdown(invalid, tokens), /Retry this block/);
+    assert.throws(() => restoreConnectedExcerpt(invalid, tokens), /Retry this batch/);
+  }
+});
+
 test('selection translation keeps a bounded context separate from the exact requested text', async () => {
   const { selectionContext, selectionTranslationPrompt, strictSelectionTranslationPrompt } = await import('../src/prompts.mjs');
   const selected = 'target phrase';

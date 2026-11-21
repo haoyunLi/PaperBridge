@@ -246,7 +246,7 @@ async function run() {
     assert.equal(legacySettings.lineSpacing, null);
     await reopened.screenshot({ path: path.join(artifacts, 'heading-parity-legacy-appearance.png') });
     const passages = [
-      'Abstract: We measured the change across two independent cohorts.',
+      'Abstract: We measured the change across two independent cohorts. ' + 'The source excerpt retains every word of this paragraph. '.repeat(8).trimEnd(),
       'Abstraction Mechanisms', 'An intervening section should stay untranslated.',
       'Concluding Remarks', 'The final checks confirmed the direction of the effect.',
       'References', '[1] An example citation. Journal of Testing. 2022.'
@@ -254,7 +254,19 @@ async function run() {
     await revealSidebarSource(reopened);
     await openPasteText(reopened);
     await reopened.locator('.paste-area').fill(passages.join('\n\n'));
-    const rangeId = await loadPastedText(reopened, { view: 'Reader' });
+    const rangeId = await loadPastedText(reopened, { view: 'Overview' });
+    const guide = reopened.locator('.reading-map');
+    await guide.getByRole('button', { name: 'Read paragraph 5 →', exact: true }).waitFor();
+    const abstract = guide.locator('article').filter({ hasText: 'The research question' });
+    assert.equal(await abstract.locator('.reading-map-excerpt').textContent(), passages[0]);
+    const preview = await abstract.locator('.reading-map-excerpt').evaluate(node => ({
+      lines: getComputedStyle(node).webkitLineClamp, height: node.clientHeight, lineHeight: parseFloat(getComputedStyle(node).lineHeight)
+    }));
+    assert.equal(preview.lines, '4');
+    assert.ok(preview.height <= 4 * preview.lineHeight + 1);
+    await reopened.locator('.reading-guide-actions').getByText('0 / 5 translated', { exact: true }).waitFor();
+    await abstract.getByRole('button', { name: 'Read paragraph 1 →', exact: true }).click();
+    await reopened.locator('#block-1.current .source-text').getByText(passages[0], { exact: true }).waitFor();
     const ranges = async () => {
       await reopened.getByRole('button', { name: 'More ···', exact: true }).click();
       await reopened.getByRole('dialog').getByRole('button', { name: 'Translation Range', exact: true }).click();

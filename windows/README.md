@@ -4,6 +4,8 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
+Version 0.2.26 preserves display-math delimiters and code verbatim in Markdown translations. If the model changes a protected marker, the affected paragraph can be retried. To refresh an older saved translation, open its paragraph actions and choose **Translate This Paragraph**. The Overview reading map links inline section headings to their source and shows four lines of each excerpt. Settings > Updates keeps the official release available after you dismiss its banner.
+
 Version 0.2.25 recognizes inline headings and “Concluding Remarks” in translation ranges. Paragraph merges and PDF line joins preserve punctuation spacing. Models and Local AI setup show dedicated GPU memory when the driver provides a reliable value.
 
 Version 0.2.24 fixes a silent exit when Windows passes Electron a Node-mode environment variable. The packaged reader always opens its bundled interface. Opening the app again brings its existing window forward. If opening the workspace fails, the reader displays the cause and offers a retry. See the [Windows signing and download guide](SIGNING.md) for the free unsigned preview, optional publisher verification and release tests.
@@ -22,7 +24,7 @@ Version 0.2.18 gives paper titles more vertical space and up to two visible line
 
 Version 0.2.18 also puts **Paste Text** in the sidebar. **Load Text** opens a new text paper in Overview, or restores an existing paper's saved view and edits. The draft stays available after loading; **Clear** only clears the input. You can prepare the next draft while a task runs. Opening a pasted paper waits for current notes to save, including edits made during that wait; a failed save keeps the current paper available for retry.
 
-Download the Windows x64 development preview from the [Windows 0.2.25 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.25). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
+Download the Windows x64 development preview from the [Windows 0.2.26 release](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.26). Run the Setup executable to install for your Windows user, or open the Portable executable directly. The app can read and annotate PDFs immediately. Select **Local AI setup** when you first need translation, or to add MinerU for OCR and structured extraction. The executables are unsigned and Windows SmartScreen may show a prompt.
 
 Code signing identifies the publisher and lets Windows verify the signed file's integrity. It does not change PaperBridge's features, translation quality or GPU acceleration. An unsigned executable can encounter startup restrictions on managed PCs or devices using Smart App Control; a newly signed release can also show a SmartScreen reputation warning. See [Microsoft's signing and reputation guidance](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation). SHA-256 checksums verify downloaded bytes and do not replace a publisher signature.
 

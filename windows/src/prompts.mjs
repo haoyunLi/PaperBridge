@@ -66,7 +66,7 @@ export const summaryQuotePrompt = (claim, paragraphID, paragraph) => `Claim: ${c
 
 export function protectMarkdown(markdown) {
   const tokens = [];
-  const pattern = /```[\s\S]*?```|~~~[\s\S]*?~~~|<table\b[\s\S]*?<\/table>|!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|`[^`\n]+`|<[^>]+>|https?:\/\/[^\s)>]+|data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+|(?<!\\)\$(?!\$)(?:\\.|[^$\n])+\$/gi;
+  const pattern = /__PAPERBRIDGE_TOKEN_\d+__|```[\s\S]*?```|~~~[\s\S]*?~~~|<table\b[\s\S]*?<\/table>|!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|`[^`\n]+`|<[^>]+>|https?:\/\/[^\s)>]+|data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+|(?<!\\)\$(?!\$)(?:\\.|[^$\n])+\$/gi;
   const text = markdown.replace(pattern, match => {
     const token = `__PAPERBRIDGE_TOKEN_${tokens.length}__`;
     tokens.push([token, match]);
@@ -75,12 +75,17 @@ export function protectMarkdown(markdown) {
   return { text, tokens };
 }
 
-export function restoreMarkdown(translated, tokens) {
-  let result = translated;
-  for (const [token, original] of tokens) {
-    if (!result.includes(token)) throw new Error('The model changed a protected formula, figure, or link. Retry this block.');
-    result = result.replace(token, original);
-  }
+export function restoreMarkdown(translated, tokens, retryTarget = 'block') {
+  const message = `The model changed a protected formula, figure, or link. Retry this ${retryTarget}.`;
+  let index = 0;
+  // A single callback pass restores original bytes, including $$, $& and
+  // literal placeholder names inside the paper or its code samples.
+  const result = translated.replace(/__PAPERBRIDGE_TOKEN_\d+__/g, marker => {
+    const expected = tokens[index++];
+    if (!expected || expected[0] !== marker) throw new Error(message);
+    return expected[1];
+  });
+  if (index !== tokens.length) throw new Error(message);
   return result;
 }
 

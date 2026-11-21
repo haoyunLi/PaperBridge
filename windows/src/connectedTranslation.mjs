@@ -63,9 +63,5 @@ export function pendingConnectedBatches(paper) {
 }
 
 export function restoreConnectedExcerpt(answer, tokens) {
-  const markers = answer.match(/__PAPERBRIDGE_TOKEN_\d+__/g) || [];
-  if (markers.length !== tokens.length || tokens.some(([marker], index) => markers[index] !== marker)) {
-    throw new Error('The model changed a protected formula, image, or link. Retry this batch.');
-  }
-  return restoreMarkdown(answer, tokens);
+  return restoreMarkdown(answer, tokens, 'batch');
 }

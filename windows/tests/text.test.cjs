@@ -35,6 +35,27 @@ test('reading map matches complete normalized headings and never borrows the nex
   assert.equal(guide.some(entry => entry.id === 'method'), false);
 });
 
+test('reading map quotes inline, first-line and explicit Markdown sections with their original block IDs', async () => {
+  const { readingMap } = await import('../src/text.mjs');
+  const abstract = 'Abstract: We measured the change in two cohorts using the same protocol.';
+  const method = '2 Methods\nThese distinct samples were measured twice using independent instruments.';
+  const conclusion = 'We observed improved agreement after calibrating the two instruments.';
+  const blocks = [
+    { id: 1, text: abstract }, { id: 3, text: method }, { id: 4, text: 'Results' },
+    { id: 6, text: '🧪'.repeat(39) }, { id: 8, text: 'Concluding remarks', sourceMarkdown: '## Concluding remarks' },
+    { id: 10, resource: true, text: 'Diagram caption '.repeat(12) }, { id: 12, text: conclusion },
+    { id: 13, text: 'References' }, { id: 14, text: '[1] A long supplementary reference to a separate published paper.' }
+  ];
+  const guide = readingMap(blocks);
+  assert.deepEqual(guide.map(({id, paragraphID, excerpt}) => [id, paragraphID, excerpt]), [
+    ['question', 1, abstract], ['method', 3, method], ['conclusion', 12, conclusion]
+  ]);
+  assert.deepEqual(readingMap(blocks.slice(-2)), []);
+  assert.deepEqual(readingMap([{ id: 1, text: '🧪'.repeat(39) }]), []);
+  const forty = '🧪'.repeat(40);
+  assert.equal(readingMap([{ id: 7, text: forty }])[0].excerpt, forty);
+});
+
 test('standalone heading classification keeps heading-plus-body paragraphs translatable', async () => {
   const { blocksFromText, isHeading } = await import('../src/text.mjs');
   assert.equal(isHeading('Abstract'), true);

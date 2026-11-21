@@ -1,3 +1,4 @@
+import { countCharacters, sectionRanges } from './documentOutline.mjs';
 import { compoundSuffixes, repairSpacedHyphenation } from './spacedHyphenation.mjs';
 
 const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|acknowledg(?:e)?ments|摘要|引言|方法|结果|讨论|结论)\s*$/i;
@@ -103,11 +104,12 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   return blocks;
 }
 
-export function readingMap(blocks) {
+export function readingMap(blocks, sections = sectionRanges(blocks)) {
   const normalized = value => String(value || '').trim().toLowerCase()
-    .replace(/^(?:\d+(?:\.\d+)*[.)]?|[ivx]+\.)\s+/i, '')
-    .replace(/^[.:：\s]+|[.:：\s]+$/g, '');
-  const sections = blocks.filter(block => block.heading && !block.resource);
+    .replace(/^(?:\p{Nd}+(?:\.\p{Nd}+)*[.)]?|[ivx]+\.)\p{White_Space}+/u, '')
+    .replace(/^[.:： ]+|[.:： ]+$/g, '');
+  const byId = new Map(blocks.map(block => [block.id, block]));
+  const longEnough = block => block && countCharacters(trimExtractedWhitespace(block.text), 40) >= 40;
   const topics = [
     { id: 'question', title: 'The research question', question: 'What problem does this paper address?', headings: ['abstract', 'introduction', 'background', '摘要', '引言', '背景'] },
     { id: 'method', title: 'The approach', question: 'How did the authors investigate it?', headings: ['method', 'methods', 'methodology', 'materials and methods', 'approach', 'model', 'architecture', '方法', '材料与方法'] },
@@ -116,17 +118,21 @@ export function readingMap(blocks) {
     { id: 'conclusion', title: 'The takeaway', question: 'What do the authors conclude?', headings: ['conclusion', 'conclusions', 'concluding remarks', '结论'] }
   ];
   const matches = topics.map(topic => {
-    const section = sections.find(block => {
-      const title = normalized(block.text);
+    const section = sections.find(section => {
+      const title = normalized(section.title);
       return topic.headings.some(name => title === name || title.startsWith(`${name}:`) || title.startsWith(`${name} and `));
     });
     if (!section) return null;
-    const end = sections.find(block => block.id > section.id)?.id || Infinity;
-    const passage = blocks.find(block => block.id >= section.id && block.id < end && !block.resource && block.text.trim().length >= 40 && normalized(block.text) !== normalized(section.text));
-    return passage ? { id: topic.id, title: topic.title, question: topic.question, sectionTitle: section.text, paragraphID: passage.id, excerpt: passage.text } : null;
+    const sourceId = section.ids.find(id => {
+      const block = byId.get(id);
+      return longEnough(block) && (id !== section.startId || normalized(block.text.replace(/^#{1,6}\s+/, '')) !== normalized(section.title));
+    });
+    return sourceId === undefined ? null : { id: topic.id, title: topic.title, question: topic.question,
+      sectionTitle: section.title, paragraphID: sourceId, excerpt: byId.get(sourceId).text };
   }).filter(Boolean);
   if (matches.length) return matches;
-  const first = blocks.find(block => !block.resource && String(block.text || '').trim().length >= 40);
+  const firstId = sections.flatMap(section => section.ids).find(id => longEnough(byId.get(id)));
+  const first = byId.get(firstId);
   return first ? [{ id: 'beginning', title: 'Start at the beginning', question: 'Section headings were not identified reliably. Read the source before drawing conclusions.', sectionTitle: 'Opening passage', paragraphID: first.id, excerpt: first.text }] : [];
 }
 
