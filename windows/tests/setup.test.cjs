@@ -151,6 +151,17 @@ test('one-click setup installs only missing parts and selects backend after CUDA
   assert.deepEqual(calls, ['ollama', 'model:translategemma:4b', 'mineru']);
   assert.equal(result.mineruBackend, 'pipeline');
   assert.equal(result.mineruExecutable, 'managed-mineru.exe');
+  assert.equal(result.mineruInstalled, true);
+});
+
+test('a setup that reuses the current parser does not activate PDF extraction', async () => {
+  const manager = new SetupManager({ toolsRoot: os.tmpdir(), emit: () => {} });
+  manager.status = async () => ({
+    plan: { ollama: false, models: [], mineru: false }, mineru: { executable: 'existing.exe', kitExecutable: true }
+  });
+  const result = await manager.install({ components: { mineru: true } });
+  assert.equal(result.mineruExecutable, 'existing.exe');
+  assert.equal(result.mineruInstalled, false);
 });
 
 test('MinerU-only repair skips Ollama and model installation and reuses managed activation path', async () => {

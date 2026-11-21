@@ -93,7 +93,7 @@ async function run() {
       ipcMain.handle('setup:status', () => ({
         busy: Boolean(state.pending), hardware: { systemMemoryBytes: 32 * 1024 ** 3, adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU' }] },
         ollama: { installed: state.runtimeReady, running: state.runtimeReady, models: state.installed },
-        mineru: { installed: state.mineruReady, compatible: state.mineruReady, executable: fixture.managedMineru, version: 'MinerU test fixture', runtime: { cuda: false } },
+        mineru: { installed: state.mineruReady, compatible: state.mineruReady, executable: fixture.managedMineru, version: 'MinerU test fixture', runtime: { checked: state.mineruReady, cuda: false } },
         plan: { ollama: !state.runtimeReady, models: [], mineru: !state.mineruReady, gpu: { reason: 'Mock AMD hardware: MinerU uses its CPU pipeline.' } }
       }));
       ipcMain.handle('setup:install', (_event, payload) => {
@@ -405,6 +405,15 @@ async function run() {
     await setParsingMode('pdfOnly');
     await completeSetup(false);
     assert.equal(savedSettings().pdfExtractionMode, 'pdfOnly');
+
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Detect and install local AI', exact: true }).click();
+    const enableOcr = page.locator('.setup-panel').getByRole('button', { name: 'Use MinerU for PDFs', exact: true });
+    await enableOcr.click();
+    await enableOcr.waitFor({ state: 'detached' });
+    await waitFor(() => savedSettings().pdfExtractionMode === 'mineruPreferred', 'use detected parser without installing');
+    assert.equal(await app.evaluate(() => !!global.__onboardingMock.pending), false);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
     // A slow settings save keeps the guide modal, and repeated finish clicks open one dialog.
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
