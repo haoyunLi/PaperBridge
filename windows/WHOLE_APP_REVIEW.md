@@ -1,5 +1,17 @@
 # Windows 全软件功能复查
 
+## 0.2.55 恢复图表论文的结构化导入（2026-11-21）
+
+在 AMD RX 7800 XT 上用公开的 0.2.54 导入 *Tabbed* 的四页期刊 PDF，MinerU 4.1.7 的 DirectML 完成了识别，在写入图像时因 Windows 路径格式报错。应用随后退回 PDF 文字层，保留了 55 个文字块。0.2.55 让 MinerU 在可写入图像的普通路径下生成输出。若配置的临时目录过深，解析使用较短的本机用户临时目录。[期刊论文](https://joss.theoj.org/papers/10.21105/joss.08964)
+
+用公开的 0.2.55 打开这份旧资料库，在第 34 块添加书签，在 **More → Re-extract PDF as New Copy** 中选择同一份 PDF。新副本包含 54 个结构化块，原有 55 块和书签在重启后完整保留。两份 PDF 的字节一致。导出新副本的 Markdown，再把文件夹移到其他目录，原文链接能读出与解析所得 JPEG 逐字节相同的两张图，比较表和 `read_csv` 也在文内。[Windows 0.2.55 发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44921278562/job/136899665394)
+
+用 Edge 从仓库首页下载了安装版和便携版，两个文件都带 Windows 互联网来源标记，SHA-256 与 GitHub 资产及校验文件一致。独立 Windows runner 实际启动了两份下载。AMD 电脑上的 0.2.54 安装版和便携版均提示 0.2.55，安装覆盖后，论文、笔记、高亮和阅读外观均保留。长标题在两种窗口尺寸、100% 至 200% 的五档缩放下都有两行空间。[AMD 阅读与翻译样本](AMD_DEVICE_TEST.md) · [自动更新清单](https://github.com/haoyunLi/PaperBridge/blob/windows/desktop-app/windows/latest-release.json)
+
+## 0.2.54 正文搜索、摘要与原文引文（2026-11-21）
+
+用已保存的结构化论文对照两个公开便携版。在 0.2.53，Reader 显示的 `sigma_x` 搜不到，摘要模型收到的两个模型名也都变成了 `modelA`。在 0.2.54，同一段原文可以搜到一次，发给本机 Qwen 的文本逐字保留了 `model_A`、`modelA`、`C#` 和 `sigma_x`。点击摘要证据后选中了含两个科学标识符的完整原句，重启后可以再次选中。旧笔记保留原位置，受影响的旧摘要可在界面中选择重新生成。新旧资料库的摘要原文都通过 macOS 原生文本对照。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44920504542/job/136895278168) · [公开下载与启动测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44920504542/job/136897652891)
+
 ## 0.2.53 结构化论文的章节名称与翻译范围（2026-11-21）
 
 在公开版 0.2.52 的旧资料库里，两个 Markdown 标题分别带有 `model_A` 和 `modelA`，都显示成 `Calibration for modelA in C`。搜索 `model_A` 时没有结果。0.2.53 从保存的原始 Markdown 读取标题。侧栏大纲、Reader 搜索和翻译范围都能区分两个名字，并保留 `C#` 和 `A*` 的标点。原先保存的笔记、正文和译文无需重新导入。

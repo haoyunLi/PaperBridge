@@ -1,5 +1,16 @@
 # Windows AMD 真机回归
 
+## 0.2.55 在 RX 7800 XT 上读取图表和翻译函数名（2026-11-21）
+
+两次从 GitHub 的未签名便携版导入 *Tabbed* 原始 PDF，使用 MinerU 4.1.7 的 DirectML 和本机 Ollama 的 `translategemma:4b`。在一次测试中把临时目录设为 274 个字符。结构化 Reader 显示了比较表、514 × 401 和 530 × 418 像素的两张图。搜索 `read_csv` 命中第 35 和 38 块。翻译第 35 块后，重启仍能看到图表和保留该函数名的译文，原始 PDF 校验值相同。[测试用论文](https://joss.theoj.org/papers/10.21105/joss.08964)
+
+| 第 35 块英译简中 | 本次输出 |
+| --- | --- |
+| 默认术语设置 | 译文保留函数名 `read_csv` 和 `extract`，但把 Python 包名 `comma` 译成了「逗号」。 |
+| 保存英译简中的术语 `comma → comma`，在独立资料库翻译同一段 | 译文保留包名 `comma` 及两个函数名。重启后可以打开该译文。 |
+
+Ollama 报告翻译模型使用 2,881,948,220 字节显存，约 2.7 GiB。另从公开版 0.2.54 当时退回 PDF 文字层的资料库出发，对同一篇论文重新提取为独立副本，重启后原来的 55 块与书签仍保留，新副本有 54 块。[公开文件启动测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44921278562/job/136899665394)
+
 ## 0.2.52 在 RX 7800 XT 上逐段翻译（2026-11-21）
 
 从 GitHub 下载未签名便携版，以本机 Ollama 的 `translategemma:4b` 在 Reader 中逐个翻译 *emcee v3* 的第 17、18、19 段。用两个独立资料库比较同一段英文，源 PDF 相同。第一个资料库没有保存术语，第二个保存了英译简中的 `ensemble samplers → 集成采样器`。只在第 17 段比较了这两种设置。[测试用论文](https://doi.org/10.21105/joss.01864)
