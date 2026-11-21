@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { rewriteAssetUrls, localAssetReference, assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
+const { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
 const facsimileHeadings = new Map([
   ['original', 'Extracted source text'],
@@ -33,15 +33,41 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
   const assets = path.join(folder, 'assets');
   const assetNames = new Set();
   const missing = new Set();
+  const pendingMarkdown = new Map();
+  const unscannedMarkdownPaths = [];
   const originalPdf = paper.type === 'pdf' && Boolean(pdfPath && fs.existsSync(pdfPath));
   const source = assetDirectory ? fs.realpathSync(assetDirectory) : null;
   function saveAsset(name, write) {
     if (!assetNames.has(name)) {
-      fs.mkdirSync(assets, { recursive: true });
-      write(path.join(assets, name));
+      const destination = path.join(assets, name);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      write(destination);
       assetNames.add(name);
     }
     return `assets/${name}`;
+  }
+  const namedAssets = new Map();
+  function copyNamedAsset(relative) {
+    const key = archivePathKey(relative);
+    if (namedAssets.has(key)) return namedAssets.get(key);
+    const asset = key === 'original.pdf' && originalPdf ? { file: pdfPath } : key && assetFile(source, relative);
+    // A directory junction can point to an ancestor and generate endless aliases.
+    const linkedDirectory = asset && source && key !== 'original.pdf' &&
+      path.relative(path.dirname(path.resolve(source, relative)), path.dirname(asset.file)) !== '';
+    if (!asset || linkedDirectory || path.basename(asset.file).toLowerCase() === mineruResultManifest) {
+      missing.add(relative);
+      return null;
+    }
+    // Links inside copied Markdown resolve relative to this tree without changing its bytes.
+    const destination = saveAsset('source/' + relative, file => fs.copyFileSync(asset.file, file));
+    const url = destination.split('/').map(part => encodeURIComponent(part).replace(/[!'()*]/g,
+      char => '%' + char.charCodeAt(0).toString(16).toUpperCase())).join('/');
+    namedAssets.set(key, url);
+    if (isMarkdownFile(relative)) {
+      if (asset.size <= maxMarkdownBytes) pendingMarkdown.set(relative, asset.file);
+      else unscannedMarkdownPaths.push(relative);
+    }
+    return url;
   }
   function externalize(url, kind) {
     const embedded = kind === 'image' && /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/=]+)$/i.exec(url);
@@ -57,12 +83,8 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
     if (!reference) return url;
     const { relative, suffix } = reference;
     if (originalPdf && /^(?:\.\/)?original\.pdf$/i.test(relative)) return `original.pdf${suffix}`;
-    const asset = assetFile(source, relative);
-    if (!asset || path.basename(asset.file).toLowerCase() === mineruResultManifest) { missing.add(relative); return url; }
-    const digest = crypto.createHash('sha256').update(asset.file).digest('hex');
-    const extension = path.extname(asset.file).toLowerCase();
-    const name = `local-${digest}${/^\.[a-z0-9]{1,12}$/.test(extension) ? extension : ''}`;
-    return saveAsset(name, file => fs.copyFileSync(asset.file, file)) + suffix;
+    const destination = copyNamedAsset(relative);
+    return destination ? destination + suffix : url;
   }
   const used = new Set(originalPdf ? ['original pages.md'] : []);
   const facsimileDocuments = [];
@@ -77,8 +99,11 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
       facsimileDocuments.push({ name, heading: facsimileHeadings.get(document.kind) });
     }
   }
+  for (const [relative, file] of pendingMarkdown) {
+    visitLocalAssets(fs.readFileSync(file, 'utf8'), relative, copyNamedAsset);
+  }
   if (originalPdf) fs.copyFileSync(pdfPath, path.join(folder, 'original.pdf'));
-  return { folder, documents: documents.length, assets: assetNames.size, missingAssetPaths: [...missing].sort(), originalPdf, facsimileDocuments };
+  return { folder, documents: documents.length, assets: assetNames.size, missingAssetPaths: [...missing].sort(), unscannedMarkdownPaths, originalPdf, facsimileDocuments };
 }
 
 function pageImageName(pageNumber) {

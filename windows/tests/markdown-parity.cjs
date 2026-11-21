@@ -489,7 +489,7 @@ async function run() {
     const original = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8');
     assert.deepEqual(await app.evaluate(() => globalThis.__revealedBundle), { destination: bundle, original });
     const panel = original.match(/<img src="(assets\/[a-f0-9]+\.png)" alt="Table panel">/)?.[1];
-    const data = original.match(/\[Measurements\]\((assets\/local-[a-f0-9]+\.csv)#rows\)/)?.[1];
+    const data = original.match(/\[Measurements\]\((assets\/source\/data\/measurements\.csv)#rows\)/)?.[1];
     assert.ok(panel && data);
     assert.ok(original.includes(`![Figure](${panel})`), 'HTML and Markdown figures share one copy of the same bytes');
     assert.ok(original.includes('[Missing appendix](data/missing.csv)'));

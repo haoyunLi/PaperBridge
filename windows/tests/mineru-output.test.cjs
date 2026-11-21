@@ -108,10 +108,44 @@ test('MinerU 4.x ZIP keeps referenced attachments through saved resources and po
   const measurements = original.match(/\[Measurements\]\((assets\/[^?]+\.csv)\?view=table#rows\)/)?.[1];
   const appendix = original.match(/\[Appendix\]\((assets\/[^)]+\.md)\)/)?.[1];
   assert.ok(measurements && appendix);
-  assert.deepEqual(fs.readFileSync(path.join(bundle.folder, measurements)), csv);
+  assert.deepEqual(fs.readFileSync(path.join(bundle.folder, decodeURIComponent(measurements))), csv);
   assert.equal(fs.readFileSync(path.join(bundle.folder, appendix), 'utf8'), supplement);
   assert.equal(bundle.assets, 3);
   assert.ok(bundle.missingAssetPaths.includes('.paperbridge-result.json'));
+});
+
+test('moved supplements follow nested Markdown and retain original attachment names', async t => {
+  const file = fixture(t);
+  const guide = '[Series](tables/series.markdown)\n\n[PDF](../original.pdf#page=2)';
+  const series = '[Guide](../guide.md#top) [A](<A/试验 #1.csv>) [B](B/count.csv) [Missing](../missing.png)';
+  const main = '[Guide](supplements/guide.md#top) and [PDF](original.pdf#page=1)';
+  // Encode the literal hash to distinguish it from a link fragment.
+  const savedSeries = series.replace('#1.csv', '%231.csv');
+  const entries = [
+    ['markdown.md', main], ['supplements/guide.md', guide], ['supplements/tables/series.markdown', savedSeries],
+    ['supplements/tables/A/试验 #1.csv', 'trial number one'], ['supplements/tables/B/count.csv', 'other series'],
+    ['private.csv', 'unreferenced']
+  ];
+  const zip = file('portable.zip', archive(entries.map(([name, content]) => ({ name, content }))));
+  const source = await unpackMineruArchive(zip, file('staged'), () => {});
+  assert.equal(fs.existsSync(file('staged/private.csv')), false);
+  const pdf = file('article.pdf', 'PDF bytes');
+  const result = writeBundle(file(''), { name: 'Paper', type: 'pdf', sourceMode: 'mineru' },
+    [{ filename: 'paper_original.md', content: fs.readFileSync(source, 'utf8') }], pdf, path.dirname(source));
+  assert.deepEqual(result.missingAssetPaths, ['supplements/missing.png']);
+  assert.deepEqual(result.unscannedMarkdownPaths, []);
+  assert.equal(result.assets, 5);
+  const moved = file('Moved paper');
+  fs.renameSync(result.folder, moved);
+  const exported = fs.readFileSync(path.join(moved, 'paper_original.md'), 'utf8');
+  assert.ok(exported.includes('[PDF](original.pdf#page=1)'));
+  const movedGuide = path.join(moved, exported.match(/\[Guide\]\(([^#)]+)#top\)/)[1]);
+  assert.equal(fs.readFileSync(movedGuide, 'utf8'), guide);
+  const relativeToGuide = name => path.resolve(path.dirname(movedGuide), name);
+  assert.equal(fs.readFileSync(relativeToGuide('../original.pdf'), 'utf8'), 'PDF bytes');
+  assert.equal(fs.readFileSync(relativeToGuide('tables/series.markdown'), 'utf8'), savedSeries);
+  assert.equal(fs.readFileSync(relativeToGuide('tables/A/试验 #1.csv'), 'utf8'), 'trial number one');
+  assert.equal(fs.readFileSync(relativeToGuide('tables/B/count.csv'), 'utf8'), 'other series');
 });
 
 test('MinerU ZIP skips oversized optional files and removes an attachment interrupted during extraction', async t => {

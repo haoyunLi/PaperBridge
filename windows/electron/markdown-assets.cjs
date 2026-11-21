@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const mineruResultManifest = '.paperbridge-result.json';
+const maxMarkdownBytes = 64 * 1024 * 1024;
 
 const assetTokens = new RegExp([
   /^ {0,3}(?<fence>`{3,}|~{3,})[^\r\n]*(?:\r?\n[\s\S]*?(?:^ {0,3}\k<fence>[`~]*[ \t]*(?=\r?$)|(?![\s\S]))|$)/.source,
@@ -32,13 +33,30 @@ function rewriteAssetUrls(markdown, replace, { includeLinks = false } = {}) {
   });
 }
 
-function localAssetReference(url) {
+function localAssetReference(url, fromMarkdown = '') {
   if (/^(?:[\\/#?]|[a-z][a-z0-9+.-]*:)/i.test(url) || !url) return null;
   const index = url.search(/[?#]/);
   let relative = index < 0 ? url : url.slice(0, index);
   const suffix = index < 0 ? '' : url.slice(index);
   try { relative = decodeURIComponent(relative); } catch { /* A literal percent sign is valid in a filename. */ }
+  // An encoded absolute path must stay distinguishable from a relative link.
+  if (!/^[\\\\/]/.test(relative)) {
+    relative = path.posix.join(path.posix.dirname(fromMarkdown), relative.replaceAll('\\', '/'));
+  }
   return { relative, suffix };
+}
+
+function archivePathKey(relative) {
+  if (!relative || /^[\\/]/.test(relative) || /[\\:\x00-\x1f<>"|?*]/.test(relative)) return null;
+  const parts = relative.split('/').filter(part => part && part !== '.');
+  const device = /^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])$/i;
+  if (parts.some(part => /[. ]$/.test(part) || device.test(part.split('.')[0].trimEnd()))) return null;
+  if (parts.some(part => part === '..' || part.toLowerCase() === mineruResultManifest)) return null;
+  return parts.length ? parts.join('/').toLowerCase() : null;
+}
+
+function isMarkdownFile(relative) {
+  return /\.(?:md|markdown)$/i.test(relative);
 }
 
 function assetFile(directory, relative) {
@@ -54,4 +72,12 @@ function assetFile(directory, relative) {
   } catch { return null; }
 }
 
-module.exports = { rewriteAssetUrls, localAssetReference, assetFile, mineruResultManifest };
+function visitLocalAssets(markdown, fromMarkdown, visit) {
+  rewriteAssetUrls(markdown, url => {
+    const reference = localAssetReference(url, fromMarkdown);
+    if (reference) visit(reference.relative);
+    return url;
+  }, { includeLinks: true });
+}
+
+module.exports = { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes };

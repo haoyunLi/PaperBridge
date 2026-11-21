@@ -2725,7 +2725,8 @@ function App() {
         }
       }
       const missingAssets = result.missingAssetPaths?.length;
-      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}${reusedPages ? `. Reused ${reusedPages} archived PDF page image(s).` : ''}${missingAssets ? `. ${missingAssets} referenced local asset(s) could not be included.` : ''}`);
+      const unscanned = result.unscannedMarkdownPaths?.length;
+      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}${reusedPages ? `. Reused ${reusedPages} archived PDF page image(s).` : ''}${missingAssets ? `. ${missingAssets} referenced local asset(s) could not be included.` : ''}${unscanned ? `. Links inside ${unscanned} Markdown attachment(s) over 64 MiB were not checked.` : ''}`);
     } catch (cause) { setError(`Bundle export incomplete: ${cause.message}`); }
     finally { endTask(token); }
   }

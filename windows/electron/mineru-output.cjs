@@ -2,23 +2,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const yauzl = require('yauzl');
-const { rewriteAssetUrls, localAssetReference, assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
+const { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, maxMarkdownBytes } = require('./markdown-assets.cjs');
 
 const structuredOutput = 'structured_content.json';
-const maxMetadataBytes = 64 * 1024 * 1024;
+const maxMetadataBytes = maxMarkdownBytes;
 const maxImageBytes = 8_000_000;
 const maxArchiveEntries = 50_000;
 const maxAttachmentBytes = 256 * 1024 * 1024;
 const maxRetainedBytes = 1024 * 1024 * 1024;
-
-function archivePathKey(relative) {
-  if (!relative || /^[\\/]/.test(relative) || /[\\:\x00-\x1f<>"|?*]/.test(relative)) return null;
-  const parts = relative.split('/').filter(part => part && part !== '.');
-  const device = /^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[0-9¹²³])$/i;
-  if (parts.some(part => /[. ]$/.test(part) || device.test(part.split('.')[0].trimEnd()))) return null;
-  if (parts[0]?.toLowerCase() === mineruResultManifest) return null;
-  return parts.length ? parts.join('/').toLowerCase() : null;
-}
 
 function regularArchiveFile(entry) {
   const host = entry.versionMadeBy >>> 8;
@@ -66,11 +57,13 @@ async function unpackMineruArchive(archive, folder, checkActive) {
     const markdown = await unpackEntry(zip, source, folder, checkActive);
     entries.delete('markdown.md');
     const selected = new Set([structuredOutput]);
-    rewriteAssetUrls(await fs.promises.readFile(markdown, 'utf8'), url => {
-      const key = archivePathKey(localAssetReference(url)?.relative);
-      if (key && entries.has(key)) selected.add(key);
-      return url;
-    }, { includeLinks: true });
+    function selectReferences(content, from) {
+      visitLocalAssets(content, from, relative => {
+        const key = archivePathKey(relative);
+        if (key && entries.has(key)) selected.add(key);
+      });
+    }
+    selectReferences(await fs.promises.readFile(markdown, 'utf8'), source.fileName);
     // Preserve the standard full-size figures as well as attachments named by the document.
     for (const key of entries.keys()) if (/^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/.test(key)) selected.add(key);
     let selectedBytes = 0;
@@ -81,7 +74,10 @@ async function unpackMineruArchive(archive, folder, checkActive) {
       selectedBytes += entry.uncompressedSize;
       checkActive();
       try {
-        await unpackEntry(zip, entry, folder, checkActive);
+        const file = await unpackEntry(zip, entry, folder, checkActive);
+        if (isMarkdownFile(key) && entry.uncompressedSize <= maxMarkdownBytes) {
+          selectReferences(await fs.promises.readFile(file, 'utf8'), entry.fileName);
+        }
       } catch {
         // Optional unreadable files stay as missing links. Cancellation still stops the import.
         checkActive();

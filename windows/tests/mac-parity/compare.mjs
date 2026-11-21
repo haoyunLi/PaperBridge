@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, renameSync, rmSync } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import { writeBundle } from '../../electron/bundle.cjs';
 import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
@@ -10,6 +13,40 @@ import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const bundleFixture = JSON.parse(readFileSync(new URL('./bundle-fixture.json', import.meta.url), 'utf8'));
+const work = mkdtempSync(path.join(os.tmpdir(), 'paperbridge-native-bundle-'));
+try {
+  const extraction = path.join(work, 'extraction');
+  const files = {
+    'supplements/guide.md': bundleFixture.guide,
+    'data/measurements.csv': bundleFixture.csv,
+    'figures/response.png': Buffer.from(bundleFixture.imageBase64, 'base64')
+  };
+  for (const [name, bytes] of Object.entries(files)) {
+    const file = path.join(extraction, name);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, bytes);
+  }
+  const documents = Object.entries(bundleFixture.documents).map(([filename, content]) => ({ filename, content }));
+  const result = writeBundle(work, { name: 'Calibration', sourceMode: 'mineru' }, documents, null, extraction);
+  const moved = path.join(work, 'Moved journal bundle');
+  renameSync(result.folder, moved);
+  for (const edition of ['paper_original.md', 'paper_bilingual_en_zh.md']) {
+    const main = readFileSync(path.join(moved, edition), 'utf8');
+    const guidePath = path.join(moved, main.match(/\[Supplement\]\(([^#)]+)#calibration\)/)[1]);
+    const guide = readFileSync(guidePath, 'utf8');
+    const targets = {};
+    for (const [, relative] of guide.matchAll(/\]\(([^)?#]+)(?:[?#][^)]*)?\)/g)) {
+      const bytes = readFileSync(path.resolve(path.dirname(guidePath), relative));
+      targets[path.posix.join('supplements', relative)] = createHash('sha256').update(bytes).digest('hex');
+    }
+    assert.deepEqual({ copied: result.assets, missing: result.missingAssetPaths, guide, targets }, reference.bundle, edition);
+  }
+  console.log('Verified relocated supplement links and file contents against the native macOS export.');
+} finally {
+  assert.equal(path.dirname(work), path.resolve(os.tmpdir()));
+  rmSync(work, { recursive: true, force: true });
+}
 const searchBlocks = fixtures.readerSearch.blocks.map(({ source, translation }, index) => ({ id: index + 1, text: source, translation }));
 assert.deepEqual(fixtures.readerSearch.queries.map(query => filteredReaderBlocks(searchBlocks, query).map(block => block.id)),
   reference.readerSearch, 'Search the source and translation independently, using native case and accent boundaries');

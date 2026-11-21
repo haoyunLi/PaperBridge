@@ -382,15 +382,15 @@ test('portable bundles keep HTML images, retained MinerU files and link fragment
     assert.deepEqual(bundle.missingAssetPaths, ['../private.csv', 'figures/gone.png', 'linked/escape.csv']);
     const exported = fs.readFileSync(path.join(bundle.folder, 'paper_original.md'), 'utf8');
     const embedded = exported.match(/!\[Figure\]\((assets\/\w+\.png) "Caption title"\)/)?.[1];
-    const legacy = exported.match(/alt="Embedded cell"><img src="(assets\/local-\w+\.png)"/)?.[1];
-    const csv = exported.match(/\[Data\]\(<(assets\/local-\w+\.csv)> "Supplement"\)/)?.[1];
+    const legacy = exported.match(/alt="Embedded cell"><img src="(assets\/source\/legacy\.png)"/)?.[1];
+    const csv = exported.match(/\[Data\]\(<(assets\/source\/support%20data\.csv)> "Supplement"\)/)?.[1];
     assert.ok(embedded && legacy && csv);
     assert.ok(exported.includes(`<img src='${embedded}' alt="Embedded cell">`));
     assert.ok(exported.includes(`[Second link](${csv}#row-1)`));
     assert.ok(exported.includes('[Original](original.pdf#page=2) [Remote](https://example.org/image.png) [Section](#results)'));
     assert.ok(exported.includes('```html\n<img src="in-a-code-example.png">\n```'));
     for (const [file, expected] of [[embedded, 'embedded image'], [legacy, 'older image'], [csv, 'a,b\n1,2'], ['original.pdf', 'exact original']]) {
-      assert.equal(fs.readFileSync(path.join(bundle.folder, file), 'utf8'), expected);
+      assert.equal(fs.readFileSync(path.join(bundle.folder, decodeURIComponent(file)), 'utf8'), expected);
     }
   } finally {
     if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
