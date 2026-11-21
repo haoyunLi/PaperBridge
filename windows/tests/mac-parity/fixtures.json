@@ -1,4 +1,38 @@
 {
+  "pastedFrontMatter": [
+    {
+      "name": "joined title and names",
+      "text": "High Resolution Spectroscopy for Distant Stellar Systems Alice Martin1, Brian West2, and Mira Lopez2\n\n1 Department of Astronomy 2 University Observatory\n\nAbstract\n\nThe exposures were repeated on three nights using the same detector."
+    },
+    {
+      "name": "separate names and numbered affiliations",
+      "text": "High Resolution Spectroscopy for Distant Stellar Systems\n\nAlice Martin1, Brian West2, and Mira Lopez2\n\n1 Department of Astronomy 2 University Observatory\n\nAbstract\n\nThe exposures were repeated on three nights using the same detector."
+    },
+    {
+      "name": "heading with body in a single paragraph",
+      "text": "The flux was recorded under stable conditions. 2 Methods The samples were cooled overnight before imaging."
+    },
+    {
+      "name": "printed reference heading before first citation",
+      "text": "References [1] Martin, A. (2021). A catalogue of winter observations. Journal of Testing."
+    },
+    {
+      "name": "isolated section heading between sentences",
+      "text": "The detector was calibrated on three nights.\n\n3 Results\n\nThe brightness remained constant in all observations."
+    },
+    {
+      "name": "scientific title containing numerals",
+      "text": "A Survey of CO2 Absorption Across Ten Nearby Stars"
+    },
+    {
+      "name": "single line breaks from the clipboard",
+      "text": "The observations were made using a stable reference source.\nThe residual difference was small.\n\nThe last exposure was taken at midnight."
+    },
+    {
+      "name": "single physical newlines",
+      "text": "2 Methods\nThe observations were made using a stable reference source.\nThe last exposure was taken at midnight."
+    }
+  ],
   "readerSearch": {
     "blocks": [
       {"source": "Étude de l’échelle. Final boundary", "translation": "next sentence"},
