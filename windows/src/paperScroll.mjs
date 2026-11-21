@@ -19,10 +19,12 @@ export function restorePaperAnchor(host, anchor, saved) {
   if (!host || !anchor || !Number.isFinite(anchor.offset) || anchor.scrollTop !== saved) return false;
   const article = host.querySelector('[data-view-scope="paperArticle"]');
   if (!article || article.dataset.sourceMode !== anchor.source || article.dataset.displayMode !== anchor.display) return false;
-  const matching = [...article.querySelectorAll(passageSelector)].filter(passage =>
-    passage.dataset.paperKind === anchor.side && passage.textContent === anchor.text);
-  const passage = matching.find(node => node.closest('[data-paper-block-id]').dataset.paperBlockId === anchor.blockId)
-    || (matching.length === 1 ? matching[0] : null);
+  const sameSide = [...article.querySelectorAll(passageSelector)].filter(node => node.dataset.paperKind === anchor.side);
+  let passage = sameSide.find(node => node.closest('[data-paper-block-id]').dataset.paperBlockId === anchor.blockId);
+  if (!passage || passage.textContent !== anchor.text) {
+    const matching = sameSide.filter(node => node.textContent === anchor.text);
+    passage = matching.length === 1 ? matching[0] : null;
+  }
   if (!passage) return false;
   const bounds = passage.getBoundingClientRect();
   const offset = Math.max(anchor.offset, 1 - bounds.height);
