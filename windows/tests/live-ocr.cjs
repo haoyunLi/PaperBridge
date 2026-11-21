@@ -18,17 +18,16 @@ async function run() {
   const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const ollamaBaseURL = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
   fs.mkdirSync(artifacts, { recursive: true });
-  const source = path.join(artifacts, 'scanned-ocr-input.pdf');
-  const workspace = path.join(artifacts, 'live-ocr-workspace');
-  assert.ok(path.resolve(workspace).startsWith(path.resolve(artifacts) + path.sep));
-  fs.rmSync(workspace, { recursive: true, force: true });
-  fs.mkdirSync(workspace, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'live-ocr-workspace-'));
+  const source = path.join(workspace, 'scanned-ocr-input.pdf');
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
     mineruExecutable: process.env.PAPERBRIDGE_LIVE_MINERU || '', mineruBackend: expectDirectML ? 'auto' : 'pipeline',
     pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, onboardingCompletedVersion: 1,
     translationModel: model, ollamaBaseURL, setupComponents: { ollama: false, models: false, mineru: true }
   }));
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ ...(executablePath && { executablePath }), cwd: root,
+    args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
@@ -43,11 +42,18 @@ async function run() {
     }
     const setupSeconds = installMineru ? Number(((performance.now() - setupStarted) / 1000).toFixed(1)) : null;
     const configured = process.env.PAPERBRIDGE_LIVE_MINERU || '';
-    const detected = await page.evaluate(executable => window.paperBridge.mineruStatus(executable), configured);
+    const detected = await page.evaluate(async () => {
+      const { settings } = await window.paperBridge.bootstrap();
+      return window.paperBridge.mineruStatus(settings.mineruExecutable, settings.mineruBackend);
+    });
     assert.ok(detected.compatible, detected.reason);
     if (expectDirectML) {
       assert.equal(detected.runtime?.directml, true, 'MinerU Auto must select a DirectML adapter');
       assert.ok(detected.runtime.devices.length > 0, 'DirectML detection must identify the adapter');
+    } else if (detected.kitExecutable) {
+      assert.equal(detected.runtime?.checked, true);
+      assert.equal(detected.runtime.directml, false);
+      assert.match(detected.runtime.description, /compatibility mode uses CPU/);
     }
     if (installMineru) assert.equal(detected.source, 'managed');
     const python = path.join(path.dirname(detected.executable), 'python.exe');

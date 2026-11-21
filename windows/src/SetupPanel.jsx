@@ -21,7 +21,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstall, 
   const action = useRef(false);
   const mounted = useRef(true);
   const config = (selected = components) => ({
-    baseURL: settings.ollamaBaseURL, mineruExecutable: settings.mineruExecutable, components: selected,
+    baseURL: settings.ollamaBaseURL, mineruExecutable: settings.mineruExecutable, mineruBackend: settings.mineruBackend, components: selected,
     models: taskSetup?.models || [...new Set([settings.translationModel, settings.summaryModel, settings.explainModel, settings.quickLookupModel || settings.translationModel])]
   });
 
@@ -58,7 +58,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstall, 
       const result = await onInstall(options);
       if (mounted.current) {
         setWarning(result.warning || 'Installation complete. PaperBridge will use the detected local tools.');
-        const refreshed = await api.setupStatus({ ...config(), mineruExecutable: result.mineruExecutable ?? settings.mineruExecutable });
+        const refreshed = await api.setupStatus({ ...config(), mineruExecutable: result.mineruExecutable ?? settings.mineruExecutable, mineruBackend: result.mineruBackend ?? settings.mineruBackend });
         if (mounted.current) setDiagnosis(refreshed);
       }
     } catch (cause) {

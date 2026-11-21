@@ -1,3 +1,4 @@
+import { isMineruReady } from './hardwareDisplay.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, Download, FileText, HardDrive, Languages, LockKeyhole, RefreshCw, Settings2, Sparkles, Square } from 'lucide-react';
 import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, modelSettingsPatch, isCatalogModelSelected, suggestedTranslationModel } from './modelCatalog.mjs';
@@ -14,7 +15,7 @@ const steps = [
 ];
 const terminal = phase => ['done', 'error', 'cancelled'].includes(phase);
 const progressBytes = value => `${(Number(value || 0) / 1024 ** 2).toFixed(0)} MB`;
-const setupIdentity = (baseURL, mineruExecutable) => JSON.stringify([baseURL || '', mineruExecutable || '']);
+const setupIdentity = (baseURL, mineruExecutable, backend) => JSON.stringify([baseURL || '', mineruExecutable || '', backend || 'auto']);
 
 function Heading({ eyebrow, title, children }) {
   return <header className="onboarding-heading"><small>{eyebrow}</small><h2 id="onboarding-page-title">{title}</h2><p>{children}</p></header>;
@@ -29,7 +30,7 @@ function ReadinessRow({ title, detail, ready, optional }) {
 }
 
 export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup, progress, pullProgress, models = emptyModels, onInstall, onDownload, onBackgroundStatus, onBusyChange }) {
-  const identity = setupIdentity(settings.ollamaBaseURL, settings.mineruExecutable);
+  const identity = setupIdentity(settings.ollamaBaseURL, settings.mineruExecutable, settings.mineruBackend);
   const [diagnosisState, setDiagnosis] = useState(null);
   const [modelState, setKnownModels] = useState({ identity, values: models });
   const diagnosis = diagnosisState?.identity === identity ? diagnosisState.value : null;
@@ -50,7 +51,8 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
   const externalPull = pullProgress?.phase === 'pulling';
   const busy = Boolean(operation || diagnosis?.busy || externalPull);
   const ollamaReady = diagnosis?.ollama?.running === true;
-  const mineruReady = diagnosis?.mineru?.compatible === true;
+  const mineruReady = isMineruReady(diagnosis?.mineru);
+  const parserIssue = diagnosis?.mineru?.runtime?.reason;
   const modelProgress = operation?.kind !== 'model' || pullProgress?.model === operation.id ? pullProgress : null;
   const candidateProgress = operation?.kind === 'model' || externalPull ? modelProgress : progress;
   const currentProgress = terminal(candidateProgress?.phase) ? null : candidateProgress;
@@ -61,16 +63,16 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
 
   function config(overrides = {}) {
     const current = settingsRef.current;
-    return { baseURL: current.ollamaBaseURL, mineruExecutable: current.mineruExecutable,
+    return { baseURL: current.ollamaBaseURL, mineruExecutable: current.mineruExecutable, mineruBackend: current.mineruBackend,
       models: [...new Set([current.translationModel, current.summaryModel, current.explainModel, current.quickLookupModel].filter(Boolean))], ...overrides };
   }
 
   async function refresh(overrides) {
     const version = ++refreshVersion.current;
     const request = config(overrides);
-    const requestIdentity = setupIdentity(request.baseURL, request.mineruExecutable);
+    const requestIdentity = setupIdentity(request.baseURL, request.mineruExecutable, request.mineruBackend);
     const isCurrent = () => mounted.current && version === refreshVersion.current
-      && requestIdentity === setupIdentity(settingsRef.current.ollamaBaseURL, settingsRef.current.mineruExecutable);
+      && requestIdentity === setupIdentity(settingsRef.current.ollamaBaseURL, settingsRef.current.mineruExecutable, settingsRef.current.mineruBackend);
     if (mounted.current) setChecking(true);
     try {
       const result = await api.setupStatus(request);
@@ -188,7 +190,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
         {renderModels(TRANSLATION_MODELS)}<p className="onboarding-footnote">Approximate download sizes checked {MODEL_CATALOG_VERIFIED_AT}; shared model files can reduce a download. Start Ollama before downloading. You can choose another model later.</p></>}
       {page === 3 && <><Heading eyebrow="OPTIONAL · STRUCTURED PDF READING" title="Turn PDFs into structured papers.">MinerU extracts reading order, figures, tables, formulas and text from image-only pages. The original PDF remains available.</Heading>
         <Callout title="Recommended for academic papers">Structured extraction helps with multi-column layouts and bilingual exports. Extraction quality still depends on the source PDF, especially for scanned equations and low-resolution pages.</Callout>
-        <div className="onboarding-tool-card"><ReadinessRow title="MinerU parser" optional ready={mineruReady} detail={mineruReady ? `${diagnosis.mineru.version || 'Compatible MinerU'} · ${diagnosis.mineru.runtime?.description || (diagnosis.mineru.runtime?.cuda ? 'CUDA verified in its Python environment' : diagnosis.mineru.runtime?.reason || 'CPU pipeline available')}` : 'A private Python environment, MinerU and parsing models can require several gigabytes.'} />
+        <div className="onboarding-tool-card"><ReadinessRow title="MinerU parser" optional ready={mineruReady} detail={mineruReady ? `${diagnosis.mineru.version || 'Compatible MinerU'} · ${diagnosis.mineru.runtime?.description || (diagnosis.mineru.runtime?.cuda ? 'CUDA verified in its Python environment' : diagnosis.mineru.runtime?.reason || 'CPU pipeline available')}` : parserIssue || 'A private Python environment, MinerU and parsing models can require several gigabytes.'} />
           {mineruReady && diagnosis.mineru.runtime?.checked && settings.pdfExtractionMode === 'pdfOnly' && <button className="button outline" disabled={busy || checking} onClick={() => onSettings({ pdfExtractionMode: 'mineruPreferred' })}>Use MinerU for PDFs</button>}
           <button className="button blue" disabled={busy || checking || !diagnosis} onClick={() => installComponent('mineru', Boolean(diagnosis?.mineru?.installed))}><Download size={15} />{diagnosis?.mineru?.installed ? 'Repair / update MinerU' : 'Install MinerU'}</button>
         </div>{diagnosis?.plan?.gpu?.reason && <p className="onboarding-hardware">{diagnosis.plan.gpu.reason}</p>}<Callout title="Safe to skip">PDF text extraction and the original-page viewer work without MinerU. Image-only PDFs need OCR before translation. You can install MinerU from Local AI setup later.</Callout></>}
@@ -197,7 +199,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
       {page === 5 && <><Heading eyebrow="SETUP SUMMARY" title={ollamaReady && selectedTranslationReady ? 'Your local reader is ready.' : 'PDF reading is ready. AI setup is incomplete.'}>You can reopen Getting Started or change local tools and model roles in Settings at any time.</Heading>
         <div className="onboarding-tool-card"><ReadinessRow title="Ollama runtime" ready={ollamaReady} detail={ollamaReady ? 'Connected to the local API.' : 'Not connected; AI tasks need Ollama to be running.'} />
           <ReadinessRow title="Translation model" ready={selectedTranslationReady} detail={selectedTranslationReady ? settings.translationModel : `${settings.translationModel} is selected but has not been downloaded.`} />
-          <ReadinessRow title="MinerU parser" optional ready={mineruReady} detail={mineruReady ? (settings.pdfExtractionMode === 'pdfOnly' ? 'MinerU is installed. PDFs currently use selectable text only.' : 'Structured PDF parsing is available.') : 'PDF text extraction remains available. Install MinerU when you need OCR or structured parsing.'} />
+          <ReadinessRow title="MinerU parser" optional ready={mineruReady} detail={mineruReady ? (settings.pdfExtractionMode === 'pdfOnly' ? 'MinerU is installed. PDFs currently use selectable text only.' : 'Structured PDF parsing is available.') : parserIssue || 'PDF text extraction remains available. Install MinerU when you need OCR or structured parsing.'} />
           <ReadinessRow title="Assistant models" optional ready={assistantReady} detail={`Summary: ${settings.summaryModel} · Explain: ${settings.explainModel} · Quick lookup: ${settings.quickLookupModel || settings.translationModel}`} />
         </div><div className="onboarding-ready-actions"><button className="button outline" disabled={busy} onClick={() => onFinish('practice')}><BookOpen size={16} /> Try a Practice Paper</button><button className="button ghost" disabled={busy} onClick={() => onFinish('done')}>Finish without opening a PDF</button></div></>}
       {busy && <div className="onboarding-progress" role="status"><strong>{currentProgress?.message || currentProgress?.status || (operation?.kind === 'model' ? `Downloading ${operation.id}…` : 'Local setup is running…')}</strong>

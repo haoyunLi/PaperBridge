@@ -97,20 +97,23 @@ async function graphicsStatus() {
     systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
 }
 
-async function mineruRuntime(executable, toolsRoot, found, signal) {
+async function mineruRuntime(executable, toolsRoot, { found, signal, backend = 'auto' } = {}) {
   const detected = found || await detectMineruExecutable(executable, toolsRoot);
   if (!detected.compatible) return { checked: false, reason: detected.reason };
   if (detected.kitExecutable) {
     try {
       const { stdout } = await run(detected.kitExecutable, ['hardware', 'info', '--json'], {
-        timeout: 30000, windowsHide: true, signal, env: mineru4Environment(toolsRoot, 'auto')
+        timeout: 30000, windowsHide: true, signal, env: mineru4Environment(toolsRoot, backend)
       });
       const onnx = JSON.parse(stdout).runtimes?.find(runtime => runtime.name === 'onnx');
       if (onnx?.status !== 'ok') return { checked: false, engine: 'onnx', reason: 'MinerU could not verify its ONNX runtime.' };
       const device = onnx.data?.selected_device;
       const adapter = device?.adapter?.name;
       const directml = device?.device === 'gpu' && device.backend === 'dml';
-      const description = directml ? `ONNX Auto selects DirectML${adapter ? ` on ${adapter}` : ''}` : 'ONNX Auto selects CPU';
+      const mode = backend === 'pipeline' ? 'ONNX compatibility mode uses' : 'ONNX Auto selects';
+      let description = 'ONNX runtime available; execution device unreported';
+      if (device?.device === 'cpu') description = `${mode} CPU`;
+      if (device?.device === 'gpu') description = `${mode} ${directml ? 'DirectML' : 'GPU'}${adapter ? ` on ${adapter}` : ''}`;
       return { checked: true, engine: 'onnx', directml, devices: directml && adapter ? [adapter] : [], description };
     } catch (error) { return { checked: false, engine: 'onnx', reason: `Cannot check MinerU ONNX: ${error.message.slice(0, 140)}` }; }
   }

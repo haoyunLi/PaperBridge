@@ -180,9 +180,9 @@ function registerHandlers() {
   });
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
-  ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable, setupManager.toolsRoot));
-  ipcMain.handle('mineru:status', (_event, executable) => mineruStatus(executable, setupManager.toolsRoot));
-  ipcMain.handle('mineru:detect', () => mineruStatus('', setupManager.toolsRoot));
+  ipcMain.handle('mineru:runtime', (_event, executable, backend) => mineruRuntime(executable, setupManager.toolsRoot, { backend }));
+  ipcMain.handle('mineru:status', (_event, executable, backend) => mineruStatus(executable, setupManager.toolsRoot, backend));
+  ipcMain.handle('mineru:detect', (_event, backend) => mineruStatus('', setupManager.toolsRoot, backend));
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
   ipcMain.handle('setup:install', (_event, config) => {
     if (modelPullManager.busy) throw new Error('A model download is already running. Cancel it or wait before starting Local AI setup.');

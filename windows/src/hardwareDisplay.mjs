@@ -13,6 +13,10 @@ export function describeModelMemory({ sizeVram, size }) {
   return memory;
 }
 
+export function isMineruReady(parser) {
+  return Boolean(parser?.compatible && !(parser.kitExecutable && parser.runtime?.checked === false));
+}
+
 export function describeAdapter(adapter) {
   const bytes = adapter.dedicatedMemoryBytes;
   if (!Number.isSafeInteger(bytes) || bytes <= 0) return `${adapter.name} (${adapter.vendor})`;

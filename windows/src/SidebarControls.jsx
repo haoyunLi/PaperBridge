@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRightLeft, Cloud, Cpu, FileText, Languages, RefreshCw, Settings2 } from 'lucide-react';
+import { isMineruReady } from './hardwareDisplay.mjs';
 import './sidebar-controls.css';
 
 export function SidebarLanguage({ settings, languages, disabled, onChange }) {
@@ -30,21 +31,22 @@ export function SidebarAIStatus({ settings, ollamaStatus, ollamaError, refreshin
   const [check, setCheck] = useState(0);
   const [parser, setParser] = useState({ executable: null, checking: false, value: null, error: '' });
   const executable = settings.mineruExecutable || '';
+  const backend = settings.mineruBackend || 'auto';
   useEffect(() => {
     if (!enabled) return;
     let current = true;
-    setParser({ executable, checking: true, value: null, error: '' });
-    window.paperBridge.mineruStatus(executable)
-      .then(value => { if (current) setParser({ executable, checking: false, value, error: '' }); })
-      .catch(error => { if (current) setParser({ executable, checking: false, value: null, error: error.message }); });
+    setParser({ executable, backend, checking: true, value: null, error: '' });
+    window.paperBridge.mineruStatus(executable, backend)
+      .then(value => { if (current) setParser({ executable, backend, checking: false, value, error: '' }); })
+      .catch(error => { if (current) setParser({ executable, backend, checking: false, value: null, error: error.message }); });
     return () => { current = false; };
-  }, [executable, enabled, parserRevision, check]);
+  }, [executable, backend, enabled, parserRevision, check]);
 
-  const current = parser.executable === executable;
+  const current = parser.executable === executable && parser.backend === backend;
   const checkingParser = enabled && (!current || parser.checking);
-  const available = current && parser.value?.compatible;
+  const available = current && isMineruReady(parser.value);
   const parserMessage = !current || parser.checking ? 'Checking the local parser…'
-    : parser.error || (available ? parser.value.version ? `Version ${parser.value.version}` : 'Compatible local installation.' : parser.value?.reason || 'Use Local AI setup to install MinerU.');
+    : parser.error || (available ? parser.value.version ? `Version ${parser.value.version}` : 'Compatible local installation.' : parser.value?.runtime?.reason || parser.value?.reason || 'Use Local AI setup to install MinerU.');
   const online = settings.aiProvider === 'openai';
   return <section className="side-group sidebar-ai-status" aria-label="AI and parser status">
     <div className="side-label"><span>{online ? <Cloud size={14} /> : <Cpu size={14} />} {online ? 'OPENAI' : 'LOCAL AI'}</span></div>

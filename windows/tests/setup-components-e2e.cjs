@@ -68,7 +68,7 @@ async function run() {
           global.__setupComponentBusy = true;
           return new Promise((resolve, reject) => { global.__setupPendingRepair = { resolve, reject }; });
         }
-        return { mineruExecutable: fixture.repairedMineru, mineruBackend: 'auto', warning: 'Managed MinerU repair completed by mock.' };
+        return { mineruExecutable: fixture.repairedMineru, mineruBackend: config.mineruBackend, warning: 'Managed MinerU repair completed by mock.' };
       });
       ipcMain.removeHandler('setup:cancel');
       ipcMain.handle('setup:cancel', () => {
@@ -92,6 +92,7 @@ async function run() {
     const modelInstall = await app.evaluate(() => global.__setupComponentInstalls[0]);
     assert.deepEqual(modelInstall.components, { ollama: false, models: true, mineru: false });
     assert.equal(modelInstall.repairMineru, undefined);
+    assert.equal(modelInstall.mineruBackend, 'pipeline');
     await waitFor(() => {
       const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
       return saved.mineruExecutable === originalMineru && saved.mineruBackend === 'pipeline';
@@ -113,7 +114,7 @@ async function run() {
     assert.equal((await app.evaluate(() => global.__setupComponentInstalls[2])).repairMineru, true);
     await waitFor(() => {
       const saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-      return saved.mineruExecutable === repairedMineru && saved.mineruBackend === 'auto';
+      return saved.mineruExecutable === repairedMineru && saved.mineruBackend === 'pipeline';
     }, 'managed MinerU configuration after repair retry');
     const button = name => page.getByRole('button', { name, exact: true });
     await button('Close dialog').click();

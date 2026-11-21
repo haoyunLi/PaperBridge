@@ -112,8 +112,14 @@ test('NVIDIA setup chooses supported wheel index and repairs CPU-only MinerU', (
   assert.equal(plan.mineru, true);
   assert.equal(cudaPlan({ ...hardware, cudaVersion: '12.6' }).index, 'cu126');
   assert.equal(cudaPlan({ ...hardware, cudaVersion: '12.4' }).index, null);
+  const fallback = { ...status, mineru: { compatible: true, runtime: { checked: true, cuda: false } } };
+  assert.equal(setupPlan(fallback, [], { mineruBackend: 'pipeline' }).mineru, false, 'a verified CPU fallback survives the next setup');
+  assert.equal(setupPlan(fallback, [], { mineruBackend: 'pipeline', repairMineru: true }).mineru, true);
+  assert.equal(setupPlan(fallback, [], { mineruBackend: 'auto' }).mineru, true);
   const onnx = { ...status, mineru: { compatible: true, kitExecutable: 'mineru-kit.exe', runtime: { directml: true } } };
-  assert.equal(setupPlan(onnx).mineru, false, 'A working ONNX parser does not require a CUDA reinstall');
+  const onnxPlan = setupPlan(onnx);
+  assert.equal(onnxPlan.mineru, false, 'A working ONNX parser does not require a CUDA reinstall');
+  assert.match(onnxPlan.gpu.reason, /keeps the installed MinerU ONNX parser/);
   assert.equal(setupPlan({ ...onnx, mineru: { ...onnx.mineru, runtime: { checked: false } } }).mineru, true);
 });
 
@@ -159,9 +165,24 @@ test('a setup that reuses the current parser does not activate PDF extraction', 
   manager.status = async () => ({
     plan: { ollama: false, models: [], mineru: false }, mineru: { executable: 'existing.exe', kitExecutable: true }
   });
-  const result = await manager.install({ components: { mineru: true } });
+  const result = await manager.install({ components: { mineru: true }, mineruBackend: 'pipeline' });
+  assert.equal(result.mineruBackend, undefined);
   assert.equal(result.mineruExecutable, 'existing.exe');
   assert.equal(result.mineruInstalled, false);
+});
+
+test('ONNX repair checks the selected backend and retains the explicit compatibility setting', async () => {
+  const manager = new SetupManager({ toolsRoot: os.tmpdir(), emit: () => {} });
+  manager.status = async () => ({ plan: { mineru: true, gpu: { index: 'cu128' } },
+    mineru: { executable: 'existing.exe', kitExecutable: 'mineru-kit.exe' } });
+  manager.installMineru = async (_gpu, useOnnx, backend) => {
+    assert.equal(useOnnx, true);
+    assert.equal(backend, 'pipeline');
+    return { executable: 'repaired.exe', onnx: true, runtime: { checked: true, directml: false } };
+  };
+  const result = await manager.install({ components: { mineru: true }, repairMineru: true, mineruBackend: 'pipeline' });
+  assert.equal(result.mineruBackend, 'pipeline');
+  assert.equal(result.mineruInstalled, true);
 });
 
 test('MinerU-only repair skips Ollama and model installation and reuses managed activation path', async () => {

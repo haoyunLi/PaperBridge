@@ -93,7 +93,9 @@ async function run() {
       ipcMain.handle('setup:status', () => ({
         busy: Boolean(state.pending), hardware: { systemMemoryBytes: 32 * 1024 ** 3, adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU' }] },
         ollama: { installed: state.runtimeReady, running: state.runtimeReady, models: state.installed },
-        mineru: { installed: state.mineruReady, compatible: state.mineruReady, executable: fixture.managedMineru, version: 'MinerU test fixture', runtime: { checked: state.mineruReady, cuda: false } },
+        mineru: { installed: state.mineruReady, compatible: state.mineruReady, executable: fixture.managedMineru, version: 'MinerU test fixture',
+          ...(state.parserIssue && { kitExecutable: 'mineru-kit.exe' }),
+          runtime: { checked: state.mineruReady && !state.parserIssue, cuda: false, reason: state.parserIssue } },
         plan: { ollama: !state.runtimeReady, models: [], mineru: !state.mineruReady, gpu: { reason: 'Mock AMD hardware: MinerU uses its CPU pipeline.' } }
       }));
       ipcMain.handle('setup:install', (_event, payload) => {
@@ -265,6 +267,15 @@ async function run() {
     const repairPayload = await completeSetup();
     assert.deepEqual(repairPayload.components, { ollama: false, models: false, mineru: true });
     assert.equal(repairPayload.repairMineru, true);
+    assert.equal(repairPayload.mineruBackend, 'pipeline');
+    await app.evaluate(() => { global.__onboardingMock.parserIssue = 'MinerU could not verify its ONNX runtime.'; });
+    await onboarding().getByRole('button', { name: 'Refresh status', exact: true }).click();
+    const parserRow = onboarding().locator('.onboarding-readiness').filter({ hasText: 'MinerU parser' });
+    await parserRow.getByText('MinerU could not verify its ONNX runtime.').waitFor();
+    assert.doesNotMatch(await parserRow.getAttribute('class'), /\bready\b/);
+    await app.evaluate(() => { global.__onboardingMock.parserIssue = ''; });
+    await onboarding().getByRole('button', { name: 'Refresh status', exact: true }).click();
+    await waitFor(async () => /\bready\b/.test(await parserRow.getAttribute('class')), 'the repaired parser is ready');
     await next(4);
     assert.equal(await page.locator('.onboarding-model-card').count(), 6);
     await assertFooter(1320, 820, 'onboarding-assistants-1320x820.png');

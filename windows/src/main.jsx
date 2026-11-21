@@ -1434,7 +1434,6 @@ function App() {
       setRefreshingModels(false);
       setModels([]); setOllamaStatus('unchecked'); setOllamaError('Refresh models to check this local endpoint.');
     }
-    if (change.mineruExecutable !== undefined && change.mineruExecutable !== previous.mineruExecutable) setMineruRuntime(null);
     settingsRef.current = next; setSettings(next);
     if (paperRef.current && changedKeys.length) {
       commitPaper(current => ({ ...(readingSettingsChanged ? switchOutputSettings(current, previous, next) : current), taskSettings: snapshotPaperSettings(next) }));
@@ -1777,15 +1776,21 @@ function App() {
   async function checkHardware() {
     const request = ++hardwareCheckId.current, config = settingsRef.current;
     setCheckingHardware(true); setHardwareError('');
-    const [graphics, mineru] = await Promise.allSettled([api.graphicsStatus(), api.mineruRuntime(config.mineruExecutable)]);
+    const [graphics, mineru] = await Promise.allSettled([api.graphicsStatus(), api.mineruRuntime(config.mineruExecutable, config.mineruBackend)]);
     if (request !== hardwareCheckId.current) return;
     if (graphics.status === 'fulfilled') setHardware(graphics.value);
-    const sameParser = config.mineruExecutable === settingsRef.current.mineruExecutable;
+    const sameParser = config.mineruExecutable === settingsRef.current.mineruExecutable && config.mineruBackend === settingsRef.current.mineruBackend;
     if (sameParser && mineru.status === 'fulfilled') setMineruRuntime(mineru.value);
     const errors = [graphics, ...(sameParser ? [mineru] : [])].filter(result => result.status === 'rejected');
     setHardwareError(errors.map(result => result.reason.message).join(' '));
     setCheckingHardware(false);
   }
+  useEffect(() => {
+    if (!ready) return;
+    setMineruRuntime(null);
+    const timer = setTimeout(checkHardware, 250);
+    return () => { clearTimeout(timer); hardwareCheckId.current++; };
+  }, [ready, settings?.mineruExecutable, settings?.mineruBackend]);
   useEffect(() => {
     api.bootstrap().then(async data => {
       settingsRef.current = data.settings; setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library);
@@ -1799,8 +1804,6 @@ function App() {
       if (!(currentSettings.onboardingCompletedVersion >= ONBOARDING_VERSION)) setModal('onboarding');
       refreshOpenAIKeyStatus();
       refreshModels(currentSettings);
-      api.graphicsStatus().then(setHardware).catch(() => {});
-      api.mineruRuntime(currentSettings.mineruExecutable).then(setMineruRuntime).catch(() => {});
     }).catch(err => setError(err.message));
     const off = api.onProgress(data => {
       if (data.kind === 'setup') setSetupProgress(data);
@@ -2140,7 +2143,7 @@ function App() {
     if (mode !== 'pdfOnly') {
       try {
         setPendingImport(current => current ? { ...current, stage: 'Checking MinerU availability' } : current);
-        const mineru = await api.mineruStatus(config.mineruExecutable);
+        const mineru = await api.mineruStatus(config.mineruExecutable, config.mineruBackend);
         requireActiveTask(token);
         if (!mineru.compatible) throw new Error(mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
         setBusy({ label: 'MinerU is reconstructing the paper…' });
@@ -2658,7 +2661,7 @@ function App() {
     }
     let runtime;
     mineruPreflight.current = true;
-    try { runtime = await api.mineruStatus(settings.mineruExecutable); }
+    try { runtime = await api.mineruStatus(settings.mineruExecutable, settings.mineruBackend); }
     catch (cause) { setError(`MinerU detection failed: ${cause.message}`); return; }
     finally { mineruPreflight.current = false; }
     if (paperRef.current?.id !== paper.id || taskRef.current || editRef.current) return;

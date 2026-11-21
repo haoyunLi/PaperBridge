@@ -6,10 +6,10 @@ PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Porta
 
 ### 怎样核对下载的文件
 
-从同一 GitHub Release 下载 EXE 及同名的 `.exe.sha256` 文件，在它们所在的文件夹打开 PowerShell。以 0.2.68 便携版为例，把第一行的文件名换成实际下载的版本或安装版名称，再运行以下命令。显示 `True` 表示 EXE 的内容与该发布页给出的 SHA-256 一致。
+从同一 GitHub Release 下载 EXE 及同名的 `.exe.sha256` 文件，在它们所在的文件夹打开 PowerShell。以 0.2.69 便携版为例，把第一行的文件名换成实际下载的版本或安装版名称，再运行以下命令。显示 `True` 表示 EXE 的内容与该发布页给出的 SHA-256 一致。
 
 ```powershell
-$file = 'PaperBridge-Windows-0.2.68-x64-Portable.exe'
+$file = 'PaperBridge-Windows-0.2.69-x64-Portable.exe'
 $expected = ((Get-Content -LiteralPath "$file.sha256" -Raw).Trim() -split '\s+')[0]
 (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $expected
 ```

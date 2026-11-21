@@ -49,13 +49,20 @@ function setupPlan(status, requiredModels = [], config = {}) {
   const components = selectedComponents(config.components);
   const models = components.models ? missingOllamaModels(requiredModels, status.ollama.models) : [];
   const gpu = cudaPlan(status.hardware);
+  const keepCpuPipeline = config.mineruBackend === 'pipeline' && status.mineru.compatible &&
+    !status.mineru.kitExecutable && status.mineru.runtime?.checked === true && status.mineru.runtime.cuda === false;
+  if (status.mineru.kitExecutable) {
+    gpu.reason = 'Setup keeps the installed MinerU ONNX parser. Ollama selects acceleration independently.';
+  } else if (gpu.index && keepCpuPipeline && !config.repairMineru) {
+    gpu.reason = 'MinerU is ready with its CPU pipeline. Choose Repair / update MinerU to retry CUDA.';
+  }
   const ollamaRequiredByModels = components.models && !components.ollama && !status.ollama.running;
   return {
     ollama: !status.ollama.running && (components.ollama || components.models),
     models,
     mineru: components.mineru && (Boolean(config.repairMineru) || !status.mineru.compatible
       || Boolean(status.mineru.kitExecutable && status.mineru.runtime?.checked === false)
-      || Boolean(gpu.index && !status.mineru.kitExecutable && !status.mineru.runtime?.cuda)),
+      || Boolean(gpu.index && !status.mineru.kitExecutable && !status.mineru.runtime?.cuda && !keepCpuPipeline)),
     gpu,
     components,
     ollamaRequiredByModels
@@ -91,9 +98,9 @@ async function ollamaAppPath() {
   return where('ollama app.exe');
 }
 
-async function mineruStatus(configured, toolsRoot) {
+async function mineruStatus(configured, toolsRoot, backend) {
   const found = await detectMineruExecutable(configured, toolsRoot);
-  return { ...found, runtime: found.compatible ? await mineruRuntime(found.executable, toolsRoot, found) : null };
+  return { ...found, runtime: found.compatible ? await mineruRuntime(found.executable, toolsRoot, { found, backend }) : null };
 }
 
 async function sha256(file) {
@@ -136,13 +143,13 @@ class SetupManager {
     this.emit(this.lastProgress);
   }
 
-  async status({ baseURL, mineruExecutable, models = [], components, repairMineru = false }) {
+  async status({ baseURL, mineruExecutable, mineruBackend, models = [], components, repairMineru = false }) {
     const [hardware, mineru, appPath, response] = await Promise.all([
-      graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot), ollamaAppPath(),
+      graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot, mineruBackend), ollamaAppPath(),
       this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }).then(async value => ({ running: true, models: (await value.json()).models?.map(item => item.model || item.name).filter(Boolean) || [] })).catch(error => ({ running: false, models: [], error: error.message }))
     ]);
     const result = { hardware, mineru, ollama: { installed: Boolean(appPath), path: appPath, ...response } };
-    result.plan = setupPlan(result, models, { components, repairMineru });
+    result.plan = setupPlan(result, models, { components, repairMineru, mineruBackend });
     result.progress = this.lastProgress;
     result.busy = Boolean(this.controller);
     return result;
@@ -278,21 +285,21 @@ class SetupManager {
     }
   }
 
-  checkMineruRuntime(executable, kitExecutable) {
-    return mineruRuntime(executable, this.toolsRoot, { compatible: true, executable, kitExecutable }, this.controller.signal);
+  checkMineruRuntime(executable, kitExecutable, backend) {
+    return mineruRuntime(executable, this.toolsRoot, { found: { compatible: true, executable, kitExecutable }, signal: this.controller.signal, backend });
   }
 
-  async installMineru(gpu, useOnnx = process.arch === 'x64' && !gpu.index) {
+  async installMineru(gpu, useOnnx = process.arch === 'x64' && !gpu.index, backend) {
     const paths = mineruPaths(this.toolsRoot);
     const release = claimMineruSetup(paths.root);
     if (!release) throw new Error('MinerU setup is running in another operation. Wait for it to finish.');
-    try { return await this.installMineruEnvironment(paths, gpu, useOnnx); }
+    try { return await this.installMineruEnvironment(paths, gpu, useOnnx, backend); }
     finally { release(); }
   }
 
-  async installMineruEnvironment(paths, gpu, useOnnx) {
+  async installMineruEnvironment(paths, gpu, useOnnx, backend) {
     const { final, staging, retired, legacyBackup } = paths;
-    const environment = { ...(useOnnx ? mineru4Environment(this.toolsRoot, 'auto') : process.env), UV_PYTHON_INSTALL_DIR: path.join(this.toolsRoot, 'python'), UV_CACHE_DIR: path.join(this.toolsRoot, 'cache'), UV_NO_PROGRESS: '1', UV_HTTP_TIMEOUT: '600' };
+    const environment = { ...(useOnnx ? mineru4Environment(this.toolsRoot, backend) : process.env), UV_PYTHON_INSTALL_DIR: path.join(this.toolsRoot, 'python'), UV_CACHE_DIR: path.join(this.toolsRoot, 'cache'), UV_NO_PROGRESS: '1', UV_HTTP_TIMEOUT: '600' };
     const versionArgs = useOnnx ? ['version', '--json'] : ['--version'];
     recoverMineru(paths);
     if (fs.existsSync(legacyBackup)) {
@@ -301,7 +308,7 @@ class SetupManager {
         try {
           const executable = path.join(final, 'Scripts', 'mineru.exe');
           const detected = await detectMineruExecutable(executable, this.toolsRoot, { repairOwner: true });
-          finalWorks = detected.compatible && (await mineruRuntime(executable, this.toolsRoot, detected)).checked === true;
+          finalWorks = detected.compatible && (await mineruRuntime(executable, this.toolsRoot, { found: detected, backend })).checked === true;
         }
         catch { /* Recover the last working installation after an interrupted activation. */ }
       }
@@ -354,7 +361,7 @@ class SetupManager {
         await this.run(executable, versionArgs, 'mineru', 'Checking the active MinerU installation…', { env: environment });
         if (kitExecutable) await this.run(kitExecutable, ['parse', '--help'], 'mineru', 'Checking the active ONNX parser…', { env: environment });
         this.send('mineru', 'Checking the active MinerU runtime and graphics backend…');
-        runtime = await this.checkMineruRuntime(executable, kitExecutable);
+        runtime = await this.checkMineruRuntime(executable, kitExecutable, backend);
         cancelled(this.controller.signal);
         if (!runtime?.checked) throw new Error(runtime?.reason || 'MinerU runtime verification failed.');
         commitMineruActivation(paths);
@@ -390,26 +397,25 @@ class SetupManager {
       this.send('detect', 'Checking existing local tools and graphics hardware…');
       const status = await this.status(config);
       cancelled(this.controller.signal);
-      let mineruExecutable = status.mineru.executable;
-      let mineruCuda = Boolean(status.mineru.runtime?.cuda);
-      let mineruOnnx = Boolean(status.mineru.kitExecutable);
-      let warning = '';
       if ((components.ollama || components.models) && status.plan.ollama) await this.startOrInstallOllama(config.baseURL);
       for (const model of components.models ? status.plan.models : []) {
         cancelled(this.controller.signal);
         this.send('model', `Downloading ${model} into Ollama…`);
         await this.pullModel(config.baseURL, model, this.controller.signal, update => this.send('model', `${model}: ${update.status}`, { received: update.completed || 0, total: update.total || null }));
       }
+      let result = { warning: '' };
       if (components.mineru && status.plan.mineru) {
-        const useOnnx = process.arch === 'x64' && (mineruOnnx || !status.plan.gpu.index);
-        const result = await this.installMineru(status.plan.gpu, useOnnx);
-        mineruExecutable = result.executable;
-        mineruCuda = Boolean(result.runtime?.cuda);
-        mineruOnnx = Boolean(result.onnx);
-        warning = result.warning;
-      } else cancelled(this.controller.signal);
-      this.send('done', warning || 'Local AI setup is ready.');
-      return components.mineru ? { mineruInstalled: Boolean(status.plan.mineru), mineruExecutable, mineruBackend: mineruCuda || mineruOnnx ? 'auto' : 'pipeline', warning } : { warning };
+        const useOnnx = process.arch === 'x64' && Boolean(status.mineru.kitExecutable || !status.plan.gpu.index);
+        const installed = await this.installMineru(status.plan.gpu, useOnnx, config.mineruBackend);
+        const automatic = config.mineruBackend !== 'pipeline' && (installed.onnx || installed.runtime?.cuda);
+        result = { mineruInstalled: true, mineruExecutable: installed.executable,
+          mineruBackend: automatic ? 'auto' : 'pipeline', warning: installed.warning || '' };
+      } else {
+        cancelled(this.controller.signal);
+        if (components.mineru) Object.assign(result, { mineruInstalled: false, mineruExecutable: status.mineru.executable });
+      }
+      this.send('done', result.warning || 'Local AI setup is ready.');
+      return result;
     } catch (error) {
       this.send(error.name === 'AbortError' ? 'cancelled' : 'error', error.message);
       throw error;

@@ -4,7 +4,7 @@ import SettingsModels from './SettingsModels.jsx';
 import OllamaMemory from './OllamaMemory.jsx';
 import OpenAISettings from './OpenAISettings.jsx';
 import { ReadingAppearanceControls } from './ReadingAppearance.jsx';
-import { describeAdapter } from './hardwareDisplay.mjs';
+import { describeAdapter, isMineruReady } from './hardwareDisplay.mjs';
 import './settings.css';
 
 const api = window.paperBridge;
@@ -42,18 +42,18 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
     if (section !== 'parsing') return;
     let current = true;
     setCheckingParser(true); setParser(null); setParserError('');
-    api.mineruStatus(settings.mineruExecutable).then(result => { if (current) setParser(result); })
+    api.mineruStatus(settings.mineruExecutable, settings.mineruBackend).then(result => { if (current) setParser(result); })
       .catch(cause => { if (current) setParserError(cause.message); })
       .finally(() => { if (current) setCheckingParser(false); });
     return () => { current = false; };
-  }, [section, settings.mineruExecutable, parserCheck]);
+  }, [section, settings.mineruExecutable, settings.mineruBackend, parserCheck]);
 
   async function detectMineru() {
     if (detecting || locked) return;
     const previousPath = settingsRef.current.mineruExecutable;
     setDetecting(true); setParserError('');
     try {
-      const result = await api.detectMineru();
+      const result = await api.detectMineru(settingsRef.current.mineruBackend);
       if (!mounted.current || settingsRef.current.mineruExecutable !== previousPath) return;
       if (lockedRef.current) { setParserError('Another task started during detection. Finish that task, then use Auto-Detect again.'); return; }
       if (!result.compatible || !result.executable) throw new Error(result.reason || 'No compatible MinerU installation was found. Use Local AI setup to install it.');
@@ -94,8 +94,8 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <SettingsModels settings={settings} models={models} hardware={hardware} busy={locked || Boolean(ollamaError)} pullProgress={progress} onUse={onUse} onDownload={onRecommendation} />
       </>}
       {section === 'parsing' && <>
-        <Group title="PDF parsing"><div className="settings-status-row"><div><strong>{checkingParser ? 'Checking MinerU…' : parser?.compatible ? 'MinerU is ready' : 'MinerU is unavailable'}</strong>
-          <p>{parser?.compatible ? `${parser.version} · ${parser.executable}` : parser?.reason || 'Check a local installation or use automatic discovery.'}</p></div>
+        <Group title="PDF parsing"><div className="settings-status-row"><div><strong>{checkingParser ? 'Checking MinerU…' : isMineruReady(parser) ? 'MinerU is ready' : parser?.compatible ? 'MinerU runtime check failed' : 'MinerU is unavailable'}</strong>
+          <p>{isMineruReady(parser) ? `${parser.version} · ${parser.executable}` : parser?.runtime?.reason || parser?.reason || 'Check a local installation or use automatic discovery.'}</p></div>
           <button className="button outline" disabled={checkingParser || detecting} onClick={() => setParserCheck(value => value + 1)}>Check again</button></div>
           <fieldset disabled={locked || detecting}>
             <label>PDF extraction mode<select value={settings.pdfExtractionMode || 'mineruPreferred'} onChange={event => onSettings({ pdfExtractionMode: event.target.value })}><option value="mineruPreferred">MinerU, then selectable PDF text</option><option value="mineruOnly">MinerU only</option><option value="pdfOnly">Selectable PDF text only (no OCR)</option></select></label>
