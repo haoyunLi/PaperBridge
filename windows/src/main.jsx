@@ -1,6 +1,7 @@
 import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { documentLinkTarget } from './markdownLinks.mjs';
 import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
@@ -183,12 +184,21 @@ function openPaperLink(event) {
   if (event.defaultPrevented || event.button > 1) return;
   const link = event.target.closest?.('a[href]');
   if (!link || !event.currentTarget.contains(link)) return;
-  const url = externalPaperURL(link.getAttribute('href'));
-  if (!url) return;
+  const href = link.getAttribute('href');
+  const fragment = href.startsWith('#');
+  const url = fragment ? null : externalPaperURL(href);
+  if (!fragment && !url) return;
   event.preventDefault();
   const selection = window.getSelection();
   if (event.detail > 0 && selection && !selection.isCollapsed && selection.containsNode(link, true)) return;
-  api.openPaperLink(url);
+  if (fragment) {
+    const target = documentLinkTarget(link, href);
+    if (target) {
+      if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  } else api.openPaperLink(url);
 }
 
 function Markdown({ children, annotations, annotationSource = children }) {
@@ -1981,13 +1991,24 @@ function App() {
     await libraryMetadataSaveChain.current.catch(() => {});
     try { await glossarySave.current; }
     catch { api.closeCancelled(); return; }
+    // The last scroll event or its debounced write may still be pending when the window closes.
+    clearTimeout(scrollSaveTimer.current);
+    const host = mainScrollRef.current;
+    if (!pendingImport && host && paperRef.current && host.dataset.readingPaperId === paperRef.current.id && host.getAttribute('aria-busy') === 'false' && !restoringScroll.current) {
+      const location = currentReadingLocation();
+      const position = persistedReadingPosition(location, paperRef.current.position);
+      const previous = paperRef.current.position || {};
+      if (Object.entries(position.scrollByTab).some(([key, value]) => value !== (previous.scrollByTab?.[key] ?? 0))) {
+        commitPaper(current => ({ ...current, position }), { deferUndo: true });
+      }
+    }
     const saved = await finishNoteEditing();
     if (saved) api.closeReady();
     else {
       setError('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
       api.closeCancelled();
     }
-  }), []);
+  }), [tab, displayMode, pageNumber, search, pendingImport]);
   useLayoutEffect(() => {
     if (paper && !viewNavigation && !blockNavigation) return restoreMainScroll();
     publishReadingRestorationState();

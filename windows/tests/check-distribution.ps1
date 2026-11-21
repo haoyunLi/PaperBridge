@@ -36,6 +36,8 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the offline scanned PDF comparison' }
             node "$PSScriptRoot/pdf-journal-export-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the journal reading and bilingual export comparison' }
+            node "$PSScriptRoot/markdown-navigation-e2e.cjs"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed reader failed the Markdown heading navigation and position restore checks' }
             node "$PSScriptRoot/translation-range-actions-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the translation range comparison' }
             node "$PSScriptRoot/structured-draft-e2e.cjs"
