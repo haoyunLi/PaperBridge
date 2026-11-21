@@ -62,17 +62,12 @@ func nativeScannedNotebook(pdf: URL) throws -> [String: Any] {
             throw failure("Could not read the scan orientation and printed swatch on page \(index + 1)")
         }
         let channels = [sample.redComponent, sample.greenComponent, sample.blueComponent]
-        guard zip(channels, color).allSatisfy({ abs($0.0 * 255 - CGFloat($0.1)) < 18 }) else {
-            let raster = NSBitmapImageRep(data: tiff)!
-            var grid: [[Int]] = []
-            for y in 1...5 {
-                for x in 1...5 {
-                    if let c = raster.colorAt(x: x * raster.pixelsWide / 6, y: y * raster.pixelsHigh / 6)?.usingColorSpace(.sRGB) {
-                        grid.append([c.redComponent, c.greenComponent, c.blueComponent].map { Int($0 * 255) })
-                    }
-                }
-            }
-            throw failure("Wrong scan swatch on page \(index + 1), \(image.pixelsWide)x\(image.pixelsHigh), center \(channels), grid \(grid)")
+        // DeviceRGB is unprofiled. Identify the printed swatch by its dominant
+        // channel and contrast, which survive PDFKit's display-profile conversion.
+        let dominant = color.firstIndex(of: color.max()!)!
+        let others = channels.indices.filter { $0 != dominant }.map { channels[$0] }
+        guard channels[dominant] > (others.max() ?? 0) + 0.16 else {
+            throw failure("Wrong scan swatch on page \(index + 1): \(channels)")
         }
     }
     guard let second = document.page(at: 1) else { throw failure("Missing second page") }

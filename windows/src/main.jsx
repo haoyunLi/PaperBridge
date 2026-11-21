@@ -499,12 +499,21 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   useLayoutEffect(() => {
     const host = scroller.current;
     if (!host || !pdf) return;
-    const resize = () => setFitWidth(Math.min(850, Math.max(1, host.clientWidth - 28)));
+    const resize = () => {
+      setFitWidth(Math.min(850, Math.max(1, host.clientWidth - 28)));
+      refreshVisiblePages(host);
+    };
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host);
     return () => observer.disconnect();
   }, [pdf]);
+
+  function refreshVisiblePages(host) {
+    const first = pdfPageAt(host, host.scrollTop);
+    const last = pdfPageAt(host, host.scrollTop + host.clientHeight);
+    setVisible(current => current[0] === first && current[1] === last ? current : [first, last]);
+  }
 
   useLayoutEffect(() => {
     const host = scroller.current;
@@ -513,7 +522,10 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     const navigationId = navigation?.id;
     const jump = activePage.current !== currentPage || lastRestore.current !== restoreToken ||
       (navigationId && lastJump.current !== navigationId);
-    if (!jump && activePageTop.current === page.offsetTop && layoutWidth.current === width && lastFitWidth.current === fitWidth) return;
+    if (!jump && activePageTop.current === page.offsetTop && layoutWidth.current === width && lastFitWidth.current === fitWidth) {
+      refreshVisiblePages(host);
+      return;
+    }
     clearTimeout(scrollTimer.current);
     cancelAnimationFrame(scrollFrame.current);
     activePage.current = currentPage;
@@ -526,7 +538,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     if (layoutWidth.current !== width) host.scrollLeft = page.offsetLeft + horizontalCenter.current * width - host.clientWidth / 2;
     layoutWidth.current = width;
     lastFitWidth.current = fitWidth;
-    setVisible([currentPage, pdfPageAt(host, host.scrollTop + host.clientHeight)]);
+    refreshVisiblePages(host);
   }, [pdf, currentPage, position, restoreToken, navigation?.id, width, fitWidth, zoom, sizes]);
 
   useLayoutEffect(() => () => {
@@ -590,7 +602,6 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       const host = scroller.current;
       if (!host?.children.length) return;
       const top = host.scrollTop;
-      const end = pdfPageAt(host, top + host.clientHeight);
       const page = top > 0 && host.scrollHeight - top - host.clientHeight < 2
         ? host.children.length
         : pdfPageAt(host, top + Math.min(36, host.clientHeight / 4));
@@ -599,7 +610,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       horizontalCenter.current = (host.scrollLeft + host.clientWidth / 2 - slot.offsetLeft) / width;
       const offset = pdfOffsetAtFit(host, slot, zoom);
       activeOffset.current = offset;
-      setVisible(current => current[0] === page && current[1] === end ? current : [page, end]);
+      refreshVisiblePages(host);
       clearTimeout(scrollTimer.current);
       if (activePage.current !== page) {
         activePage.current = page;
@@ -653,7 +664,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     changeZoom(next);
   }
   const pageStatus = statuses[currentPage];
-  const [start, end] = visible[0] === currentPage ? visible : [currentPage, currentPage];
+  const [start, end] = visible;
   const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
   const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
@@ -670,7 +681,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       }} onMouseUp={capture}>
       {width > 0 && Array.from({ length: pdf.numPages }, (_, index) => {
         const number = index + 1;
-        const mounted = number >= start - 1 && number <= end + 1 ||
+        const mounted = number === currentPage || number >= start - 1 && number <= end + 1 ||
           number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
         return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
           {mounted && <PdfSheet pdf={pdf} number={number} width={width} annotations={annotations} onSize={onSize} onReady={onReady} />}

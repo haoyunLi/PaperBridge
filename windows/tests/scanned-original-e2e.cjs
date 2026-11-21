@@ -11,6 +11,34 @@ const bytes = fs.readFileSync(path.join(__dirname, 'mac-parity', name));
 const id = crypto.createHash('sha256').update(bytes).digest('hex');
 const colors = [[182, 69, 53], [43, 136, 87], [67, 93, 176]];
 
+async function dropPDF(page, filename, pdf) {
+  await page.evaluate(({ filename, data }) => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([Uint8Array.from(data)], filename, { type: 'application/pdf' }));
+    document.querySelector('.app').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, { filename, data: [...pdf] });
+  await page.getByRole('heading', { name: filename, exact: true }).waitFor();
+}
+
+async function visibleEndPages(page) {
+  await page.waitForFunction(() => {
+    const host = document.querySelector('.pdf-continuous');
+    if (!host || host.dataset.pdfZoom !== '50') return false;
+    const box = host.getBoundingClientRect();
+    const slots = [...host.children].filter(slot => {
+      const bounds = slot.getBoundingClientRect();
+      return Math.min(bounds.bottom, box.bottom) - Math.max(bounds.top, box.top) > 5;
+    });
+    return slots.length >= 3 && slots.at(-1).dataset.pdfPage === '8' && slots.every(slot => {
+      const canvas = slot.querySelector('canvas');
+      if (!canvas?.height || !canvas.width) return false;
+      const pixel = canvas.getContext('2d').getImageData(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1).data;
+      const number = Number(slot.dataset.pdfPage);
+      return Math.abs(pixel[0] - Math.round(number * 25.5)) < 3 && Math.abs(pixel[1] - 51) < 3 && Math.abs(pixel[2] - 179) < 3;
+    });
+  });
+}
+
 async function pageImage(page, number, facsimile = false) {
   const selector = facsimile ? `canvas[aria-label="Original PDF page ${number}"]`
     : `.pdf-page-slot[data-pdf-page="${number}"] canvas`;
@@ -40,12 +68,7 @@ async function run() {
   try {
     let page = await app.firstWindow();
     await page.locator('.welcome').waitFor();
-    await page.evaluate(({ name, data }) => {
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([Uint8Array.from(data)], name, { type: 'application/pdf' }));
-      document.querySelector('.app').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    }, { name, data: [...bytes] });
-    await page.getByRole('heading', { name, exact: true }).waitFor();
+    await dropPDF(page, name, bytes);
     await page.locator('.scan-notice').getByText('No selectable text in this PDF').waitFor();
     await pageImage(page, 1, true);
     result.canTranslate = await page.getByRole('button', { name: 'Translate Paper', exact: true }).isEnabled();
@@ -94,7 +117,28 @@ async function run() {
       const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
       assert.deepEqual(result, native.scannedNotebook, 'scanned paper and restored page match the Mac reader');
     }
-    console.log(JSON.stringify({ dir, result }));
+    const slides = 'landscape-swatches.pdf';
+    await dropPDF(page, slides, fs.readFileSync(path.join(__dirname, 'mac-parity', slides)));
+    await page.setViewportSize({ width: 1250, height: 970 });
+    for (const tab of ['Original', 'Paper']) {
+      await openWorkspaceView(page, tab);
+      if (tab === 'Paper') await page.getByLabel('Paper display mode').selectOption('source');
+      await page.locator('.pdf-continuous canvas').first().waitFor();
+      const zoomOut = page.getByRole('button', { name: 'Zoom out PDF' });
+      await zoomOut.click();
+      await zoomOut.click();
+      await page.getByLabel('PDF zoom level').getByText('50%').waitFor();
+      await page.locator('.pdf-continuous').evaluate(host => { host.scrollTop = host.scrollHeight; });
+      await page.locator('.pdf-toolbar').getByText(/page 8 of 8/).waitFor();
+      await visibleEndPages(page);
+    }
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    await page.setViewportSize({ width: 1250, height: 970 });
+    await page.locator('.pdf-toolbar').getByText(/page 8 of 8/).waitFor();
+    await visibleEndPages(page);
+    console.log(JSON.stringify({ dir, result, visibleLandscapePagesRestored: true }));
   } finally { await app.close(); }
 }
 
