@@ -18,8 +18,8 @@ async function checkColumnPDF(app, page) {
   const blocks = (await page.evaluate(paperId => window.paperBridge.loadPaper(paperId), id)).blocks;
   const text = blocks.map(block => block.text).join('\n');
   const anchors = ['The sensor recorded changes', 'The recorded value agreed',
-    'The last measurement followed', 'The second trial used', 'The review included',
-    '3.3. Network Architectures', 'The comparison used', 'Figure 1.'];
+    'The second trial used', 'The review included', '3.3. Network Architectures',
+    'The comparison used', 'Figure 1.', 'The last measurement followed'];
   function orderedAnchors(value) {
     const positions = anchors.map(anchor => {
       const index = value.indexOf(anchor);
@@ -42,13 +42,9 @@ async function checkColumnPDF(app, page) {
   if (reference) {
     const { columnPDF: native, columnPDFSHA256 } = JSON.parse(fs.readFileSync(reference, 'utf8'));
     assert.equal(columnPDFSHA256, id, 'PDFKit and PDF.js opened identical PDF bytes');
-    // PDFKit places the isolated lower-left passage after the right-column
-    // caption. Windows finishes its left column first. Both preserve the two
-    // continuous columns, subsection and caption in their original order.
-    const lowerLeft = 'The last measurement followed';
-    assert.deepEqual(orderedAnchors(native), [...anchors.filter(anchor => anchor !== lowerLeft), lowerLeft]);
-    const words = value => value.replace(/1\s*This note/g, '1 This note').trim().split(/\s+/u).sort();
-    assert.deepEqual(words(text), words(native), 'Every word survives both native imports');
+    assert.deepEqual(orderedAnchors(native), anchors, 'Reading order from the macOS PDFKit extractor');
+    const words = value => value.replace(/1\s*This note/g, '1 This note').trim().split(/\s+/u);
+    assert.deepEqual(words(text), words(native), 'All extracted words occur in the same reading order');
     assert.ok(native.includes('instrument calibration date') && native.includes('original reading'));
     assert.ok(!native.includes('Page 1 of 1'), 'macOS excludes the printed folio');
   }

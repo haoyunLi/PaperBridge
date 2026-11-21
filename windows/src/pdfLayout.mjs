@@ -134,7 +134,12 @@ export function pdfReadingGroups(lines) {
     left = [];
     right = [];
   }
+  let previous;
   for (const line of lines) {
+    // A wide blank band across both columns separates the text regions above
+    // and below it (for example, a caption and an isolated page-bottom note).
+    if (previous && previous.y - line.y > 6 * Math.max(10, previous.height, line.height)) flushColumns();
+    previous = line;
     if (line.lane === 'spanning') {
       flushColumns();
       spanning.push(line);

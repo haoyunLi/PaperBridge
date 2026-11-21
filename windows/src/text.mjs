@@ -122,8 +122,10 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     const heading = isHeading(line.text);
     const nextStarts = /^[A-Z\u4e00-\u9fff]/.test(line.text);
     const previousEnds = previous && /[.!?。！？:]$/.test(previous.text);
-    const startsFootnote = line.raisedNoteMarker && line.height <= typicalHeight * 0.9;
-    if (previous && (startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
+    const startsFootnote = line.raisedNoteMarker && line.height <= Math.max(typicalHeight, previous?.height || 0) * 0.9;
+    const continuesFootnote = group[0]?.raisedNoteMarker && previous && Math.abs(line.height - previous.height) <= line.height * 0.1
+      && gap >= 0 && gap <= line.height * 1.45;
+    if (previous && (startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && !continuesFootnote && gap > typicalHeight * 1.1))) flush();
     group.push(line);
     // A short title-cased fragment such as "The English-" can be the first
     // physical line of body prose. Keep a close lowercase continuation with it.
