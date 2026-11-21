@@ -1,5 +1,11 @@
 # Windows 全软件功能复查：2026-09-20
 
+## Windows 0.2.26 公开下载及 macOS 对照
+
+Edge 从仓库首页重新下载了 Setup 和 Portable。两份 EXE 的 SHA-256 与 GitHub Release 和附带校验文件一致，Windows 的互联网来源标记均为 ZoneId=3。独立的全新 Windows runner 打开公开便携版及安装后的应用并验证首次引导。在本机从公开 0.2.25 检测到 0.2.26，升级和重启后可重新打开旧论文及原有笔记、高亮。自动测试覆盖公开二进制的启动，Windows 对每台设备显示的安全确认仍由使用者操作。[发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44870849946) · [AMD 真实推理及公式对照](AMD_DEVICE_TEST.md)
+
+对照工作流在 macOS 编译项目实际使用的 Swift 文件，再把结果传给 Windows 上的 JavaScript 实现。六组论文输入覆盖章节范围、摘要及结论段号、阅读地图摘录及跳转、提取质量提示，以及 Unicode 边界。另有四个公式、代码、图片和链接的 Markdown 还原用例。两端结果逐项一致。公开包本机报告为 `test-artifacts/browser-download-0.2.26-7o57LZ/result.json` 和 `test-artifacts/i-mwpz0rwz-qko/report.json`。[原生 macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44871214481/job/136746054220)
+
 ## Windows 0.2.25 公开下载验收
 
 [发布工作流](https://github.com/haoyunLi/PaperBridge/actions/runs/44869113723) 的构建与公开下载复测均通过。后者在另一台全新 Windows 机器下载两份 EXE，核对 SHA-256，启动便携版及安装后的程序，验证首次引导和安装版再次启动时恢复窗口。在本机，Edge 从仓库首页实际下载两份文件，均带互联网来源标记，文件哈希与 Release 一致。公开 0.2.24 安装版检查到了 0.2.25，升级和重启后原论文、笔记及高亮保留。浏览器和升级记录分别在 `test-artifacts/browser-download-0.2.25-ZxcWoP/result.json` 和 `test-artifacts/i-mwpyauo6-p4o/report.json`。本机公开便携版的生成速度、公式和译例见 [AMD 真机回归](AMD_DEVICE_TEST.md)。
