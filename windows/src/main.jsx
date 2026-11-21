@@ -770,7 +770,7 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect,
           </details>;
         })}
       </section> : <p className="summary-evidence-note">This saved summary has no verified source links.</p>}
-    </> : <Empty title={paper.blocks.length ? 'No summary yet' : 'No readable text yet'} body={paper.blocks.length ? 'Generate a source and target language summary using your local model. Exact source quotations are linked only after validation.' : 'Use MinerU OCR from Paper or Original before summarizing this PDF.'} />}
+    </> : <Empty title={paper.blocks.length ? 'No summary yet' : 'No readable text yet'} body={paper.blocks.length ? 'Generate a summary in the source and target languages. Open a verified quotation to read it in the original paper.' : 'Use MinerU OCR from Paper or Original before summarizing this PDF.'} />}
   </div>;
 }
 

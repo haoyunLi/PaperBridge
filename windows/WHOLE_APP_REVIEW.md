@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 开发分支的摘要来源与长段分批（2026-11-21）
+
+在 Windows 0.2.31 中，10 个实验符号能通过 20 字符的最低引文要求，300 个扩展汉字却超过了 500 字符的上限。开发分支改为按完整字符计数。模型输出和 PDF 用不同 Unicode 编码表示同一重音字母时，阅读器会选中论文里保存的原句。两处原文仅有编码形式不同时，来源链接定位到段落。原始段号和文内标注偏移保留。[实现](https://github.com/haoyunLi/PaperBridge/commit/c615bd5)
+
+两端实现核对了八组引文的接受和拒绝结果、三组长段的完整分批文本，以及从初步摘取到合并的结论编号与逐条引文。Windows 桌面测试覆盖了补引文、拆段、撤销、关闭重开和从摘要定位原句。[macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44883611108/job/136784145902)
+
+RX 7800 XT 上用本机 Ollama 对《Attention Is All You Need》的已保存 PDF 文字层生成双语摘要。在 `test-artifacts/summary-amd-tvG7W9` 这次运行中，六条结论共七条引文，逐一点击均在对应的原文段落选中并显示了原句，导出的 `summary-evidence.md` 保留全部段号与引文。另一次运行 `test-artifacts/summary-amd-pruHI5` 的六条结论中四条带有已验证引文。当前原生对照使用相同的受控输入；真实论文的本机结果来自 Windows。
+
 ## Windows 0.2.31 公开下载与阅读验收（2026-11-21）
 
 首页提供 Windows portable 与 Windows installer 两个入口。Edge 从这两个入口下载的 EXE 均保留互联网来源标记，大小与 SHA-256 符合 GitHub 资产及校验文件。独立 Windows 环境从公开链接下载便携版并打开引导，也安装了 Setup 并启动安装后的 PaperBridge。本机从便携版跳过 AI 配置，导入中文文件名的两页 PDF，加笔记和高亮，重启后均保留。0.2.30 便携版在空缓存中发现 0.2.31，后台下载的便携版与公开文件逐字节校验一致。[发布记录](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.31) · [公开包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44881811459/job/136780225037)

@@ -70,6 +70,9 @@ async function run() {
     });
     await revealSidebarSource(page);
     await page.getByRole('button', { name: 'Try a Practice Paper', exact: true }).first().click();
+    await page.getByText('No summary yet', { exact: true }).waitFor();
+    assert.doesNotMatch(await page.locator('.summary-view').innerText(), /using your local model/i);
+    assert.equal((await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests)).length, 0);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const firstBlock = page.locator('#block-1');
     await firstBlock.getByTitle('Translate heading').click();
