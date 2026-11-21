@@ -1,6 +1,37 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('numbered front-matter names remain associated with their published affiliations', async () => {
+  const { findNumberedAuthorBlock } = await import('../src/authorByline.mjs');
+  const { connectedRetryExcerpts } = await import('../src/connectedTranslation.mjs');
+  const names = 'María López-García¹, J. B. Smith¹, ², and Miguel de Val-Borro²';
+  const first = '1 Center for Astrophysics, 2 University Observatory';
+  const paper = (...texts) => texts.map((text, index) => ({ id: index + 1, text }));
+  const blocks = paper('Observations at High Resolution', names, first, 'Abstract', 'We report $N=3$ observations.');
+  assert.equal(findNumberedAuthorBlock(blocks), blocks[1]);
+  const languages = { sourceLanguage: 'English', targetLanguage: 'French' };
+  const custom = [{ ...languages, source: 'Miguel de Val-Borro', target: 'Miguel de Val-Borro' }];
+  assert.equal(findNumberedAuthorBlock(blocks, languages, custom), null);
+  assert.equal(findNumberedAuthorBlock(blocks, { ...languages, targetLanguage: 'Japanese' }, custom), blocks[1]);
+  assert.equal(findNumberedAuthorBlock(blocks, { translationStyleGuide: 'Transliterate the byline.' }), null);
+  for (const lines of [
+    ['Calibration', 'The authors compared sample A1, control B2.', first],
+    ['Calibration', 'Abstract', names, first],
+    ['Calibration', names, '1 A summary of the results.'],
+    ['Calibration', names, '3 Center for Astrophysics'],
+    ['Calibration', 'Trace those rays to the detector.', first]
+  ]) assert.equal(findNumberedAuthorBlock(paper(...lines)), null);
+  const original = blocks.map(block => block.text).join('\r\n\r\n');
+  for (const retry of [false, true]) {
+    const parts = connectedRetryExcerpts({ source: original }, retry, names);
+    assert.deepEqual(parts.filter(part => part.preserve).map(part => part.source), [names]);
+    assert.equal(parts.map(part => part.separator + part.source).join(''), original);
+    assert.ok(parts.filter(part => !part.preserve).some(part => part.source.includes(first)));
+  }
+  const example = { source: 'A code sample:\n\n' + '\x60\x60\x60\n\n' + names + '\n\n\x60\x60\x60' };
+  assert.deepEqual(connectedRetryExcerpts(example, false, names), [{ source: example.source, separator: '' }]);
+});
+
 test('new full-paper excerpts use complete characters and preserve scientific prose and markup', async () => {
   const { planConnectedBatches } = await import('../src/connectedTranslation.mjs');
   const plan = paragraphs => planConnectedBatches(paragraphs.map((text, i) => ({ id: i + 1, text }))).map(batch => batch.source);

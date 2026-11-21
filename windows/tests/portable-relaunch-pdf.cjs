@@ -58,6 +58,13 @@ async function run() {
     await page.getByRole('heading', { name: 'emcee-v3.pdf', exact: true }).waitFor();
     await openWorkspaceView(page, 'Reader');
     await page.locator('.source-text').filter({ hasText: 'emcee v3: A Python ensemble sampling toolkit for affine-invariant MCMC' }).first().waitFor();
+    const byline = page.locator('#block-2');
+    const sourceByline = await byline.locator('.source-text').innerText();
+    assert.ok(sourceByline.includes('Joe Zuntz8') && sourceByline.includes('Oriol Abril Pla15'));
+    await byline.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+    const translatedByline = byline.locator('.translation-text');
+    await translatedByline.waitFor();
+    assert.equal(await translatedByline.innerText(), sourceByline);
     await openWorkspaceView(page, 'Paper');
     await page.waitForFunction(() => {
       const sheet = document.querySelector('canvas[aria-label="Original PDF page 1"]');

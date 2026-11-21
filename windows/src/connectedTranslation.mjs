@@ -92,27 +92,34 @@ export function isLocalMarkupRetry(batch, saved, provider) {
 }
 
 // On an explicit retry, smaller paragraph groups help local models keep every marker.
-export function connectedRetryExcerpts(batch, localRetry) {
+export function connectedRetryExcerpts(batch, localRetry, authorSource = '') {
   const source = batch.pdfFootnoteMarker ? batch.source.slice(batch.pdfFootnoteMarker.length).trimStart() : batch.source;
   const pieces = [{ source, separator: '' }];
-  if (!localRetry) return pieces;
+  const containsByline = Boolean(authorSource && source.includes(authorSource));
+  if (!localRetry && !containsByline) return pieces;
 
   const { text, tokens } = protectMarkdown(source);
-  if (!tokens.length) return pieces;
+  const retryMarkup = localRetry && tokens.length > 0;
+  if (!retryMarkup && !containsByline) return pieces;
   // Mask code and equations before looking for paragraph boundaries inside a batch.
   const paragraphs = text.split(/(\r?\n(?:[ \t]*\r?\n)+)/);
   const groups = [];
   let content = paragraphs[0];
   let separator = '';
+  const restore = piece => restoreMarkdown(piece, tokens.filter(([marker]) => piece.includes(marker)));
+  const isByline = piece => containsByline && restore(piece) === authorSource;
+  let preserve = isByline(content);
   function flush() {
-    groups.push({ source: restoreMarkdown(content, tokens.filter(([marker]) => content.includes(marker))), separator });
+    groups.push({ source: restore(content), separator, ...(preserve && { preserve: true }) });
   }
   for (let i = 1; i < paragraphs.length; i += 2) {
     const gap = paragraphs[i], paragraph = paragraphs[i + 1];
     const marked = content.includes('__PAPERBRIDGE_TOKEN_') || paragraph.includes('__PAPERBRIDGE_TOKEN_');
-    if (content && paragraph && (marked || content.length + gap.length + paragraph.length > 1200)) {
+    const nextIsByline = isByline(paragraph);
+    if (content && paragraph && (preserve || nextIsByline || (retryMarkup && (marked || content.length + gap.length + paragraph.length > 1200)))) {
       flush();
       content = paragraph;
+      preserve = nextIsByline;
       separator = gap;
     } else content += gap + paragraph;
   }

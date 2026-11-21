@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, HardDrive, ZoomIn, ZoomOut } from 'lucide-react';
+import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
@@ -2225,7 +2226,7 @@ function App() {
   }
   function retryBlock(id) {
     if (!paperRef.current || busy || taskRef.current) return;
-    if (translationSetup) { openTaskSetup(translationSetup); return; }
+    if (translationSetup && id !== authorByline?.id) { openTaskSetup(translationSetup); return; }
     void translateBlocks([id], { retryId: id });
   }
   async function translateBlocks(ids, { sharedFull = false, retryId = null } = {}) {
@@ -2254,7 +2255,8 @@ function App() {
     try {
       const config = settingsRef.current;
       const translationModel = activeAIModel(config, 'translation');
-      if (!await prepareTaskAI(config, config.sourceLanguage === config.targetLanguage ? [] : ['translation'], token)) return;
+      const needsModel = config.sourceLanguage !== config.targetLanguage && queue.some(block => block.id !== authorByline?.id);
+      if (!await prepareTaskAI(config, needsModel ? ['translation'] : [], token)) return;
       for (let index = 0; index < total; index++) {
         if (token.cancelled) break;
         const block = active.queue[index];
@@ -2264,7 +2266,7 @@ function App() {
         try {
           const protectedBlock = block.sourceMarkdown ? protectMarkdown(block.sourceMarkdown) : null;
           let output = block.sourceMarkdown || block.text;
-          if (config.sourceLanguage !== config.targetLanguage) {
+          if (config.sourceLanguage !== config.targetLanguage && block.id !== authorByline?.id) {
             const marker = pdfFootnoteMarker(block);
             const parts = chunkText(protectedBlock?.text || block.text.slice(marker.length), Number(config.maxParagraphChars) || 1800);
             const translated = [];
@@ -2494,6 +2496,7 @@ function App() {
         setStatus('Source and target languages match. The full draft uses the original text.');
         return;
       }
+      const authorSource = (authorByline?.sourceMarkdown || authorByline?.text || '').trim();
       const previous = resume ? current.connectedBlocks : [];
       const batches = planConnectedBatches(current.blocks, batchVersion).map((batch, index) => {
         const saved = previous?.[index];
@@ -2522,10 +2525,14 @@ function App() {
         try {
           const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
           let output = batch.pdfFootnoteMarker ? batch.pdfFootnoteMarker + ' ' : '';
-          const parts = connectedRetryExcerpts(batch, localRetry);
+          const parts = connectedRetryExcerpts(batch, localRetry, authorSource);
           for (const [partIndex, part] of parts.entries()) {
             requireActiveTask(token);
-            if (parts.length > 1) setBusy({ label: `Retrying batch ${done + 1} · part ${partIndex + 1} of ${parts.length}` });
+            if (part.preserve) {
+              output += part.separator + part.source;
+              continue;
+            }
+            if (parts.length > 1) setBusy({ label: `${localRetry ? 'Retrying' : 'Translating'} batch ${done + 1} · part ${partIndex + 1} of ${parts.length}` });
             const excerpt = protectMarkdown(part.source);
             const prompt = connectedTranslationPrompt(excerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(excerpt.text, config.sourceLanguage, config.targetLanguage));
             const answer = await generate(translationModel, prompt, instructions, token);
@@ -3225,6 +3232,7 @@ function App() {
   const selectionResults = lookupCache.get(lookupKey) || {};
   const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
   const outline = useMemo(() => documentOutline(paper), [paper]);
+  const authorByline = useMemo(() => findNumberedAuthorBlock(paper?.blocks || [], settings || {}, glossary), [paper?.blocks, settings, glossary]);
   const blockIndexes = useMemo(() => new Map(paper?.blocks.map((block, index) => [block.id, index])), [paper?.blocks]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
   const unfinishedTranslationIds = useMemo(() => translationRangeIds(paper?.blocks || [], null, referenceIDs), [paper?.blocks, referenceIDs]);
@@ -3465,7 +3473,7 @@ function App() {
             : block.heading ? block.status === 'failed' && <p className="heading-failure">{block.error || 'Heading translation failed. Retry when ready.'}</p>
               : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
-                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
+                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && block.id !== authorByline?.id ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
           return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
           {issue && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;

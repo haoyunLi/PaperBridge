@@ -74,7 +74,7 @@ async function checkColumnPDF(app, page, prompts) {
   assert.ok(requestsForNote.every(prompt => !prompt.includes('1This note')));
 }
 
-async function checkJournalSidebar(app, page) {
+async function checkJournalSidebar(app, page, prompts) {
   const { id, blocks } = await importPDF(app, page, 'emcee-v3.pdf');
   assert.equal(id, '79889217fa1b876c8e8932e6a803b557fab6aaaf47bb55979b00105c4099579a');
   assert.equal(blocks[0].text, 'emcee v3: A Python ensemble sampling toolkit for affine-invariant MCMC');
@@ -95,5 +95,20 @@ async function checkJournalSidebar(app, page) {
   const { planConnectedBatches } = await import('../../src/connectedTranslation.mjs');
   const originals = planConnectedBatches(blocks).filter(batch => batch.kind === 'original');
   assert.deepEqual(originals.map(batch => batch.source), blocks.slice(refs).map(block => block.text));
+  await openWorkspaceView(page, 'Reader');
+  const byline = blocks[1].text;
+  const before = prompts.length;
+  await page.locator('#block-2').getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+  await page.waitForFunction(({ id, byline }) => window.paperBridge.loadPaper(id).then(paper => paper.blocks[1].translation === byline), { id, byline });
+  assert.equal(prompts.length, before);
+  await openWorkspaceView(page, 'Full Translation');
+  await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+  await page.getByText('Connected full-paper translation saved.', { exact: true }).waitFor();
+  const draft = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
+  assert.ok(draft.connectedTranslation.split('\n\n').includes(byline));
+  const requests = prompts.slice(before);
+  assert.ok(requests.some(prompt => prompt.includes(blocks[0].text)));
+  assert.ok(requests.some(prompt => prompt.includes('Center for Computational Astrophysics')));
+  assert.ok(requests.every(prompt => !prompt.includes(byline)));
 }
 module.exports = { checkColumnPDF, checkJournalSidebar };

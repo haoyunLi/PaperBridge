@@ -223,7 +223,7 @@ async function run() {
     assert.equal(prompts.length, 0, 'PDF extraction and saved-source verification must not invoke AI');
     const { checkColumnPDF, checkJournalSidebar } = require('./mac-parity/pdf-reading.cjs');
     await checkColumnPDF(app, page, prompts);
-    await checkJournalSidebar(app, page);
+    await checkJournalSidebar(app, page, prompts);
     const result = { passed: true, workspace, importedId: id, legacyId, sourceItems, extracted,
       checked: ['actual split PDF items', 'same-line ordinary repairs', 'compound hyphens', 'four PDF repair passes', 'wrapped model names, numerical ranges, and English-to-German', 'unmatched math and case tokens',
         'Reader text and PDF source snapshot', 'original PDF bytes and text layer', 'legacy source IDs and annotation navigation', 'new paste single-line and multiline repairs', 'restart', 'two-column PDF order, footnotes, outline and translation labels'] };
