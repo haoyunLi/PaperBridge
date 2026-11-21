@@ -14,7 +14,7 @@
   &nbsp;·&nbsp;
   <a href="https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg"><strong>Download for macOS</strong></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.25/PaperBridge-Windows-0.2.25-x64-Setup.exe"><strong>Download for Windows (preview)</strong></a>
+  <a href="https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.26/PaperBridge-Windows-0.2.26-x64-Setup.exe"><strong>Download for Windows (preview)</strong></a>
   &nbsp;·&nbsp;
   <a href="#build-from-source"><strong>Build from Source</strong></a>
 </p>
@@ -46,11 +46,11 @@ It can also:
 
 ## Windows Download (Preview)
 
-[Download Windows installer (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.25/PaperBridge-Windows-0.2.25-x64-Setup.exe) · [Download Windows portable (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.25/PaperBridge-Windows-0.2.25-x64-Portable.exe)
+[Download Windows installer (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.26/PaperBridge-Windows-0.2.26-x64-Setup.exe) · [Download Windows portable (.exe)](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.26/PaperBridge-Windows-0.2.26-x64-Portable.exe)
 
-**Windows 0.2.25 x64** is a free, unsigned preview. Choose **Portable** to open the reader without installing it, or **Setup** to install it for your Windows account. Both editions can open and annotate PDFs immediately. Select **Local AI setup** in the app to add translation.
+**Windows 0.2.26 x64** is a free, unsigned preview. Choose **Portable** to open the reader without installing it, or **Setup** to install it for your Windows account. Both editions can open and annotate PDFs immediately. Select **Local AI setup** in the app to add translation.
 
-On first launch, Windows may show **Open File – Security Warning** or **Windows protected your PC**. Check the GitHub download and its SHA-256. If you trust the file and your device permits it, choose **Run** in the first dialog or **More info → Run anyway** in SmartScreen. See the [release notes and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.25) and [Windows setup and feature guide](https://github.com/haoyunLi/PaperBridge/blob/windows/desktop-app/windows/README.md).
+On first launch, Windows may show **Open File – Security Warning** or **Windows protected your PC**. Check the GitHub download and its SHA-256. If you trust the file and your device permits it, choose **Run** in the first dialog or **More info → Run anyway** in SmartScreen. See the [release notes and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.26) and [Windows setup and feature guide](https://github.com/haoyunLi/PaperBridge/blob/windows/desktop-app/windows/README.md).
 
 ## New in 1.10.0
 
@@ -122,7 +122,7 @@ Each changed local JSON save retains one readable `.backup` beside it and automa
 ### Install the ready-made Mac app
 
 1. [Download PaperBridge.dmg](https://github.com/haoyunLi/PaperBridge/releases/latest/download/PaperBridge.dmg), open it, and drag PaperBridge into Applications.
-2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. On Windows, [download the x64 installer](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.25/PaperBridge-Windows-0.2.25-x64-Setup.exe) or see [Windows Download (Preview)](#windows-download-preview) for the portable build and setup guide.
+2. Launch PaperBridge from Applications. **You do not need Xcode, Homebrew, or a PaperBridge account.** macOS 14 or later is required. On Windows, [download the x64 installer](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.26/PaperBridge-Windows-0.2.26-x64-Setup.exe) or see [Windows Download (Preview)](#windows-download-preview) for the portable build and setup guide.
 3. Choose your route below. The setup guide can be reopened from `PaperBridge > PaperBridge Getting Started` or `Settings > Local AI`.
 
 | What you want to do | What to install |
