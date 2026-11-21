@@ -141,6 +141,32 @@ async function run() {
     assert.equal(paperStyle.size, '21px');
     assert.ok(paperStyle.width <= 701);
     assert.ok(Number.parseFloat(paperStyle.line) > 35);
+    const table = page.locator('[data-paper-block-id="3"] table');
+    const tableQuote = await table.evaluate(table => {
+      const first = table.tHead.rows[0].cells[1].firstChild;
+      const last = table.tBodies[0].rows[0].cells[1].firstChild;
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(last, last.length);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      table.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      return selection.toString();
+    });
+    assert.match(tableQuote, /Score\s+Attention\t42/);
+    if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
+      const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
+      assert.equal(tableQuote, native.tableSelectionQuote, 'The quote matches the native macOS table selection');
+    }
+    assert.equal(await page.locator('.inspector blockquote').textContent(), tableQuote);
+    await page.locator('.inspector .highlight.teal').click();
+    await page.locator('.inspector textarea').fill('Methods comparison across cells');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await page.waitForFunction(({ id, tableQuote }) => window.paperBridge.loadPaper(id).then(paper =>
+      paper.blocks[2].notes.some(note => note.quote === tableQuote && note.body === 'Methods comparison across cells') &&
+      paper.blocks[2].highlights.some(item => item.quote === tableQuote && item.text === 'ScoreAttention42')), { id, tableQuote });
+    await page.locator('.inspector').getByRole('button', { name: 'Remove Highlight', exact: true }).click();
     const paperFormula = page.locator('[data-paper-block-id="2"] [data-paper-kind="source"] p');
     const formulaQuote = 'stack of ' + await paperFormula.locator('.katex-html').textContent() + ' identical layers';
     await clickTextOffset(page, paperFormula, (await paperFormula.textContent()).indexOf('stack of '));
@@ -315,6 +341,8 @@ async function run() {
     }, id);
     await page.reload();
     await draft.getByText(/已恢复的段落译文/).first().waitFor();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Methods comparison across cells' }).locator('button').first().click();
+    await page.waitForFunction(quote => window.getSelection()?.toString() === quote && document.querySelector('.inspector blockquote')?.textContent === quote, tableQuote);
     for (const note of ['Paper formula selection', 'Reader formula selection', 'Formula in summarySource', 'Formula in summaryTarget', 'Full translation formula selection']) {
       await page.locator('.saved-annotations .annotation-row').filter({ hasText: note }).locator('button').first().click();
       await page.waitForFunction(({ quote, note }) => {
@@ -383,6 +411,7 @@ async function run() {
     await page.getByText('Exported fixture.md', { exact: true }).waitFor();
     const crossExport = await app.evaluate(() => globalThis.__sharedMarkdownExport);
     assert.ok(crossExport.includes('## Other Saved Highlights and Notes'));
+    assert.ok(crossExport.includes('> Score\n> Attention\t42\n\nNote: Methods comparison across cells'));
     assert.ok(crossExport.includes('### Paper · document preview · amber\n\n> ' + crossQuote.replaceAll('\n', '\n> ') + '\n\nNote: ' + crossNote));
     assert.equal(crossExport.split(crossNote).length - 1, 1, 'the same-range highlight and note export together');
 

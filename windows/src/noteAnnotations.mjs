@@ -54,7 +54,7 @@ function updateNotes(paper, notes, selection, body, makeId, extra = {}) {
     offset: selection.offset,
     ...(selection.displayOffset == null ? {} : { displayOffset: selection.displayOffset }),
     ...((selection.renderedAnchor || existing?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
-    ...(isPdfScope(selection.scope) && selection.quote != null ? { quote: selection.quote } : {})
+    ...(selection.quote != null ? { quote: selection.quote } : {})
   };
   if (existing) {
     if (existing.body === body && sameTextAnchor(existing, { text: selection.text, ...display }) &&

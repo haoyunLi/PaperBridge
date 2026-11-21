@@ -202,7 +202,18 @@ function domRangeIn(root, range, visibleOnly = false) {
   before.setEnd(range.startContainer, range.startOffset);
   const offset = domText(before.cloneContents(), visibleOnly).length + raw.length - raw.trimStart().length;
   const rect = range.getBoundingClientRect();
-  return { text, offset, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
+  return { text, offset, quote: visibleOnly ? tableSelectionQuote(range, text) : undefined, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
+}
+// Browsers copy tables with tabs between cells and line breaks between rows.
+// Keep DOM offsets for navigation and store the visible quote for readers and exports.
+function tableSelectionQuote(range, text) {
+  const cellAt = node => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('td, th');
+  const first = cellAt(range.startContainer);
+  const last = cellAt(range.endContainer);
+  if (!first || !last || first === last || first.closest('table') !== last.closest('table')) return undefined;
+  const quote = window.getSelection()?.toString().trim();
+  if (!quote || quote === text || quote.replace(/\s/g, '') !== text.replace(/\s/g, '')) return undefined;
+  return quote;
 }
 function textSelectionOffsets(captured, source, markdown) {
   return selectionOffsets(captured, matchingTextOffset(captured.context, source, captured.text, captured.offset), markdown, source);
@@ -1875,7 +1886,7 @@ function App() {
       ...selectionOffsets(captured, null, paperArticleSource(paper)), displayMode: viewNavigation.displayMode, sourceMode: viewNavigation.sourceMode
     } : textSelectionOffsets(captured, source, source);
     applyReadingSelection({ id: null, kind: article ? viewNavigation.kind || 'source' : scope === 'summarySource' ? 'source' : 'translation',
-      text, scope, ...position, rect: null, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
+      text, scope, quote: tableSelectionQuote(range, text), ...position, rect: null, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
     setInspector(true); setViewNavigation(null);
   }, [viewNavigation?.requestId, tab, displayMode, paper?.id]);
   const command = name => {
@@ -1992,7 +2003,7 @@ function App() {
         host.scrollTop += Math.max(top, quote.top - Math.max(0, (host.clientHeight - quote.height) / 2)) - viewport.top;
       } else range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
       const captured = { text: request.text, offset: at, context: rendered };
-      applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, ...textSelectionOffsets(captured, source, markdown),
+      applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, quote: tableSelectionQuote(range, request.text), ...textSelectionOffsets(captured, source, markdown),
         scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
       if (request.recordType !== 'evidence') setInspector(true);
       setBlockNavigation(null);
@@ -2827,7 +2838,7 @@ function App() {
     const kind = element.dataset.kind || 'source';
     const source = anchorText(block, kind);
     const { text, rect } = captured;
-    const nextSelection = { id: block?.id ?? null, kind, text, ...textSelectionOffsets(captured, source, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
+    const nextSelection = { id: block?.id ?? null, kind, text, quote: captured.quote, ...textSelectionOffsets(captured, source, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
       context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     return applyReadingSelection(nextSelection);
   }
@@ -2855,6 +2866,7 @@ function App() {
       rememberUndo();
       const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
         ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
+        ...(selection.quote && { quote: selection.quote }),
         ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind }), color };
       commitPaper(current => ({ ...current, viewHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
       setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved in the annotation list.');
@@ -2869,7 +2881,7 @@ function App() {
     if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
     rememberUndo();
     const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
-      ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), color };
+      ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), ...(selection.quote && { quote: selection.quote }), color };
     updateBlock(block.id, { [key]: [...highlights.filter(entry => !highlightMatchesSelection(entry, selection)), item] });
     setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
   }
@@ -3163,7 +3175,7 @@ function App() {
     }
     if (!captured) return;
     const { text, rect } = captured;
-    const nextSelection = { id, kind, text, ...offsets, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
+    const nextSelection = { id, kind, text, quote: captured.quote, ...offsets, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     return applyReadingSelection(nextSelection);
   }
   function applyReadingSelection(next) {

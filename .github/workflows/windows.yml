@@ -51,7 +51,7 @@ jobs:
           services=(PaperBridge/Services/*.swift)
           services=("${services[@]:#*/AppUpdateController.swift}")
           xcrun swiftc PaperBridge/Models.swift PaperBridge/PaperReaderViewModel*.swift PaperBridge/Utilities/*.swift \
-            PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/SelectableAcademicText.swift PaperBridge/Views/PDFDocumentView.swift \
+            PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/SelectableAcademicText.swift PaperBridge/Views/PDFDocumentView.swift PaperBridge/Views/MarkdownPreviewView.swift \
             "${services[@]}" windows/tests/mac-parity/*.swift \
             -o "$RUNNER_TEMP/paperbridge-reference"
           "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
