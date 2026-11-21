@@ -7,9 +7,15 @@
       {"source": "ΟΣ and the µm units", "translation": ""},
       {"source": "Iodine, ı and ﬂux", "translation": "Istanbul"},
       {"source": "A figure in İstanbul.", "translation": ""},
-      {"source": "Untranslated block", "translation": null}
+      {"source": "Untranslated block", "translation": null},
+      {"source": "ß", "translation": null},
+      {"source": "ﬂ", "translation": null},
+      {"source": "İ", "translation": null},
+      {"source": "ı", "translation": null},
+      {"source": "æ", "translation": null},
+      {"source": "e\u0301", "translation": null}
     ],
-    "queries": ["  ÉCHELLE  ", "E\u0301CHELLE", "echelle", "CAFE\u0301", "boundary next", "undefined", "STRASSE", "SS", "ος", "οσ", "μm", "flux", "CO2", "CO₂", "Istanbul", "  \n\t  ", "translation", "etude"]
+    "queries": ["  ÉCHELLE  ", "E\u0301CHELLE", "echelle", "CAFE\u0301", "boundary next", "undefined", "STRASSE", "SS", "ος", "οσ", "μm", "flux", "CO2", "CO₂", "Istanbul", "  \n\t  ", "translation", "etude", "s", "f", "l", "i", "I", "i\u0307", "ı", "ae", "e", "ß", "fl", "é", "İ", "\u0301"]
   },
   "summaryConsolidation": {
     "paragraphs": [
