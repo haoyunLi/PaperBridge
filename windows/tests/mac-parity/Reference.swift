@@ -153,6 +153,13 @@ struct Reference {
             },
             "batches": TextProcessing.buildTextBatches(body, maxChars: TextProcessing.connectedTranslationBatchChars)
         ]
+        let journalMarkdown = try String(contentsOf: fixtureURL.deletingLastPathComponent().appendingPathComponent("emcee-v3-mineru.md"), encoding: .utf8)
+        let structured = AcademicMarkdownProcessor.assignParagraphs(in: AcademicMarkdownProcessor.parse(journalMarkdown))
+        let structuredJournal: [String: Any] = [
+            "headings": structured.segments.filter { $0.kind == .heading && $0.paragraphID != nil }.compactMap(\.analysisText),
+            "body": structured.paragraphs,
+            "summaryBatches": SummaryEvidence.sourceBatches(structured.paragraphs)
+        ]
         let bibliographies = fixtures.bibliographies.map { fixture in
             let result = TextProcessing.excludeReferenceSection(from: fixture.paragraphs)
             return ["body": result.bodyParagraphs, "references": result.referenceParagraphs]
@@ -207,7 +214,7 @@ struct Reference {
         }
         let bundle = try nativeBundleReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
         let library = try nativeLibraryReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
-        let output: [String: Any] = ["library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let output: [String: Any] = ["library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal, "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))

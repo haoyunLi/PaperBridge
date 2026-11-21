@@ -1,1 +1,3 @@
 The unmodified emcee-v3.pdf was published by the Journal of Open Source Software in 2019. Copyright belongs to Daniel Foreman-Mackey and the co-authors listed in the paper. The authors released the paper under the Creative Commons Attribution 4.0 International license. This fixture tests full-paper translation using the same published article on Windows and macOS. [Original paper and full author list](https://doi.org/10.21105/joss.01864) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+The accompanying `emcee-v3-mineru.md` contains the text and formatting extracted from the same PDF by MinerU 4.1.7 on Windows. It is used to compare summary inputs from the two desktop readers. The authors and CC BY 4.0 license above also apply to this derived fixture.
