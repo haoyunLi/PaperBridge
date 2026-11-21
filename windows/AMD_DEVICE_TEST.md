@@ -1,5 +1,7 @@
 # Windows AMD 真机回归（2026-09-20）
 
+2026-11-20（美国中部）在 RX 7800 XT 和同机 AMD 核显上验证显存识别。Win32_VideoController 的 32 位 AdapterRAM 为独显返回 4,293,918,720 字节。按显示适配器匹配驱动的 64 位记录后，独显得到 17,163,091,968 字节，核显得到 536,870,912 字节。真实桌面应用的 Models 和 Local AI setup 均分别显示 16 GiB、512 MiB。NVIDIA 驱动回补、同型号双卡和不可用显存有模拟回归。报告为 `test-artifacts/amd-inventory-wl4HR6/report.json`。
+
 2026-11-20（美国中部）复测了公开 Windows 0.2.24 Portable。下载文件的 SHA-256 为 `c6881ec35ecb42e9094dbbd4293be6fb74ef432555576085de3b9550a4d5918d`。在 RX 7800 XT 上，Ollama 通过 ROCm 运行 `translategemma:4b`，报告的模型分配和显存分配均为 2,881,948,220 字节。对已有 MinerU 提取结果中的 Encoder 长段执行翻译，两次请求分别耗时 6.01 秒和 0.64 秒，生成速度约 130 tokens/s。两处公式保留，重启后译文、批注、PDF 和资源校验通过。模型把 position-wise 译成“位置相关的”，此处“逐位置的”更准确。该次复测使用既有解析结果和已安装模型。详见本机 `test-artifacts/portable-0224-amd-mineru-dsCYmx/result.json`。
 
 2026-11-07 09:34 UTC：**公开 Windows 0.2.20 Portable 的真实长段翻译与重启通过**，报告 `test-artifacts/portable-0220-amd-mineru-Y0St0z/result.json`。公开文件 SHA-256 `e47e7fed40a9f11666e7a31660cca63aea17a0bb93a2bd40cbc1b6a0c41bf66a` 已与校验文件和 GitHub digest 核对。使用此前真实 MinerU 提取的 Attention Is All You Need（15 页、167 块），只翻译原本 pending 的第 32 段 Encoder，原 Markdown 660 字符，含两条公式。隔离设置明确预置 maxParagraphChars=500，不声称通过设置 UI 修改；已有原始工作区未改动。

@@ -5,6 +5,28 @@ const os = require('node:os');
 const path = require('node:path');
 const { SetupManager, cudaPlan, setupPlan, managedPythonPath } = require('../electron/setup.cjs');
 
+test('match dedicated memory to each GPU without displaying the truncated WMI value as VRAM', async () => {
+  const { nvidiaDevices, mergeAdapterInventory } = require('../electron/hardware.cjs');
+  const { describeAdapter } = await import('../src/hardwareDisplay.mjs');
+  const devices = nvidiaDevices(['NVIDIA T4, 578.12, 15360', 'NVIDIA T4, 578.12, 8192',
+    'NVIDIA A10, 578.12, [N/A]', 'No devices were found', ''].join('\n'));
+  const mixed = mergeAdapterInventory([
+    { Name: 'AMD Radeon RX 7800 XT', VendorID: '1002', DedicatedBytes: 17163091968, AdapterRAM: 4293918720 },
+    { Name: 'AMD Radeon(TM) Graphics', DedicatedBytes: 512 * 1024 ** 2 },
+    { Name: 'T4', VendorID: '10DE' }, { Name: 'T4', VendorID: '10DE' },
+    { Name: 'Basic Display Adapter', VendorID: '8086', AdapterRAM: 4293918720 }
+  ], devices);
+  assert.deepEqual(mixed.map(describeAdapter), [
+    'AMD Radeon RX 7800 XT (AMD, 16 GiB dedicated)', 'AMD Radeon(TM) Graphics (AMD, 512 MiB dedicated)',
+    'T4 (NVIDIA, 15 GiB dedicated)', 'T4 (NVIDIA, 8 GiB dedicated)', 'Basic Display Adapter (Intel)', 'NVIDIA A10 (NVIDIA)'
+  ]);
+  assert.equal(mixed[0].memoryBytes, 17163091968);
+  assert.equal(mixed[4].dedicatedMemoryBytes, null);
+  assert.equal(mixed[4].memoryBytes, 4293918720);
+  assert.deepEqual(mergeAdapterInventory([], devices).map(adapter => adapter.name), ['NVIDIA T4', 'NVIDIA T4', 'NVIDIA A10']);
+  assert.deepEqual(nvidiaDevices('No devices were found'), []);
+});
+
 test('managed Python lookup uses a real versioned interpreter and ignores the minor-version link', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-python-test-'));
   const architecture = process.arch === 'arm64' ? 'aarch64' : 'x86_64';

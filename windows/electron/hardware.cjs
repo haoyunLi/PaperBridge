@@ -6,19 +6,73 @@ const os = require('node:os');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
 const run = promisify(execFile);
 
-function vendorOf(name) {
+function vendorOf(name, pciVendor) {
+  if (pciVendor === '10DE') return 'NVIDIA';
+  if (pciVendor === '1002') return 'AMD';
+  if (pciVendor === '8086') return 'Intel';
   if (/nvidia/i.test(name)) return 'NVIDIA';
   if (/amd|radeon/i.test(name)) return 'AMD';
   if (/intel/i.test(name)) return 'Intel';
   return 'Other';
 }
 
-async function graphicsStatus() {
-  let adapters = [];
+// Win32_VideoController.AdapterRAM is a 32-bit field. Drivers that publish
+// a 64-bit memory size can distinguish a large discrete card from an iGPU.
+const adapterInventory = String.raw`
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+Get-CimInstance Win32_VideoController | ForEach-Object {
+  $dedicated = $null
   try {
-    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,AdapterRAM | ConvertTo-Json -Compress'], { timeout: 8000, windowsHide: true });
+    $driver = Get-ItemPropertyValue -LiteralPath ("HKLM:\SYSTEM\CurrentControlSet\Enum\" + $_.PNPDeviceID) -Name Driver -ErrorAction Stop
+    $bytes = Get-ItemPropertyValue -LiteralPath ("HKLM:\SYSTEM\CurrentControlSet\Control\Class\" + $driver) -Name 'HardwareInformation.qwMemorySize' -ErrorAction Stop
+    if ($bytes -is [long] -and $bytes -gt 0) { $dedicated = $bytes }
+  } catch {}
+  $pci = if ($_.PNPDeviceID -match '^PCI\\VEN_([0-9A-F]{4})') { $Matches[1].ToUpperInvariant() }
+  [pscustomobject]@{ Name = $_.Name; VendorID = $pci; DriverVersion = $_.DriverVersion; AdapterRAM = $_.AdapterRAM; DedicatedBytes = $dedicated }
+} | ConvertTo-Json -Compress`;
+
+function nvidiaDevices(output) {
+  return output.trim().split(/\r?\n/).flatMap(line => {
+    const fields = line.split(',').map(field => field.trim());
+    const mib = Number(fields.pop());
+    const driver = fields.pop();
+    const name = fields.join(', ').replace(/^"|"$/g, '');
+    if (!name || !/^\d+(?:\.\d+)+$/.test(driver)) return [];
+    return [{ name, driver, memoryMiB: Number.isSafeInteger(mib) && mib > 0 ? mib : null }];
+  });
+}
+
+function mergeAdapterInventory(controllers, devices) {
+  const adapters = controllers.filter(item => item?.Name).map(item => {
+    const dedicatedMemoryBytes = Number.isSafeInteger(item.DedicatedBytes) && item.DedicatedBytes > 0 ? item.DedicatedBytes : null;
+    return { name: item.Name, vendor: vendorOf(item.Name, item.VendorID), driver: item.DriverVersion || '',
+      dedicatedMemoryBytes, memoryBytes: dedicatedMemoryBytes || item.AdapterRAM || null };
+  });
+  const matched = new Set();
+  const comparableName = name => name.toLowerCase().replace(/^nvidia\s+/, '');
+  for (const device of devices || []) {
+    const adapter = adapters.find(item => !matched.has(item) && comparableName(item.name) === comparableName(device.name));
+    const bytes = device.memoryMiB == null ? null : device.memoryMiB * 1024 ** 2;
+    if (adapter) {
+      matched.add(adapter);
+      adapter.vendor = 'NVIDIA';
+      if (!adapter.driver) adapter.driver = device.driver;
+      if (bytes) { adapter.dedicatedMemoryBytes = bytes; adapter.memoryBytes = bytes; }
+    } else {
+      const reported = { name: device.name, driver: device.driver, vendor: 'NVIDIA', dedicatedMemoryBytes: bytes, memoryBytes: bytes };
+      adapters.push(reported);
+      matched.add(reported);
+    }
+  }
+  return adapters;
+}
+
+async function graphicsStatus() {
+  let controllers = [];
+  try {
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', adapterInventory], { timeout: 8000, windowsHide: true });
     const values = JSON.parse(stdout.trim());
-    adapters = (Array.isArray(values) ? values : [values]).filter(item => item?.Name).map(item => ({ name: item.Name, vendor: vendorOf(item.Name), driver: item.DriverVersion || '', memoryBytes: item.AdapterRAM || null }));
+    controllers = Array.isArray(values) ? values : [values];
   } catch { /* Windows GPU inventory can be unavailable in VMs and restricted sessions. */ }
   let cudaDriver = null;
   let cudaVersion = null;
@@ -29,12 +83,8 @@ async function graphicsStatus() {
   for (const candidate of candidates) {
     try {
       const { stdout } = await run(candidate, ['--query-gpu=name,driver_version,memory.total', '--format=csv,noheader,nounits'], { timeout: 5000, windowsHide: true });
-      cudaDriver = stdout.trim().split(/\r?\n/).filter(Boolean).map(line => {
-        const [name, driver, mib] = line.split(',').map(value => value.trim());
-        return { name, driver, memoryMiB: Number(mib) || null };
-      });
-      smiPath = candidate;
-      break;
+      const devices = nvidiaDevices(stdout);
+      if (devices.length) { cudaDriver = devices; smiPath = candidate; break; }
     } catch { /* Try the next standard NVIDIA driver location. */ }
   }
   if (cudaDriver?.length) {
@@ -43,7 +93,8 @@ async function graphicsStatus() {
       cudaVersion = stdout.match(/CUDA Version:\s*(\d+\.\d+)/i)?.[1] || null;
     } catch { /* Driver inventory still works when the full report is unavailable. */ }
   }
-  return { adapters, cudaDriver, cudaVersion, systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
+  return { adapters: mergeAdapterInventory(controllers, cudaDriver), cudaDriver, cudaVersion,
+    systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
 }
 
 async function mineruRuntime(executable, toolsRoot, found, signal) {
@@ -84,4 +135,4 @@ async function mineruRuntime(executable, toolsRoot, found, signal) {
   } catch (error) { return { checked: false, reason: `Cannot verify MinerU PyTorch CUDA: ${error.message.slice(0, 140)}` }; }
 }
 
-module.exports = { graphicsStatus, mineruRuntime, vendorOf };
+module.exports = { graphicsStatus, mineruRuntime, vendorOf, nvidiaDevices, mergeAdapterInventory };
