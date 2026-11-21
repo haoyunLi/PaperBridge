@@ -112,15 +112,21 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   };
   const widths = sorted.map(line => line.height || 12).sort((a, b) => a - b);
   const typicalHeight = widths[Math.floor(widths.length / 2)] || 12;
-  for (const line of sorted) {
+  for (const [index, line] of sorted.entries()) {
     const previous = group[group.length - 1];
     const gap = previous ? previous.y - line.y : 0;
     const heading = isHeading(line.text);
     const nextStarts = /^[A-Z\u4e00-\u9fff]/.test(line.text);
     const previousEnds = previous && /[.!?。！？:]$/.test(previous.text);
-    if (previous && (line.independent || heading || pdfCaption.test(line.text) || isHeading(previous.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
+    if (previous && (line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
     group.push(line);
-    if (line.independent || heading) flush();
+    // A short title-cased fragment such as "The English-" can be the first
+    // physical line of body prose. Keep a close lowercase continuation with it.
+    const next = sorted[index + 1];
+    const wrapsHeading = heading && next && !next.independent && /[-‐]$/u.test(line.text)
+      && /^\p{Ll}/u.test(next.text) && line.y > next.y && line.y - next.y <= typicalHeight * 1.8
+      && Math.abs(line.x - next.x) <= typicalHeight * 2;
+    if (line.independent || (heading && !wrapsHeading)) flush();
   }
   flush();
   return blocks;

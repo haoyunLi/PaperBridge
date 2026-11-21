@@ -19,7 +19,8 @@ const expectedLines = [
   'Four-pass boundary aabbccddeeffgghhiijjkkllmmnnoopp remains stable.',
   'The coordinate system uses a 3D representation of the sample.',
   'We compare predictions from the GPT-4 model on the same data.',
-  'The range of scores was 12-3 in the original table.'
+  'The range of scores was 12-3 in the original table.',
+  'The English-to-German task uses an end-to-end system.'
 ];
 
 function fixturePdf(legacy = false) {
@@ -37,7 +38,8 @@ function fixturePdf(legacy = false) {
       `BT /F1 8 Tf 42 440 Td (Four-pass boundary ${fourPassChain} remains stable.) Tj ET`,
       'BT /F1 10 Tf 42 390 Td (The coordinate system uses a 3-) Tj 0 -12 Td (D representation of the sample.) Tj ET',
       'BT /F1 10 Tf 42 340 Td (We compare predictions from the GPT-) Tj 0 -12 Td (4 model on the same data.) Tj ET',
-      'BT /F1 10 Tf 42 290 Td (The range of scores was 12-) Tj 0 -12 Td (3 in the original table.) Tj ET'
+      'BT /F1 10 Tf 42 290 Td (The range of scores was 12-) Tj 0 -12 Td (3 in the original table.) Tj ET',
+      'BT /F1 10 Tf 42 240 Td (The English-) Tj 0 -12 Td (to-German task uses an end-) Tj 0 -12 Td (to-end system.) Tj ET'
     ].join('\n');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
@@ -206,7 +208,7 @@ async function run() {
     await assertLegacy();
     assert.equal(generationRequests, 0, 'PDF extraction and saved-source verification must not invoke AI');
     const result = { passed: true, workspace, importedId: id, legacyId, sourceItems, extracted,
-      checked: ['actual split PDF items', 'same-line ordinary repairs', 'compound hyphens', 'four PDF repair passes', 'unmatched math and case tokens',
+      checked: ['actual split PDF items', 'same-line ordinary repairs', 'compound hyphens', 'four PDF repair passes', 'wrapped model names, numerical ranges, and English-to-German', 'unmatched math and case tokens',
         'Reader text and PDF source snapshot', 'original PDF bytes and text layer', 'legacy source IDs and annotation navigation', 'new paste single-line and multiline repairs', 'restart'] };
     fs.writeFileSync(path.join(workspace, 'result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
