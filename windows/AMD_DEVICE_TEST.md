@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 0.2.47 从公开便携版生成和离线阅读摘要（2026-11-21）
+
+在 RX 7800 XT 上从公开便携版导入两页 *emcee v3*。本地 Qwen3 4B Instruct 生成六条结论，TranslateGemma 4B 翻译成中文。六条引文分别跳到 Reader 的 P20、P19、P17、P18、P17 和 P21，并选中所引的原句。关闭后重新打开，双语摘要、引文和 PDF 原文件仍可读回。再打开 0.2.46 保存的摘要，将本地模型服务设为不可用，0.2.47 仍能显示六条结论及其引文，没有请求模型。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.47) · [Windows 公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44907689194/job/136858455185)
+
 ## 0.2.45–0.2.46 真实论文的长段翻译与双语摘要（2026-11-21）
 
 在 RX 7800 XT 上，0.2.45 的公开便携版用 TranslateGemma 4B 翻译了 *Attention Is All You Need* 原 MinerU 工作区第 71 段。500 字符上限下，895 字符的正文分为三次请求。保存后仍可在一个阅读段落内读完整译文，两个行内公式 `$O ( n )$` 与 `$O ( n / r )$` 逐字保留，重启后译文一致。[0.2.45 公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.45)
