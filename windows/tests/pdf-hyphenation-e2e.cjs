@@ -195,6 +195,8 @@ async function run() {
     assert.ok(originalText.includes(ordinary));
     assert.ok(originalText.includes(compounds));
 
+    await require('./mac-parity/pdf-reading.cjs').checkColumnPDF(app, page);
+
     // Mac chooses one or two repair passes from the whole pasted document's
     // newline presence, so the single-line branch needs its own import.
     await assertPasted('A model uses inter- national- based controls.', ['A model uses international- based controls.']);

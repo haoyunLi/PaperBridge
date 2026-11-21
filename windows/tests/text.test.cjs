@@ -188,6 +188,36 @@ test('long text is chunked without losing characters', async () => {
   assert.equal(chunkText(text, 20).join(' ').replace(/\s+/g, ' ').trim(), text);
 });
 
+test('small raised note markers start a separate footnote only near the foot of the page', async () => {
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const item = (str, x, y, height, width) => ({ str, height, width, transform: [height, 0, 0, height, x, y] });
+  const region = (y, markerY) => [
+    item('Context from the body with continuing text', 45, y + 26, 10, 220),
+    item('continues here with further observations', 45, y + 15, 10, 215),
+    item('2', 50, y + markerY, 6, 3), item('This line supplies a qualification', 53.5, y, 8, 125),
+    item('and its continuation.', 45, y - 9, 8, 100)
+  ];
+  for (const [y, markerY, separate] of [[85, 2.8, true], [385, 2.8, false], [85, 0, false]]) {
+    const lines = pageLines({ items: region(y, markerY) }, [0, 0, 612, 792]);
+    const blocks = blocksFromLines(lines, 1);
+    assert.equal(blocks.length, separate ? 2 : 1);
+    if (separate) assert.equal(blocks[1].text, '2This line supplies a qualification and its continuation.');
+  }
+});
+
+test('standalone printed folios are removed without dropping nearby table or equation values', async () => {
+  const { filterRepeatedPageDecorations } = await import('../src/pdfDecorations.mjs');
+  const line = (text, y) => ({ text, x: 42, y, height: 10 });
+  const filtered = lines => filterRepeatedPageDecorations([{ height: 792, lines }])[0].lines.map(item => item.text);
+  for (const folio of ['12', '(12)', 'Page 12 of 18']) {
+    assert.deepEqual(filtered([line('A retained footnote.', 78), line(folio, 40)]), ['A retained footnote.']);
+  }
+  assert.deepEqual(filtered([line('Page 12 of 18', 400)]), ['Page 12 of 18']);
+  assert.deepEqual(filtered([line('Measured value', 60), line('12', 60)]), ['Measured value', '12']);
+  assert.deepEqual(filtered([line('x + y', 56), line('(3)', 53)]), ['x + y', '(3)']);
+});
+
 test('repeated PDF running heads and page footers leave the first header and all body text', async () => {
   const { filterRepeatedPageDecorations } = await import('../src/pdfDecorations.mjs');
   const pages = [1, 2, 3].map(number => ({ width: 600, height: 800, lines: [

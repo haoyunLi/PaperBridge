@@ -20,12 +20,29 @@ export function filterRepeatedPageDecorations(pages) {
       signatures.set(key, entry);
     }
   }
-  return pages.map((page, index) => ({ ...page, lines: page.lines.filter(line => {
-    const entry = signatures.get(signature(line.text));
-    if (!entry || entry.pages.size < 2 || (entry.header.size < 2 && entry.footer.size < 2)) return true;
-    const where = position(line, page.height);
-    return where !== 'footer' && !(where === 'header' && index > entry.firstPage);
-  }) }));
+  return pages.map((page, index) => {
+    // A lone printed folio can occur on a single page. An equation label or
+    // table value sharing the last row with other text belongs to the paper.
+    let bottomLine;
+    let nextBaseline = Infinity;
+    for (const line of page.lines) {
+      if (!bottomLine || line.y < bottomLine.y) {
+        nextBaseline = bottomLine?.y ?? Infinity;
+        bottomLine = line;
+      } else nextBaseline = Math.min(nextBaseline, line.y);
+    }
+    const lines = page.lines.filter(line => {
+      const where = position(line, page.height);
+      const text = line.text.trim();
+      if (where === 'footer' && /^page\s+\p{Nd}{1,4}(?:\s+of\s+\p{Nd}{1,4})?$/iu.test(text)) return false;
+      if (where === 'footer' && line === bottomLine && nextBaseline - line.y > line.height * 1.5 &&
+          /^(?:\p{Nd}{1,4}|\(\p{Nd}{1,4}\))$/u.test(text)) return false;
+      const entry = signatures.get(signature(line.text));
+      if (!entry || entry.pages.size < 2 || (entry.header.size < 2 && entry.footer.size < 2)) return true;
+      return where !== 'footer' && !(where === 'header' && index > entry.firstPage);
+    });
+    return { ...page, lines };
+  });
 }
 
 export function stitchPageBlocks(blocks) {

@@ -16,12 +16,12 @@ function textRows(items, left, bottom, width) {
     }
     const previous = items[index - 1];
     const spaceBefore = previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
-    row.items.push({ text: item.str, x, end: x + (vertical ? height : item.width), height, spaceBefore });
+    row.items.push({ text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore });
   }
   return rows.sort((a, b) => b.y - a.y);
 }
 
-function lineFromItems(items, y, vertical) {
+function lineFromItems(items, y, vertical, pageHeight) {
   const x = items[0].x;
   let end = x;
   let text = '';
@@ -30,7 +30,16 @@ function lineFromItems(items, y, vertical) {
     text += item.text;
     end = Math.max(end, item.end);
   }
-  return { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  const line = { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  const [marker, body] = items;
+  if (!vertical && body && y < pageHeight * 0.18 && /^(?:\p{Nd}{1,3}|[*†‡])$/u.test(marker.text.trim()) &&
+      /^\s*\p{L}/u.test(body.text) && marker.height < body.height * 0.9 &&
+      marker.y - body.y >= body.height * 0.15 && marker.y - body.y <= body.height * 0.8 &&
+      Math.abs(body.x - marker.end) <= body.height * 0.6) {
+    line.raisedNoteMarker = true;
+    line.y = body.y;
+  }
+  return line;
 }
 
 function splitAtGutter(items, mid, tolerance) {
@@ -69,7 +78,8 @@ function hasProse(text) {
     (text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu)?.length || 0) >= 15;
 }
 
-export function pageLines(content, [left, bottom, right]) {
+export function pageLines(content, [left, bottom, right, top]) {
+  const pageHeight = top - bottom;
   const width = right - left;
   const mid = width / 2;
   const tolerance = width * 0.015;
@@ -83,7 +93,7 @@ export function pageLines(content, [left, bottom, right]) {
     items.sort((a, b) => a.x - b.x);
     const split = vertical ? 0 : splitAtGutter(items, mid, tolerance);
     const parts = split ? [items.slice(0, split), items.slice(split)] : [items];
-    return { y, items, vertical, parts: parts.map(part => lineFromItems(part, y, vertical)) };
+    return { y, items, vertical, parts: parts.map(part => lineFromItems(part, y, vertical, pageHeight)) };
   });
   // Metadata, figure labels and table cells alone are weak evidence of a text column.
   const candidates = rows.flatMap(row => row.parts).filter(line =>
@@ -92,7 +102,7 @@ export function pageLines(content, [left, bottom, right]) {
   const leftLines = candidates.filter(line => laneFor(line) === 'left');
   const rightLines = candidates.filter(line => laneFor(line) === 'right');
   if (leftLines.length < 5 || rightLines.length < 5 || overlap(leftLines, rightLines) < 24) {
-    return rows.flatMap(({ y, items, vertical }) => splitDistantItems(items, width).map(group => lineFromItems(group, y, vertical)));
+    return rows.flatMap(({ y, items, vertical }) => splitDistantItems(items, width).map(group => lineFromItems(group, y, vertical, pageHeight)));
   }
 
   const leftMargin = Math.min(...leftLines.map(line => line.x));
@@ -105,7 +115,7 @@ export function pageLines(content, [left, bottom, right]) {
     const [first, second] = parts;
     if (second && first.x > leftMargin + indentAllowance &&
       (second.x > rightMargin + indentAllowance || Math.max(first.height, second.height) < smallText)) {
-      const line = lineFromItems(items, y, vertical);
+      const line = lineFromItems(items, y, vertical, pageHeight);
       return [{ ...line, lane: 'spanning' }];
     }
     return parts.map(line => ({ ...line, lane: laneFor(line) }));

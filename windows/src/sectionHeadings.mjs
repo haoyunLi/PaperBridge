@@ -6,6 +6,8 @@ const majorSectionHeadings = new Set([
   'acknowledgements', 'acknowledgments'
 ]);
 const leadingSection = /^(\p{Decimal_Number}+(?:\.\p{Decimal_Number}+)*\p{White_Space}+)?(Abstract|Introduction|Background|Related Work|Methods?|Methodology|Materials and Methods|Experimental Setup|Experiments?|Evaluation|Results?|Discussion|Conclusions?|Appendix|Acknowledg(?:e)?ments)([.:])?\p{White_Space}+/iu;
+// A hierarchical label may include a final period, as in "3.3. Network Architectures".
+export const numberedSectionTitle = /^\p{Nd}+(?:(?:\.\p{Nd}+)+\.?)?\p{White_Space}+[A-Z]/u;
 const firstLineBreak = /[\n\v\f\r\u0085\u2028\u2029]/u;
 export const trimWhitespace = value => value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
 export const countCharacters = (value, limit = Infinity) => {
@@ -39,7 +41,7 @@ function isLikelySectionHeading(value) {
   const normalized = text.replace(/^\p{Decimal_Number}+(?:\.\p{Decimal_Number}+)*\p{White_Space}+/u, '')
     .toLowerCase().replace(/^[\p{P}\p{White_Space}]+|[\p{P}\p{White_Space}]+$/gu, '');
   if (majorSectionHeadings.has(normalized)) return true;
-  if (/^\p{Decimal_Number}+(?:\.\p{Decimal_Number}+)*\p{White_Space}+[A-Z].*$/u.test(text)) return true;
+  if (numberedSectionTitle.test(text)) return true;
   const words = text.split(/\p{White_Space}+/u).filter(Boolean);
   if (!words.length || words.length > 12) return false;
   const characters = [...graphemes.segment(text)].map(item => item.segment);

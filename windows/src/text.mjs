@@ -1,4 +1,5 @@
 import { isMethodsHeading } from './references.mjs';
+import { numberedSectionTitle } from './sectionHeadings.mjs';
 import { countCharacters, sectionRanges } from './documentOutline.mjs';
 import { compoundSuffixes, repairSpacedHyphenation } from './spacedHyphenation.mjs';
 
@@ -28,7 +29,7 @@ export function isHeading(text, sourceMarkdown = null) {
   if (!value || value.includes('\n') || value.length > 120 || value.includes('@') || /[.!?]["')\]]?$/.test(value)) return false;
   const leading = value.match(leadingNamedSection)?.[0] || '';
   if (value.length >= 30 && leading && value.slice(leading.length).trim().length >= 20) return false;
-  if (headingNames.test(value) || /^\d+(?:\.\d+)*\s+[A-Z].*$/.test(value)) return true;
+  if (headingNames.test(value) || numberedSectionTitle.test(value)) return true;
   const words = value.split(/\s+/).filter(Boolean);
   if (!words.length || words.length > 12) return false;
   const titleCaseWords = words.filter(word => /^\p{Lu}/u.test(word)).length;
@@ -121,7 +122,8 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     const heading = isHeading(line.text);
     const nextStarts = /^[A-Z\u4e00-\u9fff]/.test(line.text);
     const previousEnds = previous && /[.!?。！？:]$/.test(previous.text);
-    if (previous && (line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
+    const startsFootnote = line.raisedNoteMarker && line.height <= typicalHeight * 0.9;
+    if (previous && (startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && gap > typicalHeight * 1.1))) flush();
     group.push(line);
     // A short title-cased fragment such as "The English-" can be the first
     // physical line of body prose. Keep a close lowercase continuation with it.
