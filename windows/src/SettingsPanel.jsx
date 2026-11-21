@@ -148,7 +148,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
           : updates.downloadLabel && <p>The download button opens GitHub in your browser.</p>}
         <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
       </Group>}
-      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data keeps original PDF copies and the separately encrypted OpenAI key.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
+      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data also clears extracted text and figures. Your original PDF copies and separately encrypted OpenAI key are kept.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
     </div>
   </div>;
 }

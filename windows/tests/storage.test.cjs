@@ -42,7 +42,27 @@ test('clearing saved work keeps original PDF copies', () => {
     store.saveGlossary([{ source: 'term', target: 'term' }]);
     fs.mkdirSync(path.join(root, 'pdfs'), { recursive: true });
     fs.writeFileSync(store.pdfPath(id), '%PDF-1.4\n');
+    const interrupted = [
+      'settings.json.123.tmp', 'glossary.json.backup.456.tmp', 'updates.json.123.tmp',
+      'last-paper.json.backup.123.tmp', 'library-index.json.backup.123.tmp',
+      path.join('papers', id + '.json.123.tmp'), path.join('papers', id + '.json.backup.456.tmp')
+    ];
+    const unrelated = ['settings.json.archive.123.tmp', 'private.json.123.tmp', path.join('papers', 'notes.123.tmp')];
+    const extracted = [path.join('mineru-results', 'f'.repeat(16), 'images', 'figure.png'),
+      path.join('mineru', id, 'auto', 'original.md')];
+    const retained = [path.join('mineru', 'manual', 'document.md'), path.join('tools', 'mineru', 'runtime.txt')];
+    for (const name of [...extracted, ...retained]) {
+      fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true });
+      fs.writeFileSync(path.join(root, name), 'saved content');
+    }
+    const outside = path.dirname(path.join(root, retained[1]));
+    fs.symlinkSync(outside, path.join(root, 'mineru-results', 'e'.repeat(16)), 'junction');
+    fs.symlinkSync(outside, path.join(root, 'mineru-results', 'f'.repeat(16), 'linked-runtime'), 'junction');
+    for (const name of [...interrupted, ...unrelated]) fs.writeFileSync(path.join(root, name), 'test data');
     store.clearData();
+    for (const name of retained) assert.equal(fs.readFileSync(path.join(root, name), 'utf8'), 'saved content');
+    for (const name of [...extracted, ...interrupted]) assert.equal(fs.existsSync(path.join(root, name)), false, name);
+    for (const name of unrelated) assert.equal(fs.readFileSync(path.join(root, name), 'utf8'), 'test data', name);
     assert.equal(store.paper(id), null);
     assert.deepEqual(store.glossary(), []);
     assert.equal(store.settings().translationModel, 'translategemma:4b');

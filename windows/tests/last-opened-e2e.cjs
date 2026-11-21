@@ -225,13 +225,28 @@ async function run() {
         globalThis.releaseMetadataOrdering?.(); delete globalThis.releaseMetadataOrdering;
       }), 3000).catch(error => console.error(error.stack));
     }
-    await page.getByPlaceholder('Search titles and tags').fill('进度');
+    const dialogSearch = page.getByPlaceholder('Search titles and tags');
+    await dialogSearch.fill('进度');
     assert.equal(await page.locator('.modal-list-row').count(), 1);
     await page.locator('.modal-list-row').first().getByText('Library label B').waitFor();
     await page.getByPlaceholder('Search titles and tags').fill('nothing matches this');
     await page.getByText('No matching papers. Try another title or tag.').waitFor();
     await page.getByRole('button', { name: 'Close dialog' }).click();
     await page.getByRole('heading', { name: 'Last opened B' }).waitFor();
+    const sidebarSearch = page.getByRole('textbox', { name: 'Search papers or tags' });
+    assert.equal(await sidebarSearch.inputValue(), '', 'Closing the library retains the sidebar query');
+    await sidebarSearch.fill('Recently edited A');
+    await page.locator('button[title="Open library"]').click();
+    assert.equal(await dialogSearch.inputValue(), '', 'A newly opened library shows every saved paper');
+    assert.equal(await page.locator('.modal-list-row').count(), 2);
+    await dialogSearch.fill('进度');
+    await page.getByRole('button', { name: 'Edit label for Library label B', exact: true }).click();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    assert.equal(await dialogSearch.inputValue(), '进度', 'Returning from the label editor preserves the library search');
+    await page.getByRole('button', { name: 'Close dialog' }).click();
+    assert.equal(await sidebarSearch.inputValue(), 'Recently edited A');
+    assert.equal(await page.locator('.recent-papers .library-row').count(), 1);
+    await sidebarSearch.fill('');
 
     await close();
     assert.deepEqual(bodyFiles(paperBId), beforeLabelB, 'Closing after index-only labeling must not materialize an unrelated paper migration');
@@ -327,6 +342,23 @@ async function run() {
     assert.equal(snapshot.library.length, 2);
     assert.deepEqual(bodyFiles(paperBId), beforeLabelB, 'Recovering another paper must not rewrite the labeled legacy paper');
     stages.push('Unreadable labels survive full restart; genuine same-text UI reimport and another restart recover the same ID with index labels');
+    const oldExtraction = path.join(workspace, 'mineru', paperAId, 'paper.md');
+    const incompleteSave = paperFile(paperBId) + '.backup.12345.tmp';
+    fs.mkdirSync(path.dirname(oldExtraction), { recursive: true });
+    fs.writeFileSync(oldExtraction, '# Isolated extracted text');
+    fs.writeFileSync(incompleteSave, 'Isolated interrupted save');
+    await page.locator('.sidebar-footer').getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('tab', { name: 'Local Data', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove all saved PaperBridge data…', exact: true }).click();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    assert.ok(fs.existsSync(oldExtraction) && fs.existsSync(incompleteSave));
+    await page.getByRole('tab', { name: 'Local Data', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove all saved PaperBridge data…', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove saved data', exact: true }).click();
+    await waitFor(async () => (await librarySnapshot()).library.length === 0, 'confirmed removal to clear library');
+    assert.equal(fs.existsSync(oldExtraction), false);
+    assert.equal(fs.existsSync(incompleteSave), false);
+    stages.push('Confirmed Local Data removal clears interrupted saves and extracted content, cancel preserves both');
     assert.deepEqual(errors, []);
   } catch (error) {
     failure = error;

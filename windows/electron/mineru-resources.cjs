@@ -28,6 +28,22 @@ function removeMineruResult(root, resourceId) {
   catch { /* Unreferenced results are safe to leave for later cleanup. */ }
 }
 
+function clearSavedMineruResults(root) {
+  if (!fs.existsSync(root)) return;
+  const workspace = fs.realpathSync(root);
+  const layouts = [[resultsDirectory, validResourceId], ['mineru', name => /^[a-f0-9]{64}$/.test(name)]];
+  for (const [name, matchesId] of layouts) {
+    const parent = path.join(workspace, name);
+    if (!fs.lstatSync(parent, { throwIfNoEntry: false })?.isDirectory()) continue;
+    const directory = localDirectory(workspace, name);
+    for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (item.isDirectory() && matchesId(item.name)) {
+        fs.rmSync(localDirectory(directory, item.name), { recursive: true });
+      }
+    }
+  }
+}
+
 function keepMineruResult(root, paperId, markdownFile, markdown) {
   const workspace = fs.realpathSync(root);
   fs.mkdirSync(path.join(workspace, resultsDirectory), { recursive: true });
@@ -75,4 +91,4 @@ function findPaperMineruMarkdown(root, paper) {
   } catch { return null; }
 }
 
-module.exports = { keepMineruResult, findPaperMineruMarkdown, removeMineruResult };
+module.exports = { keepMineruResult, findPaperMineruMarkdown, removeMineruResult, clearSavedMineruResults };

@@ -257,6 +257,8 @@ function registerHandlers() {
     revokeOpenAIConsent();
     updateFiles.cancel();
     availableDownload = null;
+    mineruJobs.cancel();
+    pendingMineruResults.clear();
     store.clearData();
   });
   ipcMain.handle('pdf:import', async () => {

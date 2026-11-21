@@ -3,6 +3,7 @@ const path = require('node:path');
 const { trimLibraryText } = require('./library-metadata.mjs');
 const readingAppearanceDefaults = require('./reading-appearance.json');
 const { normalizeReadingAppearance } = require('./reading-appearance.mjs');
+const { clearSavedMineruResults } = require('./mineru-resources.cjs');
 const { clearPageArchives } = require('./pdf-page-archive.cjs');
 
 const defaults = {
@@ -259,16 +260,17 @@ function createStore(root) {
     },
     clearData() {
       clearPageArchives(root);
-      if (fs.existsSync(papersDir)) {
-        for (const name of fs.readdirSync(papersDir)) {
-          if (/^[a-f0-9]{64}\.json(?:\.backup)?$/.test(name)) fs.unlinkSync(path.join(papersDir, name));
+      clearSavedMineruResults(root);
+      const savedFiles = [
+        [papersDir, /^[a-f0-9]{64}\.json(?:\.backup)?(?:\.\d+\.tmp)?$/],
+        [root, /^(?:settings|glossary|updates|last-paper|library-index)\.json(?:\.backup)?(?:\.\d+\.tmp)?$/]
+      ];
+      for (const [dir, pattern] of savedFiles) {
+        if (!fs.existsSync(dir)) continue;
+        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
+          if (!item.isDirectory() && pattern.test(item.name)) fs.unlinkSync(path.join(dir, item.name));
         }
       }
-      for (const name of ['settings.json', 'settings.json.backup', 'glossary.json', 'glossary.json.backup', 'updates.json', 'updates.json.backup', 'last-paper.json', 'last-paper.json.backup', 'library-index.json', 'library-index.json.backup']) {
-        const file = path.join(root, name);
-        if (fs.existsSync(file)) fs.unlinkSync(file);
-      }
-      if (fs.existsSync(root)) for (const name of fs.readdirSync(root)) if (/^library-index\.json\.\d+\.tmp$/.test(name)) fs.unlinkSync(path.join(root, name));
     },
     libraryPersistenceWarning() { return libraryPersistenceWarning; },
     librarySnapshot,

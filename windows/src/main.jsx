@@ -843,9 +843,16 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
   </article>;
 }
 
-function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLibraryEdit, persistenceWarning }) {
+function filterLibraryEntries(entries, query) {
+  if (!query) return entries;
+  const needle = searchKey(query);
+  return entries.filter(item => searchableText(`${item.name} ${(item.tags || []).join(' ')}`).includes(needle));
+}
+
+function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, setLibraryEdit, persistenceWarning }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
+  const items = useMemo(() => filterLibraryEntries(entries, query), [entries, query]);
   async function openItem(id) {
     setError('');
     setOpening(true);
@@ -864,7 +871,7 @@ function LibraryView({ items, query, setQuery, loadPaper, setModal, busy, setLib
       <button className="modal-list-row" disabled={busy || opening} onClick={() => openItem(item.id)}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.workspaceAvailable === false ? 'Saved workspace unavailable · Reimport the original' : `${item.translatedCount ?? 0}/${item.blockCount} translated`}{item.lastOpened ? ` · Opened ${new Date(item.lastOpened).toLocaleDateString()}` : ''}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
       <button className="icon-button" aria-label={`Edit label for ${item.name}`} onClick={() => { setLibraryEdit({ id: item.id, name: item.name, tags: (item.tags || []).join(', ') }); setModal('libraryLabel'); }}><Pencil size={16} /></button>
     </div>)}
-    {!items.length && <p>{query.trim() ? 'No matching papers. Try another title or tag.' : 'No saved papers. Open a PDF or paste text to begin.'}</p>}
+    {!items.length && <p>{query ? 'No matching papers. Try another title or tag.' : 'No saved papers. Open a PDF or paste text to begin.'}</p>}
     {busy && <p>Finish or stop the current task before opening another paper.</p>}
     {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
   </>;
@@ -1048,6 +1055,10 @@ function App() {
   const [importElapsed, setImportElapsed] = useState(0);
   const [search, setSearch] = useState('');
   const [librarySearch, setLibrarySearch] = useState('');
+  const [libraryDialogSearch, setLibraryDialogSearch] = useState('');
+  useEffect(() => {
+    if (modal !== 'library' && modal !== 'libraryLabel') setLibraryDialogSearch('');
+  }, [modal]);
   const [libraryEdit, setLibraryEdit] = useState(null);
   const [libraryPersistenceWarning, setLibraryPersistenceWarning] = useState('');
   const libraryMetadataSaveChain = useRef(Promise.resolve());
@@ -3245,11 +3256,7 @@ function App() {
   }, [paper?.blocks, referenceIDs, unfinishedTranslationIds]);
   const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper?.blocks, referenceIDs]);
   const extractionIssuesById = useMemo(() => new Map(extractionIssues.map(issue => [issue.id, issue])), [extractionIssues]);
-  const filteredLibrary = useMemo(() => {
-    if (!librarySearch) return library;
-    const needle = searchKey(librarySearch);
-    return library.filter(item => searchableText(`${item.name} ${(item.tags || []).join(' ')}`).includes(needle));
-  }, [library, librarySearch]);
+  const filteredLibrary = useMemo(() => filterLibraryEntries(library, librarySearch), [library, librarySearch]);
   const visibleBlocks = useMemo(() => filteredReaderBlocks(paper?.blocks || [], search), [paper?.blocks, search]);
   const paragraphExplanation = cachedExplanation(paper, activeBlock, explanationLanguage, settings);
   const translatedCount = paper?.blocks.filter(block => block.status === 'ok' && !block.resource && !referenceIDs.has(block.id)).length || 0;
@@ -3542,7 +3549,7 @@ function App() {
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, filePhase, fileMessage, onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
-      {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
+      {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}
       {modal === 'more' && <div className="menu-list">
         <button disabled={!paper} onClick={openTranslationRange}><Languages size={17} /> Translation Range</button>
@@ -3565,7 +3572,7 @@ function App() {
         <button disabled={!!busy || !unfinishedTranslationIds.length} onClick={() => { setModal(''); translateBlocks(unfinishedTranslationIds); }}>All unfinished blocks <small>{unfinishedTranslationIds.length} blocks</small></button>
       </div>}
 
-      {modal === 'clearData' && <><p>This removes saved papers, translations, bookmarks, notes, terminology, and settings. Original PDF copies and the separately encrypted OpenAI API key remain; remove the key under Models. Text already sent online cannot be recalled.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => openSettings()}>Cancel</button></div></>}
+      {modal === 'clearData' && <><p>This removes saved papers, extracted text and figures, translations, bookmarks, notes, terminology, and settings. Original PDF copies and the separately encrypted OpenAI API key remain; remove the key under Models. Text already sent online cannot be recalled.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => openSettings()}>Cancel</button></div></>}
       {modal === 'export' && <div className="menu-list"><button onClick={exportBundle}><Download size={17} /> Export portable Markdown bundle</button>{[['original', 'Original Markdown'], ['translated', 'Translated Markdown'], ['bilingual', 'Bilingual Markdown'], ['analysis', 'Summary, sources and notes'], ...(paper.connectedTranslation ? [['full', 'Full Translation Markdown']] : [])].map(([kind, label]) => <button key={kind} onClick={() => exportMarkdown(kind)}><Download size={17} /> {label}</button>)}</div>}
     </div></div></div>}
   </div>;
