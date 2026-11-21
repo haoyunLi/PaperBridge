@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.62 当前章节与资源块（2026-11-21）
+
+在 RX 7800 XT 上用公开便携版打开 *Tabbed* 论文的既有 MinerU 存档。选中结论正文，再分别把 Comparison 正文、代码、图片和表格滚到阅读区顶部。0.2.61 在这三种资源位置中会选到 Statement of need 或 Comparison。0.2.62 在普通正文处指向 Comparison，在三个资源位置都保留 Conclusion。从表格处执行「当前章节」后，只有结论标题和正文（第 43、44 块）增加了译文。第 35 块的旧译文、图表与原 PDF 均保留。重开后菜单显示结论已经译完。[论文](https://joss.theoj.org/papers/10.21105/joss.08964) · [公开便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.62)
+
+这次翻译由本机 Ollama 的 `translategemma:4b` 完成，模型报告使用 2,881,948,220 字节显存。另一个校准样例在原生 Mac 上使用固定模型响应，在 Windows 上分别使用固定响应和本机模型，便于独立核对选段范围。两端执行相同操作后，完成的段落数依次为 2、4、7。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44936014351/job/136942665650)
+
 ## 0.2.61 离线看扫描页与文末缩放（2026-11-21）
 
 在 RX 7800 XT 机器上，通过 Edge 从首页下载公开便携版，将解析方式设为仅 PDF 文字层，并使用离线模型地址。扫描样例来自 ResNet 论文的前两页，经栅格化并将第 2 页旋转 1.2° 后重新保存。导入得到零个文字段落，存档 PDF 与输入逐字节一致。在 Paper 预览查看第 1 页，在 Original 查看第 2 页，放大至 125% 并滚动，退出重开后页码、缩放和页内位置均恢复。[论文原件](https://arxiv.org/abs/1512.03385)
