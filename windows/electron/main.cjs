@@ -196,9 +196,14 @@ function registerHandlers() {
   });
   ipcMain.handle('setup:cancel', () => setupManager.cancel());
   ipcMain.handle('ollama:running', async (_event, baseURL) => {
-    const response = await ollamaRequest(baseURL, 'api/ps');
+    const response = await ollamaRequest(baseURL, 'api/ps', { signal: AbortSignal.timeout(3500) });
     const data = await response.json();
-    return (data.models || []).map(model => ({ name: model.name || model.model, sizeVram: model.size_vram || 0, size: model.size || 0 }));
+    if (!Array.isArray(data?.models)) throw new Error('Ollama did not return its loaded models.');
+    return data.models.filter(model => typeof (model?.name || model?.model) === 'string').map(model => ({
+      name: model.name || model.model,
+      sizeVram: Number.isSafeInteger(model.size_vram) && model.size_vram >= 0 ? model.size_vram : null,
+      size: Number.isSafeInteger(model.size) && model.size > 0 ? model.size : null
+    }));
   });
   ipcMain.handle('settings:save', (_event, settings) => {
     store.saveSettings(settings);

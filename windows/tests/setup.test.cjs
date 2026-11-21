@@ -5,6 +5,19 @@ const os = require('node:os');
 const path = require('node:path');
 const { SetupManager, cudaPlan, setupPlan, managedPythonPath } = require('../electron/setup.cjs');
 
+test('setup and task checks share Ollama default tags without conflating other versions', async () => {
+  const { aiTaskSetupIssue } = await import('../src/aiSettings.mjs');
+  const { modelSettingsPatch, TRANSLATION_MODELS } = await import('../src/modelCatalog.mjs');
+  const installed = ['team/reader:latest', 'translategemma:4b'];
+  const status = { hardware: {}, mineru: { compatible: true }, ollama: { running: true, models: installed } };
+  assert.deepEqual(setupPlan(status, ['team/reader', 'team/reader:latest', 'team/reader:large', 'other', 'other:latest']).models, ['team/reader:large', 'other']);
+  const settings = { translationModel: 'team/reader', summaryModel: 'translategemma:4b' };
+  assert.equal(aiTaskSetupIssue(settings, ['translation', 'summary'], { models: installed, ollamaStatus: 'ready' }), null);
+  assert.deepEqual(modelSettingsPatch({ translationModel: 'old', summaryModel: 'team/reader' }, TRANSLATION_MODELS[0], installed), {
+    translationModel: 'translategemma:4b', explainModel: 'translategemma:4b', quickLookupModel: 'translategemma:4b'
+  });
+});
+
 test('match dedicated memory to each GPU without displaying the truncated WMI value as VRAM', async () => {
   const { nvidiaDevices, mergeAdapterInventory } = require('../electron/hardware.cjs');
   const { describeAdapter } = await import('../src/hardwareDisplay.mjs');

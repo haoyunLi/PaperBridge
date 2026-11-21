@@ -28,13 +28,22 @@ async function run() {
   const specialist = 'paperbridge-installed-specialist:1b';
   const endpointBModel = 'paperbridge-endpoint-b:1b';
   const installed = new Set(['translategemma:4b', 'gemma3:4b', specialist]);
+  let loadedModels = [
+    { name: 'gpu', size: 2 ** 30, size_vram: 2 ** 30 },
+    { name: 'split', size: 2 ** 30, size_vram: 2 ** 29 },
+    { name: 'cpu', size: 2 ** 30, size_vram: 0 },
+    { name: 'unknown', size: 2 ** 30 }
+  ];
   const pulls = [];
   const errors = [];
   const viewports = [];
   const ollama = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [...installed].map(model => ({ model })) }));
-    if (request.url === '/api/ps') return response.end(JSON.stringify({ models: [] }));
+    if (request.url === '/api/ps') {
+      if (loadedModels === null) return; // Unresponsive endpoint, including retries.
+      return response.end(JSON.stringify({ models: loadedModels }));
+    }
     if (request.url !== '/api/pull') { response.statusCode = 404; return response.end('{}'); }
     let body = '';
     request.on('data', chunk => { body += chunk; });
@@ -150,6 +159,16 @@ async function run() {
     assert.equal(await card('translategemma:12b').getByRole('button', { name: 'Downloading…', exact: true }).isDisabled(), true);
     assert.equal(await page.locator('.settings-models .model-card button').evaluateAll(buttons => buttons.every(button => button.disabled)), true);
     await clickTab('Models');
+    const memory = page.getByLabel('Ollama model memory');
+    for (const label of ['gpu · GPU · 1 GiB in GPU memory', 'split · CPU + GPU · 512 MiB in GPU memory of 1 GiB total', 'cpu · CPU memory only', 'unknown · GPU memory unreported']) {
+      await memory.getByText(label, { exact: true }).waitFor();
+    }
+    loadedModels = null;
+    await page.getByRole('button', { name: 'Check', exact: true }).click();
+    await memory.filter({ hasText: 'Could not read model memory' }).waitFor({ timeout: 10000 });
+    loadedModels = [];
+    await page.getByRole('button', { name: 'Check', exact: true }).click();
+    await memory.filter({ hasText: 'No Ollama models are loaded' }).waitFor();
     await page.getByText('Downloading fixture translategemma:12b', { exact: false }).waitFor();
     await page.getByRole('button', { name: 'Cancel download', exact: true }).click();
     await waitFor(() => pulls[0].closed, 'cancelled recommendation download stream');

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, Download, FileText, HardDrive, Languages, LockKeyhole, RefreshCw, Settings2, Sparkles, Square } from 'lucide-react';
 import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, modelSettingsPatch, isCatalogModelSelected, suggestedTranslationModel } from './modelCatalog.mjs';
+import { hasOllamaModel } from '../electron/ollama-models.mjs';
 import { ModelCard } from './ModelRecommendations.jsx';
 import './onboarding.css';
 
@@ -55,8 +56,8 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
   const currentProgress = terminal(candidateProgress?.phase) ? null : candidateProgress;
   const suggested = suggestedTranslationModel(diagnosis?.hardware);
   const systemMemoryGiB = Number(diagnosis?.hardware?.systemMemoryBytes) / 1024 ** 3;
-  const selectedTranslationReady = knownModels.includes(settings.translationModel);
-  const assistantReady = ['summaryModel', 'explainModel', 'quickLookupModel'].every(key => knownModels.includes(settings[key]));
+  const selectedTranslationReady = hasOllamaModel(knownModels, settings.translationModel);
+  const assistantReady = ['summaryModel', 'explainModel', 'quickLookupModel'].every(key => hasOllamaModel(knownModels, settings[key]));
 
   function config(overrides = {}) {
     const current = settingsRef.current;
@@ -135,7 +136,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
   async function downloadOrUse(model) {
     if (busy || ownOperation.current) return;
     setError(''); setMessage('');
-    if (knownModels.includes(model.id)) { useModel(model); return; }
+    if (hasOllamaModel(knownModels, model.id)) { useModel(model); return; }
     if (!ollamaReady) { setError('Start Ollama before downloading a model.'); return; }
     ownOperation.current = true; setOperation({ kind: 'model', id: model.id }); onBusyChange?.(true); setCancelling(false);
     try {
@@ -158,9 +159,9 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
   }
 
   const renderModels = items => <div className="onboarding-models">{items.map(model => <ModelCard key={model.id} model={model}
-    installed={knownModels.includes(model.id)} selected={isCatalogModelSelected(settings, model, knownModels)}
+    installed={hasOllamaModel(knownModels, model.id)} selected={isCatalogModelSelected(settings, model, knownModels)}
     active={operation?.id === model.id || (externalPull && pullProgress.model === model.id)}
-    disabled={busy || checking || (!ollamaReady && !knownModels.includes(model.id))} onAction={() => downloadOrUse(model)} />)}</div>;
+    disabled={busy || checking || (!ollamaReady && !hasOllamaModel(knownModels, model.id))} onAction={() => downloadOrUse(model)} />)}</div>;
 
   return <section className="onboarding" aria-labelledby="onboarding-page-title" data-onboarding-page={page}>
     <aside className="onboarding-rail"><div className="onboarding-brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><span>Getting started</span></div></div>

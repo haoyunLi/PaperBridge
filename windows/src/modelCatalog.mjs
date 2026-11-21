@@ -1,3 +1,5 @@
+import { hasOllamaModel, modelKey } from '../electron/ollama-models.mjs';
+
 // Matches macOS Models.swift. Sizes were checked against each official Ollama
 // tag page on 2026-09-20; they are approximate downloads, not runtime RAM/VRAM.
 export const MODEL_CATALOG_VERIFIED_AT = '2026-09-20';
@@ -32,20 +34,20 @@ export const ASSISTANT_MODELS = Object.freeze([
 
 export function modelSettingsPatch(settings, selected, installedModels = []) {
   if (!selected?.id || !['translation', 'assistant'].includes(selected.role)) throw new Error('Unknown model role.');
-  if (!installedModels.includes(selected.id)) throw new Error('Download this model before selecting it.');
+  if (!hasOllamaModel(installedModels, selected.id)) throw new Error('Download this model before selecting it.');
   const assistants = ['summaryModel', 'explainModel', 'quickLookupModel'];
   if (selected.role === 'assistant') return Object.fromEntries(assistants.map(key => [key, selected.id]));
   const patch = { translationModel: selected.id };
   for (const key of assistants) {
-    if (!installedModels.includes(settings[key]) || settings[key] === settings.translationModel) patch[key] = selected.id;
+    if (!hasOllamaModel(installedModels, settings[key]) || modelKey(settings[key]) === modelKey(settings.translationModel)) patch[key] = selected.id;
   }
   return patch;
 }
 
 export function isCatalogModelSelected(settings, selected, installedModels = []) {
-  if (!installedModels.includes(selected.id)) return false;
-  return selected.role === 'translation' ? settings.translationModel === selected.id
-    : ['summaryModel', 'explainModel', 'quickLookupModel'].every(key => settings[key] === selected.id);
+  if (!hasOllamaModel(installedModels, selected.id)) return false;
+  return selected.role === 'translation' ? modelKey(settings.translationModel) === modelKey(selected.id)
+    : ['summaryModel', 'explainModel', 'quickLookupModel'].every(key => modelKey(settings[key]) === modelKey(selected.id));
 }
 
 // Conservative starting points, not an inference about GPU fit or performance.

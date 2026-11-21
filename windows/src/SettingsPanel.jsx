@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRightLeft, BookOpen, Cpu, Download, FileText, HardDrive, RefreshCw, Settings2, Square } from 'lucide-react';
 import SettingsModels from './SettingsModels.jsx';
+import OllamaMemory from './OllamaMemory.jsx';
 import OpenAISettings from './OpenAISettings.jsx';
 import { ReadingAppearanceControls } from './ReadingAppearance.jsx';
 import { describeAdapter } from './hardwareDisplay.mjs';
@@ -19,6 +20,7 @@ function Group({ title, children }) {
 export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, taskSetup, initialSection = 'setup',
   modelTools, openAITools, hardwareTools, updates }) {
   const [section, setSection] = useState(taskSetup ? 'models' : initialSection);
+  const [memoryCheck, setMemoryCheck] = useState(0);
   const [parserCheck, setParserCheck] = useState(0);
   const [parser, setParser] = useState(null);
   const [checkingParser, setCheckingParser] = useState(false);
@@ -29,7 +31,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
   settingsRef.current = settings;
   const { models, ollamaError, pulling, cancelling, progress, message, error, name, onName,
     onRefresh, onDownload, onCancel, onUse, onRecommendation } = modelTools;
-  const { hardware, mineruRuntime, runningModels, checking, onCheck, error: hardwareError } = hardwareTools;
+  const { hardware, mineruRuntime, checking, onCheck, error: hardwareError } = hardwareTools;
   const locked = Boolean(busy || pulling);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
@@ -121,10 +123,10 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
           </label>)}
         </div></fieldset><p>Quick lookup handles selected-text translation and explanation. A smaller model can respond sooner.</p></Group>
         <Group title="Download another model"><p>Enter an Ollama model name, or browse the recommendations in Local AI.</p><div className="row"><input aria-label="Model to download" value={name} disabled={locked} placeholder="translategemma:4b" onChange={event => onName(event.target.value)} /><button className="button blue" disabled={locked} onClick={() => onDownload()}>Download model</button></div></Group>
-        <Group title="Graphics acceleration"><div className="settings-status-row"><p>{hardware?.adapters?.length ? hardware.adapters.map(describeAdapter).join(' · ') : 'No graphics adapter reported by Windows.'}</p><button className="button outline" disabled={checking} onClick={onCheck}><RefreshCw size={14} />{checking ? 'Checking…' : 'Check'}</button></div>
+        <Group title="Graphics acceleration"><div className="settings-status-row"><p>{hardware?.adapters?.length ? hardware.adapters.map(describeAdapter).join(' · ') : 'No graphics adapter reported by Windows.'}</p><button className="button outline" disabled={checking} onClick={() => { setMemoryCheck(value => value + 1); onCheck(); }}><RefreshCw size={14} />{checking ? 'Checking…' : 'Check'}</button></div>
           <p>{hardware?.cudaDriver?.length ? `NVIDIA driver detected: ${hardware.cudaDriver.map(device => `${device.name}, ${device.memoryMiB || '?'} MiB`).join('; ')}.` : hardware?.adapters?.some(adapter => adapter.vendor === 'AMD') ? 'AMD detected. Ollama may use supported ROCm or Vulkan hardware.' : 'Ollama chooses its available CPU or GPU backend automatically.'}</p>
           <p>{mineruRuntime?.description ? `MinerU: ${mineruRuntime.description}.` : mineruRuntime?.checked ? `MinerU Python: PyTorch ${mineruRuntime.torch}; CUDA ${mineruRuntime.cuda ? `available (${mineruRuntime.devices.join(', ')})` : 'unavailable'}.` : mineruRuntime?.reason || 'Check the MinerU runtime to see its acceleration status.'}</p>
-          {runningModels.length > 0 && <p>Ollama loaded: {runningModels.map(model => `${model.name} · ${(model.sizeVram / 1024 ** 3).toFixed(1)} GB VRAM`).join('; ')}</p>}
+          <OllamaMemory baseURL={settings.ollamaBaseURL} revision={memoryCheck} />
           {hardwareError && <p className="settings-error" role="alert">{hardwareError}</p>}
         </Group></>}
       </>}

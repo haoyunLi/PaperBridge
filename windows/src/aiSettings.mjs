@@ -1,3 +1,5 @@
+import { missingOllamaModels } from '../electron/ollama-models.mjs';
+
 const roleKeys = Object.freeze({
   translation: ['translationModel', 'openAITranslationModel'],
   summary: ['summaryModel', 'openAISummaryModel'],
@@ -47,7 +49,7 @@ export function aiTaskSetupIssue(settings, roles, { models = [], ollamaStatus, c
     return { destination: 'setup', models: required, message: 'Start or install Ollama to run this task.' };
   }
   if (ollamaStatus !== 'ready') return null;
-  const missing = required.filter(model => !models.includes(model));
+  const missing = missingOllamaModels(required, models);
   return missing.length ? { destination: 'setup', models: required, message: `Install or select the models required for this task. Missing locally: ${missing.join(', ')}.` } : null;
 }
 

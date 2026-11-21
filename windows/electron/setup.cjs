@@ -6,6 +6,7 @@ const { promisify } = require('node:util');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { setTimeout: delay } = require('node:timers/promises');
+const { missingOllamaModels } = require('./ollama-models.mjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
 const { mineruPaths, claimMineruSetup, recoverMineru, rollbackMineru, beginMineruActivation,
@@ -46,7 +47,7 @@ function selectedComponents(components) {
 
 function setupPlan(status, requiredModels = [], config = {}) {
   const components = selectedComponents(config.components);
-  const models = components.models ? [...new Set(requiredModels)].filter(model => !status.ollama.models.includes(model)) : [];
+  const models = components.models ? missingOllamaModels(requiredModels, status.ollama.models) : [];
   const gpu = cudaPlan(status.hardware);
   const ollamaRequiredByModels = components.models && !components.ollama && !status.ollama.running;
   return {

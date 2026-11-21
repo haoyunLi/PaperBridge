@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, RefreshCw, Download, Square } from 'lucide-react';
+import { hasOllamaModel } from '../electron/ollama-models.mjs';
+import OllamaMemory from './OllamaMemory.jsx';
 import { describeAdapter } from './hardwareDisplay.mjs';
 
 const api = window.paperBridge;
@@ -76,7 +78,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
   const mineruReadiness = mineru?.runtime?.description || (mineru?.runtime?.cuda ? 'PyTorch CUDA ready' : mineru?.runtime?.reason || 'CPU pipeline available');
   const activeProgress = progress || diagnosis?.progress;
   const ollamaSelected = components.ollama || components.models;
-  const taskReady = taskSetup && diagnosis?.ollama.running && taskSetup.models.every(model => diagnosis.ollama.models?.includes(model));
+  const taskReady = taskSetup && diagnosis?.ollama.running && taskSetup.models.every(model => hasOllamaModel(diagnosis.ollama.models, model));
   return <div className="setup-panel">
     {taskSetup && <p role="status">{taskReady ? 'Ollama and the required models are ready. Close setup to run the task.' : taskSetup.message}</p>}
     <p>Choose the local tools you need. PaperBridge checks this PC and installs missing components in your Windows account. MinerU is optional and can require several gigabytes.</p>
@@ -93,7 +95,7 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
       <div className="setup-row"><span className={diagnosis.ollama.running ? 'setup-ok' : 'setup-needed'}>{diagnosis.ollama.running ? <Check size={16} /> : <Download size={16} />}</span><div><strong>Ollama</strong><small>{!ollamaSelected ? 'Not selected for installation' : diagnosis.ollama.running ? 'Local API is ready' : diagnosis.ollama.installed ? 'Installed; PaperBridge can start it' : 'Not installed; official signed installer will be downloaded'}</small></div></div>
       <div className="setup-row"><span className={diagnosis.plan.models.length ? 'setup-needed' : 'setup-ok'}>{diagnosis.plan.models.length ? <Download size={16} /> : <Check size={16} />}</span><div><strong>Local models</strong><small>{!components.models ? 'Not selected for installation' : diagnosis.plan.models.length ? `To download: ${diagnosis.plan.models.join(', ')}` : `Ready: ${config().models.join(', ')}`}</small></div></div>
       <div className="setup-row"><span className={diagnosis.plan.mineru ? 'setup-needed' : 'setup-ok'}>{diagnosis.plan.mineru ? <Download size={16} /> : <Check size={16} />}</span><div><strong>MinerU structured PDF parser</strong><small>{!components.mineru ? 'Not selected; original PDFs and selectable-text reading remain available' : diagnosis.plan.mineru ? mineru?.compatible ? `Installed, but ${mineru.kitExecutable ? 'ONNX verification failed' : 'CUDA is not ready'}${mineru.runtime?.reason ? ` (${mineru.runtime.reason})` : ''}. Setup can create a private managed environment.` : mineru?.installed ? 'Existing command is not compatible with this reader; install a private compatible copy' : 'Not installed; an isolated Python and MinerU will be installed' : `${mineru.version} · ${mineruReadiness}`}</small></div></div>
-      <div className="setup-hardware"><strong>Graphics acceleration</strong><p>{diagnosis.hardware.adapters?.length ? diagnosis.hardware.adapters.map(describeAdapter).join(' · ') : 'Windows did not report a graphics adapter.'}</p><p>{gpu.reason}</p><p>Ollama selects its own runtime. PaperBridge checks the installed MinerU runtime separately.</p></div>
+      <div className="setup-hardware"><strong>Graphics acceleration</strong><p>{diagnosis.hardware.adapters?.length ? diagnosis.hardware.adapters.map(describeAdapter).join(' · ') : 'Windows did not report a graphics adapter.'}</p><p>{gpu.reason}</p>{diagnosis.ollama.running && <OllamaMemory baseURL={settings.ollamaBaseURL} revision={diagnosis} />}</div>
     </>}
     {working && activeProgress && <div className="setup-progress"><strong>{activeProgress.message}</strong>{activeProgress.received > 0 && <small>{formatBytes(activeProgress.received)}{activeProgress.total ? ` / ${formatBytes(activeProgress.total)}` : ''}</small>}{activeProgress.total > 0 && <progress value={activeProgress.received} max={activeProgress.total} />}</div>}
     {error && <p className="setup-error" role="alert">{error}</p>}

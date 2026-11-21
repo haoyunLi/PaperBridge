@@ -1031,7 +1031,6 @@ function App() {
   const [models, setModels] = useState([]);
   const [hardware, setHardware] = useState(null);
   const [mineruRuntime, setMineruRuntime] = useState(null);
-  const [runningModels, setRunningModels] = useState([]);
   const [checkingHardware, setCheckingHardware] = useState(false);
   const [hardwareError, setHardwareError] = useState('');
   const hardwareCheckId = useRef(0);
@@ -1386,7 +1385,7 @@ function App() {
     if (change.ollamaBaseURL !== undefined && change.ollamaBaseURL !== previous.ollamaBaseURL) {
       modelRefreshId.current++;
       setRefreshingModels(false);
-      setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError('Refresh models to check this local endpoint.');
+      setModels([]); setOllamaStatus('unchecked'); setOllamaError('Refresh models to check this local endpoint.');
     }
     if (change.mineruExecutable !== undefined && change.mineruExecutable !== previous.mineruExecutable) setMineruRuntime(null);
     settingsRef.current = next; setSettings(next);
@@ -1722,12 +1721,14 @@ function App() {
   async function checkHardware() {
     const request = ++hardwareCheckId.current, config = settingsRef.current;
     setCheckingHardware(true); setHardwareError('');
-    const results = await Promise.allSettled([api.graphicsStatus(), api.mineruRuntime(config.mineruExecutable), api.runningModels(config.ollamaBaseURL)]);
+    const [graphics, mineru] = await Promise.allSettled([api.graphicsStatus(), api.mineruRuntime(config.mineruExecutable)]);
     if (request !== hardwareCheckId.current) return;
-    if (results[0].status === 'fulfilled') setHardware(results[0].value);
-    if (config.mineruExecutable === settingsRef.current.mineruExecutable && results[1].status === 'fulfilled') setMineruRuntime(results[1].value);
-    if (config.ollamaBaseURL === settingsRef.current.ollamaBaseURL) setRunningModels(results[2].status === 'fulfilled' ? results[2].value : []);
-    setHardwareError(results.filter(result => result.status === 'rejected').map(result => result.reason.message).join(' ')); setCheckingHardware(false);
+    if (graphics.status === 'fulfilled') setHardware(graphics.value);
+    const sameParser = config.mineruExecutable === settingsRef.current.mineruExecutable;
+    if (sameParser && mineru.status === 'fulfilled') setMineruRuntime(mineru.value);
+    const errors = [graphics, ...(sameParser ? [mineru] : [])].filter(result => result.status === 'rejected');
+    setHardwareError(errors.map(result => result.reason.message).join(' '));
+    setCheckingHardware(false);
   }
   useEffect(() => {
     api.bootstrap().then(async data => {
@@ -2766,7 +2767,7 @@ function App() {
       cancelParagraphEdit();
       paperRef.current = null; setPaper(null); setLibrary([]); setLibraryPersistenceWarning(''); setGlossary([]); settingsRef.current = data.settings; setSettings(data.settings);
       modelRefreshId.current++;
-      setModels([]); setRunningModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
+      setModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
       void refreshModels(data.settings);
       setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
       setPaste(''); setPasteExpanded(false); setPasteFocusRequest(0);
@@ -3552,7 +3553,7 @@ function App() {
           name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
-        hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
+        hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, filePhase, fileMessage, onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, Download } from 'lucide-react';
+import { hasOllamaModel } from '../electron/ollama-models.mjs';
 import { isCatalogModelSelected } from './modelCatalog.mjs';
 import './model-recommendations.css';
 
@@ -17,7 +18,7 @@ export function ModelCard({ model, installed, selected, active, disabled, onActi
 
 export default function ModelRecommendations({ items, settings, models = [], busy = false, activeModel, onUse, onDownload }) {
   return <div className="model-recommendations">{items.map(model => {
-    const installed = models.includes(model.id);
+    const installed = hasOllamaModel(models, model.id);
     return <ModelCard key={model.id} model={model} installed={installed}
       selected={isCatalogModelSelected(settings, model, models)} active={activeModel === model.id} disabled={busy}
       onAction={() => installed ? onUse(model) : onDownload(model)} />;
