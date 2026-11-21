@@ -31,7 +31,12 @@ export function ReadingAppearancePopover({ settings, onSettings, disabled }) {
       popoverTarget="reading-appearance" aria-haspopup="dialog" disabled={disabled}><ALargeSmall size={19} /></button>
     {!disabled && <div id="reading-appearance" className="reading-appearance-popover" popover="auto" role="dialog"
       aria-labelledby="reading-appearance-title"
-      onToggle={event => { if (event.newState === 'open') event.currentTarget.querySelector('input')?.focus({ preventScroll: true }); }}
+      onToggle={event => {
+        const panel = event.currentTarget;
+        if (event.newState === 'open' && panel.matches(':popover-open') && !panel.contains(document.activeElement)) {
+          panel.querySelector('input')?.focus({ preventScroll: true });
+        }
+      }}
       onKeyDown={event => { if (event.key === 'Escape') event.stopPropagation(); }}>
       <h2 id="reading-appearance-title">Reading Appearance</h2>
       <ReadingAppearanceControls settings={settings} onSettings={onSettings} />

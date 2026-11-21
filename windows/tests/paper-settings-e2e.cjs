@@ -394,7 +394,18 @@ async function run() {
     await page.keyboard.press('Escape');
     await expectAppearance('25px', '36px', '560px');
     await waitFor(() => readSettings().lineSpacing === 6 && readSettings().lineHeight === null, 'explicit additive spacing persisted');
-    await appearanceButton().click();
+    // Native toggle is queued. Moving to another slider immediately after opening
+    // must keep that slider focused when the notification arrives.
+    const retainedWidthFocus = await page.evaluate(async () => {
+      const panel = document.getElementById('reading-appearance');
+      const opened = new Promise(resolve => panel.addEventListener('toggle', resolve, { once: true }));
+      document.querySelector('button[popovertarget="reading-appearance"]').click();
+      const width = panel.querySelector('input[aria-label="Reading width"]');
+      width.focus();
+      await opened;
+      return document.activeElement === width;
+    });
+    assert.equal(retainedWidthFocus, true, 'opening the appearance panel must preserve a newly focused slider');
     await fontSlider().press('ArrowLeft');
     await widthSlider().press('End');
     await page.keyboard.press('Escape');
