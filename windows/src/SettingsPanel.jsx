@@ -134,7 +134,16 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <Group title="Translation style guide"><label>Optional translation instructions<textarea value={settings.translationStyleGuide || ''} maxLength={2000} placeholder="For example: concise academic Chinese; keep established English acronyms." onChange={event => onSettings({ translationStyleGuide: event.target.value.slice(0, 2000) })} /></label><p>{(settings.translationStyleGuide || '').length}/2,000 characters. Sent to the selected provider with translation requests. Do not include secrets.</p></Group>
         <Group title="Reading appearance"><ReadingAppearanceControls settings={settings} onSettings={onSettings} /></Group>
       </fieldset>}
-      {section === 'updates' && <Group title={`Windows updates · ${updates.version || 'unknown version'}`}><button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button><label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>{updates.status && <p role="status">{updates.status}</p>}<p>New versions open on the official GitHub release page. This unsigned preview does not install updates automatically.</p></Group>}
+      {section === 'updates' && <Group title={`Windows updates · ${updates.version || 'unknown version'}`}>
+        <label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>
+        <div className="row">
+          <button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
+          {updates.availableVersion && <button className="button blue" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
+        </div>
+        {updates.status && <p role="status">{updates.status}</p>}
+        <p>Download the Setup or Portable edition from the official release page.</p>
+        <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
+      </Group>}
       {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data keeps original PDF copies and the separately encrypted OpenAI key.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
     </div>
   </div>;

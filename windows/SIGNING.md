@@ -2,6 +2,15 @@
 
 PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Portable）。普通个人电脑允许未签名应用时，两种版本都可运行。请从项目的 GitHub Release 下载实际的 `.exe` 文件。如果 Windows 显示「未知发布者」，请先核对文件来源和该版本的 SHA-256。如果设备允许，而且你信任这一份下载，可以在「更多信息」中选择「仍要运行」。组织管理的设备按管理员的应用策略执行。
 
+## 免费分发与可选签名
+
+现有 GitHub 下载采用免费的未签名 EXE。开发者无需提交身份材料即可发布。Windows 可能在首次打开时询问是否运行，便携版也适用相同的系统策略。
+
+如果以后希望免费提供经过签名的版本，可以考虑以下渠道。
+
+- 使用 MSIX 向 Microsoft Store 提交。商店认证通过后由微软为商店包签名，用户从商店安装。现有 GitHub EXE 继续沿用自己的发布流程。[微软的分发与签名选项](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)
+- SignPath Foundation 为符合条件的开源项目提供免费签名。申请要求包括 OSI 认可的许可证、满足组件来源要求和逐次人工批准签名。当前仓库根目录没有声明项目许可证，是否采用开源许可由著作权人决定。[基金会申请条件](https://signpath.org/terms)
+
 ## 美国个人开发者申请
 
 1. 在 Azure 门户创建 **Artifact Signing** 账户，选择 Basic 计划并先确认当前报价。微软列出的起价约为每月 9.99 美元。个人 Public Trust 目前面向美国和加拿大。Azure 订阅关联的计费账户类型需要为 Individual，法定姓名及地址须与身份证明匹配。[申请条件与操作步骤](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart) · [当前定价](https://azure.microsoft.com/en-us/pricing/details/artifact-signing/)

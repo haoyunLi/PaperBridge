@@ -20,8 +20,8 @@ async function run() {
       shell.openExternal = async url => { global.__officialBrowserLinks.push(url); };
     });
     const allowed = ['https://ollama.com/download/windows', 'https://ollama.com/library/translategemma:4b',
-      'https://platform.openai.com/api-keys', 'https://platform.openai.com/usage', 'https://developers.openai.com/api/docs/guides/your-data'];
-    const blocked = ['https://other.example/', 'http://ollama.com/library/qwen3', 'https://user:pass@ollama.com/library/qwen3',
+      'https://github.com/haoyunLi/PaperBridge/releases', 'https://platform.openai.com/api-keys', 'https://platform.openai.com/usage', 'https://developers.openai.com/api/docs/guides/your-data'];
+    const blocked = ['https://github.com/haoyunLi/PaperBridge/releases?redirect=yes', 'https://github.com/other/PaperBridge/releases', 'https://other.example/', 'http://ollama.com/library/qwen3', 'https://user:pass@ollama.com/library/qwen3',
       'https://ollama.com:8443/library/qwen3', 'https://ollama.com/download/mac', 'https://platform.openai.com/',
       'https://platform.openai.com/api-keys?next=evil', 'https://developers.openai.com/api/docs/guides/your-data#retention'];
     for (const url of [...allowed, ...blocked]) {
@@ -36,7 +36,7 @@ async function run() {
     } while (Date.now() < deadline);
     assert.deepEqual(opened, allowed);
     assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1, 'External links must not create an Electron child window');
-    console.log('Electron new-window handling opened only approved Ollama and OpenAI pages through the stubbed system browser and rejected other destinations.');
+    console.log('Electron new-window handling opened only approved release history, Ollama and OpenAI pages through the stubbed system browser and rejected other destinations.');
   } finally { await app?.close(); }
 }
 

@@ -46,15 +46,31 @@ async function run() {
     });
     await page.locator('.update-banner').getByText(`PaperBridge for Windows ${nextVersion} is available`, { exact: true }).waitFor();
     assert.equal(await app.evaluate(() => global.__updateReleaseCalls), 1);
-    const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+    let cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
     assert.equal(cached.cacheVersion, 1);
     assert.deepEqual(cached.release, identity);
     assert.equal(Number.isSafeInteger(cached.lastCheckAt), true);
-    // Enable the normal startup check through the public settings IPC before quitting.
-    await page.evaluate(async () => {
-      const state = await window.paperBridge.bootstrap();
-      await window.paperBridge.saveSettings({ ...state.settings, autoCheckUpdates: true });
+    await page.getByRole('button', { name: 'Later', exact: true }).click();
+    await page.locator('.update-banner').waitFor({ state: 'hidden' });
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await app.evaluate(({ shell }) => {
+      global.__updateLinks = [];
+      shell.openExternal = async url => { global.__updateLinks.push(url); };
     });
+    const releaseButton = page.getByRole('button', { name: `View Windows ${nextVersion} release`, exact: true });
+    await releaseButton.click();
+    await page.getByRole('link', { name: 'View release history', exact: true }).click();
+    await page.getByLabel(/Check official Windows releases/).check();
+    await releaseButton.waitFor();
+    assert.equal(await page.locator('.update-banner').count(), 0, 'An automatic cache hit must respect Later');
+    assert.deepEqual(await app.evaluate(() => global.__updateLinks), [
+      `https://github.com/haoyunLi/PaperBridge/releases/tag/${identity.tag}`, 'https://github.com/haoyunLi/PaperBridge/releases'
+    ]);
+    await page.getByRole('button', { name: 'Check now', exact: true }).click();
+    await page.locator('.update-banner').waitFor({ state: 'attached' });
+    await page.keyboard.press('Escape');
+    cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
     await app.close();
     app = null;
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoCheckUpdates, true);

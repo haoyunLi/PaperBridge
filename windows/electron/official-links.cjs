@@ -23,7 +23,8 @@ function officialOpenAIUrl(value) {
 
 function createOfficialLinkHandler(openExternal, onError = () => {}) {
   return ({ url }) => {
-    const official = officialOllamaUrl(url) || officialOpenAIUrl(url);
+    const official = url === 'https://github.com/haoyunLi/PaperBridge/releases'
+      ? url : officialOllamaUrl(url) || officialOpenAIUrl(url);
     if (official) Promise.resolve().then(() => openExternal(official)).catch(onError);
     return { action: 'deny' };
   };

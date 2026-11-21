@@ -995,6 +995,8 @@ function App() {
   const modelRefreshId = useRef(0);
   const [appVersion, setAppVersion] = useState('');
   const [updateInfo, setUpdateInfo] = useState(null);
+  const [deferredUpdateTag, setDeferredUpdateTag] = useState('');
+  const showUpdateBanner = updateInfo?.status === 'available' && updateInfo.tag !== deferredUpdateTag;
   const [updateStatus, setUpdateStatus] = useState('');
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [glossary, setGlossary] = useState([]);
@@ -1423,10 +1425,20 @@ function App() {
   async function checkForUpdates(automatic = false) {
     if (!automatic) { setCheckingUpdates(true); setUpdateStatus('Checking Windows releases…'); }
     try {
+      if (automatic) {
+        await settingsSaveChain.current;
+        if (settingsRef.current?.autoCheckUpdates === false) return;
+      }
       const result = await api.checkUpdates(automatic);
-      if (result.status === 'available') setUpdateInfo(result);
-      else if (!automatic) setUpdateInfo(null);
-      if (!automatic) setUpdateStatus(result.status === 'available' ? `Windows ${result.latestVersion} is available.` : result.status === 'unpublished' ? 'No Windows release has been published yet.' : 'You have the latest published Windows version.');
+      if (automatic && settingsRef.current?.autoCheckUpdates === false) return;
+      if (result.status === 'available') {
+        setUpdateInfo(result);
+        if (!automatic || !result.fromCache) setDeferredUpdateTag('');
+      } else if (result.status === 'current' || result.status === 'unpublished') {
+        setUpdateInfo(null);
+        setDeferredUpdateTag('');
+      }
+      if (result.status !== 'skipped') setUpdateStatus(result.status === 'available' ? `Windows ${result.latestVersion} is available.` : result.status === 'unpublished' ? 'No Windows release has been published yet.' : 'You have the latest published Windows version.');
     } catch (cause) { if (!automatic) setUpdateStatus(cause.message); }
     finally { if (!automatic) setCheckingUpdates(false); }
   }
@@ -3300,10 +3312,10 @@ function App() {
         </div>
       </div>}
       </header>
-      {(error || updateInfo?.status === 'available' || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
+      {(error || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
-        {updateInfo?.status === 'available' && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setUpdateInfo(null)}>Later</button></div>}
+        {showUpdateBanner && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setDeferredUpdateTag(updateInfo.tag)}>Later</button></div>}
         {busy && <TaskProgress busy={busy} progress={progress} status={status} />}
         {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
         {paper && <div className={`save-status ${workspaceSave.status}`} role={workspaceSave.status === 'error' ? 'alert' : 'status'}>
@@ -3424,7 +3436,7 @@ function App() {
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
-        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, onCheck: () => checkForUpdates(false) }} />}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}

@@ -144,7 +144,9 @@ async function run() {
     await evaluateMain(({ BrowserWindow }, value) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(value), zoom);
     await bounded(`${phase}: viewport resize`, page.setViewportSize({ width, height }));
     await waitFor(() => evaluate(({ width, height, zoom }) => Math.abs(innerWidth - width / zoom) <= 1 &&
-      Math.abs(innerHeight - height / zoom) <= 1, { width, height, zoom }), 'requested CSS viewport');
+      Math.abs(innerHeight - height / zoom) <= 1 &&
+      document.querySelector('#research-inspector')?.classList.contains('inspector-drawer') ===
+        matchMedia('(max-width: 1399px)').matches, { width, height, zoom }), 'requested viewport and responsive inspector mode');
   };
   const readerMetrics = () => evaluate(() => {
     const host = document.querySelector('.main-scroll'), list = document.querySelector('.reader-list');
