@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.31 公开便携版（2026-11-21）
+
+从 GitHub 下载的便携版在 Radeon RX 7800 XT 上调用本机 Ollama 的 `translategemma:4b`。两篇短文分别覆盖无标题的 DOI 书目、书目之后继续的方法段。三条 DOI 引文按原样保留。方法段译出“我们使用了新鲜样本”和“团队在解冻后重复测量”。Ollama 报告模型占用 2,881,948,220 字节显存。本机报告为 `test-artifacts/public031-amd-bibliography-JobbH5/result.json`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.31)
+
+同一便携版对《Attention Is All You Need》的 36 段节选完成初译和改术语后的重译。两轮各有一次模型漏掉标记，界面保留原文，选择续译后完成。两份译稿的三批内容逐项保留了原有的 25、14 和 7 个标记。之前被扩写的小标题在此次译稿中保持为标题。两轮共 44 次本机模型请求，累计约 62 秒。重启后笔记及高亮保留，旧引文在新译稿中有三个匹配位置时会提示复核。本机报告为 `test-artifacts/public031-amd-regenerated-multi-weQpJ0/result.json`。
+
 ## 0.2.30 公开便携版与开发分支（2026-11-21）
 
 RX 7800 XT 上的公开便携版通过键盘选中全文译稿中的“注”，再以鼠标选中“注意力函数”，回译为“Attention function”。应用通过本机 Ollama 返回选区解释。三次依次切换高亮颜色后仍只有一条高亮。保存笔记、将术语改为“注意力映射函数”、关闭软件并重新生成译稿，旧引文消失时，批注列表提示需要复核，笔记和高亮再次重启后仍在。此次输入为《Attention Is All You Need》的第 35、42 段，4 次模型请求均使用 `translategemma:4b`，Ollama 报告模型及显存占用均为 2,881,948,220 字节。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.30) · 本机报告 `test-artifacts/public030-amd-regenerated-notes-6OWhmi/result.json`。

@@ -1,5 +1,15 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.31 公开下载与阅读验收（2026-11-21）
+
+首页提供 Windows portable 与 Windows installer 两个入口。Edge 从这两个入口下载的 EXE 均保留互联网来源标记，大小与 SHA-256 符合 GitHub 资产及校验文件。独立 Windows 环境从公开链接下载便携版并打开引导，也安装了 Setup 并启动安装后的 PaperBridge。本机从便携版跳过 AI 配置，导入中文文件名的两页 PDF，加笔记和高亮，重启后均保留。0.2.30 便携版在空缓存中发现 0.2.31，后台下载的便携版与公开文件逐字节校验一致。[发布记录](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.31) · [公开包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44881811459/job/136780225037)
+
+安装版也实测从 0.2.30 发现更新，完成安装和重启后保留旧版保存的论文、高亮、笔记及阅读外观。隔离测试安装卸载后，论文与设置仍可读取。本机报告为 `test-artifacts/i-mwq46qdz-av4/report.json`，便携版更新记录为 `test-artifacts/public030-to031-portable-update-NDFRsL/result.json`。
+
+使用 macOS 生产 Swift 和 Windows 导入逻辑核对三组参考文献，保留和排除的段落、原文及顺序均相同。公开便携版在 RX 7800 XT 上用 `translategemma:4b` 译出参考文献后的方法段，三个以题名或机构名开头的 DOI 引文保留原文。本机记录为 `test-artifacts/public031-amd-bibliography-JobbH5/result.json`。[两端对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44881811459/job/136778604384)
+
+另外导入 12 页的《Deep Residual Learning for Image Recognition》时，公开版将参考文献末尾两个 PDF 分段误作正文。开发分支修复了作者名单和后续书目分段相连的情形。重新在 Reader 中逐段打开动作菜单或检查标题翻译按钮，第 260 至 274 段均排除，第 275 段附录可翻译。对 15 页《Attention Is All You Need》复查，266 个 PDF 分段中排除的 39 段与修复前相同。[开发分支修复](https://github.com/haoyunLi/PaperBridge/commit/44757b3)
+
 ## Windows 0.2.30 公开下载与升级（2026-11-21）
 
 在仓库首页用 Edge 下载 x64 Setup 和 Portable，两个 EXE 的 SHA-256、大小和版本均符合 GitHub Release，均为未签名发布，也都保留了 Windows 互联网来源标记。GitHub 在独立 Windows 环境中打开两个公开下载并验证首次引导。本机在模型不可用的隔离工作区中跳过引导，导入带中文文件名的两页 PDF，添加笔记和高亮，重启后均可恢复。原先报告的手动系统确认后无窗口，仍需该设备的交互结果来确认具体原因。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.30) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44879565255/job/136773656470)
