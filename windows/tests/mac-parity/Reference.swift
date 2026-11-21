@@ -9,6 +9,19 @@ private struct Fixtures: Decodable {
         let name: String
         let blocks: [Block]
     }
+    struct Consolidation: Decodable {
+        struct Response: Codable {
+            struct Claim: Codable {
+                let text: String
+                let sources: [SummarySource]
+            }
+            let claims: [Claim]
+        }
+        let paragraphs: [String]
+        let excerpt: Response
+        let merge: Response
+    }
+    let summaryConsolidation: Consolidation
     struct Evidence: Decodable {
         let source: String
         let quote: String
@@ -81,6 +94,19 @@ struct Reference {
             return ["name": fixture.name, "sections": ranges, "overview": PaperReadingAnalysis.overviewParagraphIDs(in: sections),
                     "guide": guide, "issues": issues]
         }
+        let consolidation = fixtures.summaryConsolidation
+        let paper = PaperDocument(name: "Study", checksum: "study", cleanedText: consolidation.paragraphs.joined(separator: "\n\n"),
+                                  paragraphs: consolidation.paragraphs, excludedReferenceParagraphs: [], referenceSectionTitle: nil)
+        let supplied = SummaryEvidence.sourceBatches(paper.paragraphs).joined(separator: "\n\n")
+        let partial = SummaryEvidence.parse(String(decoding: try JSONEncoder().encode(consolidation.excerpt), as: UTF8.self),
+                                            paper: paper, providedText: supplied)
+        let merged = SummaryEvidence.parse(String(decoding: try JSONEncoder().encode(consolidation.merge), as: UTF8.self),
+                                           paper: paper, allowedSources: partial.flatMap(\.sources))
+        let summaryStages: [[String: Any]] = [partial, merged].map { claims in
+            ["numbered": SummaryEvidence.markdown(claims), "sources": claims.map { claim in
+                claim.sources.map { ["paragraphID": $0.paragraphID, "quote": $0.quote] as [String: Any] }
+            }]
+        }
         let evidence = try fixtures.summaryEvidence.map { fixture -> [String] in
             let paragraph = String(repeating: fixture.source, count: fixture.repeat ?? 1)
             let quote = String(repeating: fixture.quote, count: fixture.repeat ?? 1)
@@ -123,7 +149,7 @@ struct Reference {
             return paragraphs.count > 1 ? paragraphs : [fixture.text]
         }
         let pageBoundaries = fixtures.pageBoundaries.map { TextProcessing.stitchPageParagraphs([[$0.left], [$0.right]]) }
-        let output: [String: Any] = ["summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let output: [String: Any] = ["summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))

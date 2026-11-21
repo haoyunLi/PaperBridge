@@ -54,18 +54,44 @@ async function run() {
     assert.ok(stages.filter(stage => stage.startsWith('Summarizing part ')).length >= 4);
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
-    await page.getByRole('button', { name: 'Overview', exact: true }).click();
-    const evidence = page.locator('.evidence-claim').filter({ hasText: 'Read original block' }).first();
-    await evidence.locator('summary').click();
-    await evidence.getByRole('button', { name: /Read original block/ }).first().click();
-    await page.locator(`#block-${sources[0].paragraphID}.current`).waitFor();
-    assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
+    const destinations = [];
+    for (const [claimIndex, claim] of snapshot.summary.claims.entries()) {
+      for (const [sourceIndex, source] of claim.sources.entries()) {
+        await page.getByRole('button', { name: 'Overview', exact: true }).click();
+        const panel = page.locator('.evidence-claim').nth(claimIndex);
+        if (await panel.getAttribute('open') === null) await panel.locator('summary').click();
+        assert.equal(await panel.locator('blockquote').nth(sourceIndex).textContent(), source.quote);
+        await panel.getByRole('button', { name: /Read original block/ }).nth(sourceIndex).click();
+        const row = page.locator(`#block-${source.paragraphID}.current`);
+        await row.waitFor();
+        assert.equal(await page.getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
+        const original = await row.locator('.source-text').textContent();
+        const text = original.normalize('NFC'), quote = source.quote.normalize('NFC');
+        assert.ok(text.includes(quote));
+        const unique = text.indexOf(quote) === text.lastIndexOf(quote);
+        if (unique) await page.waitForFunction(({ paragraphID, quote }) => {
+          const selection = window.getSelection(), host = document.querySelector('.main-scroll');
+          if (selection?.toString() !== quote || !document.querySelector(`#block-${paragraphID} .source-text`)?.contains(selection.anchorNode)) return false;
+          const rect = selection.getRangeAt(0).getBoundingClientRect(), viewport = host.getBoundingClientRect();
+          return rect.bottom > viewport.top && rect.top < viewport.bottom;
+        }, source);
+        destinations.push({ claim: claimIndex + 1, paragraphID: source.paragraphID, unique });
+      }
+    }
+    const destination = path.join(workspace, 'summary-evidence.md');
+    await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath }); }, destination);
+    await page.getByRole('button', { name: 'More' }).click();
+    await page.locator('.modal-body').getByRole('button', { name: 'Export Options…', exact: true }).click();
+    await page.getByRole('button', { name: 'Summary, sources and notes', exact: true }).click();
+    await page.getByText('Exported ' + destination, { exact: true }).waitFor();
+    const exported = fs.readFileSync(destination, 'utf8');
+    for (const source of sources) assert.ok(exported.includes(`- Block ${source.paragraphID}: “${source.quote}”`));
     const loaded = await fetch(new URL('/api/ps', baseURL)).then(response => response.json());
     const models = loaded.models.filter(item => [modelName, summaryModel].includes(item.name || item.model));
     assert.ok(models.some(model => (model.name || model.model) === modelName && model.size_vram > 0), 'Ollama must report translation model VRAM allocation');
     console.log(JSON.stringify({
       workspace, seconds: (Date.now() - started) / 1000, stages, claims: snapshot.summary.claims.length,
-      exactSources: sources.length, uniqueBlocks: [...new Set(sources.map(source => source.paragraphID))],
+      exactSources: sources.length, destinations, uniqueBlocks: [...new Set(sources.map(source => source.paragraphID))],
       models: models.map(model => ({ name: model.name || model.model, vram: model.size_vram, modelSize: model.size }))
     }, null, 2));
   } finally { await app.close(); }

@@ -1,4 +1,102 @@
 {
+  "summaryConsolidation": {
+    "paragraphs": [
+      "The reference sensor stayed stable throughout the controlled trial.",
+      "The thermal chamber was calibrated before every recorded run.",
+      "The study included only a single manufacturing site."
+    ],
+    "excerpt": {
+      "claims": [
+        {
+          "text": "The reference sensor was stable.",
+          "sources": [
+            {
+              "paragraphID": 1,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            },
+            {
+              "paragraphID": 1,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            },
+            {
+              "paragraphID": 9,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            }
+          ]
+        },
+        {
+          "text": "The chamber was calibrated.",
+          "sources": [
+            {
+              "paragraphID": 2,
+              "quote": "The thermal chamber was calibrated before every recorded run."
+            }
+          ]
+        },
+        {
+          "text": "The result may generalize.",
+          "sources": [
+            {
+              "paragraphID": 3,
+              "quote": "The experiment represented all manufacturing sites."
+            }
+          ]
+        },
+        {
+          "text": "Only one site was studied.",
+          "sources": [
+            {
+              "paragraphID": 3,
+              "quote": "The study included only a single manufacturing site."
+            }
+          ]
+        }
+      ]
+    },
+    "merge": {
+      "claims": [
+        {
+          "text": "Calibration and stability were documented.",
+          "sources": [
+            {
+              "paragraphID": 2,
+              "quote": "The thermal chamber was calibrated before every recorded run."
+            },
+            {
+              "paragraphID": 1,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            },
+            {
+              "paragraphID": 3,
+              "quote": "The study included only a single manufacturing site."
+            }
+          ]
+        },
+        {
+          "text": "The trial tested every manufacturing site.",
+          "sources": [
+            {
+              "paragraphID": 2,
+              "quote": "The trial tested every manufacturing site."
+            }
+          ]
+        },
+        {
+          "text": "Only one site was studied.",
+          "sources": [
+            {
+              "paragraphID": 3,
+              "quote": "The study included only a single manufacturing site."
+            }
+          ]
+        },
+        {
+          "text": "An unverified interpretation.",
+          "sources": []
+        }
+      ]
+    }
+  },
   "summaryEvidence": [
     {
       "name": "decomposed accent in PDF text",

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
+import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
@@ -24,6 +24,14 @@ for (const [index, fixture] of papers.entries()) {
   assert.deepEqual(actual, reference.papers[index], fixture.name);
 }
 
+const consolidation = fixtures.summaryConsolidation;
+const evidenceBlocks = consolidation.paragraphs.map((text, i) => ({ id: i + 1, text }));
+const excerpts = parseSummaryClaims(JSON.stringify(consolidation.excerpt), evidenceBlocks);
+const merged = parseSummaryClaims(JSON.stringify(consolidation.merge), evidenceBlocks, excerpts.flatMap(claim => claim.sources));
+assert.deepEqual([excerpts, merged].map(stage => ({
+  numbered: claimsMarkdown(stage), sources: stage.map(claim => claim.sources)
+})), reference.summaryStages, 'Numbered summary and evidence after extraction and consolidation');
+assert.deepEqual(merged.map(claim => claim.sources.map(source => source.paragraphID)), [[2, 1], [], [3], []]);
 assert.equal(reference.summaryEvidence.length, fixtures.summaryEvidence.length);
 for (const [index, fixture] of fixtures.summaryEvidence.entries()) {
   const text = fixture.source.repeat(fixture.repeat ?? 1);
