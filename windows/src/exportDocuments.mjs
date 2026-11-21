@@ -98,7 +98,10 @@ export function markdownDocuments(input, _legacyTargetLanguage, kind) {
   const readerLanguage = structured || facsimile
     ? completed.length ? commonOutputLanguage(completed.map(block => block.translationLanguage)) : readerOutputLanguage({ ...paper, blocks: [] })
     : readerOutputLanguage(paper);
-  const descriptor = (kind, name, content, language = readerLanguage) => ({ kind, name, filename: filenameFor(kind, language), content });
+  const descriptor = (kind, name, content, language = readerLanguage) => ({
+    kind, name, filename: filenameFor(kind, language), content,
+    ...(facsimile && kind === 'translated' && language ? { targetLanguage: language.targetLanguage } : {})
+  });
   const analysis = () => descriptor('analysis', 'Analysis', analysisDocument(paper, references));
   if (kind === 'analysis') return [analysis()];
   const annotations = annotationsMarkdown(paper);

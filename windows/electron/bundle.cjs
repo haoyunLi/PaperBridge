@@ -96,7 +96,10 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
     used.add(name.toLowerCase());
     fs.writeFileSync(path.join(folder, name), rewriteAssetUrls(document.content, externalize, { includeLinks: true }), 'utf8');
     if (originalPdf && paper.facsimile && facsimileHeadings.has(document.kind)) {
-      facsimileDocuments.push({ name, heading: facsimileHeadings.get(document.kind) });
+      const heading = document.kind === 'translated' && typeof document.targetLanguage === 'string'
+        && /^[A-Za-z]+(?: [A-Za-z]+)*$/.test(document.targetLanguage)
+        ? `${document.targetLanguage} translation of selectable text` : facsimileHeadings.get(document.kind);
+      facsimileDocuments.push({ name, heading });
     }
   }
   for (const [relative, file] of pendingMarkdown) {

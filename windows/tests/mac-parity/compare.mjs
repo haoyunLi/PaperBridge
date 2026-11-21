@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { verifyJournalAnalysis } from './journal-analysis.mjs';
+import { verifyPDFJournal } from './pdf-journal.mjs';
 import { verifyJournalDraft } from './journal-draft.mjs';
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -24,6 +25,7 @@ const bundleFixture = JSON.parse(readFileSync(new URL('./bundle-fixture.json', i
 const work = mkdtempSync(path.join(os.tmpdir(), 'paperbridge-native-bundle-'));
 try {
   verifyJournalDraft(reference.journalDraft, work);
+  verifyPDFJournal(reference.pdfJournal, work);
   verifyJournalAnalysis(reference.journalAnalysis);
   const libraryRoot = path.join(work, 'library');
   const store = createStore(libraryRoot);
