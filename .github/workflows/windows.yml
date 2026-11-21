@@ -283,5 +283,8 @@ jobs:
         with:
           script: |
             const { publishReleaseFeed } = require('./windows/scripts/publish-release-feed.cjs');
-            core.info(await publishReleaseFeed({ repos: github.rest.repos, repo: context.repo,
-              ref: context.ref, feed: JSON.parse(process.env.VERIFIED_RELEASE) }));
+            const { publishDownloadPage } = require('./windows/scripts/publish-download-page.cjs');
+            const verified = { repos: github.rest.repos, repo: context.repo,
+              ref: context.ref, feed: JSON.parse(process.env.VERIFIED_RELEASE) };
+            core.info(await publishReleaseFeed(verified));
+            core.info(await publishDownloadPage(verified));
