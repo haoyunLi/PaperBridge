@@ -20,6 +20,8 @@ try {
   const files = {
     'supplements/guide.md': bundleFixture.guide,
     'data/measurements.csv': bundleFixture.csv,
+    'data/wrapped.csv': bundleFixture.csv,
+    'figures/wrapped.png': Buffer.from(bundleFixture.imageBase64, 'base64'),
     'figures/response.png': Buffer.from(bundleFixture.imageBase64, 'base64')
   };
   for (const [name, bytes] of Object.entries(files)) {
@@ -31,6 +33,17 @@ try {
   const result = writeBundle(work, { name: 'Calibration', sourceMode: 'mineru' }, documents, null, extraction);
   const moved = path.join(work, 'Moved journal bundle');
   renameSync(result.folder, moved);
+  const { wrapped: wrappedHashes, ...expectedBundle } = reference.bundle;
+  assert.deepEqual(Object.keys(wrappedHashes).sort(), ['data/wrapped.csv', 'figures/wrapped.png']);
+  const wrappedDocument = readFileSync(path.join(moved, 'paper_wrapped.md'), 'utf8');
+  let expectedMarkdown = bundleFixture.documents['paper_wrapped.md'];
+  for (const [relative, macHash] of Object.entries(wrappedHashes)) {
+    const exported = 'assets/source/' + relative;
+    const bytes = readFileSync(path.join(moved, exported));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), macHash, relative);
+    expectedMarkdown = expectedMarkdown.replace(relative, exported);
+  }
+  assert.equal(wrappedDocument, expectedMarkdown, 'Wrapped captions, titles and line endings survive relocation');
   for (const edition of ['paper_original.md', 'paper_bilingual_en_zh.md']) {
     const main = readFileSync(path.join(moved, edition), 'utf8');
     const guidePath = path.join(moved, main.match(/\[Supplement\]\(([^#)]+)#calibration\)/)[1]);
@@ -40,7 +53,7 @@ try {
       const bytes = readFileSync(path.resolve(path.dirname(guidePath), relative));
       targets[path.posix.join('supplements', relative)] = createHash('sha256').update(bytes).digest('hex');
     }
-    assert.deepEqual({ copied: result.assets, missing: result.missingAssetPaths, guide, targets }, reference.bundle, edition);
+    assert.deepEqual({ copied: result.assets, missing: result.missingAssetPaths, guide, targets }, expectedBundle, edition);
   }
   console.log('Verified relocated supplement links and file contents against the native macOS export.');
 } finally {

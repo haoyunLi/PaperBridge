@@ -179,14 +179,15 @@ async function run() {
 
     await app.evaluate(() => { globalThis.__mineruScenario = 'hold'; });
     const structuredId = paperId(structuredPdfText);
-    const passage = 'A MinerU passage with independent page metadata. [Measurements](data/result.csv#row)';
-    const markdown = `# A parsed title\n\n${passage}`;
+    const passage = 'A MinerU passage with independent page metadata. [Measurements](data/result.csv#row) and [raw series][calibration].';
+    const markdown = `# A parsed title\n\n${passage}\n\n[calibration]: data/raw.csv#row`;
     const legacy = path.join(workspace, 'mineru', structuredId, 'pipeline');
     const prepared = path.join(workspace, 'prepared-mineru');
     for (const [directory, csv] of [[legacy, 'previous bytes'], [prepared, 'current bytes']]) {
       fs.mkdirSync(path.join(directory, 'data'), { recursive: true });
       fs.writeFileSync(path.join(directory, 'paper.md'), markdown);
       fs.writeFileSync(path.join(directory, 'data', 'result.csv'), csv);
+      fs.writeFileSync(path.join(directory, 'data', 'raw.csv'), csv + ' series');
     }
     fs.writeFileSync(path.join(legacy, 'paper_content_list.json'), '[{"page_idx":9,"text":"A parsed title"}]');
     fs.writeFileSync(path.join(prepared, 'structured_content.json'), '{"pages":[{"page_idx":0,"blocks":[{"content":"A parsed title"}]}]}');
@@ -196,7 +197,7 @@ async function run() {
     await app.evaluate((_electron, result) => globalThis.__mineruImports.at(-1).resolve(result), {
       markdown, resourceId, pageHints: [{ page: 1, text: 'A parsed title' }, { page: 1, text: passage }]
     });
-    await page.getByText(/Extracted 2 blocks from 1 pages/).waitFor();
+    await page.getByText(/Extracted 3 blocks from 1 pages/).waitFor();
     await openWorkspaceView(page, 'Reader');
     await page.locator('#block-2 .block-header').getByLabel('Block 2, page 1', { exact: true }).waitFor();
     assert.equal(fs.existsSync(archivePage(structuredPdfText)), false, 'Successful MinerU imports keep their structured source');
@@ -207,7 +208,7 @@ async function run() {
       shell.showItemInFolder = () => {};
     }, exports);
     await page.keyboard.press('Control+Shift+e');
-    await page.getByText(/Exported 4 Markdown files, 1 asset\(s\), 1 PDF page image/).waitFor();
+    await page.getByText(/Exported 4 Markdown files, 2 asset\(s\), 1 PDF page image/).waitFor();
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), structuredId);
     assert.equal(saved.mineruResourceId, resourceId);
     assert.deepEqual(await page.evaluate(id => window.paperBridge.cachedMineruPages(id), structuredId), [{ page: 1, text: 'A parsed title' }]);
@@ -215,6 +216,10 @@ async function run() {
     const link = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8').match(/\[Measurements\]\((assets\/[^#]+\.csv)#row\)/)?.[1];
     assert.ok(link, 'The current attachment should be linked with its fragment');
     assert.equal(fs.readFileSync(path.join(bundle, link), 'utf8'), 'current bytes');
+    const original = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8');
+    const series = original.match(/\[calibration\]: (assets\/[^#]+\.csv)#row/);
+    assert.ok(series, 'The reference definition should resolve inside the exported paper');
+    assert.equal(fs.readFileSync(path.join(bundle, series[1]), 'utf8'), 'current bytes series');
     assert.equal((await app.evaluate(() => globalThis.__discardedMineruResults)).length, 2);
 
     await chooseMode('pdfOnly');

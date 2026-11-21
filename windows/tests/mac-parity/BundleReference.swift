@@ -22,7 +22,8 @@ func nativeBundleReference(fixturesDirectory: URL) throws -> [String: Any] {
     let csv = "data/measurements.csv"
     let figure = "figures/response.png"
     guard let image = Data(base64Encoded: fixture.imageBase64) else { throw CocoaError(.fileReadCorruptFile) }
-    let files = [guide: Data(fixture.guide.utf8), csv: Data(fixture.csv.utf8), figure: image]
+    let files = [guide: Data(fixture.guide.utf8), csv: Data(fixture.csv.utf8), figure: image,
+                 "data/wrapped.csv": Data(fixture.csv.utf8), "figures/wrapped.png": image]
     for (name, content) in files {
         let url = source.appendingPathComponent(name)
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -37,6 +38,10 @@ func nativeBundleReference(fixturesDirectory: URL) throws -> [String: Any] {
         let bytes = try Data(contentsOf: movedGuide.deletingLastPathComponent().appendingPathComponent(relative))
         return (name, SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
     })
-    return ["copied": result.copiedAssetCount, "missing": result.missingAssetPaths,
+    let wrappedHashes = try Dictionary(uniqueKeysWithValues: ["data/wrapped.csv", "figures/wrapped.png"].map { name in
+        let bytes = try Data(contentsOf: moved.appendingPathComponent(name))
+        return (name, SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
+    })
+    return ["wrapped": wrappedHashes, "copied": result.copiedAssetCount, "missing": result.missingAssetPaths,
             "guide": try String(contentsOf: movedGuide, encoding: .utf8), "targets": hashes]
 }

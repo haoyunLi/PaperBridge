@@ -2,6 +2,7 @@
   "documents": {
     "paper_original.md": "# Detector calibration\n\n[Supplement](supplements/guide.md#calibration)\n\n[Measurements](data/measurements.csv?view=table#rows)\n\n![Response](figures/response.png)\n",
     "paper_bilingual_en_zh.md": "# Detector calibration\n\n> 探测器标定\n\n[Supplement](supplements/guide.md#calibration)\n\n[Measurements](data/measurements.csv?view=table#rows)\n\n![Response](figures/response.png)\n",
+    "paper_wrapped.md": "![Detector\nresponse](figures/wrapped.png)\n\n[Raw calibration readings](data/wrapped.csv\n  \"Second exposure\")\n",
     "paper_analysis_notes.md": "# Analysis\n\nThe measurements use the second exposure.\n"
   },
   "guide": "# Calibration\n\n[Measurements](../data/measurements.csv?view=table#rows)\n\n![Response](../figures/response.png)\n",

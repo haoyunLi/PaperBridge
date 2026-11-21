@@ -3,19 +3,23 @@ const path = require('node:path');
 const mineruResultManifest = '.paperbridge-result.json';
 const maxMarkdownBytes = 64 * 1024 * 1024;
 
+const htmlTokens = [
+  /<!--[\s\S]*?-->|<(?<literal>pre|code|script|style)\b[^>]*>[\s\S]*?<\/\k<literal>\s*>/.source,
+  /(?<tag><img(?=[\s/>])(?:[^"'>]|"[^"]*"|'[^']*')*>)/.source
+];
+const htmlImages = new RegExp(htmlTokens.join('|'), 'gi');
 const assetTokens = new RegExp([
   /^ {0,3}(?<fence>`{3,}|~{3,})[^\r\n]*(?:\r?\n[\s\S]*?(?:^ {0,3}\k<fence>[`~]*[ \t]*(?=\r?$)|(?![\s\S]))|$)/.source,
   /(?<!`)(?<ticks>`+)(?!`)(?:[^\r\n]|\r?\n(?![ \t]*\r?\n))*?(?<!`)\k<ticks>(?!`)/.source,
-  /<!--[\s\S]*?-->|<(?<literal>pre|code|script|style)\b[^>]*>[\s\S]*?<\/\k<literal>\s*>/.source,
-  /(?<tag><img(?=[\s/>])(?:[^"'>]|"[^"]*"|'[^']*')*>)/.source,
+  ...htmlTokens,
   /(?<opening>!?\[(?:\\.|[^\[\]\\\r\n])*\]\([ \t]*)(?<destination><[^>\r\n]+>|[^\s()<>]+)(?<closing>(?:[ \t]+(?:"[^"\r\n]*"|'[^'\r\n]*'|\([^()\r\n]*\)))?[ \t]*\))/.source
 ].join('|'), 'gim');
 const attribute = /(\s+)([^\s=/>]+)(?:([ \t\r\n]*=[ \t\r\n]*)("[^"]*"|'[^']*'|[^\s"'`=<>]+))?/g;
 
 function rewriteAssetUrls(markdown, replace, { includeLinks = false } = {}) {
-  return String(markdown || '').replace(assetTokens, (markup, ...args) => {
-    const { tag, opening, destination, closing } = args.at(-1);
-    if (tag) return tag.replace(attribute, (field, space, name, assignment, value) => {
+  const source = String(markdown || '');
+  function rewriteTag(tag) {
+    return tag.replace(attribute, (field, space, name, assignment, value) => {
       if (name.toLowerCase() !== 'src' || !value) return field;
       const quoted = /^["']/.test(value);
       const quote = quoted ? value[0] : '"';
@@ -23,6 +27,17 @@ function rewriteAssetUrls(markdown, replace, { includeLinks = false } = {}) {
       const replacement = replace(url, 'image');
       return replacement === url ? field : `${space}${name}${assignment}${quote}${replacement}${quote}`;
     });
+  }
+  // Most MinerU files have single-line assets and can contain megabytes of inline image data.
+  // Only documents with reference definitions or wrapped link markup need a full syntax tree.
+  if (source.includes(']:') || /\[[^[\]\r\n]*\r?\n(?![ \t]*\r?\n)|\]\([^[\]\r\n)]*\r?\n/.test(source)) {
+    const { rewriteStructuredAssets } = require('./markdown-asset-syntax.cjs');
+    return rewriteStructuredAssets(source, replace, includeLinks, html => html.replace(htmlImages,
+      (markup, ...args) => args.at(-1).tag ? rewriteTag(markup) : markup));
+  }
+  return source.replace(assetTokens, (markup, ...args) => {
+    const { tag, opening, destination, closing } = args.at(-1);
+    if (tag) return rewriteTag(tag);
     if (!opening) return markup;
     const kind = opening.startsWith('!') ? 'image' : 'link';
     if (kind === 'link' && !includeLinks) return markup;

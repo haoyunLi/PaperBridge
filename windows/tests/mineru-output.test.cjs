@@ -148,6 +148,50 @@ test('moved supplements follow nested Markdown and retain original attachment na
   assert.equal(fs.readFileSync(relativeToGuide('tables/B/count.csv'), 'utf8'), 'other series');
 });
 
+test('wrapped and reference-style assets survive import, separate Reader blocks and a moved bundle', async t => {
+  const file = fixture(t);
+  const image = Buffer.from('test figure bytes');
+  const main = [
+    '![Detector\r\nresponse](figures/panel.png)',
+    '[Full measurements](data/main.csv\r\n   "Second exposure")',
+    '[Supplement][Guide ID] and [guide id][].',
+    '![Detector][plot] and [download the original figure][PLOT].',
+    '[guide id]:\r\n  <protocol/guide.md#readings> "Protocol"\r\n[plot]: figures/panel.png "Panel A"',
+    '[guide id]: private.csv\r\n[unused]: private.csv',
+    'Code: ' + '\x60[unused]\x60 and <code>[unused]</code>.',
+    '    [unused]\r\n\r\n<!-- [unused] -->'
+  ].join('\r\n\r\n');
+  const guide = '[Trial data][]\n\n[trial data]: <series/测量 2.csv?view=table#row>\n';
+  const entries = [
+    ['markdown.md', main], ['figures/panel.png', image], ['data/main.csv', 'main'],
+    ['protocol/guide.md', guide], ['protocol/series/测量 2.csv', 'trial'],
+    ['private.csv', 'unused']
+  ];
+  const source = await unpackMineruArchive(file('paper.zip', archive(entries.map(([name, content]) => ({ name, content })))),
+    file('expanded'), () => {});
+  assert.equal(fs.existsSync(file('expanded/private.csv')), false);
+  const embedded = readMineruMarkdown(source);
+  const dataUrl = 'data:image/png;base64,' + image.toString('base64');
+  assert.ok(embedded.includes('![Detector](' + dataUrl + ' "Panel A") and [download the original figure][PLOT]'));
+  assert.ok(embedded.includes('![Detector\r\nresponse](' + dataUrl + ')'));
+
+  const bundle = writeBundle(file(''), { sourceMode: 'mineru' }, [
+    { name: 'Original', content: main }, { name: 'Reader', content: embedded }
+  ], null, path.dirname(source));
+  assert.deepEqual(bundle.missingAssetPaths, []);
+  const moved = file('Moved supplement');
+  fs.renameSync(bundle.folder, moved);
+  const original = fs.readFileSync(path.join(moved, 'Original.md'), 'utf8');
+  assert.equal(original, main.replaceAll('figures/panel.png', 'assets/source/figures/panel.png')
+    .replace('data/main.csv', 'assets/source/data/main.csv')
+    .replace('protocol/guide.md', 'assets/source/protocol/guide.md'));
+  const reader = fs.readFileSync(path.join(moved, 'Reader.md'), 'utf8');
+  const imagePath = reader.match(/!\[Detector\]\((assets\/[a-f0-9]+\.png) "Panel A"\)/)[1];
+  assert.deepEqual(fs.readFileSync(path.join(moved, imagePath)), image);
+  assert.equal(fs.readFileSync(path.join(moved, 'assets/source/protocol/guide.md'), 'utf8'), guide);
+  assert.equal(fs.readFileSync(path.join(moved, 'assets/source/protocol/series/测量 2.csv'), 'utf8'), 'trial');
+});
+
 test('MinerU ZIP skips oversized optional files and removes an attachment interrupted during extraction', async t => {
   const file = fixture(t);
   const markdown = '[Too large](large.bin) and [Data](data/result.csv)';
