@@ -86,12 +86,16 @@ async function run() {
     }
     if (process.argv.includes('--modes')) {
       const positions = new Map();
+      const native = process.env.PAPERBRIDGE_MAC_REFERENCE && JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
+      const nativeModes = native ? native.savedPreviewHeadings : { sourceOnly: 'Results', translationOnly: 'Résumé 结果!', bilingual: '!!!' };
+      assert.ok(nativeModes, 'Expected the three saved preview modes from the Mac workspace');
       async function showMode(mode) {
         await page.getByLabel('Paper display mode').selectOption(mode);
         await page.locator('.paper-mode-' + mode).waitFor();
         await page.waitForFunction(() => document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false');
       }
-      for (const [mode, label] of [['source', 'Second results table'], ['translation', 'Résumé'], ['bilingual', 'Appendix']]) {
+      for (const [macMode, mode] of [['sourceOnly', 'source'], ['translationOnly', 'translation'], ['bilingual', 'bilingual']]) {
+        const { label } = cases.find(item => item.heading === nativeModes[macMode]);
         await showMode(mode);
         const side = mode === 'bilingual' ? 'translation' : mode;
         await page.locator('[data-paper-kind="' + side + '"]').getByRole('link', { name: label, exact: true }).press('Enter');

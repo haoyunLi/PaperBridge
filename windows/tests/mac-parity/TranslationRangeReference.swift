@@ -31,7 +31,7 @@ private final class RangeModelResponse: URLProtocol {
 }
 
 @MainActor
-func nativeTranslationRanges(fixtures: URL) throws -> [String: Any] {
+func nativeTranslationRanges(fixtures: URL) throws -> (actions: [String: Any], previewHeadings: [String: String]) {
     func failure(_ text: String) -> NSError {
         NSError(domain: "TranslationRanges", code: 1, userInfo: [NSLocalizedDescriptionKey: text])
     }
@@ -91,15 +91,31 @@ func nativeTranslationRanges(fixtures: URL) throws -> [String: Any] {
     model.translatePaper(paragraphIDs: PaperReadingAnalysis.overviewParagraphIDs(in: model.paperSections))
     try finish(model)
     let afterOverview = completed(model)
+    // ContentView gives each Paper Markdown display mode its own saved position.
+    let previewPositions: [(ReaderDisplayMode, ReadingPosition)] = [
+        (.sourceOnly, ReadingPosition(y: 240, blockIndex: 2, blockText: "Results", offset: 0)),
+        (.translationOnly, ReadingPosition(y: 610, blockIndex: 4, blockText: "Résumé 结果!", offset: -2)),
+        (.bilingual, ReadingPosition(y: 920, blockIndex: 6, blockText: "!!!", offset: 1))
+    ]
+    for (mode, position) in previewPositions {
+        model.updateReadingPosition(position, key: "paper.markdown." + mode.rawValue, paperChecksum: paper.checksum)
+    }
     model.flushPendingSaves()
     let reopened = makeModel()
     guard let entry = reopened.libraryEntries.first(where: { $0.id == paper.checksum }) else { throw failure("Missing saved article") }
     reopened.openLibraryPaper(entry)
     let restored = completed(reopened)
+    var previewHeadings: [String: String] = [:]
+    for (mode, expected) in previewPositions {
+        guard reopened.readingPositions["paper.markdown." + mode.rawValue] == expected else {
+            throw failure("The saved Markdown position changed for " + mode.rawValue)
+        }
+        previewHeadings[mode.rawValue] = expected.blockText
+    }
     guard restored == afterOverview else { throw failure("Saved translations changed across reopening") }
     guard let methods = reopened.paperSections.first(where: { $0.title == "Methods" }) else { throw failure("Missing chosen section") }
     reopened.translatePaper(paragraphIDs: methods.paragraphIDs)
     try finish(reopened)
-    return ["paragraphSection": atParagraph, "resourceSection": atResource.title, "afterCurrent": afterCurrent,
-            "afterOverview": afterOverview, "restored": restored, "afterChosen": completed(reopened)]
+    return (["paragraphSection": atParagraph, "resourceSection": atResource.title, "afterCurrent": afterCurrent,
+            "afterOverview": afterOverview, "restored": restored, "afterChosen": completed(reopened)], previewHeadings)
 }
