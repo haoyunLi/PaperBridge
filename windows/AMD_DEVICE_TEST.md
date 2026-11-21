@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.37 公开便携版的印刷连字与术语（2026-11-21）
+
+用公开 0.2.36 与 0.2.37 便携版在同一台 RX 7800 XT 上翻译相同的英文光谱学句子。原文使用印刷连字 `ﬂux calibration`，术语库存的是普通字母 `flux calibration`，用户指定译文为“通量定标”。两个版本都通过本机中转记录请求，原样转发至同一 Ollama 服务及 TranslateGemma 4B，实测模型显存 2,881,948,220 字节。
+
+旧版请求未附上该条术语，此次译为“流光校准”。新版请求含正确语言方向的术语，返回了“对厄切尔光谱的通量定标在每次曝光后重复进行，以检查探测器的稳定性。” 在 Reader 输入普通字母也能找到含印刷连字的原文。记录分别为 `test-artifacts/search-amd-tBvRlj/result.json` 和 `test-artifacts/search-amd-TK3VTJ/result.json`。这是一次具体句子的模型输出。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.37)
+
 ## 0.2.36 公开便携版（2026-11-21）
 
 公开便携版检测到 AMD Radeon RX 7800 XT（专用显存 17,163,091,968 字节）。在没有 NVIDIA CUDA 驱动的这台机器上，Ollama 为 TranslateGemma 4B 分配了 2,881,948,220 字节显存。由公开包完成的两页 *emcee v3* 中文译稿含一批正文及按原文保留的七个参考文献块。使用该包内的应用导出了 4,844 字节 Markdown，逐字核对了工作区译稿。便携版重启后能读回译稿和原始 PDF。记录在 `test-artifacts/emcee-AMD-3bVqTM/result.json`。[0.2.36 公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.36)

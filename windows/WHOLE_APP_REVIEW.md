@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 0.2.37 阅读器、论文库和术语搜索（2026-11-21）
+
+用 17 个多语段落和 40 个查询比较公开的 Windows 程序与 macOS Foundation 的 `localizedCaseInsensitiveContains`，沿用 Mac 阅读器对查询首尾空白及原译文的处理。针对重音组合、印刷连字、希腊字母、数学符号、韩文和缺失译文设计的这组样例中，0.2.36 有 21 组返回不同的段落编号，0.2.37 全部一致。旧版输入 `undefined` 会列出尚无译文的段落，有时还会把上一侧原文的末尾与另一侧译文的开头当成一个匹配。新版在论文库标题与标签中也能按相同拼写规则搜索，Reader 在清除查询或按 Escape 后恢复原来的位置。公开包记录为 `test-artifacts/multilingual-search-8506os`、`test-artifacts/multilingual-search-lZW6rD`。显卡翻译记录见 [AMD 实测](AMD_DEVICE_TEST.md)。[macOS 和 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44893493123)
+
+Edge 从 GitHub 首页下载了 Setup 和 Portable，SHA-256 与公开记录一致，两份 EXE 均未签名且带有 `ZoneId=3`。便携版保留下载来源标记，复制到 `论文 软件 & 初次使用` 后在隔离工作区启动，跳过 AI 配置并导入两页 *emcee v3* 论文。用分解重音和首尾空格查 `BAZÁN`，只找到第 9 块编辑姓名。重启后点击笔记，仍准确选中偏移 15 的 `Bazán`，保存的 PDF 与输入字节一致。相同 PDF 在 0.2.36 能用原拼写找到该行，但分解重音及首尾空格会导致漏检。记录为 `test-artifacts/browser-download-0.2.37-tERzC0`、`test-artifacts/old-journal-search-Y5dH5z` 和 `test-artifacts/journal-search-edge-kmQoyn`。[原期刊论文](https://doi.org/10.21105/joss.01864)
+
+全新 Windows runner 从最终公开地址下载两个包，安装版及便携版都通过了首次启动和再次打开的验收。本机上 0.2.36 的两种发行版均自动发现 0.2.37，旧便携版后台下载的新文件匹配公开 SHA-256，覆盖安装保留论文、笔记、高亮及外观。记录为 `test-artifacts/public036-to037-portable-update-yDk1qf` 与 `test-artifacts/i-mwq9epm5-1w8/report.json`。[最终下载与启动](https://github.com/haoyunLi/PaperBridge/actions/runs/44893493123/job/136815656274)
+
 ## Windows 0.2.36 便携版重复启动（2026-11-21）
 
 公开 0.2.35 的便携版把同一版本的两次启动解压到同一临时目录。最小化并再次打开时，虽然原窗口能恢复，第二次启动退出后，第一个进程目录里的 76 个文件中有 69 个已消失，包括语言文件和 PDF 使用的原生模块。0.2.36 为每次启动分配独立临时目录。同样操作后，所有 76 个文件仍在，原窗口还可以重新载入。另在第一次打开时连续启动两次，保留下来的阅读器能进入引导及练习论文。记录为 `test-artifacts/double-open-BuqFD7`、`test-artifacts/double-open-oaIeOD` 和 `test-artifacts/simultaneous-vB6PYS`。
