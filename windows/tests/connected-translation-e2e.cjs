@@ -13,8 +13,8 @@ async function run() {
   const model = 'translategemma:4b';
   const citations = [
     '[1] Ng, A. (2021). Results for the previous sensor. Journal of Testing.',
-    '[2] J. Lee and P. Moss. Sensors in the field. Proceedings of Testing, 2022.',
-    '[3] Renée Moreau, Liam Clarke, and Amy Gold. Estimating calibration error, 2018.'
+    'A catalogue of winter observations. (2021). https://doi.org/10.1234/winter.',
+    'openLAB. (2022b). Raw sensor readings. doi:10.1234/readings.'
   ];
   const paragraphs = [
     'Opening method. ' + 'Sample measurement was calibrated. '.repeat(73),
@@ -275,6 +275,19 @@ async function run() {
     const exported = fs.readFileSync(destination, 'utf8');
     assert.ok(exported.includes(citations.join('\n\n')));
     assert.doesNotMatch(exported, /\[Untranslated block [456]\]/);
+    const methods = require('./mac-parity/fixtures.json').bibliographies.find(fixture => fixture.paragraphs.some(text => text.includes('\n')));
+    await openPasteText(page);
+    await page.locator('.paste-area').fill(methods.paragraphs.join('\n\n'));
+    const methodsId = await loadPastedText(page, { view: 'Paper' });
+    await openWorkspaceView(page, 'Full Translation');
+    const methodsOffset = excerpts.length;
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.every(batch => batch.status === 'ok'), methodsId);
+    const methodRequests = excerpts.slice(methodsOffset);
+    assert.deepEqual(methodRequests, [methods.paragraphs.slice(0, 5).join('\n\n'), methods.paragraphs.slice(7).join('\n\n')]);
+    const methodsExport = await exportFullTranslation('methods-after-bibliography.md');
+    assert.ok(methodsExport.includes(methods.paragraphs.slice(5, 7).join('\n\n')));
+
     const formulas = ['Formula fixture A. ' + 'A measured variable. '.repeat(48) + '$x_1$.',
       'Formula fixture B. ' + 'A fitted coefficient. '.repeat(48) + '$$y = 2$$.'];
     await openPasteText(page);

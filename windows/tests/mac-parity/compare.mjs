@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
+import { referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
@@ -22,6 +22,17 @@ for (const [index, fixture] of papers.entries()) {
     issues: qualityIssues(blocks).map(({ id, reason }) => ({ id, reason }))
   };
   assert.deepEqual(actual, reference.papers[index], fixture.name);
+}
+
+assert.equal(reference.bibliographies.length, fixtures.bibliographies.length);
+for (const [index, fixture] of fixtures.bibliographies.entries()) {
+  const blocks = blocksFromText(fixture.paragraphs.join('\n\n'));
+  const excluded = referenceBlockIds(blocks);
+  assert.deepEqual([...excluded], fixture.referenceIds, fixture.name);
+  assert.deepEqual({
+    body: blocks.filter(block => !excluded.has(block.id)).map(block => block.text),
+    references: blocks.filter(block => excluded.has(block.id)).map(block => block.text)
+  }, reference.bibliographies[index], fixture.name);
 }
 
 assert.equal(reference.merges.length, fixtures.merges.length);
@@ -65,4 +76,4 @@ const restored = fixtures.markdown.map(source => {
 });
 assert.deepEqual(restored, reference.markdown);
 assert.deepEqual(restored, fixtures.markdown.map(source => source.replaceAll('Before', '前文').replaceAll('After', '后文')));
-console.log(`Checked ${papers.length} papers, ${restored.length} translations, ${fixtures.merges.length} merges, ${fixtures.reflows.length} reflows and ${fixtures.pageBoundaries.length} page boundaries against native macOS. ${preservedWindowsJoins} joins preserved Windows scientific punctuation.`);
+console.log(`Checked ${papers.length} papers, ${fixtures.bibliographies.length} bibliography boundaries, ${restored.length} translations, ${fixtures.merges.length} merges, ${fixtures.reflows.length} reflows and ${fixtures.pageBoundaries.length} page boundaries against native macOS. ${preservedWindowsJoins} joins preserved Windows scientific punctuation.`);

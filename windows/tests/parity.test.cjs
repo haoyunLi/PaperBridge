@@ -120,6 +120,31 @@ test('reference ranges recognize inline and unlabelled bibliographies without lo
   assert.deepEqual([...referenceBlockIds([...blocks.slice(0, 3), ...discussion.map((text, i) => ({ id: 91 + i, text }))])], []);
 });
 
+test('pasted bibliography boundaries drive the translation queue and summary without hiding DOI discussion', async () => {
+  const { blocksFromText } = await import('../src/text.mjs');
+  const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
+  for (const { name, paragraphs, referenceIds } of require('./mac-parity/fixtures.json').bibliographies) {
+    const blocks = blocksFromText(paragraphs.join('\n\n'));
+    const expectedBody = blocks.filter(block => !referenceIds.includes(block.id));
+    assert.deepEqual(blocks.map(block => block.text), paragraphs, name + ' source and paragraph boundaries');
+    assert.deepEqual([...referenceBlockIds(blocks)], referenceIds, name);
+    assert.deepEqual(translationRangeIds(blocks), expectedBody.map(block => block.id), name);
+    assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), expectedBody.filter(block => !block.heading).map(block => block.text), name);
+  }
+  const wrapped = require('./mac-parity/fixtures.json').bibliographies.find(f => f.paragraphs.some(text => text.includes('\n')));
+  const saved = wrapped.paragraphs.map((text, i) => ({ id: i + 1, text: text.replaceAll('\n', ' ') }));
+  assert.deepEqual([...referenceBlockIds(saved)], wrapped.referenceIds, 'previously saved flattened methods and body');
+  for (const sentence of [
+    'We used the 2021 data at https://doi.org/10.1234/record.',
+    'See the protocol (2022). Its DOI is https://doi.org/10.1234/record.',
+    'A different source. (2023). We reused https://doi.org/10.1234/record after conversion.'
+  ]) {
+    const body = ['Introduction', 'We compared the archives.', 'The following steps reproduce the analysis.',
+      ...['first', 'second', 'third'].map(id => sentence.replace('record', id))];
+    assert.deepEqual([...referenceBlockIds(blocksFromText(body.join('\n\n')))], [], sentence);
+  }
+});
+
 test('translation range counts exactly the unfinished queue including headings', async () => {
   const { referenceBlockIds, translationRangeIds } = await import('../src/paper.mjs');
   const blocks = [

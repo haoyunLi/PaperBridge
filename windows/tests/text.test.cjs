@@ -69,7 +69,7 @@ test('standalone heading classification keeps heading-plus-body paragraphs trans
   const blocks = blocksFromText('Abstract\n\n2 Methods\nWe retained all evidence.\n\nA body paragraph without a final period');
   assert.deepEqual(blocks.map(block => ({ text: block.text, heading: block.heading })), [
     { text: 'Abstract', heading: true },
-    { text: '2 Methods We retained all evidence.', heading: false },
+    { text: '2 Methods\nWe retained all evidence.', heading: false },
     { text: 'A body paragraph without a final period', heading: false }
   ]);
 });

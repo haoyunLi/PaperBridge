@@ -1,4 +1,60 @@
 {
+  "bibliographies": [
+    {
+      "name": "title-first and institutional DOI entries without a References heading",
+      "paragraphs": [
+        "Introduction",
+        "We compared multiple instruments.",
+        "The readings agreed.",
+        "There was a single exception.",
+        "The calibration needs further work.",
+        "A catalogue of winter observations. (2021). https://doi.org/10.1234/winter.",
+        "openLAB. (2022b). Raw sensor readings. doi:10.1234/readings.",
+        "Échantillons du lac. (2023). https://doi.org/10.1234/lake."
+      ],
+      "referenceIds": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "methods and body on the same physical block after references",
+      "paragraphs": [
+        "Introduction",
+        "We compared multiple instruments.",
+        "The readings agreed.",
+        "There was a single exception.",
+        "The calibration needs further work.",
+        "References",
+        "Technical memo in the archive.",
+        "4.2 Materials and methods\nWe used a fresh sample.",
+        "The team repeated measurements after thawing."
+      ],
+      "referenceIds": [
+        6,
+        7
+      ]
+    },
+    {
+      "name": "punctuated methods heading after an undated catalogue entry",
+      "paragraphs": [
+        "Introduction",
+        "We compared multiple instruments.",
+        "The readings agreed.",
+        "There was a single exception.",
+        "The calibration needs further work.",
+        "References",
+        "Technical memo in the archive.",
+        "Methods;",
+        "The team repeated measurements after thawing."
+      ],
+      "referenceIds": [
+        6,
+        7
+      ]
+    }
+  ],
   "papers": [
     {
       "name": "inline-abstract-and-boundaries",

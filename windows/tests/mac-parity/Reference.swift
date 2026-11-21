@@ -9,6 +9,10 @@ private struct Fixtures: Decodable {
         let name: String
         let blocks: [Block]
     }
+    struct Bibliography: Decodable {
+        let paragraphs: [String]
+    }
+    let bibliographies: [Bibliography]
     let papers: [Paper]
     struct Merge: Decodable {
         let left: String
@@ -63,6 +67,10 @@ struct Reference {
             return ["name": fixture.name, "sections": ranges, "overview": PaperReadingAnalysis.overviewParagraphIDs(in: sections),
                     "guide": guide, "issues": issues]
         }
+        let bibliographies = fixtures.bibliographies.map { fixture in
+            let result = TextProcessing.excludeReferenceSection(from: fixture.paragraphs)
+            return ["body": result.bodyParagraphs, "references": result.referenceParagraphs]
+        }
         let markdown = try fixtures.markdown.map { source in
             let payload = AcademicMarkdownProcessor.protectForTranslation(source)
             let translated = payload.text.replacingOccurrences(of: "Before", with: "前文")
@@ -89,7 +97,7 @@ struct Reference {
             return paragraphs.count > 1 ? paragraphs : [fixture.text]
         }
         let pageBoundaries = fixtures.pageBoundaries.map { TextProcessing.stitchPageParagraphs([[$0.left], [$0.right]]) }
-        let output: [String: Any] = ["papers": papers, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let output: [String: Any] = ["papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
