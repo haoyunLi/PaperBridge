@@ -1,3 +1,4 @@
+import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
@@ -877,7 +878,7 @@ function LibraryLabelEditor({ item, onSave, onSaved, onCancel }) {
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   async function save() {
-    if (saving || !title.trim()) return;
+    if (saving || !trimLibraryText(title)) return;
     setSaving(true); setError('');
     try {
       await onSave(item.id, title, tags);
@@ -891,7 +892,7 @@ function LibraryLabelEditor({ item, onSave, onSaved, onCancel }) {
     <label>Title<input value={title} disabled={saving} onChange={event => setTitle(event.target.value)} /></label>
     <label>Tags, separated by commas<input value={tags} disabled={saving} onChange={event => setTags(event.target.value)} /></label>
     {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
-    <div className="row"><button className="button blue" disabled={saving || !title.trim()} onClick={save}>{saving ? 'Saving…' : 'Save label'}</button><button className="button outline" onClick={onCancel}>Cancel</button></div>
+    <div className="row"><button className="button blue" disabled={saving || !trimLibraryText(title)} onClick={save}>{saving ? 'Saving…' : 'Save label'}</button><button className="button outline" onClick={onCancel}>Cancel</button></div>
   </>;
 }
 

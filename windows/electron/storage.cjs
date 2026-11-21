@@ -1,5 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const { trimLibraryText } = require('./library-metadata.mjs');
 const readingAppearanceDefaults = require('./reading-appearance.json');
 const { normalizeReadingAppearance } = require('./reading-appearance.mjs');
 const { clearPageArchives } = require('./pdf-page-archive.cjs');
@@ -42,14 +43,36 @@ function readJson(file, fallback) {
   return fallback;
 }
 
-function writeJson(file, value) {
+function fileRevision(fd) {
+  try {
+    const stat = fs.fstatSync(fd, { bigint: true });
+    if (!stat.isFile() || !stat.ino) return null;
+    return [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+  } catch { return null; }
+}
+
+function writeJson(file, value, { validBackup, captureRevision = false } = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(temporary, JSON.stringify(value, null, 2), 'utf8');
-  if (fs.existsSync(file)) {
-    try { JSON.parse(fs.readFileSync(file, 'utf8')); fs.copyFileSync(file, `${file}.backup`); } catch { /* retain older backup */ }
-  }
-  fs.renameSync(temporary, file);
+  const fd = fs.openSync(temporary, 'w');
+  try {
+    fs.writeFileSync(fd, JSON.stringify(value, null, 2), 'utf8');
+    if (fs.existsSync(file)) {
+      try {
+        const prior = fs.readFileSync(file);
+        const parsed = JSON.parse(prior);
+        if (!validBackup || validBackup(parsed)) {
+          const backup = `${file}.backup`;
+          const pending = `${backup}.${process.pid}.tmp`;
+          fs.writeFileSync(pending, prior);
+          fs.renameSync(pending, backup);
+        }
+      } catch { /* retain older backup */ }
+    }
+    fs.renameSync(temporary, file);
+    // Stat our own handle so a concurrent replacement cannot stamp a different paper.
+    return captureRevision ? fileRevision(fd) : null;
+  } finally { fs.closeSync(fd); }
 }
 
 const LIBRARY_INDEX_VERSION = 1;
@@ -60,19 +83,25 @@ function validPaper(value, id) {
     ? value : null;
 }
 
-function readValidPaper(file, id) {
+function readPaperRecord(file, id, indexedRevision) {
   for (const candidate of [file, `${file}.backup`]) {
+    let fd;
     try {
-      const paper = validPaper(JSON.parse(fs.readFileSync(candidate, 'utf8')), id);
-      if (paper) return paper;
+      fd = fs.openSync(candidate, 'r');
+      // Backups are validated on use. A repaired primary must regain precedence.
+      const revision = candidate === file ? fileRevision(fd) : null;
+      if (revision && revision === indexedRevision) return { revision };
+      const paper = validPaper(JSON.parse(fs.readFileSync(fd, 'utf8')), id);
+      if (paper) return { paper, revision };
     } catch { /* try backup */ }
+    finally { if (fd !== undefined) fs.closeSync(fd); }
   }
   return null;
 }
 
 function normalizeLibraryTags(tags) {
   if (!Array.isArray(tags)) return [];
-  return [...new Set(tags.filter(value => typeof value === 'string').map(value => value.trim()).filter(Boolean))].slice(0, 20);
+  return [...new Set(tags.filter(value => typeof value === 'string').map(trimLibraryText).filter(Boolean))].slice(0, 20);
 }
 
 function normalizeLibraryIndex(value) {
@@ -100,13 +129,14 @@ function readLibraryIndex(file) {
   return { version: LIBRARY_INDEX_VERSION, entries: {} };
 }
 
-function libraryEntryFromPaper(paper, existing = null) {
+function libraryEntryFromPaper(paper, existing, revision) {
   const blocks = Array.isArray(paper.blocks) ? paper.blocks : [];
   const documentName = typeof paper.name === 'string' && paper.name ? paper.name : existing?.documentName || 'Untitled paper';
   return {
     id: paper.id,
+    paperRevision: revision,
     documentName,
-    libraryTitle: existing ? existing.libraryTitle : typeof paper.libraryTitle === 'string' ? paper.libraryTitle.trim() : '',
+    libraryTitle: existing ? existing.libraryTitle : typeof paper.libraryTitle === 'string' ? trimLibraryText(paper.libraryTitle) : '',
     tags: existing ? existing.tags : normalizeLibraryTags(paper.tags),
     createdAt: typeof paper.createdAt === 'string' ? paper.createdAt : existing?.createdAt || '',
     updatedAt: typeof paper.updatedAt === 'string' ? paper.updatedAt : existing?.updatedAt || '',
@@ -124,45 +154,45 @@ function createStore(root) {
   let libraryPersistenceWarning = '';
   const paperPath = id => path.join(papersDir, `${safeId(id)}.json`);
   const pdfPath = id => path.join(pdfDir, `${safeId(id)}.pdf`);
-  const readablePapers = () => {
-    const papers = new Map();
-    if (!fs.existsSync(papersDir)) return papers;
-    const ids = new Set(fs.readdirSync(papersDir).map(name => name.match(/^([a-f0-9]{64})\.json(?:\.backup)?$/)?.[1]).filter(Boolean));
-    for (const id of ids) {
-      const paper = readValidPaper(paperPath(id), id);
-      if (paper) papers.set(id, paper);
-    }
-    return papers;
-  };
+  const writeIndex = index => writeJson(libraryIndexFile, index, { validBackup: normalizeLibraryIndex });
   const reconcileLibraryIndex = ({ tolerateWriteFailure = false } = {}) => {
     const index = readLibraryIndex(libraryIndexFile);
-    const papers = readablePapers();
+    const available = new Set();
+    const files = fs.existsSync(papersDir) ? fs.readdirSync(papersDir) : [];
+    const ids = new Set(files.map(name => name.match(/^([a-f0-9]{64})\.json(?:\.backup)?$/)?.[1]).filter(Boolean));
     let changed = false;
-    for (const [id, paper] of papers) {
-      const next = libraryEntryFromPaper(paper, index.entries[id]);
+    for (const id of ids) {
+      const entry = index.entries[id];
+      const record = readPaperRecord(paperPath(id), id, entry?.paperRevision);
+      if (!record) continue;
+      available.add(id);
+      if (!record.paper) continue;
+      const next = libraryEntryFromPaper(record.paper, entry, record.revision);
       if (JSON.stringify(index.entries[id]) !== JSON.stringify(next)) { index.entries[id] = next; changed = true; }
     }
     if (changed) {
-      try { writeJson(libraryIndexFile, index); }
+      try { writeIndex(index); }
       catch (error) {
         if (!tolerateWriteFailure) throw error;
         libraryPersistenceWarning = 'Library labels and metadata were not persisted. Fix the storage issue, then retry.';
       }
     }
-    return { index, papers };
+    return { index, available };
   };
-  const listLibrary = () => {
+  const librarySnapshot = () => {
     libraryPersistenceWarning = '';
-    const { index, papers } = reconcileLibraryIndex({ tolerateWriteFailure: true });
+    const { index, available } = reconcileLibraryIndex({ tolerateWriteFailure: true });
     const recent = readJson(lastPaperFile, {});
-    return Object.values(index.entries).map(entry => {
+    const library = Object.values(index.entries).map(entry => {
       const opened = recent?.openedAt?.[entry.id];
       return { id: entry.id, name: entry.libraryTitle || entry.documentName, tags: [...entry.tags], createdAt: entry.createdAt,
         updatedAt: entry.updatedAt, type: entry.type, lastOpened: typeof opened === 'string' ? opened : null,
-        blockCount: entry.blockCount, translatedCount: entry.translatedCount, workspaceAvailable: papers.has(entry.id) };
+        blockCount: entry.blockCount, translatedCount: entry.translatedCount, workspaceAvailable: available.has(entry.id) };
     }).sort((a, b) => Number(b.id === recent?.id) - Number(a.id === recent?.id)
       || (b.lastOpened || b.createdAt || b.updatedAt || '').localeCompare(a.lastOpened || a.createdAt || a.updatedAt || ''));
+    return { library, lastPaperId: available.has(recent?.id) ? recent.id : null };
   };
+  const availableRecord = id => readPaperRecord(paperPath(id), id, readLibraryIndex(libraryIndexFile).entries[id]?.paperRevision);
   return {
     root,
     pdfPath,
@@ -189,19 +219,19 @@ function createStore(root) {
     },
     paper(id) {
       const safe = safeId(id);
-      const paper = readValidPaper(paperPath(safe), safe);
+      const paper = readPaperRecord(paperPath(safe), safe)?.paper;
       if (!paper) return null;
       const entry = readLibraryIndex(libraryIndexFile).entries[safe];
       return entry ? { ...paper, libraryTitle: entry.libraryTitle, tags: [...entry.tags] } : paper;
     },
     lastPaperId() {
       const id = readJson(lastPaperFile, {})?.id;
-      try { return readValidPaper(paperPath(id), id) ? id : null; }
+      try { return availableRecord(id) ? id : null; }
       catch { return null; }
     },
     markPaperOpened(id) {
       safeId(id);
-      if (!readValidPaper(paperPath(id), id)) throw new Error('Paper could not be loaded.');
+      if (!availableRecord(id)) throw new Error('Paper could not be loaded.');
       const previous = readJson(lastPaperFile, {});
       const lastOpened = new Date().toISOString();
       writeJson(lastPaperFile, { id, openedAt: { ...previous?.openedAt, [id]: lastOpened } });
@@ -211,21 +241,21 @@ function createStore(root) {
       const id = safeId(paper?.id);
       if (!validPaper(paper, id)) throw new Error('Invalid paper workspace.');
       const saved = { ...paper, id, updatedAt: new Date().toISOString() };
-      writeJson(paperPath(id), saved);
+      const revision = writeJson(paperPath(id), saved, { validBackup: value => validPaper(value, id), captureRevision: true });
       const index = readLibraryIndex(libraryIndexFile);
-      index.entries[id] = libraryEntryFromPaper(saved, index.entries[id]);
-      writeJson(libraryIndexFile, index);
+      index.entries[id] = libraryEntryFromPaper(saved, index.entries[id], revision);
+      writeIndex(index);
     },
     updateLibraryMetadata({ id, title, tags }) {
       const safe = safeId(id);
-      if (typeof title !== 'string' || !title.trim() || !Array.isArray(tags)) throw new Error('Invalid library metadata.');
+      if (typeof title !== 'string' || !trimLibraryText(title) || !Array.isArray(tags)) throw new Error('Invalid library metadata.');
       const { index } = reconcileLibraryIndex();
       const entry = index.entries[safe];
       if (!entry) throw new Error('Library entry could not be found.');
-      entry.libraryTitle = title.trim();
+      entry.libraryTitle = trimLibraryText(title);
       entry.tags = normalizeLibraryTags(tags);
-      writeJson(libraryIndexFile, index);
-      return listLibrary();
+      writeIndex(index);
+      return librarySnapshot().library;
     },
     clearData() {
       clearPageArchives(root);
@@ -241,13 +271,14 @@ function createStore(root) {
       if (fs.existsSync(root)) for (const name of fs.readdirSync(root)) if (/^library-index\.json\.\d+\.tmp$/.test(name)) fs.unlinkSync(path.join(root, name));
     },
     libraryPersistenceWarning() { return libraryPersistenceWarning; },
-    list: listLibrary
+    librarySnapshot,
+    list: () => librarySnapshot().library
   };
 }
 
 function bootstrapSnapshot(store, version) {
-  const library = store.list();
-  return { settings: store.settings(), glossary: store.glossary(), library, lastPaperId: store.lastPaperId(),
+  const { library, lastPaperId } = store.librarySnapshot();
+  return { settings: store.settings(), glossary: store.glossary(), library, lastPaperId,
     libraryPersistenceWarning: store.libraryPersistenceWarning(), version };
 }
 

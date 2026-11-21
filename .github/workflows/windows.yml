@@ -18,6 +18,8 @@ on:
       - 'PaperBridge/Services/ReadingGuideBuilder.swift'
       - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
       - 'PaperBridge/Services/MarkdownBundleExporter.swift'
+      - 'PaperBridge/Services/WorkspaceStore.swift'
+      - 'PaperBridge/Utilities/Hashing.swift'
   pull_request:
     paths:
       - 'windows/**'
@@ -29,6 +31,8 @@ on:
       - 'PaperBridge/Services/ReadingGuideBuilder.swift'
       - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
       - 'PaperBridge/Services/MarkdownBundleExporter.swift'
+      - 'PaperBridge/Services/WorkspaceStore.swift'
+      - 'PaperBridge/Utilities/Hashing.swift'
       - 'PaperBridge/Services/PDFTextExtractor.swift'
 
 jobs:

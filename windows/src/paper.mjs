@@ -3,24 +3,12 @@ import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { markdownBlockKind } from './academicMarkdown.mjs';
 
+import { characterPrefix } from '../electron/library-metadata.mjs';
+
+export { libraryLabel } from '../electron/library-metadata.mjs';
 export { referenceBlockIds };
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-
-function characterPrefix(text, limit) {
-  if (text.length <= limit) return text;
-  for (const { index } of graphemes.segment(text)) {
-    if (limit-- === 0) return text.slice(0, index);
-  }
-  return text;
-}
-
-export function libraryLabel(title, tags) {
-  return {
-    libraryTitle: characterPrefix(title.trim(), 200),
-    tags: [...new Set(tags.split(',').map(tag => characterPrefix(tag.trim(), 40)).filter(Boolean))].sort().slice(0, 20)
-  };
-}
 
 export { sectionRanges } from './documentOutline.mjs';
 

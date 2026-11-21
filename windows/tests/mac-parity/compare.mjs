@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { createStore } from '../../electron/storage.cjs';
+import { libraryLabel } from '../../electron/library-metadata.mjs';
 import { writeBundle } from '../../electron/bundle.cjs';
 import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
@@ -16,6 +18,25 @@ const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 const bundleFixture = JSON.parse(readFileSync(new URL('./bundle-fixture.json', import.meta.url), 'utf8'));
 const work = mkdtempSync(path.join(os.tmpdir(), 'paperbridge-native-bundle-'));
 try {
+  const libraryRoot = path.join(work, 'library');
+  const store = createStore(libraryRoot);
+  const first = 'a'.repeat(64), recent = 'b'.repeat(64);
+  for (const [index, id] of [first, recent].entries()) {
+    store.savePaper({ id, name: 'Paper', blocks: Array.from({ length: 7 + index }, () => ({ text: 'Paragraph' })) });
+  }
+  store.markPaperOpened(recent);
+  renameSync(path.join(libraryRoot, 'papers'), path.join(libraryRoot, 'unavailable-papers'));
+  const listed = store.list();
+  assert.deepEqual(listed.map(entry => entry.id), reference.library.ids);
+  assert.deepEqual(listed.map(entry => entry.blockCount), reference.library.counts);
+  const edits = JSON.parse(readFileSync(new URL('./library-labels.json', import.meta.url), 'utf8'));
+  const labels = edits.map(({ name, title, tags }) => {
+    const label = libraryLabel(title, tags.join(', '));
+    store.updateLibraryMetadata({ id: first, title: label.libraryTitle, tags: label.tags });
+    const entry = createStore(libraryRoot).list().find(item => item.id === first);
+    return { name, title: entry.name, tags: entry.tags };
+  });
+  assert.deepEqual(labels, reference.library.labels, 'Index-only library edits and Unicode tag order match native macOS');
   const extraction = path.join(work, 'extraction');
   const files = {
     'supplements/guide.md': bundleFixture.guide,

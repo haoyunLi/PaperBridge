@@ -83,6 +83,93 @@ test('unreadable workspaces retain indexed labels, support index-only edits, and
   assert.equal(createStore(root).paper(id).libraryTitle, 'Reimport requested');
 });
 
+test('restarted snapshots and label edits skip unchanged bodies and refresh the inputs that changed', t => {
+  const root = workspace(t, 'paperbridge-library-indexed-');
+  const ids = ['a', 'b', 'c'].map(letter => letter.repeat(64));
+  const store = createStore(root);
+  for (const id of ids) store.savePaper(paper(id));
+  store.markPaperOpened(ids[2]);
+  const dir = path.join(root, 'papers');
+  const file = id => path.join(dir, id + '.json');
+  const indexFile = path.join(root, 'library-index.json');
+
+  const exactTime = new Date(1700000000000);
+  fs.utimesSync(file(ids[1]), exactTime, exactTime);
+  store.list();
+
+  const reads = [];
+  const handles = new Map();
+  const { openSync, closeSync, readFileSync } = fs;
+  t.mock.method(fs, 'openSync', (name, ...args) => {
+    const fd = openSync(name, ...args);
+    handles.set(fd, name);
+    return fd;
+  });
+  t.mock.method(fs, 'closeSync', fd => { handles.delete(fd); return closeSync(fd); });
+  t.mock.method(fs, 'readFileSync', (target, ...args) => {
+    const name = typeof target === 'number' ? handles.get(target) : target;
+    if (typeof name === 'string' && path.dirname(name) === dir) reads.push(path.basename(name));
+    return readFileSync(target, ...args);
+  });
+
+  const restarted = createStore(root);
+  const first = bootstrapSnapshot(restarted, 'test');
+  assert.equal(first.lastPaperId, ids[2]);
+  assert.equal(first.library.length, ids.length);
+  restarted.updateLibraryMetadata({ id: ids[0], title: 'Custom title', tags: ['kept'] });
+  restarted.markPaperOpened(ids[1]);
+  assert.deepEqual(reads, [], 'Listing, renaming and updating the last-opened marker only need index metadata');
+
+  // A 0.2.42 index has no revision. A different body with a matching size and
+  // modification time must also be recognized after an atomic external replacement.
+  const index = JSON.parse(readFileSync(indexFile, 'utf8'));
+  delete index.entries[ids[0]].paperRevision;
+  fs.writeFileSync(indexFile, JSON.stringify(index));
+  const modifiedFile = file(ids[1]);
+  const stat = fs.statSync(modifiedFile);
+  const prior = readFileSync(modifiedFile, 'utf8');
+  const replacement = prior.replace('Original document', 'Replaced document');
+  assert.equal(Buffer.byteLength(prior), Buffer.byteLength(replacement));
+  fs.writeFileSync(modifiedFile + '.new', replacement);
+  fs.utimesSync(modifiedFile + '.new', stat.atime, stat.mtime);
+  assert.equal(fs.statSync(modifiedFile + '.new', { bigint: true }).mtimeNs, fs.statSync(modifiedFile, { bigint: true }).mtimeNs);
+  fs.renameSync(modifiedFile + '.new', modifiedFile);
+
+  const changed = bootstrapSnapshot(createStore(root), 'test');
+  assert.equal(changed.lastPaperId, ids[1]);
+  assert.deepEqual(reads.sort(), [ids[0] + '.json', ids[1] + '.json']);
+  assert.equal(changed.library.find(entry => entry.id === ids[1]).name, 'Replaced document.pdf');
+  assert.deepEqual(changed.library.find(entry => entry.id === ids[0]).tags, ['kept']);
+  assert.equal(changed.library.find(entry => entry.id === ids[0]).name, 'Custom title');
+  reads.length = 0;
+  assert.deepEqual(bootstrapSnapshot(createStore(root), 'test'), changed);
+  assert.deepEqual(reads, []);
+  assert.equal(restarted.paper(ids[2]).blocks[0].text, 'One');
+  assert.deepEqual(reads, [ids[2] + '.json'], 'Opening a paper still reads and validates its body');
+});
+
+test('saving after a shape-invalid primary retains the last usable body and index backups', t => {
+  const root = workspace(t, 'paperbridge-library-last-valid-');
+  const id = '8'.repeat(64);
+  const store = createStore(root);
+  store.savePaper(paper(id, { name: 'Recoverable paper', libraryTitle: 'Original label' }));
+  store.updateLibraryMetadata({ id, title: 'Saved label', tags: ['saved'] });
+  store.savePaper(paper(id, { name: 'Second save' }));
+  const body = path.join(root, 'papers', id + '.json');
+  const index = path.join(root, 'library-index.json');
+  fs.writeFileSync(body, JSON.stringify(paper(id, { blocks: ['invalid'] })));
+  fs.writeFileSync(index, JSON.stringify({ version: 1, entries: [] }));
+  assert.equal(store.paper(id).name, 'Recoverable paper');
+
+  store.savePaper(paper(id, { name: 'Restored paper' }));
+  fs.writeFileSync(body, '{truncated');
+  fs.writeFileSync(index, '{truncated');
+  const recovered = createStore(root);
+  assert.equal(recovered.paper(id).name, 'Recoverable paper');
+  assert.equal(recovered.list()[0].name, 'Saved label');
+  assert.deepEqual(recovered.list()[0].tags, ['saved']);
+});
+
 test('a corrupt index primary uses its valid backup and clearData removes both without resurrection', t => {
   const root = workspace(t, 'paperbridge-library-index-backup-');
   const id = 'c'.repeat(64);

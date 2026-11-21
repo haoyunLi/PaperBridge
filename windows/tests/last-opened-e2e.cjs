@@ -167,7 +167,9 @@ async function run() {
     await page.locator('button[title="Open library"]').click();
     await page.locator('.modal-list-row').first().getByText(/1\/2 translated · Opened/).waitFor();
     const beforeLabelB = bodyFiles(paperBId);
-    await editLabel('Last opened B', 'Library label B', '进度, test, 进度', 'failure');
+    await editLabel('Last opened B', 'Unicode labels', 'échelle, e\u0301chelle, 𐀀, \uE000, \u200Bscan\u200B');
+    assert.deepEqual(libraryIndex().entries[paperBId].tags, ['scan', 'échelle', '\uE000', '𐀀']);
+    await editLabel('Unicode labels', 'Library label B', '进度, test, 进度', 'failure');
     assert.deepEqual(bodyFiles(paperBId), beforeLabelB, 'Saving a library label must not write the paper or its backup');
     assert.deepEqual(libraryIndex().entries[paperBId].tags, ['test', '进度']);
     assert.equal(libraryIndex().entries[paperBId].libraryTitle, 'Library label B');
