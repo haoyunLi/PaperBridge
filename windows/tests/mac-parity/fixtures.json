@@ -1,4 +1,16 @@
 {
+  "readerSearch": {
+    "blocks": [
+      {"source": "Étude de l’échelle. Final boundary", "translation": "next sentence"},
+      {"source": "An E\u0301chelle spectrum and a CO₂ line.", "translation": "Le café noir."},
+      {"source": "Die Straße und die Maße", "translation": "A flux calibration."},
+      {"source": "ΟΣ and the µm units", "translation": ""},
+      {"source": "Iodine, ı and ﬂux", "translation": "Istanbul"},
+      {"source": "A figure in İstanbul.", "translation": ""},
+      {"source": "Untranslated block", "translation": null}
+    ],
+    "queries": ["  ÉCHELLE  ", "E\u0301CHELLE", "echelle", "CAFE\u0301", "boundary next", "undefined", "STRASSE", "SS", "ος", "οσ", "μm", "flux", "CO2", "CO₂", "Istanbul", "  \n\t  ", "translation", "etude"]
+  },
   "summaryConsolidation": {
     "paragraphs": [
       "The reference sensor stayed stable throughout the controlled trial.",

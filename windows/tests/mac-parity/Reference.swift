@@ -22,6 +22,15 @@ private struct Fixtures: Decodable {
         let excerpt: Response
         let merge: Response
     }
+    struct ReaderSearch: Decodable {
+        struct Block: Decodable {
+            let source: String
+            let translation: String?
+        }
+        let blocks: [Block]
+        let queries: [String]
+    }
+    let readerSearch: ReaderSearch
     let summaryConsolidation: Consolidation
     struct Evidence: Decodable {
         let source: String
@@ -170,7 +179,16 @@ struct Reference {
         let pdfBytes = try Data(contentsOf: pdfURL)
         let columnPDF = try PDFTextExtractor().extractText(from: pdfBytes)
         let pdfHash = SHA256.hash(data: pdfBytes).map { String(format: "%02x", $0) }.joined()
-        let output: [String: Any] = ["publishedPaper": published, "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        // PaperReaderViewModel.visibleParagraphResults searches each side separately.
+        let readerSearch = fixtures.readerSearch.queries.map { raw in
+            let query = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            return fixtures.readerSearch.blocks.enumerated().compactMap { index, block -> Int? in
+                let matches = query.isEmpty || block.source.localizedCaseInsensitiveContains(query)
+                    || (block.translation ?? "").localizedCaseInsensitiveContains(query)
+                return matches ? index + 1 : nil
+            }
+        }
+        let output: [String: Any] = ["readerSearch": readerSearch, "publishedPaper": published, "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
