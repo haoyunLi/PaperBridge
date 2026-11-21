@@ -3337,8 +3337,11 @@ function App() {
     '--document-sidebar-width': `${sidebarWidth}px`,
     '--research-inspector-width': `${inspectorWidth}px`
   };
-  const currentReadingBlock = paper?.position?.block || activeBlock || 1;
-  const currentSection = !referenceIDs.has(currentReadingBlock) && sections.findLast(section => section.startId <= currentReadingBlock);
+  const viewportBlock = paper?.position?.block;
+  // A resource has a Reader position but no translatable paragraph of its own.
+  const atBodyResource = paper?.blocks[blockIndexes.get(viewportBlock)]?.resource && !referenceIDs.has(viewportBlock);
+  const currentParagraph = (atBodyResource ? null : viewportBlock) ?? activeBlock ?? sections[0]?.startId;
+  const currentSection = sections.find(section => section.ids.includes(currentParagraph));
   const currentSectionIds = currentSection?.unfinished || [];
   const activeQueue = translationQueueRef.current;
   const queuedSectionIds = modal === 'range' && activeQueue && activeQueue.token === taskRef.current

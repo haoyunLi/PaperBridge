@@ -34,6 +34,8 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the native PDF import comparison' }
             node "$PSScriptRoot/scanned-original-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the offline scanned PDF comparison' }
+            node "$PSScriptRoot/translation-range-actions-e2e.cjs"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the translation range comparison' }
             node "$PSScriptRoot/connected-translation-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed connected translation and bibliography checks' }
         } finally {
