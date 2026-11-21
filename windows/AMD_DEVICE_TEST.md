@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 0.2.42 公开便携版与 RX 7800 XT（2026-11-21）
+
+从 GitHub 下载并校验便携版，在本机 Ollama 上用 TranslateGemma 4B 重译两页 *emcee v3*。28 个阅读块中，全文完成一批中文正文，保留了参考文献标题和六条引文。13 位作者的署名和单位编号在 Reader、全文译稿和导出中保持一致。Markdown 共 4,828 字节，逐字匹配工作区译稿。重新打开后译稿仍在，原 PDF 的 SHA-256 一致。单段光谱学测试也从印刷连字 `ﬂux calibration` 匹配到术语库的 `flux calibration`，译文中使用了指定的“通量定标”。两次测试的模型显存用量均为 2,881,948,220 字节。记录为 `test-artifacts/emcee-AMD-uaO8Bt/result.json` 和 `test-artifacts/search-amd-B8HzQ9/result.json`。[0.2.42 公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.42) · [原期刊论文](https://doi.org/10.21105/joss.01864)
+
 ## 0.2.39–0.2.40 作者署名、单位编号与本地翻译（2026-11-21）
 
 用公开 0.2.39 的便携版重译两页 *emcee v3*，以原 PDF 署名为准。Reader 单段译文、全文译稿和导出的 Markdown 均保留了 13 位作者的原名、顺序和单位编号，包括 `Joe Zuntz8`。标题、单位名称和正文继续由 TranslateGemma 4B 翻译。导出的 4,835 字节与工作区译稿一致，关闭后重新打开，原 PDF 与译稿都可恢复。结果见 `test-artifacts/emcee-AMD-SWzlU3/result.json`。[0.2.39 公开包](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.39) · [原期刊论文](https://doi.org/10.21105/joss.01864)

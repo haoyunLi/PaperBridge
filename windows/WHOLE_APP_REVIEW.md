@@ -1,5 +1,19 @@
 # Windows 全软件功能复查
 
+## 0.2.41–0.2.42 论文附件与阅读器启动恢复（2026-11-21）
+
+同一个附加协议在公开 0.2.40 的搬移导出中丢失了下一级数据文件。0.2.41 从真实发布的程序打开同一工作区并导出，搬移后沿换行的链接进入第二份协议，再用单独定义的引用找到中文文件名 CSV。原 PDF、两页预览、正文译文和笔记均得到保留。对于图注换行的图片和标题换行的 CSV，还在原生 Mac 上导出并核对了文件摘要。按标签定义的引用属于 Windows 的额外覆盖。复现与修复记录为 `test-artifacts/reference-supplement-y1HzCV` 和 `test-artifacts/reference-supplement-7oXaxu`。[macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44899345357/job/136831777386) · [0.2.41 公开包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44899475488/job/136833717142)
+
+另用真实的两页 ResNet 扫描件 MinerU ZIP，在原输出中加入测试协议与 CSV。按窗口阅读器使用的 Markdown 规则解析搬移后文件里的可点击地址，能从主稿进入协议、表格说明和 `结果 2026.csv`。校验了原 PDF、全部 35 条页码线索及 CSV 内容，一个未引用的文件没有解包。记录为 `test-artifacts/reference-real-kit-9132680c/result.json`。
+
+从公开 0.2.40 的应用文件运行阅读器，在测试工作区阻止本地界面脚本加载，重现了有窗口但正文完全空白的情况。恢复脚本读取后，旧版须由外部重新加载才能继续。0.2.42 的启动页面即使主界面脚本未读到，也能从键盘展开 **Trouble opening PaperBridge?** 并选择 **Try again**。模拟阅读器进程本身终止时，还单独验证了新进程打开已保存论文、书签与笔记，以及第二次终止后选择退出。两种有窗口的可复现场景均无法确定最初报告中「仍要运行后没有窗口」的具体成因。
+
+用 Edge 从仓库首页下载 0.2.42 安装版与便携版，两份 EXE 的 SHA-256 均匹配 GitHub 发布资产，均带互联网来源标记且未签名。对这份便携版暂时阻止界面脚本加载，通过重试回到首次向导，再跳过 AI 设置、离线导入论文、搜索 `Bazán` 并保存笔记。重启后定位到原文第 9 段中同一词，原 PDF 的摘要一致。在本机另从公开便携包启动应用，实际终止阅读器进程并分别操作 Windows 对话框的两个按钮；一次恢复了已保存的论文、书签和笔记，一次正常退出。0.2.41 的安装版和便携版都自动提示升级到 0.2.42，覆盖安装保留论文、阅读外观和笔记。记录为 `test-artifacts/journal-search-edge-JFiZIY`、`test-artifacts/native-reader-dialog-4XhyGY` 和 `test-artifacts/i-mwqciahu-f5s`。[0.2.42 公开下载启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44900288852/job/136836181211)
+
+0.2.42 公开包在本机识别了 16 GiB RX 7800 XT 和核显，设置页显示现有 Ollama 和两个模型就绪。两种窗口与五档缩放复核了长标题的两行高度及工具栏间距。记录为 `test-artifacts/public-amd-setup-7VFb32` 和 `test-artifacts/title-display-scale-kQKiPL`。[AMD 全文翻译及导出](AMD_DEVICE_TEST.md)
+
+另在隔离目录中创建一篇真实 MinerU 论文的 48 个工作区副本。每次读取 Windows 启动快照都会读取 49 份正文文件（含再次核对最近打开项），合计 99,521,980 字节。本机三次用时 287–311 毫秒。Mac 的 `WorkspaceStore.loadLibrary()` 只读索引。Windows 仍需在保持损坏文件和备份恢复能力的同时改善这一项。测试数据来自复制的论文，未测量用户自己的资料库。记录为 `test-artifacts/library-launch-cWiTD8`。
+
 ## 0.2.39–0.2.40 作者署名和粘贴章节（2026-11-21）
 
 用同一篇两页 *emcee v3* 论文核对默认的 Reader 逐段翻译、全文翻译、导出和重启恢复。0.2.38 中文作者行丢失了单位编号，还把 Joe Zuntz 的姓名部分音译。0.2.39 在 13 位作者的姓名、顺序和附属单位编号上逐字匹配 PDF 提取的原文。大学或研究所名称仍然翻译。自定义翻译风格、匹配到作者姓名的用户术语、原来已完成的译稿仍按各自的设置和缓存处理。未编号、很长或无法确定归属的署名沿用普通翻译。这一项以论文原文为准；此 PDF 的 Mac 原生清理结果没有收录同一行完整作者。记录见 `test-artifacts/emcee-AMD-SWzlU3/result.json`。[0.2.39 公开包启动与离线阅读](https://github.com/haoyunLi/PaperBridge/actions/runs/44896720430/job/136825892644)

@@ -2,7 +2,7 @@
 
 当前验收目标是功能与可执行操作的一对一对应；排版按 Windows 字体、窗口大小及显示缩放适配。Mac 的尺寸和间距作为设计参考，不以像素一致作为功能对齐的条件。
 
-Windows 0.2.40 的 111 项中有 **61 项对齐、50 项部分对齐**。A10 增加期刊侧栏、长标题与作者单位上标的实测。C16 增加 macOS 原生全文分批对照，并验证旧版译稿能从中断处继续。部分条目同时包含已实现的功能和待验证的设备或文档场景。macOS 1.9.1 和 1.10 的增量项目单独列在下方。
+Windows 0.2.42 的 111 项中有 **61 项对齐、50 项部分对齐**。A10 增加期刊侧栏、长标题与作者单位上标的实测。C16 增加 macOS 原生全文分批对照，并验证旧版译稿能从中断处继续。部分条目同时包含已实现的功能和待验证的设备或文档场景。macOS 1.9.1 和 1.10 的增量项目单独列在下方。
 
 首次审计的固定基线：macOS 1.9 commit `73951d9` 与本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式签名仍需验证。
 
@@ -170,7 +170,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 
 | ID | Mac 1.9 行为 | Windows 0.2 对应 | 状态 | 补齐与验收点 |
 | --- | --- | --- | --- | --- |
-| G01 | 导出原文 Markdown | 结构化导出保留存档的 MinerU 原稿和可访问的本地资源。保留原文单文件入口。 | 部分 | Windows 便携包保留附件的相对目录和原始字节。与 macOS 原生导出器对照后，移动导出目录仍可从补充材料访问同一份 CSV 和图。其它引用语法尚待覆盖。 |
+| G01 | 导出原文 Markdown | 结构化导出保留存档的 MinerU 原稿和可访问的本地资源。保留原文单文件入口。 | 部分 | Windows 便携包保留附件的相对目录和原始字节。与 macOS 原生导出器对照后，移动导出目录仍可从补充材料访问同一份 CSV 和图。图注或链接标题换行时已与 Mac 原生输出逐字节核对。Windows 还保留按标签引用的附件，含下一层协议引用的 CSV。其它附件格式仍需复核。 |
 | G02 | 导出逐段译文 Markdown | MinerU 及 PDF 便携译稿在未完成和失败的位置保留原文，结构化译稿保留原有资源与参考文献。按实际输出语言使用 Mac 的 paper_translation 文件名，未知语言不猜后缀。 | 部分 | 单元测试覆盖正常、未完成、失败和资源段落。保留 Windows 额外单文件选项；语言与缓存、续译一起保存，更多真实论文仍待并排验收。 |
 | G03 | 导出双语 Markdown | 结构化译文以块引用接在原文后：已知语言使用译文本身的目标语言标签，缺失或矛盾语言使用通用 Translation 标签，不借用当前设置。标题保留 Markdown 层级，双语文件继续包含书签、高亮和笔记。 | 部分 | 已核对公式、HTML 表格图、引用和带片段的补充文件链接。移动双语包后可从附录进入图片和 CSV，双语稿保留测试笔记及译文。更复杂布局仍待并排验收。 |
 | G04 | 导出摘要/笔记/证据 Markdown | 默认分析文件按段落组织书签和 Reader 高亮/笔记；其它视图、需复核及未输出段落上的记录保留在附录。失败全文原位提示、摘要引用说明及完整引文保留。各摘要/译稿采用自身语言标题，默认分析文件名为 stem_bilingual。 | 部分 | 覆盖同范围合并、不同范围隔离、时间排序、跨页 PDF 和 Markdown 渲染锚点；旧无日期记录保持稳定次序。缺失或矛盾的历史语言保持通用标注，更多真实论文的内容和资源仍待并排验收。 |
@@ -184,7 +184,7 @@ Mac 证据：[段落编辑](../PaperBridge/PaperReaderViewModel.swift#L1182)、[
 | G12 | 本地 Ollama 限回环地址 | Windows `localOllamaURL` 限 localhost/127.0.0.1/::1 | 对齐 | 各 IPC 入口应统一校验。 |
 | G13 | 自带程序菜单与快捷键 | File/Paper/Selection/View/Help 原生菜单。Ctrl+1/F/O/Enter、Ctrl+Shift+L/E/I/T/H、Ctrl+Alt+E/F/S 及旧 Ctrl+L。菜单项随论文、任务、选区和更新检查状态动态启停。 | 部分 | 单元和 Electron 覆盖空白页、论文、选区、忙碌任务、专注与左侧栏、撤销及重开引导。其它键盘布局与 Mac 实机菜单逐项对照仍待验收。 |
 | G14 | 签名更新源检查及应用内更新 | 默认启动检查，成功后 24 小时内不重复联网；只识别带完整 x64 Setup 的 Windows 正式 Release。Settings 和 Help 可手动检查，重启/短期离线保留新版提示 | 部分 | 公开 0.2.29 的安装版和便携版均检测并后台下载了真正发布的 0.2.30。两份文件分别匹配相应 GitHub 发布资产的 SHA-256，保留了互联网来源标记。安装版另验证显示下载文件时的复核。发布者签名及自动安装重启仍有差距。 |
-| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 0.2.40 两份 EXE 已通过仓库首页下载、哈希与全新 Windows 环境启动测试。重复打开便携版可以还原窗口并保留运行文件，随后可导入及显示 PDF。0.2.39 的安装版和便携版均自动提示 0.2.40。安装版覆盖升级及卸载后保留论文和标注。0.2.37 的公开便携版从含中文、空格和 `&` 的路径启动，离线导入期刊 PDF 后能搜索并恢复原文笔记。0.2.40 从 Edge 实际下载的便携版离线恢复了期刊原文和笔记。RX 7800 XT 实测还验证了术语匹配后的译文，以及署名、导出和重启恢复。当前发布未签名，受管设备的运行权限取决于设备策略。 |
+| G15 | 发布安装包 | Windows 专属 Release 提供 x64 NSIS、便携版和 SHA-256 校验，GitHub 首页提供下载直链，仓库 Latest 指向 Mac | 部分 | 0.2.42 两份 EXE 已通过仓库首页下载、哈希与全新 Windows 环境启动测试。重复打开便携版可以还原窗口并保留运行文件，随后可导入及显示 PDF。0.2.41 的安装版和便携版均自动提示 0.2.42。安装版覆盖升级及卸载后保留论文和标注。0.2.37 的公开便携版从含中文、空格和 `&` 的路径启动，离线导入期刊 PDF 后能搜索并恢复原文笔记。0.2.42 从 Edge 下载的便携版在界面脚本失败后可重试，随后离线恢复了期刊原文和笔记。阅读器进程终止后，原生对话框支持重新打开或退出。RX 7800 XT 实测还验证了术语匹配后的译文，以及署名、导出和重启恢复。当前发布未签名，受管设备的运行权限取决于设备策略。 |
 
 Mac 证据：[bundle 导出](../PaperBridge/Services/MarkdownBundleExporter.swift)、[首次引导](../PaperBridge/Views/OnboardingView.swift)、[模型目录](../PaperBridge/Models.swift)、[设置中的独立安装入口](../PaperBridge/Views/SettingsView.swift)、[安装器](../PaperBridge/Services/LocalToolInstaller.swift)、[菜单](../PaperBridge/PaperBridgeApp.swift#L62)、[更新](../PaperBridge/Services/AppUpdateController.swift)。Windows 证据：[导出与引导入口](src/main.jsx)、[六步引导](src/Onboarding.jsx)、[六分页设置](src/SettingsPanel.jsx)、[设置推荐模型](src/SettingsModels.jsx)、[模型目录](src/modelCatalog.mjs)、[组件安装 UI](src/SetupPanel.jsx)、[统一 MinerU 发现](electron/mineru-discovery.cjs)、[安装逻辑](electron/setup.cjs)、[更新缓存](electron/updates.cjs)、[菜单状态](electron/menu-state.cjs)、[原生菜单](electron/main.cjs)、[设置模型回归](tests/settings-models-e2e.cjs)、[MinerU 检测回归](tests/mineru-detect-e2e.cjs)、[更新重启回归](tests/update-restart-e2e.cjs)、[真实安装器闭环](tests/installer-e2e.cjs)、[构建](package.json)。
 
