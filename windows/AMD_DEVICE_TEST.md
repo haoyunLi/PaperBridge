@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.49 模型内存显示（2026-11-21）
+
+在本机 RX 7800 XT 上，从 GitHub 便携版打开一键安装，Ollama 已启动且两个模型都已安装。运行任务前 `/api/ps` 为空，界面显示暂无模型载入。检查结束后模型列表仍为空。
+
+用公开版处理两页 *emcee v3* 论文，Qwen 生成摘要，TranslateGemma 生成中文译文。设置页和安装页分别读取到 `translategemma:4b` 占用 2.7 GiB 显存，`qwen3:4b-instruct` 占用 3 GiB 显存。此次 Ollama 报告两者的显存字节数与各自模型的总内存字节数相等。打开这两个页面没有发起生成或下载请求，重启后保存的摘要和原 PDF 均通过核对。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44911368527/job/136869632837)
+
 ## 0.2.48 深层目录下的 MinerU 与段落来源（2026-11-21）
 
 在本机 RX 7800 XT 上使用 MinerU 4.1.7 的 DirectML 后端解析两页期刊 PDF。设备回归把 Windows 临时目录设置到 280 个字符深处，解析工具根目录为 286 个字符。导入得到 28 个块，Reader 可读，Original 能渲染原始页。解析结束后临时工作目录已清理。另用 382 字符的中文及空格路径传入 PDF，验证了生成的 ZIP。[测试用论文](https://doi.org/10.21105/joss.01864)
