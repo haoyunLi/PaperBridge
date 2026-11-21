@@ -1,5 +1,17 @@
 # Windows AMD 真机回归
 
+## 0.2.52 在 RX 7800 XT 上逐段翻译（2026-11-21）
+
+从 GitHub 下载未签名便携版，以本机 Ollama 的 `translategemma:4b` 在 Reader 中逐个翻译 *emcee v3* 的第 17、18、19 段。用两个独立资料库比较同一段英文，源 PDF 相同。第一个资料库没有保存术语，第二个保存了英译简中的 `ensemble samplers → 集成采样器`。只在第 17 段比较了这两种设置。[测试用论文](https://doi.org/10.21105/joss.01864)
+
+| 原文内容 | 本次输出 |
+| --- | --- |
+| affine-invariant ensemble samplers | 未使用术语时出现「具有仿射不变性的组装采样器」。保存术语后出现「仿射不变的集成采样器」。同一段其他语句也有变化。 |
+| first major release … in about 6 years | 译文保留「约 6 年」。同句中的 full re-write 译成了「一体重写」，中文表达仍需润色。 |
+| HDFBackend … h5py | 两个标识符均原样保留，译文保留了把采样链序列化到磁盘的含义。 |
+
+三段原文与译文均在重开后核对。Ollama 报告翻译模型使用 2,881,948,220 字节显存，约 2.7 GiB。另行生成双语摘要得到 6 条论点，其中 5 条有可回跳的精确引文。设置页识别出 RX 7800 XT 的 16 GiB 独立显存。[公开版下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44915960028/job/136883478941)
+
 ## 0.2.50 公开安装包和便携包（2026-11-21）
 
 RX 7800 XT 上打开公开便携包时，安装页能同时显示显卡、已安装模型和目前为空的加载状态。完成 *emcee v3* 的双语摘要后，设置页与安装页分别显示 TranslateGemma 占用 2.7 GiB 显存、Qwen 占用 3 GiB。4 处摘要引文均跳转至正确的 Reader 段号并选中原文。另一次测试从此前用该设备保存的 2,960 字符全文译稿出发，拆段、撤销并重启后，8 个批次的来源和译文均与原稿相同。[0.2.50 公开发行](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.50)
