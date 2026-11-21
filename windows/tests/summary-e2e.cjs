@@ -85,6 +85,11 @@ async function run() {
         return range.top >= viewport.top && range.bottom <= viewport.bottom;
       }, { block, tail });
     };
+    const openSummaryFromMenu = () => app.evaluate(({ Menu, BrowserWindow }) => {
+      const command = Menu.getApplicationMenu().getMenuItemById('command:generateSummary');
+      if (!command?.enabled) throw new Error('Generate Summary must be available for the open paper');
+      command.click(null, BrowserWindow.getAllWindows()[0]);
+    });
     const splitOpening = async () => {
       await page.locator('#block-1').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
       await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
@@ -102,6 +107,12 @@ async function run() {
     const summaries = page.locator('.summary-card');
     assert.match(await summaries.first().innerText(), /Final limitation/);
     assert.equal(await summaries.last().locator('li').count(), 4);
+    const generatedRequestCount = requests.length;
+    await openWorkspaceView(page, 'Reader');
+    await openSummaryFromMenu();
+    await page.getByText('Opened the saved summary.', { exact: true }).waitFor({ timeout: 5000 });
+    assert.match(await summaries.first().innerText(), /Final limitation/);
+    assert.equal(requests.length, generatedRequestCount, 'The menu opens a current saved result without calling either model');
     const summaryAppearance = () => summaries.evaluateAll(cards => cards.map(card => {
       const style = getComputedStyle(card);
       return { size: style.fontSize, line: style.lineHeight };
@@ -183,6 +194,11 @@ async function run() {
     await splitOpening();
     await openWorkspaceView(page, 'Overview');
     await page.getByText(staleNotice).waitFor();
+    regenerate = 'cutoff';
+    const beforeRefresh = requests.length;
+    await openSummaryFromMenu();
+    await page.getByText(/The summary response was cut off/).waitFor();
+    assert.ok(requests.length > beforeRefresh, 'The menu still requests a new summary after paper edits');
     await readTail(3);
     await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
     await openWorkspaceView(page, 'Overview');
