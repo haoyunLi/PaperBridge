@@ -153,7 +153,9 @@ struct Reference {
             return paragraphs.count > 1 ? paragraphs : [fixture.text]
         }
         let pageBoundaries = fixtures.pageBoundaries.map { TextProcessing.stitchPageParagraphs([[$0.left], [$0.right]]) }
-        let output: [String: Any] = ["summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let pdfURL = fixtureURL.deletingLastPathComponent().appendingPathComponent("column-footnote.pdf")
+        let columnPDF = try PDFTextExtractor().extractText(from: Data(contentsOf: pdfURL))
+        let output: [String: Any] = ["columnPDF": columnPDF, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
