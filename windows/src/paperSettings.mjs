@@ -1,5 +1,7 @@
 // Mac workspaces retain AppSettings per paper, while reading appearance stays global.
 // Windows additionally keeps update checks global rather than tying them to a paper.
+export const PARSER_SETTING_KEYS = Object.freeze(['pdfExtractionMode', 'mineruExecutable', 'mineruBackend']);
+
 export const TASK_SETTING_KEYS = Object.freeze([
   'aiProvider',
   'openAITranslationModel',
@@ -15,9 +17,7 @@ export const TASK_SETTING_KEYS = Object.freeze([
   'sourceLanguage',
   'targetLanguage',
   'maxParagraphChars',
-  'pdfExtractionMode',
-  'mineruExecutable',
-  'mineruBackend'
+  ...PARSER_SETTING_KEYS
 ]);
 
 function isValidTaskSetting(key, value) {

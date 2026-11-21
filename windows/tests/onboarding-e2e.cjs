@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
+const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -28,6 +29,7 @@ async function run() {
   const pulls = [];
   const setupPayloads = [];
   const errors = [];
+  let pendingTranslation;
   let modelChecks = 0;
   let runtimeReady = false;
   let mineruReady = false;
@@ -38,6 +40,7 @@ async function run() {
       return response.end(JSON.stringify({ models: [...installed].map(model => ({ model })) }));
     }
     if (request.url === '/api/ps') return response.end(JSON.stringify({ models: [] }));
+    if (request.url === '/api/generate') { request.resume(); pendingTranslation = response; return; }
     if (request.url !== '/api/pull') { response.statusCode = 404; return response.end('{}'); }
     let body = '';
     request.on('data', chunk => { body += chunk; });
@@ -53,7 +56,7 @@ async function run() {
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   const baseURL = `http://127.0.0.1:${ollama.address().port}`;
   fs.writeFileSync(settingsFile, JSON.stringify({ ollamaBaseURL: baseURL, autoCheckUpdates: false,
-    onboardingCompletedVersion: 0, onboardingPage: 0, translationModel: 'translategemma:4b',
+    onboardingCompletedVersion: 0, onboardingPage: 0, pdfExtractionMode: 'pdfOnly', translationModel: 'translategemma:4b',
     summaryModel: 'translategemma:4b', explainModel: 'translategemma:4b', quickLookupModel: 'translategemma:4b' }));
 
   let app;
@@ -156,7 +159,7 @@ async function run() {
       state.pending = null;
       if (pending.payload.components.ollama) state.runtimeReady = true;
       if (pending.payload.components.mineru) state.mineruReady = true;
-      const result = pending.payload.components.mineru ? { mineruExecutable: managedMineru, mineruBackend: 'pipeline' } : {};
+      const result = pending.payload.components.mineru ? { mineruInstalled: true, mineruExecutable: managedMineru, mineruBackend: 'pipeline' } : {};
       BrowserWindow.getAllWindows().forEach(window => window.webContents.send('paperbridge:progress', { kind: 'setup', phase: 'done', message: 'Mock component installed.' }));
       pending.resolve(result);
       return pending.payload;
@@ -252,7 +255,9 @@ async function run() {
     await next(3);
     await onboarding().getByRole('button', { name: 'Install MinerU', exact: true }).click();
     await assertBusy(3, 'Cancel setup');
+    assert.equal(savedSettings().pdfExtractionMode, 'pdfOnly', 'installing Ollama or a model does not enable OCR');
     const mineruPayload = await completeSetup();
+    await waitFor(() => savedSettings().pdfExtractionMode === 'mineruPreferred', 'new verified parser enabled for PDF imports');
     assert.deepEqual(mineruPayload.components, { ollama: false, models: false, mineru: true });
     assert.equal(mineruPayload.repairMineru, false);
     await waitFor(() => savedSettings().mineruExecutable === managedMineru && savedSettings().mineruBackend === 'pipeline', 'installed parser settings');
@@ -366,6 +371,40 @@ async function run() {
     assert.equal(await page.getByLabel('MinerU executable', { exact: true }).inputValue(), secondParser);
     assert.equal(await page.getByLabel('MinerU backend').inputValue(), 'auto');
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+
+    // Complete a repair during a paragraph request. Switching the parser must
+    // take effect for the next PDF without aborting unrelated model inference.
+    async function setParsingMode(mode) {
+      await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+      await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
+      await page.getByLabel('PDF extraction mode').selectOption(mode);
+      await waitFor(() => savedSettings().pdfExtractionMode === mode, 'save extraction mode ' + mode);
+      await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    }
+    await setParsingMode('pdfOnly');
+    await openGuideAt(3);
+    await onboarding().getByRole('button', { name: 'Repair / update MinerU', exact: true }).click();
+    await continueReading();
+    await openWorkspaceView(page, 'Reader');
+    const paragraph = page.locator('.block:not(.heading-block)').first();
+    await paragraph.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
+    await waitFor(() => pendingTranslation, 'paragraph translation in flight');
+    await completeSetup(false);
+    await waitFor(() => savedSettings().pdfExtractionMode === 'mineruPreferred' && savedSettings().mineruExecutable === managedMineru, 'repaired parser adopted');
+    assert.ok(!pendingTranslation.destroyed, 'background repair must keep the translation request open');
+    pendingTranslation.end(JSON.stringify({ response: '后台安装期间已完成的段落翻译。', done: true }));
+    await paragraph.locator('.translation-text.done').getByText('后台安装期间已完成的段落翻译。', { exact: true }).waitFor();
+
+    // A deliberate return to PDF-only during setup is a newer choice too.
+    await setParsingMode('pdfOnly');
+    await openGuideAt(3);
+    await onboarding().getByRole('button', { name: 'Repair / update MinerU', exact: true }).click();
+    await continueReading();
+    await setParsingMode('mineruOnly');
+    await setParsingMode('pdfOnly');
+    await completeSetup(false);
+    assert.equal(savedSettings().pdfExtractionMode, 'pdfOnly');
 
     // A slow settings save keeps the guide modal, and repeated finish clicks open one dialog.
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();

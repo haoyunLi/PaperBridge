@@ -409,7 +409,7 @@ class SetupManager {
         warning = result.warning;
       } else cancelled(this.controller.signal);
       this.send('done', warning || 'Local AI setup is ready.');
-      return components.mineru ? { mineruExecutable, mineruBackend: mineruCuda || mineruOnnx ? 'auto' : 'pipeline', warning } : { warning };
+      return components.mineru ? { mineruInstalled: Boolean(status.plan.mineru), mineruExecutable, mineruBackend: mineruCuda || mineruOnnx ? 'auto' : 'pipeline', warning } : { warning };
     } catch (error) {
       this.send(error.name === 'AbortError' ? 'cancelled' : 'error', error.message);
       throw error;

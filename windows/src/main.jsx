@@ -12,7 +12,7 @@ import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, p
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
-import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
+import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry, recordUndoEntry, remainingUndoEntries, remapPositionAfterStructureChange } from './paperUndo.mjs';
 import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
@@ -1005,6 +1005,7 @@ function App() {
   const [ready, setReady] = useState(false);
   const [settings, setSettings] = useState(null);
   const settingsRef = useRef(null);
+  const parserPreferenceEdits = useRef({});
   const settingsSaveChain = useRef(Promise.resolve());
   const modelRefreshId = useRef(0);
   const [appVersion, setAppVersion] = useState('');
@@ -1405,8 +1406,12 @@ function App() {
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
   const updateSettings = change => {
     const previous = settingsRef.current;
-    const taskChanged = Object.keys(change).some(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
-    if (taskChanged && taskRef.current) cancelTask();
+    const changedKeys = Object.keys(change).filter(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
+    const readingSettingsChanged = changedKeys.some(key => !PARSER_SETTING_KEYS.includes(key));
+    for (const key of changedKeys.filter(key => PARSER_SETTING_KEYS.includes(key))) {
+      parserPreferenceEdits.current[key] = (parserPreferenceEdits.current[key] || 0) + 1;
+    }
+    if (readingSettingsChanged && taskRef.current) cancelTask();
     const next = { ...previous, ...change };
     if (change.aiProvider !== undefined && change.aiProvider !== previous.aiProvider) {
       api.setOpenAIConsent(false).catch(() => {});
@@ -1419,9 +1424,9 @@ function App() {
     }
     if (change.mineruExecutable !== undefined && change.mineruExecutable !== previous.mineruExecutable) setMineruRuntime(null);
     settingsRef.current = next; setSettings(next);
-    if (paperRef.current && taskChanged) {
-      commitPaper(current => ({ ...switchOutputSettings(current, previous, next), taskSettings: snapshotPaperSettings(next) }));
-      setUndo([]);
+    if (paperRef.current && changedKeys.length) {
+      commitPaper(current => ({ ...(readingSettingsChanged ? switchOutputSettings(current, previous, next) : current), taskSettings: snapshotPaperSettings(next) }));
+      if (readingSettingsChanged) setUndo([]);
     }
   };
   const changeExplanationLanguage = language => {
@@ -1458,12 +1463,17 @@ function App() {
     finally { finishingOnboarding.current = false; setOnboardingFinishing(false); }
   }
   async function installLocalComponents(request) {
-    const previousBackend = settingsRef.current.mineruBackend;
+    const previous = settingsRef.current;
+    const initialEdits = { ...parserPreferenceEdits.current };
     const result = await api.setupInstall(request);
-    if (request.components.mineru && settingsRef.current.mineruExecutable === request.mineruExecutable) {
+    const unchanged = key => settingsRef.current[key] === previous[key] && parserPreferenceEdits.current[key] === initialEdits[key];
+    if (request.components.mineru && previous.mineruExecutable === request.mineruExecutable && unchanged('mineruExecutable')) {
       const change = {};
       if (result.mineruExecutable) change.mineruExecutable = result.mineruExecutable;
-      if (result.mineruBackend && settingsRef.current.mineruBackend === previousBackend) change.mineruBackend = result.mineruBackend;
+      if (result.mineruBackend && unchanged('mineruBackend')) change.mineruBackend = result.mineruBackend;
+      if (result.mineruInstalled && result.mineruExecutable && previous.pdfExtractionMode === 'pdfOnly' && unchanged('pdfExtractionMode')) {
+        change.pdfExtractionMode = 'mineruPreferred';
+      }
       if (Object.keys(change).length) updateSettings(change);
       setSidebarParserRevision(value => value + 1);
     }
@@ -2164,7 +2174,7 @@ function App() {
       blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
       ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
       extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning,
-      tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(config), explanationLanguage: 'English',
+      tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English',
       paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: firstSelectableParagraphID(blocks), position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
     };
     resetReadingHistory();
