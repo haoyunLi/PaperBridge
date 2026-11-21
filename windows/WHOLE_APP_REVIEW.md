@@ -1,12 +1,22 @@
 # Windows 全软件功能复查
 
-## 开发分支的摘要来源与长段分批（2026-11-21）
+## Windows 0.2.32 公开下载、升级与论文阅读（2026-11-21）
 
-在 Windows 0.2.31 中，10 个实验符号能通过 20 字符的最低引文要求，300 个扩展汉字却超过了 500 字符的上限。开发分支改为按完整字符计数。模型输出和 PDF 用不同 Unicode 编码表示同一重音字母时，阅读器会选中论文里保存的原句。两处原文仅有编码形式不同时，来源链接定位到段落。原始段号和文内标注偏移保留。[实现](https://github.com/haoyunLi/PaperBridge/commit/c615bd5)
+从 GitHub 首页用 Edge 下载了安装版和便携版，两份 EXE 均未签名，保留互联网来源标记 `ZoneId=3`，SHA-256 同时匹配发布资产和随附校验文件。全新 Windows runner 从公开地址下载并打开便携版，安装 Setup 并启动安装后的应用，两者均进入首次引导。本机便携版在模型和解析服务不可用时跳过配置，导入中文文件名的两页 PDF，保存笔记和高亮并在重启后恢复。浏览器记录在 `test-artifacts/browser-download-0.2.32-0MHQmH`，离线阅读记录在 `test-artifacts/public032-reader-without-models-JePwJJ`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.32) · [两种公开下载的启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44883910590/job/136786822163)
+
+0.2.31 安装版和便携版均自动发现 0.2.32。旧便携版在空缓存中后台下载了新便携版，文件 SHA-256 匹配公开下载，并保留互联网来源标记。本机隔离安装从 0.2.31 升到 0.2.32，论文、笔记、高亮及阅读外观均可恢复，卸载后保留论文和设置。记录在 `test-artifacts/public031-to032-portable-update-Tutsc6` 和 `test-artifacts/i-mwq55ip2-o9s/report.json`。
+
+公开便携版导入 12 页双栏 ResNet 论文后，从参考文献标题到最后一条拆行作者的 15 个块（260–274）均从翻译操作中排除。紧随其后的附录标题（275）仍可翻译。15 页 Transformer 论文的双语摘要覆盖了从真实模型生成到回到原句及重启恢复的完整流程。[AMD 设备验收](AMD_DEVICE_TEST.md)
+
+## Windows 0.2.32 的摘要来源与后续长句修复（2026-11-21）
+
+在 Windows 0.2.31 中，10 个实验符号能通过 20 字符的最低引文要求，300 个扩展汉字却超过了 500 字符的上限。0.2.32 改为按完整字符计数。模型输出和 PDF 用不同 Unicode 编码表示同一重音字母时，阅读器会选中论文里保存的原句。两处原文仅有编码形式不同时，来源链接定位到段落。原始段号和文内标注偏移保留。[实现](https://github.com/haoyunLi/PaperBridge/commit/c615bd5)
 
 两端实现核对了八组引文的接受和拒绝结果、三组长段的完整分批文本，以及从初步摘取到合并的结论编号与逐条引文。Windows 桌面测试覆盖了补引文、拆段、撤销、关闭重开和从摘要定位原句。[macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44883611108/job/136784145902)
 
 RX 7800 XT 上用本机 Ollama 对《Attention Is All You Need》的已保存 PDF 文字层生成双语摘要。在 `test-artifacts/summary-amd-tvG7W9` 这次运行中，六条结论共七条引文，逐一点击均在对应的原文段落选中并显示了原句，导出的 `summary-evidence.md` 保留全部段号与引文。另一次运行 `test-artifacts/summary-amd-pruHI5` 的六条结论中四条带有已验证引文。当前原生对照使用相同的受控输入；真实论文的本机结果来自 Windows。
+
+0.2.32 发布后，开发分支修复了长段落在句中切开的问题。一条长 5,786 个字符且能独立容纳在一批里的句子，现在会完整送给模型，末尾的 300 字符引文可校验。带制表符和双空格的原文逐字保留。第四组分批样例已通过 macOS 原生与 Windows 对照。[开发分支的跨平台对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44884191963/job/136785908112)
 
 ## Windows 0.2.31 公开下载与阅读验收（2026-11-21）
 

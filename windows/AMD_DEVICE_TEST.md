@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.32 公开便携版（2026-11-21）
+
+RX 7800 XT 上从 GitHub 下载便携版，用已保存的 15 页《Attention Is All You Need》PDF 文字层生成英中双语摘要。六批输入经过五次合并，得到六条结论。四条结论带有五处引文，逐一点击均在阅读器中选中对应原句，重启后六条结论和引文均恢复。生成、跳转及重启共用时约 63 秒。Ollama 报告 Qwen3 4B Instruct 占用 3,180,247,121 字节显存，TranslateGemma 4B 占用 2,881,948,220 字节显存。
+
+两条结论没有通过引文核验。其中一条将英语到法语翻译的 BLEU 分数写成了 `41.-41.8`，该论文摘要中的原值是 `41.8`。界面将此条标为未验证。本机记录为 `test-artifacts/public032-summary-acceptance.log`，工作区为 `test-artifacts/public032-summary-amd-Sfc79k`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.32)
+
 ## 0.2.31 公开便携版（2026-11-21）
 
 从 GitHub 下载的便携版在 Radeon RX 7800 XT 上调用本机 Ollama 的 `translategemma:4b`。两篇短文分别覆盖无标题的 DOI 书目、书目之后继续的方法段。三条 DOI 引文按原样保留。方法段译出“我们使用了新鲜样本”和“团队在解冻后重复测量”。Ollama 报告模型占用 2,881,948,220 字节显存。本机报告为 `test-artifacts/public031-amd-bibliography-JobbH5/result.json`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.31)
