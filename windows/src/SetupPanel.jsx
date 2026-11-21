@@ -8,7 +8,7 @@ const api = window.paperBridge;
 const allComponents = { ollama: true, models: true, mineru: true };
 const formatBytes = value => value ? `${(value / 1024 ** 2).toFixed(0)} MB` : '';
 
-export default function SetupPanel({ settings, progress, onSettings, onInstalled, taskSetup, onChooseModels }) {
+export default function SetupPanel({ settings, progress, onSettings, onInstall, taskSetup, onChooseModels }) {
   const [diagnosis, setDiagnosis] = useState(null);
   const [checking, setChecking] = useState(false);
   const [working, setWorking] = useState(false);
@@ -55,15 +55,10 @@ export default function SetupPanel({ settings, progress, onSettings, onInstalled
     request.current++; setChecking(false); setWorking(true); setResumed(false); setError(''); setWarning('');
     const options = repairMineru ? { ...config({ ollama: false, models: false, mineru: true }), repairMineru: true } : config();
     try {
-      const result = await api.setupInstall(options);
-      const change = {};
-      if (typeof result.mineruExecutable === 'string') change.mineruExecutable = result.mineruExecutable;
-      if (typeof result.mineruBackend === 'string') change.mineruBackend = result.mineruBackend;
-      if (Object.keys(change).length) onSettings(change);
-      await onInstalled();
+      const result = await onInstall(options);
       if (mounted.current) {
         setWarning(result.warning || 'Installation complete. PaperBridge will use the detected local tools.');
-        const refreshed = await api.setupStatus({ ...config(), ...change });
+        const refreshed = await api.setupStatus({ ...config(), mineruExecutable: result.mineruExecutable ?? settings.mineruExecutable });
         if (mounted.current) setDiagnosis(refreshed);
       }
     } catch (cause) {

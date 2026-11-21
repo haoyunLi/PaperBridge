@@ -28,11 +28,15 @@ async function run() {
   const pulls = [];
   const setupPayloads = [];
   const errors = [];
+  let modelChecks = 0;
   let runtimeReady = false;
   let mineruReady = false;
   const ollama = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
-    if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [...installed].map(model => ({ model })) }));
+    if (request.url === '/api/tags') {
+      modelChecks++;
+      return response.end(JSON.stringify({ models: [...installed].map(model => ({ model })) }));
+    }
     if (request.url === '/api/ps') return response.end(JSON.stringify({ models: [] }));
     if (request.url !== '/api/pull') { response.statusCode = 404; return response.end('{}'); }
     let body = '';
@@ -144,6 +148,7 @@ async function run() {
     assert.equal(savedSettings().onboardingCompletedVersion, 0);
   }
   async function completeSetup(inGuide = true) {
+    const beforeRefresh = modelChecks;
     const payload = await app.evaluate(({ BrowserWindow }, managedMineru) => {
       const state = global.__onboardingMock;
       const pending = state.pending;
@@ -160,6 +165,7 @@ async function run() {
     if (payload.components.ollama) runtimeReady = true;
     if (payload.components.mineru) mineruReady = true;
     if (inGuide) await waitFor(() => onboarding().getByRole('button', { name: 'Continue', exact: true }).isEnabled(), 'setup to release navigation');
+    else await waitFor(() => modelChecks > beforeRefresh, 'renderer applied background setup result and refreshed models');
     return payload;
   }
   async function finishPull(index, inGuide = true) {
@@ -336,9 +342,29 @@ async function run() {
     await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
     const customParser = path.join(workspace, 'custom', 'mineru.exe');
     await page.getByLabel('MinerU executable', { exact: true }).fill(customParser);
+    await waitFor(() => savedSettings().mineruExecutable === customParser, 'manual parser choice saved before completing background repair');
     await completeSetup(false);
     await waitFor(() => savedSettings().mineruExecutable === customParser, 'preserve later parser choice after background repair');
     assert.equal(await page.getByLabel('MinerU executable', { exact: true }).inputValue(), customParser);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+
+    // Advanced setup can also finish after the user returns to the parser settings.
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('button', { name: 'Detect and install local AI', exact: true }).click();
+    await page.locator('.setup-panel').getByRole('button', { name: 'Repair / update MinerU', exact: true }).click();
+    await page.locator('.setup-panel').getByRole('button', { name: 'Cancel setup', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
+    const secondParser = path.join(workspace, 'another-parser', 'mineru.exe');
+    await page.getByLabel('MinerU executable', { exact: true }).fill(secondParser);
+    await page.getByLabel('MinerU backend').selectOption('auto');
+    await waitFor(() => savedSettings().mineruExecutable === secondParser && savedSettings().mineruBackend === 'auto', 'new parser settings persisted during advanced repair');
+    await completeSetup(false);
+    assert.equal(savedSettings().mineruExecutable, secondParser);
+    assert.equal(savedSettings().mineruBackend, 'auto');
+    assert.equal(await page.getByLabel('MinerU executable', { exact: true }).inputValue(), secondParser);
+    assert.equal(await page.getByLabel('MinerU backend').inputValue(), 'auto');
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
     // A slow settings save keeps the guide modal, and repeated finish clicks open one dialog.
