@@ -244,6 +244,23 @@ test('summary excerpts keep original paragraph IDs and whole Unicode characters 
   assert.deepEqual(parseSummaryClaims(response, batches.at(-1))[0].sources, [{ paragraphID: 2, quote: tail }]);
 });
 
+test('summary batches keep a complete supporting sentence and exact PDF whitespace', async () => {
+  const { summarySourceBatches, parseSummaryClaims } = await import('../src/paper.mjs');
+  const intro = 'The baseline was calibrated on the first morning. '.repeat(7).trim();
+  const sentence = 'The sensor ' + 'recorded each observation '.repeat(220) + 'before the independent reviewers inspected the archive.';
+  const tailQuote = sentence.slice(-300);
+  const blocks = [{ id: 37, text: intro + ' ' + sentence }];
+  const batches = summarySourceBatches(blocks);
+  assert.deepEqual(batches, [[{ id: 37, text: intro }], [{ id: 37, text: sentence }]]);
+  const response = JSON.stringify({ claims: [{ text: 'The archive was inspected.', sources: [{ paragraphID: 37, quote: tailQuote }] }] });
+  assert.deepEqual(parseSummaryClaims(response, batches[1])[0].sources, [{ paragraphID: 37, quote: tailQuote }]);
+  const formatted = ('The instrument measured\t\t52.4 units;   both samples   agreed,  within tolerance.  ').repeat(110).trim();
+  const excerpts = summarySourceBatches([{ id: 13, text: formatted }]).flat();
+  assert.ok(excerpts.length >= 2);
+  assert.ok(excerpts.every(block => formatted.includes(block.text) && block.text.length <= 5900));
+  assert.equal(excerpts.map(b => b.text.replace(/\s/g, '')).join(''), formatted.replace(/\s/g, ''));
+});
+
 test('summary evidence preserves source spelling, complete Unicode characters, and previously verified citations', async () => {
   const { parseSummaryClaims, revalidateSummaryClaims, remapSummaryEvidence, validatedSummaryQuote, summaryQuoteMatch } = await import('../src/paper.mjs');
   const fixtures = require('./mac-parity/fixtures.json').summaryEvidence;

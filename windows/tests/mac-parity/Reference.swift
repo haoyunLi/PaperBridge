@@ -31,6 +31,8 @@ private struct Fixtures: Decodable {
         struct Paragraph: Decodable {
             let text: String
             let `repeat`: Int?
+            let prefix: String?
+            let suffix: String?
         }
         let paragraphs: [Paragraph]
     }
@@ -117,7 +119,9 @@ struct Reference {
             return SummaryEvidence.parse(output, paper: paper, providedText: "[P1]\n" + paragraph).flatMap(\.sources).map(\.quote)
         }
         let summaryBatches = fixtures.summaryBatches.map { fixture in
-            SummaryEvidence.sourceBatches(fixture.paragraphs.map { String(repeating: $0.text, count: $0.repeat ?? 1) })
+            SummaryEvidence.sourceBatches(fixture.paragraphs.map {
+                ($0.prefix ?? "") + String(repeating: $0.text, count: $0.repeat ?? 1) + ($0.suffix ?? "")
+            })
         }
         let bibliographies = fixtures.bibliographies.map { fixture in
             let result = TextProcessing.excludeReferenceSection(from: fixture.paragraphs)

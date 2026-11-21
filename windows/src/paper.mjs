@@ -1,4 +1,4 @@
-import { isHeading, joinPdfText } from './text.mjs';
+import { chunkText, isHeading, joinPdfText } from './text.mjs';
 import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { markdownBlockKind } from './academicMarkdown.mjs';
@@ -55,29 +55,39 @@ export function summarySourceBlocks(blocks) {
   return blocks.filter(block => !block.heading && !block.resource && !references.has(block.id) && block.text?.trim());
 }
 
-function summaryPieces(text) {
-  // Mac reserves 100 characters of each 6,000-character batch for framing.
-  // Slice the source itself so an exact quote can always lead back to it.
-  const limit = 5900;
-  if (text.length <= limit) return [text.trim()];
-  const boundaries = [0];
-  for (const { index, segment } of graphemes.segment(text)) boundaries.push(index + segment.length);
+function boundedSourcePieces(text, limit) {
+  if (text.length <= limit) return [text];
   const pieces = [];
-  for (let start = 0; start < boundaries.length - 1;) {
-    let end = Math.min(start + limit, boundaries.length - 1);
-    if (end < boundaries.length - 1) {
-      const excerpt = text.slice(boundaries[start], boundaries[end]);
-      const midpoint = boundaries[start + Math.floor(limit / 2)] - boundaries[start];
-      const sentence = [...excerpt.matchAll(/[.!?](?=\s)|[。！？]/g)].at(-1);
-      const space = excerpt.search(/\s\S*$/);
-      const preferredEnd = sentence && sentence.index >= midpoint ? sentence.index + 1 : space >= midpoint ? space + 1 : excerpt.length;
-      const offset = boundaries[start] + preferredEnd;
-      while (boundaries[end] > offset) end--;
+  let start = 0, count = 0;
+  for (const { index } of graphemes.segment(text)) {
+    if (count === limit) {
+      pieces.push(text.slice(start, index).trim());
+      start = index;
+      count = 0;
     }
-    pieces.push(text.slice(boundaries[start], boundaries[end]).trim());
-    start = end;
+    count++;
   }
+  pieces.push(text.slice(start).trim());
   return pieces;
+}
+
+function summaryPieces(text) {
+  // Match the native sentence/clause boundaries, but keep the original spacing
+  // inside each excerpt so every quote sent to the model exists in the paper.
+  const limit = 5900, source = text.trim();
+  if (source.length <= limit) return [source];
+  const pieces = [];
+  let offset = 0;
+  for (const chunk of chunkText(source, limit)) {
+    const start = offset;
+    for (const [word] of chunk.matchAll(/\P{White_Space}+/gu)) {
+      const index = source.indexOf(word, offset);
+      if (index < 0 || source.slice(offset, index).trim()) return boundedSourcePieces(source, limit);
+      offset = index + word.length;
+    }
+    pieces.push(...boundedSourcePieces(source.slice(start, offset).trim(), limit));
+  }
+  return source.slice(offset).trim() ? boundedSourcePieces(source, limit) : pieces;
 }
 
 export function summarySourceBatches(blocks) {

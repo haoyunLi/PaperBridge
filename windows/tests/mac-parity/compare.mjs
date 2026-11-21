@@ -44,7 +44,7 @@ for (const [index, fixture] of fixtures.summaryEvidence.entries()) {
 }
 assert.equal(reference.summaryBatches.length, fixtures.summaryBatches.length);
 for (const [index, { name, paragraphs }] of fixtures.summaryBatches.entries()) {
-  const blocks = paragraphs.map(({ text, repeat = 1 }, i) => ({ id: i + 1, text: text.repeat(repeat) }));
+  const blocks = paragraphs.map(({ text, repeat = 1, prefix = '', suffix = '' }, i) => ({ id: i + 1, text: prefix + text.repeat(repeat) + suffix }));
   const rendered = summarySourceBatches(blocks).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
   assert.deepEqual(rendered, reference.summaryBatches[index], name);
 }

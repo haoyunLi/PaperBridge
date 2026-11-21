@@ -153,6 +153,17 @@
   ],
   "summaryBatches": [
     {
+      "name": "keep a long complete sentence together when the preceding sentences fill its remaining space",
+      "paragraphs": [
+        {
+          "prefix": "The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The sensor ",
+          "text": "recorded each observation ",
+          "repeat": 220,
+          "suffix": "before the independent reviewers inspected the archive."
+        }
+      ]
+    },
+    {
       "name": "no split inside a decomposed grapheme",
       "paragraphs": [
         {
