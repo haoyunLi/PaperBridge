@@ -63,6 +63,7 @@ async function run() {
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
     'A paragraph whose previous translation failed. ' + protectedExample,
     'Repeat repeat repeat. (See [documentation](https://mscaudill.github.io/tabbed/))',
+    '• [Review](https://github.com/openjournals/joss-reviews/issues/8964)',
     '## References',
     '[1] Reference entry remains in the original language. [Measurements](data/measurements.csv#rows) [Missing appendix](data/missing.csv)'
   ].join('\n\n'));
@@ -104,6 +105,9 @@ async function run() {
       request.on('end', () => resolve(body));
     })).prompt;
     requests.push(input);
+    if (input.endsWith('<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>\nReview\n<<<END_PAPERBRIDGE_SELECTION>>>')) {
+      return response.end(JSON.stringify({ response: '审阅 [同行]', done: true }));
+    }
     if (failOnce && input.includes('previous translation failed')) {
       failOnce = false;
       response.statusCode = 503;
@@ -217,7 +221,7 @@ async function run() {
     assert.equal(await page.locator('#block-4 .source-text img').evaluate(img => img.naturalWidth), 1);
     await revealSidebarSource(page);
     assert.match(await page.locator('.failed-stat').innerText(), /Failed\s+1/);
-    assert.match(await page.locator('.document-details .side-stat').filter({ hasText: 'Paragraphs' }).innerText(), /Paragraphs\s+5/);
+    assert.match(await page.locator('.document-details .side-stat').filter({ hasText: 'Paragraphs' }).innerText(), /Paragraphs\s+6/);
     assert.match(await page.locator('.document-details .side-stat').filter({ hasText: 'Skipped refs' }).innerText(), /Skipped refs\s+2/);
     await page.evaluate(() => {
       const paragraph = document.querySelector('#block-2 .source-text p');
@@ -287,7 +291,8 @@ async function run() {
     assert.equal(await draft.getByRole('link', { name: '文档', exact: true }).getAttribute('href'), 'https://mscaudill.github.io/tabbed/');
     assert.equal(await draft.locator('table td').count(), 2);
     assert.equal(await draft.locator('img[src^="data:image/png"]').count(), 2);
-    assert.equal(requests.length, 4, 'Only unfinished text blocks should be submitted');
+    assert.equal(await draft.getByRole('link', { name: '审阅 [同行]', exact: true }).getAttribute('href'), 'https://github.com/openjournals/joss-reviews/issues/8964');
+    assert.equal(requests.length, 5, 'Only unfinished text blocks should be submitted');
     for (const input of requests) {
       assert.doesNotMatch(input, /Ashish Vaswani|data:image|iVBORw0K|Reference entry|<table>/);
     }
@@ -304,7 +309,7 @@ async function run() {
     await page.locator('#block-6 .translation-text').getByText(/已恢复的段落译文/).first().waitFor();
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await draft.getByText(/已恢复的段落译文/).first().waitFor();
-    assert.equal(requests.length, 6, 'Two Reader retries affect only the failed block');
+    assert.equal(requests.length, 7, 'Two Reader retries affect only the failed block');
     const recovered = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
     assert.equal(recovered.blocks[5].translationMarkdown, '已恢复的段落译文。 ' + protectedExample);
     assert.ok(recovered.connectedTranslation.includes(protectedExample));
@@ -377,7 +382,7 @@ async function run() {
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'A changed summary annotation' }).locator('button').first().click();
     await page.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
     await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.viewNotes.find(item => item.id === 'shifted-summary')?.needsReview, id);
-    assert.equal(requests.length, 6, 'Reopening a completed draft should not issue model requests');
+    assert.equal(requests.length, 7, 'Reopening a completed draft should not issue model requests');
 
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
     await page.getByLabel('Paper display mode').selectOption('bilingual');

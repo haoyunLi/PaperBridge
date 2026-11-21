@@ -91,11 +91,12 @@ func nativeTranslationRanges(fixtures: URL) throws -> [String: Any] {
     model.translatePaper(paragraphIDs: PaperReadingAnalysis.overviewParagraphIDs(in: model.paperSections))
     try finish(model)
     let afterOverview = completed(model)
-    model.persistWorkspace()
+    model.flushPendingSaves()
     let reopened = makeModel()
     guard let entry = reopened.libraryEntries.first(where: { $0.id == paper.checksum }) else { throw failure("Missing saved article") }
     reopened.openLibraryPaper(entry)
     let restored = completed(reopened)
+    guard restored == afterOverview else { throw failure("Saved translations changed across reopening") }
     guard let methods = reopened.paperSections.first(where: { $0.title == "Methods" }) else { throw failure("Missing chosen section") }
     reopened.translatePaper(paragraphIDs: methods.paragraphIDs)
     try finish(reopened)

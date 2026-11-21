@@ -4,12 +4,12 @@
 
 | Edition | How to open it | Download |
 | --- | --- | --- |
-| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.63/PaperBridge-Windows-0.2.63-x64-Portable.exe) |
-| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.63/PaperBridge-Windows-0.2.63-x64-Setup.exe) |
+| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.64/PaperBridge-Windows-0.2.64-x64-Portable.exe) |
+| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.64/PaperBridge-Windows-0.2.64-x64-Setup.exe) |
 
 You can open and annotate a PDF immediately. Choose **Local AI setup** to detect your hardware and install the components for translation or scanned PDFs. The app checks for updates automatically by default.
 
-Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.63 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.63) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
+Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.64 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.64) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
 
 ## Windows and macOS features
 
@@ -17,7 +17,7 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
-Version 0.2.63 preserves links in structured translations when the model uses localized punctuation. To repair an existing translated link, open the paragraph’s actions and choose **Translate This Paragraph**.
+Version 0.2.64 preserves links in structured translations when the model uses localized punctuation. To repair an existing translated link, open the paragraph’s actions and choose **Translate This Paragraph**.
 
 Version 0.2.62 matches the Mac translation range when a figure or table is at the top of Reader. Current section uses the selected paragraph in that case, and follows the visible paragraph when text is at the top.
 

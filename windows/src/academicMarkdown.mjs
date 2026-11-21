@@ -10,6 +10,7 @@ export function usesSharedMarkdown(paper) {
 export function protectStructuredMarkdown(markdown) {
   if (!markdown.includes('](')) return protectMarkdown(markdown);
   const ranges = [];
+  let standaloneLabel = false;
   function visit(node) {
     if (node.type === 'link') {
       const start = node.position.start.offset;
@@ -18,14 +19,20 @@ export function protectStructuredMarkdown(markdown) {
       if (markdown[start] === '[' && markdown.startsWith('](', labelEnd)) {
         // Translate the label while preserving the punctuation that makes it a link.
         if (labelEnd === start + 1) ranges.push([start, end]);
-        else ranges.push([start, start + 1], [labelEnd, end]);
+        else {
+          ranges.push([start, start + 1], [labelEnd, end]);
+          standaloneLabel = node.children.length === 1 && node.children[0].type === 'text'
+            && node.children[0].value === markdown.slice(start + 1, labelEnd)
+            && !/[\p{L}\p{N}]/u.test(markdown.slice(0, start) + markdown.slice(end));
+        }
       }
       return;
     }
     node.children?.forEach(visit);
   }
   visit(parseMarkdown(markdown));
-  return protectMarkdown(markdown, ranges);
+  const payload = protectMarkdown(markdown, ranges);
+  return { ...payload, standaloneLabel: standaloneLabel && ranges.length === 2 && payload.tokens.length === 2 };
 }
 
 export function completedBlockTranslation(block, references) {

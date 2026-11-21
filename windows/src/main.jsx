@@ -2295,6 +2295,15 @@ function App() {
   function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) {
     return matchingGlossaryTerms(glossary, text, from, to);
   }
+  function translateMarkupSpans(excerpt, config, translationModel, instructions, token) {
+    return translateAroundMarkup(excerpt, async selection => {
+      const prompt = strictSelectionTranslationPrompt(selection, config.sourceLanguage, config.targetLanguage,
+        matchingTerms(selection, config.sourceLanguage, config.targetLanguage));
+      const result = await generate(translationModel, prompt, instructions, token);
+      if (isLikelyOverexpandedSelection(result, selection)) throw new Error('The model expanded the excerpt instead of translating it.');
+      return excerpt.standaloneLabel ? result.replace(/[&\\[\]]/g, char => '&#' + char.codePointAt(0) + ';') : result;
+    });
+  }
   function retryBlock(id) {
     if (!paperRef.current || busy || taskRef.current) return;
     if (translationSetup && id !== authorByline?.id) { openTaskSetup(translationSetup); return; }
@@ -2344,6 +2353,10 @@ function App() {
             const promptForPart = protectedBlock ? markdownTranslationPrompt : translationPrompt;
             const instructions = translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage));
             for (const part of parts) {
+              if (protectedBlock?.standaloneLabel && parts.length === 1) {
+                translated.push(await translateMarkupSpans(protectedBlock, config, translationModel, instructions, token));
+                continue;
+              }
               const prompt = promptForPart(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
               const answer = await generate(translationModel, prompt, instructions, token);
               translated.push(protectedBlock
@@ -2613,13 +2626,7 @@ function App() {
               translated = restoreConnectedExcerpt(answer, excerpt.tokens, part.source);
             } catch (error) {
               if (!localRetry || error.code !== 'PROTECTED_MARKDOWN_CHANGED') throw error;
-              translated = await translateAroundMarkup(excerpt, async selection => {
-                const prompt = strictSelectionTranslationPrompt(selection, config.sourceLanguage, config.targetLanguage,
-                  matchingTerms(selection, config.sourceLanguage, config.targetLanguage));
-                const result = await generate(translationModel, prompt, instructions, token);
-                if (isLikelyOverexpandedSelection(result, selection)) throw new Error('The model expanded the excerpt instead of translating it.');
-                return result;
-              });
+              translated = await translateMarkupSpans(excerpt, config, translationModel, instructions, token);
             }
             output += part.separator + translated;
           }
