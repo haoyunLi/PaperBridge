@@ -102,15 +102,20 @@ async function run() {
     assert.deepEqual(line, ['We report re-', ' ', 'sults from an attention-', ' ', 'based inference.']);
   } finally { await loading.destroy(); }
 
-  let generationRequests = 0;
-  const ollama = http.createServer((request, response) => {
+  const model = 'pdf-translation-fixture';
+  const prompts = [];
+  const ollama = http.createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json');
-    if (request.url === '/api/generate') generationRequests++;
-    response.end(JSON.stringify({ models: [] }));
+    if (request.url === '/api/generate') {
+      let body = '';
+      for await (const part of request) body += part;
+      prompts.push(JSON.parse(body).prompt);
+      response.end(JSON.stringify({ response: '校准记录。', done: true }));
+    } else response.end(JSON.stringify({ models: request.url === '/api/tags' ? [{ name: model }] : [] }));
   });
   await new Promise(resolve => ollama.listen(0, '127.0.0.1', resolve));
   const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly',
-    autoCheckUpdates: false, onboardingCompletedVersion: 1, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' };
+    autoCheckUpdates: false, onboardingCompletedVersion: 1, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', translationModel: model };
   const legacyBytes = fixturePdf(true), legacyId = sha256(legacyBytes);
   const legacyText = 'Legacy re- sults remain bound to their original annotations.';
   const quote = 're- sults', offset = legacyText.indexOf(quote);
@@ -195,8 +200,6 @@ async function run() {
     assert.ok(originalText.includes(ordinary));
     assert.ok(originalText.includes(compounds));
 
-    await require('./mac-parity/pdf-reading.cjs').checkColumnPDF(app, page);
-
     // Mac chooses one or two repair passes from the whole pasted document's
     // newline presence, so the single-line branch needs its own import.
     await assertPasted('A model uses inter- national- based controls.', ['A model uses international- based controls.']);
@@ -217,10 +220,11 @@ async function run() {
     await app.close(); app = null;
     await launch();
     await assertLegacy();
-    assert.equal(generationRequests, 0, 'PDF extraction and saved-source verification must not invoke AI');
+    assert.equal(prompts.length, 0, 'PDF extraction and saved-source verification must not invoke AI');
+    await require('./mac-parity/pdf-reading.cjs').checkColumnPDF(app, page, prompts);
     const result = { passed: true, workspace, importedId: id, legacyId, sourceItems, extracted,
       checked: ['actual split PDF items', 'same-line ordinary repairs', 'compound hyphens', 'four PDF repair passes', 'wrapped model names, numerical ranges, and English-to-German', 'unmatched math and case tokens',
-        'Reader text and PDF source snapshot', 'original PDF bytes and text layer', 'legacy source IDs and annotation navigation', 'new paste single-line and multiline repairs', 'restart'] };
+        'Reader text and PDF source snapshot', 'original PDF bytes and text layer', 'legacy source IDs and annotation navigation', 'new paste single-line and multiline repairs', 'restart', 'two-column PDF order, footnotes, outline and translation labels'] };
     fs.writeFileSync(path.join(workspace, 'result.json'), JSON.stringify(result, null, 2));
     console.log(JSON.stringify(result));
   } catch (error) {

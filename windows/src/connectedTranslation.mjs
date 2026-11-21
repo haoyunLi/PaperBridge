@@ -1,4 +1,5 @@
 import { referenceBlockIds } from './paper.mjs';
+import { pdfFootnoteMarker } from './text.mjs';
 import { isLikelyOverexpandedSelection, protectMarkdown, restoreMarkdown } from './prompts.mjs';
 
 const maxExcerptChars = 4800;
@@ -47,6 +48,14 @@ export function planConnectedBatches(blocks) {
       batches.push({ kind: 'original', source });
       continue;
     }
+    const marker = pdfFootnoteMarker(block);
+    if (marker) {
+      flush();
+      const [first, ...rest] = splitExcerpt(source);
+      batches.push({ kind: 'translation', source: first, pdfFootnoteMarker: marker });
+      for (const piece of rest) batches.push({ kind: 'translation', source: piece });
+      continue;
+    }
     for (const piece of splitExcerpt(source)) {
       const candidate = excerpt ? `${excerpt}\n\n${piece}` : piece;
       if (excerpt && protectMarkdown(candidate).text.length > maxExcerptChars) flush();
@@ -71,10 +80,11 @@ export function isLocalMarkupRetry(batch, saved, provider) {
 
 // On an explicit retry, smaller paragraph groups help local models keep every marker.
 export function connectedRetryExcerpts(batch, localRetry) {
-  const pieces = [{ source: batch.source, separator: '' }];
+  const source = batch.pdfFootnoteMarker ? batch.source.slice(batch.pdfFootnoteMarker.length).trimStart() : batch.source;
+  const pieces = [{ source, separator: '' }];
   if (!localRetry) return pieces;
 
-  const { text, tokens } = protectMarkdown(batch.source);
+  const { text, tokens } = protectMarkdown(source);
   if (!tokens.length) return pieces;
   // Mask code and equations before looking for paragraph boundaries inside a batch.
   const paragraphs = text.split(/(\r?\n(?:[ \t]*\r?\n)+)/);

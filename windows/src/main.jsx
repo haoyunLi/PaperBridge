@@ -6,7 +6,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
-import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading } from './text.mjs';
+import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
@@ -2242,7 +2242,8 @@ function App() {
           const protectedBlock = block.sourceMarkdown ? protectMarkdown(block.sourceMarkdown) : null;
           let output = block.sourceMarkdown || block.text;
           if (config.sourceLanguage !== config.targetLanguage) {
-            const parts = chunkText(protectedBlock?.text || block.text, Number(config.maxParagraphChars) || 1800);
+            const marker = pdfFootnoteMarker(block);
+            const parts = chunkText(protectedBlock?.text || block.text.slice(marker.length), Number(config.maxParagraphChars) || 1800);
             const translated = [];
             const promptForPart = protectedBlock ? markdownTranslationPrompt : translationPrompt;
             const instructions = translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage));
@@ -2253,7 +2254,7 @@ function App() {
                 ? restoreMarkdown(answer, protectedBlock.tokens.filter(([marker]) => part.includes(marker)))
                 : answer);
             }
-            output = translated.join(protectedBlock ? '\n' : ' ');
+            output = (marker ? marker + ' ' : '') + translated.join(protectedBlock ? '\n' : ' ');
           }
           if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: protectedBlock ? output : null,
             translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '' });
@@ -2472,7 +2473,7 @@ function App() {
         ? current.connectedBlocks : [];
       const batches = planConnectedBatches(current.blocks).map((batch, index) => {
         const saved = previous?.[index];
-        if (saved?.kind === batch.kind && saved.source === batch.source && saved.status === 'ok' && saved.output) return saved;
+        if (saved?.kind === batch.kind && saved.source === batch.source && saved.pdfFootnoteMarker === batch.pdfFootnoteMarker && saved.status === 'ok' && saved.output) return saved;
         return { ...batch, output: batch.source, translationLanguage: batch.kind === 'translation' ? normalizeOutputLanguage(config) : null,
           status: batch.kind === 'original' ? 'ok' : 'pending' };
       });
@@ -2496,7 +2497,7 @@ function App() {
         const localRetry = isLocalMarkupRetry(batch, previous?.[index], config.aiProvider);
         try {
           const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
-          let output = '';
+          let output = batch.pdfFootnoteMarker ? batch.pdfFootnoteMarker + ' ' : '';
           const parts = connectedRetryExcerpts(batch, localRetry);
           for (const [partIndex, part] of parts.entries()) {
             requireActiveTask(token);

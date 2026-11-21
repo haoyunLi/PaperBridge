@@ -36,7 +36,7 @@ function lineFromItems(items, y, vertical, pageHeight) {
       /^\s*\p{L}/u.test(body.text) && marker.height < body.height * 0.9 &&
       marker.y - body.y >= body.height * 0.15 && marker.y - body.y <= body.height * 0.8 &&
       Math.abs(body.x - marker.end) <= body.height * 0.6) {
-    line.raisedNoteMarker = true;
+    line.raisedNoteMarker = marker.text.trim();
     line.y = body.y;
   }
   return line;

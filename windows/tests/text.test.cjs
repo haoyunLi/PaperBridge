@@ -206,6 +206,26 @@ test('small raised note markers start a separate footnote only near the foot of 
   }
 });
 
+test('only PDF-marked footnotes keep their number outside the model input, including retries and manual splits', async () => {
+  const { pdfFootnoteMarker } = await import('../src/text.mjs');
+  const { splitBlockAt } = await import('../src/paper.mjs');
+  const { planConnectedBatches, connectedRetryExcerpts } = await import('../src/connectedTranslation.mjs');
+  const first = '2This note describes the instrument.';
+  const tail = '2D imaging confirmed the estimate.';
+  const block = { id: 2, text: first + ' ' + tail, pdfFootnoteMarker: '2' };
+  assert.equal(pdfFootnoteMarker(block), '2');
+  const [left, right] = splitBlockAt(block, first.length);
+  assert.equal(pdfFootnoteMarker(left), '2');
+  assert.equal(pdfFootnoteMarker(right), '');
+  assert.equal(pdfFootnoteMarker({ ...block, text: '5This label was edited.' }), '');
+  assert.equal(pdfFootnoteMarker({ text: '2D imaging is useful.' }), '');
+  const batches = planConnectedBatches([{ id: 1, text: 'Previous paragraph.' }, block, { id: 3, text: tail }]);
+  assert.deepEqual(batches.map(b => b.source), ['Previous paragraph.', block.text, tail]);
+  assert.equal(batches[1].pdfFootnoteMarker, '2');
+  for (const retry of [true, false]) assert.deepEqual(connectedRetryExcerpts(batches[1], retry),
+    [{ source: block.text.slice(1), separator: '' }]);
+});
+
 test('standalone printed folios are removed without dropping nearby table or equation values', async () => {
   const { filterRepeatedPageDecorations } = await import('../src/pdfDecorations.mjs');
   const line = (text, y) => ({ text, x: 42, y, height: 10 });

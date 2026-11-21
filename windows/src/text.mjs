@@ -103,6 +103,12 @@ export function joinLines(lines) {
   return trimExtractedWhitespace(text.replace(/[\t ]{2,}/g, ' '));
 }
 
+export function pdfFootnoteMarker(block) {
+  const marker = block.pdfFootnoteMarker;
+  if (block.sourceMarkdown || typeof marker !== 'string' || !/^(?:\p{Nd}{1,3}|[*†‡])$/u.test(marker)) return '';
+  return block.text?.startsWith(marker) && /^\s*\p{L}/u.test(block.text.slice(marker.length)) ? marker : '';
+}
+
 export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = false) {
   const sorted = lines.map(line => ({ ...line, text: normalizeExtractedLine(line.text) })).filter(line => line.text);
   if (!preserveOrder) sorted.sort((a, b) => b.y - a.y || a.x - b.x);
@@ -111,7 +117,11 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   const flush = () => {
     const text = joinLines(group);
     const raw = group.map(line => cleanLine(line.text || line)).filter(Boolean).join('\n');
-    if (text) blocks.push({ id: startId + blocks.length, text, page: pageNumber, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] });
+    if (text) {
+      const block = { id: startId + blocks.length, text, page: pageNumber, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] };
+      if (group[0].raisedNoteMarker) block.pdfFootnoteMarker = group[0].raisedNoteMarker;
+      blocks.push(block);
+    }
     group = [];
   };
   const widths = sorted.map(line => line.height || 12).sort((a, b) => a - b);

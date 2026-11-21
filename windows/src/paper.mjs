@@ -264,9 +264,10 @@ export function splitBlockAt(block, cut) {
   const [leftHighlights, rightHighlights] = divide(block.highlights);
   const [leftNotes, rightNotes] = divide((block.notes || []).filter(item => item.kind !== 'translation'));
   const translationNotes = (block.notes || []).filter(item => item.kind === 'translation').map(forReview);
+  const { pdfFootnoteMarker, ...rightBlock } = block;
   return [
     { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: (block.translationHighlights || []).map(forReview), status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
-    { ...block, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
+    { ...rightBlock, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
   ];
 }
 

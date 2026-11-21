@@ -4,7 +4,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { revealSidebarSource, openWorkspaceView } = require('../sidebar-controls.cjs');
 
-async function checkColumnPDF(app, page) {
+async function checkColumnPDF(app, page, prompts) {
   const filename = path.join(__dirname, 'column-footnote.pdf');
   const bytes = fs.readFileSync(filename);
   const id = createHash('sha256').update(bytes).digest('hex');
@@ -31,6 +31,7 @@ async function checkColumnPDF(app, page) {
   assert.deepEqual(orderedAnchors(text), anchors);
   assert.ok(!text.includes('Page 1 of 1'));
   const footnote = blocks.find(block => block.text.includes('This note gives'));
+  assert.equal(footnote?.pdfFootnoteMarker, '1');
   assert.match(footnote?.text || '', /^1\s*This note gives.*The reference log contains/s);
   const heading = blocks.find(block => block.text === '3.3. Network Architectures');
   assert.equal(heading?.heading, true);
@@ -50,6 +51,22 @@ async function checkColumnPDF(app, page) {
   }
   const savedBytes = await page.evaluate(async paperId => Array.from(await window.paperBridge.readPdf(paperId)), id);
   assert.deepEqual(Buffer.from(savedBytes), bytes);
+  assert.equal(prompts.length, 0, 'Import and outline navigation do not call the model');
+
+  const noteRow = page.locator('#block-' + footnote.id);
+  await noteRow.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
+  await noteRow.getByText('1 校准记录。', { exact: true }).waitFor();
+  await openWorkspaceView(page, 'Full Translation');
+  await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+  await page.getByText('Connected full-paper translation saved.', { exact: true }).waitFor();
+  const paper = await page.evaluate(paperId => window.paperBridge.loadPaper(paperId), id);
+  const footnoteBatch = paper.connectedBlocks.find(batch => batch.pdfFootnoteMarker === '1');
+  assert.equal(footnoteBatch.output, '1 校准记录。');
+  assert.ok(paper.connectedTranslation.includes(footnoteBatch.output));
+  const requestsForNote = prompts.filter(prompt => prompt.includes('This note gives the instrument calibration date.'));
+  assert.equal(requestsForNote.length, 2, 'Reader and Full Translation both translated the note');
+  assert.ok(requestsForNote.every(prompt => !prompt.includes('1This note')));
 }
 
 module.exports = { checkColumnPDF };
