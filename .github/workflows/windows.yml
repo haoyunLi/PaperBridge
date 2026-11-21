@@ -41,10 +41,11 @@ jobs:
       - name: Run the macOS source on the shared reading and translation fixtures
         run: |
           xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift \
+            PaperBridge/Services/WorkspaceStore.swift PaperBridge/Utilities/Hashing.swift \
             PaperBridge/Services/PaperReadingAnalysis.swift PaperBridge/Services/ReadingGuideBuilder.swift \
             PaperBridge/Services/AcademicMarkdownProcessor.swift PaperBridge/Services/SummaryEvidence.swift \
             PaperBridge/Services/PDFTextExtractor.swift PaperBridge/Services/MarkdownBundleExporter.swift \
-            windows/tests/mac-parity/BundleReference.swift windows/tests/mac-parity/Reference.swift \
+            windows/tests/mac-parity/LibraryReference.swift windows/tests/mac-parity/BundleReference.swift windows/tests/mac-parity/Reference.swift \
             -o "$RUNNER_TEMP/paperbridge-reference"
           "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
       - uses: actions/upload-artifact@v4
