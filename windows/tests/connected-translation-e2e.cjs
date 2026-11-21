@@ -141,6 +141,7 @@ async function run() {
     for (const batch of saved.connectedBlocks.filter(batch => batch.kind === 'translation').slice(1)) assert.deepEqual(batch.translationLanguage, chinese);
     assert.equal(saved.connectedLanguage, null, 'Known resumed batches cannot retroactively label the whole legacy draft');
     assert.notEqual(saved.connectedLanguageConflict, true, 'Unknown historical language alone is not a contradictory language declaration');
+    assert.equal(await page.locator('.toolbar-actions').getByRole('button', { name: 'Full Translation Ready' }).isDisabled(), true);
     const completedExport = await exportFullTranslation('full-translation-completed.md', null);
     assert.equal(completedExport, saved.connectedTranslation, 'Resuming successfully removes export failure markers without changing the completed text');
     assert.doesNotMatch(completedExport, /Connected translation failed|batch\(es\) failed|Original text retained below/);
@@ -161,7 +162,7 @@ async function run() {
     await revealSidebarSource(page);
     await page.getByLabel('Sidebar to language', { exact: true }).selectOption('French');
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).waitFor();
-    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await page.locator('.toolbar-actions').getByRole('button', { name: 'Generate Full Translation' }).click();
     await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'hidden' });
     await page.waitForFunction(async paperId => {
       const current = await window.paperBridge.loadPaper(paperId);

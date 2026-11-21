@@ -17,8 +17,13 @@ function Run-NSIS([string] $File, [string] $Arguments) {
 try {
     Run-NSIS $setup "/S /currentuser /D=$install"
     $exe = Join-Path $install 'PaperBridge.exe'
-    if ((Get-Item -LiteralPath $exe).VersionInfo.ProductVersion -ne $Version) { throw 'Installed version mismatch' }
-    & "$PSScriptRoot/launch-distribution.ps1" -Executable $exe
+    # Electron embeds a four-part Windows resource version. The NSIS wrappers
+    # and package.json normally use three parts for the same release.
+    $installedVersion = (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion
+    if ($installedVersion -notin @($Version, "$Version.0")) {
+        throw "Installed version $installedVersion does not match release $Version"
+    }
+    & "$PSScriptRoot/launch-distribution.ps1" -Executable $exe -CheckRelaunch
 } finally {
     $uninstall = Join-Path $install 'Uninstall PaperBridge.exe'
     if (Test-Path -LiteralPath $uninstall) { Run-NSIS $uninstall "/S /currentuser _?=$install" }

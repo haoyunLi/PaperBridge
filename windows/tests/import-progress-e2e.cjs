@@ -301,6 +301,26 @@ async function run() {
     assert.equal(await app.evaluate(() => globalThis.__mineruStatusCalls), probes, 'PDF-only imports should not probe MinerU');
     await page.locator('.library-row').filter({ hasText: /^fallback\.pdf/ }).click();
     await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
+    await page.locator('.library-row').filter({ hasText: 'Pasted Text' }).click();
+    await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
+    await chooseMode('pdfOnly');
+    const selectedText = 'An independent extraction can begin while reading a pasted paper.';
+    const selectedFile = path.join(workspace, 'selected-original.pdf');
+    fs.writeFileSync(selectedFile, samplePdf(selectedText));
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    }, selectedFile);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.getByRole('dialog', { name: 'More tools' }).getByRole('button', { name: 'Re-extract PDF as New Copy' }).click();
+    await page.getByRole('heading', { name: 'selected-original.pdf (new extraction)', exact: true }).waitFor();
+    await page.waitForFunction(previous => document.querySelector('.main-scroll')?.dataset.readingPaperId !== previous
+      && !document.querySelector('.import-progress-screen'), before.id);
+    const copyId = await page.locator('.main-scroll').getAttribute('data-reading-paper-id');
+    assert.match(copyId, /^[a-f0-9]{64}$/);
+    assert.notEqual(copyId, paperId(selectedText));
+    await waitFor(() => JSON.parse(fs.readFileSync(path.join(workspace, 'papers', copyId + '.json'), 'utf8'))
+      .blocks.some(block => block.text.includes(selectedText)), 'independent PDF workspace saved with selected text');
+    assert.equal(JSON.parse(fs.readFileSync(paperFile, 'utf8')).blocks[0].bookmark, true);
     console.log('Import verified: narrow sidebar dismissal preserves the active parser and old annotations, Cancel Import focus and reopening, strict and fallback modes, PDF-only page preparation, and accepted MinerU resources isolated from rejected or stale output.');
   } finally { await app.close().catch(() => {}); }
 }

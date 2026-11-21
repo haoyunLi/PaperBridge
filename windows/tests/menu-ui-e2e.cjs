@@ -65,6 +65,14 @@ async function run() {
     }, command);
 
     await expectMenus({ openPdf: true, summary: false, export: false, generateSummary: false, primaryTask: false, translateSelection: false, focusReading: false, toggleSidebar: false });
+    const more = () => page.getByRole('button', { name: 'More ···', exact: true }).click();
+    const toolsDialog = page.getByRole('dialog', { name: 'More tools', exact: true });
+    const reextract = toolsDialog.getByRole('button', { name: 'Re-extract PDF as New Copy' });
+    await more();
+    assert.equal(await reextract.isEnabled(), true);
+    assert.equal(await toolsDialog.getByRole('button', { name: 'Generate Summary' }).isDisabled(), true);
+    await toolsDialog.getByRole('button', { name: 'Paper Library' }).click();
+    await page.getByRole('dialog', { name: 'Paper Library' }).getByRole('button', { name: 'Close dialog' }).click();
     await revealSidebarSource(page);
     await openPasteText(page);
     await page.locator('.paste-area').fill('Abstract\n\nThis paper studies deterministic menu state transitions.');
@@ -73,6 +81,15 @@ async function run() {
     await expectMenus({ summary: true, export: true, generateSummary: true, generateFullTranslation: true, primaryTask: true, undo: false, highlightSelection: false, focusReading: true, toggleSidebar: true });
 
     const button = name => page.getByRole('button', { name, exact: true });
+    await more();
+    await app.evaluate(({ dialog }) => {
+      dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+    });
+    await reextract.click();
+    await page.locator('.paper-preview-block').first().waitFor();
+    await more();
+    await toolsDialog.getByRole('button', { name: 'Saved Terminology' }).click();
+    await page.getByRole('dialog', { name: 'Saved Terminology' }).getByRole('button', { name: 'Close dialog' }).click();
     const sidebar = page.locator('.sidebar');
     const inspector = page.locator('.inspector');
     const expectPanels = async (sidebarVisible, inspectorVisible) => {

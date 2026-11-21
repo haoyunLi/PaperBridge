@@ -95,8 +95,9 @@ async function run() {
     await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
     await loadPastedText(page, { view: 'Paper' });
     await openWorkspaceView(page, 'Overview');
-    await page.getByRole('button', { name: 'Generate summary' }).click();
+    await page.locator('.toolbar-actions').getByRole('button', { name: 'Summarize Paper' }).click();
     await page.getByText('Summary saved. Only exact-match source quotations are linked.', { exact: true }).waitFor();
+    assert.equal(await page.locator('.toolbar-actions').getByRole('button', { name: 'Summary Ready' }).isDisabled(), true);
     const summaries = page.locator('.summary-card');
     assert.match(await summaries.first().innerText(), /Final limitation/);
     assert.equal(await summaries.last().locator('li').count(), 4);

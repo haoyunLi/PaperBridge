@@ -1812,13 +1812,9 @@ function App() {
     else if (name === 'glossary') setModal('glossary');
     else if (name === 'summary') { if (paper) setTab('Summary'); }
     else if (name === 'find') { if (paper) { setTab('Reader'); setTimeout(() => searchRef.current?.focus({ preventScroll: true }), 0); } }
-    else if (name === 'primaryTask' && paper && !busy) {
-      if (tab === 'Summary') { if (!paper.summary || paper.summary.stale) summarize(); }
-      else if (tab === 'Full Translation') { if (fullTranslationNeedsWork) fullTranslation(); }
-      else if (paper.blocks.some(block => block.status !== 'ok')) translateBlocks(paper.blocks.map(block => block.id));
-    }
-    else if (name === 'generateSummary') { if (paper && !busy) { setTab('Summary'); summarize(); } }
-    else if (name === 'generateFullTranslation') { if (paper && !busy) { setTab('Full Translation'); fullTranslation(); } }
+    else if (name === 'primaryTask') runPrimaryTask();
+    else if (name === 'generateSummary') startSummaryFromMenu();
+    else if (name === 'generateFullTranslation') startFullTranslationFromMenu();
     else if (name === 'export') exportDefaultMarkdown();
     else if (name === 'inspector') { setFocus(false); setInspector(true); }
     else if (name === 'focusReading' && readingLayoutAvailable) toggleFocus();
@@ -2300,10 +2296,10 @@ function App() {
     } catch (err) { if (!token.cancelled) { setSelectionLookup({ key, status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
   }
   async function reextractAsNew() {
-    if (paperRef.current?.type !== 'pdf' || busy || taskRef.current || editRef.current) return;
+    if (busy || taskRef.current || editRef.current) return;
     setModal('');
     let imported;
-    try { imported = await api.copyPdfAsNew({ id: paperRef.current.id, name: paperRef.current.name }); }
+    try { imported = await api.copyPdfAsNew(); }
     catch (cause) { setError(cause.message); return; }
     if (!imported || taskRef.current || editRef.current) return;
     const token = startPdfImport(imported.name, 'Preparing an independent PDF copy');
@@ -3182,14 +3178,48 @@ function App() {
   const menuBusy = Boolean(busy || onboardingBusy);
   const readingLayoutAvailable = Boolean(paper && !pendingImport && !modal);
   const canPrimaryTask = tab === 'Summary' ? canSummarize && (!paper.summary || paper.summary.stale)
-    : translatableCount > 0 && (tab === 'Full Translation' ? fullTranslationNeedsWork : translatedCount < translatableCount);
+    : tab === 'Full Translation' ? fullHasSource && fullTranslationNeedsWork : translatedCount < translatableCount;
+  const primarySetup = tab === 'Summary' ? summarySetup : tab === 'Full Translation' ? fullSetup : translationSetup;
+  function primaryLabel() {
+    if (primarySetup && canPrimaryTask) {
+      if (tab === 'Summary' || tab === 'Full Translation') return settings.aiProvider === 'openai' ? 'Set up OpenAI' : 'Set up local AI';
+      return 'Set up translation';
+    }
+    if (tab === 'Summary') {
+      if (!paper?.summary) return 'Summarize Paper';
+      return paper.summary.stale ? 'Refresh Summary' : 'Summary Ready';
+    }
+    if (tab === 'Full Translation') {
+      if (!paper?.connectedTranslation) return 'Generate Full Translation';
+      return fullTranslationNeedsWork ? 'Resume Full Translation' : 'Full Translation Ready';
+    }
+    if (translatableCount && translatedCount === translatableCount) return 'Translated';
+    return translatedCount ? 'Resume Translation' : 'Translate Paper';
+  }
+  function startSummaryFromMenu() {
+    if (!canSummarize || busy || taskRef.current) return;
+    setModal(''); setTab('Summary');
+    if (summarySetup) openTaskSetup(summarySetup); else summarize();
+  }
+  function startFullTranslationFromMenu() {
+    if (!fullHasSource || busy || taskRef.current) return;
+    setModal(''); setTab('Full Translation');
+    if (fullSetup) openTaskSetup(fullSetup); else fullTranslation();
+  }
+  function runPrimaryTask() {
+    if (!canPrimaryTask || busy || taskRef.current || editRef.current) return;
+    if (primarySetup) openTaskSetup(primarySetup);
+    else if (tab === 'Summary') summarize();
+    else if (tab === 'Full Translation') fullTranslation();
+    else translateBlocks(unfinishedTranslationIds);
+  }
   const canUndo = undo.length > 0 && (!menuBusy || undo.at(-1)?.type !== 'structure');
   useEffect(() => {
     api.updateMenuState({ ready: menuReady, hasPaper: Boolean(paper), busy: menuBusy, hasSelection: Boolean(selection), canUndo, canUseReadingLayout: readingLayoutAvailable,
       canGoBack: readingHistoryState.back > 0, canGoForward: readingHistoryState.forward > 0,
-      canPrimaryTask: Boolean(canPrimaryTask), canSummarize, canFullTranslation: translatableCount > 0,
+      canPrimaryTask: Boolean(canPrimaryTask), canSummarize, canFullTranslation: Boolean(fullHasSource),
       canLookupSelection: Boolean(selection) && !menuBusy, canExport, checkingUpdates }).catch(cause => setError(cause.message));
-  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, translatableCount > 0, canExport, checkingUpdates]);
+  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, Boolean(fullHasSource), canExport, checkingUpdates]);
 
   if (!ready || !settings) return error
     ? <main className="loading"><section role="alert"><h1>Could not open your workspace</h1><p>{error}</p>
@@ -3250,7 +3280,17 @@ function App() {
         {paper && <ReadingAppearancePopover key={paper.id} settings={settings} onSettings={updateSettings} disabled={Boolean(pendingImport || modal)} />}
         <button className="icon-button" title="Toggle inspector" aria-label={inspector && !focus ? 'Hide Research Inspector' : 'Show Research Inspector'}
           disabled={Boolean(pendingImport)} onClick={toggleResearchInspector}>{inspector && !focus ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
-      {paper && !pendingImport && <div className="header-tools"><nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item => <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav><div className="toolbar-actions">{busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : <button className="button coral" disabled={!translatableCount || translatedCount === translatableCount} onClick={() => translationSetup ? openTaskSetup(translationSetup) : translateBlocks(paper.blocks.map(block => block.id))}><Languages size={16} /> {translationSetup ? 'Set up translation' : translatedCount ? 'Resume Translation' : 'Translate Paper'}</button>}<button className="button ghost" onClick={() => setModal('more')}>More ···</button></div></div>}
+      {!pendingImport && <div className="header-tools">
+        {paper && <nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item =>
+          <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav>}
+        <div className="toolbar-actions">
+          {busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : paper &&
+            <button className={tab === 'Summary' ? 'button blue' : 'button coral'} disabled={!canPrimaryTask} onClick={runPrimaryTask}>
+              {tab === 'Summary' ? <Sparkles size={16} /> : <Languages size={16} />} {primaryLabel()}
+            </button>}
+          <button className="button ghost" onClick={() => setModal('more')}>More ···</button>
+        </div>
+      </div>}
       </header>
       {(error || updateInfo?.status === 'available' || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
@@ -3380,7 +3420,19 @@ function App() {
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}
-      {modal === 'more' && <div className="menu-list"><button onClick={openTranslationRange}><Languages size={17} /> Translation Range</button><button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf'}><FileText size={17} /> Parse with MinerU</button><button onClick={reextractAsNew} disabled={paper?.type !== 'pdf' || !!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button><button disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}><Download size={17} /> {defaultExportLabel}</button><button disabled={!canExport || !!busy} onClick={() => setModal('export')}><FileText size={17} /> Export Options…</button><button onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button><button onClick={() => openSettings()}><Settings2 size={17} /> Settings</button></div>}
+      {modal === 'more' && <div className="menu-list">
+        <button disabled={!paper} onClick={openTranslationRange}><Languages size={17} /> Translation Range</button>
+        <button onClick={() => setModal('library')}><Library size={17} /> Paper Library</button>
+        <button onClick={reextractAsNew} disabled={!!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button>
+        <button onClick={() => setModal('glossary')}><Languages size={17} /> Saved Terminology</button>
+        <button disabled={!canSummarize || !!busy} onClick={startSummaryFromMenu}><Sparkles size={17} /> Generate Summary</button>
+        <button disabled={!fullHasSource || !!busy} onClick={startFullTranslationFromMenu}><Languages size={17} /> Generate Full Translation</button>
+        <button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf' || !!busy}><FileText size={17} /> Parse with MinerU</button>
+        <button disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}><Download size={17} /> {defaultExportLabel}</button>
+        <button disabled={!canExport || !!busy} onClick={() => setModal('export')}><FileText size={17} /> Export Options…</button>
+        <button disabled={!paper} onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button>
+        <button onClick={() => openSettings()}><Settings2 size={17} /> Settings</button>
+      </div>}
       {modal === 'range' && <div className="menu-list">
         <button disabled={!!busy || !abstractConclusionIds.length} onClick={() => { setModal(''); translateBlocks(abstractConclusionIds); }}>Abstract & Conclusion <small>{abstractConclusionIds.length} blocks</small></button>
         <button disabled={!!busy || !currentSectionIds.length} onClick={() => { setModal(''); translateBlocks(currentSectionIds); }}>Current section: {currentSection?.title || 'Opening material'} <small>{currentSectionIds.length} blocks</small></button>

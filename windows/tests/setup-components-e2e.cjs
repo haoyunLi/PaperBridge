@@ -118,6 +118,7 @@ async function run() {
     const button = name => page.getByRole('button', { name, exact: true });
     await button('Close dialog').click();
     await button('Try a Practice Paper').first().click();
+    await button('Reader').click();
     await button('Set up translation').click();
     const modelsTab = page.getByRole('tab', { name: 'Models', exact: true });
     await modelsTab.waitFor();

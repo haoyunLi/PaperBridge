@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   openUpdateRelease: tag => ipcRenderer.invoke('updates:open-release', tag),
   importPdf: () => ipcRenderer.invoke('pdf:import'),
   importPdfBytes: payload => ipcRenderer.invoke('pdf:import-bytes', payload),
-  copyPdfAsNew: payload => ipcRenderer.invoke('pdf:copy-as-new', payload),
+  copyPdfAsNew: () => ipcRenderer.invoke('pdf:copy-as-new'),
   readPdf: id => ipcRenderer.invoke('pdf:read', id),
   preparePageArchive: payload => ipcRenderer.invoke('pdf:prepare-page-archive', payload),
   archivePdfPage: payload => ipcRenderer.invoke('pdf:archive-page', payload),
