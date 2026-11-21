@@ -3,6 +3,7 @@ import Foundation
 
 // Use the same saved model outputs on both platforms so differences come from
 // the reader or exporter. The source hashes distinguish repeatable, exact inputs.
+@MainActor
 func nativeJournalDraft(fixtures: URL) throws -> [String: Any] {
     func sha(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -19,7 +20,8 @@ func nativeJournalDraft(fixtures: URL) throws -> [String: Any] {
         let value = translations[key]
         if value != nil { matched.insert(key) }
         return ParagraphResult(id: id, original: segment.analysisText ?? segment.source, sourceMarkdown: segment.source,
-                               translation: value ?? "", translationMarkdown: value, status: value == nil ? .pending : .ok)
+                               translation: value.map { AcademicMarkdownProcessor.plainText(from: $0) } ?? "",
+                               translationMarkdown: value, status: value == nil ? .pending : .ok)
     }
     func drafts(_ results: [ParagraphResult]) -> [String: String] {
         ["translated": AcademicMarkdownProcessor.translatedMarkdown(segments: article.segments, results: results),
@@ -36,6 +38,17 @@ func nativeJournalDraft(fixtures: URL) throws -> [String: Any] {
     let temp = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try files.createDirectory(at: temp, withIntermediateDirectories: true)
     defer { try? files.removeItem(at: temp) }
+    // The standalone analysis and the bundle use the same view-model export.
+    // Leave out the asset directory so this invocation returns the FileDocument.
+    let model = PaperReaderViewModel(workspaceStore: WorkspaceStore(rootURL: temp.appendingPathComponent("workspace")))
+    let reading = PaperDocument(name: "Tabbed.pdf", checksum: sha(Data(source.utf8)), cleanedText: source,
+                               paragraphs: article.paragraphs, excludedReferenceParagraphs: article.referenceParagraphs,
+                               referenceSectionTitle: article.referenceHeading, sourceMarkdown: source,
+                               markdownSegments: article.segments)
+    model.applyLoadedPaper(reading)
+    model.paragraphResults = complete
+    model.prepareMarkdownExport()
+    let analysis = model.exportDocument.text
     let result = try MarkdownBundleExporter().export(paperName: "Tabbed.pdf", documents: [
         "paper_original.md": source, "paper_translation_zh-Hans.md": documents["translated"]!,
         "paper_bilingual_en_zh-Hans.md": documents["bilingual"]!, "paper_full_translation_zh-Hans.md": documents["translated"]!
@@ -56,7 +69,7 @@ func nativeJournalDraft(fixtures: URL) throws -> [String: Any] {
                                translation: targets[id - 1], status: .ok)
     }
     return ["matched": matched.count, "unmatched": translations.keys.filter { !matched.contains($0) }.sorted(),
-            "complete": documents, "unfinished": drafts(unfinished), "failedCount": unfinished.filter { $0.status == .failed }.count,
+            "analysis": analysis, "complete": documents, "unfinished": drafts(unfinished), "failedCount": unfinished.filter { $0.status == .failed }.count,
             "exportedFull": exported, "imageHashes": imageHashes, "assets": result.copiedAssetCount,
             "legacyTranslated": AcademicMarkdownProcessor.translatedMarkdown(segments: legacy.segments, results: legacyResults),
             "legacyBilingual": AcademicMarkdownProcessor.bilingualMarkdown(segments: legacy.segments, results: legacyResults,

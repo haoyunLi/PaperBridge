@@ -7,7 +7,7 @@ import { writeBundle } from '../../electron/bundle.cjs';
 import { parsedMarkdownBlocks, withSharedMarkdownTranslation } from '../../src/academicMarkdown.mjs';
 import { annotationsMarkdown } from '../../src/annotationsMarkdown.mjs';
 import { markdownDocuments } from '../../src/exportDocuments.mjs';
-import { parseMarkdown } from '../../src/markdownRendering.mjs';
+import { parseMarkdown, renderedMarkdownText } from '../../src/markdownRendering.mjs';
 
 const directory = fileURLToPath(new URL('./tabbed/', import.meta.url));
 const languages = { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' };
@@ -51,6 +51,37 @@ export function verifyJournalDraft(native, exportDirectory) {
   assert.equal(native.matched, 42);
   assert.deepEqual(native.unmatched, []);
   const paper = checkEditions(blocks, native.complete, source);
+  const completed = blocks.filter(block => block.status === 'ok');
+  const windowsAnalysis = markdownDocuments(paper, undefined, 'analysis')[0].content;
+  // Compare each article heading within its numbered analysis paragraph. The Mac
+  // numbers translatable segments, while Windows IDs also count resource blocks.
+  function paragraphs(text) {
+    return text.split(/\n(?=#{2,3} Paragraph \d+\r?$)/m).slice(1).map(section => {
+      const newline = section.indexOf('\n');
+      return { id: Number(section.slice(0, newline).split(' ').at(-1)), body: section.slice(newline + 1) };
+    });
+  }
+  const nativeParagraphs = paragraphs(native.analysis);
+  const windowsParagraphs = paragraphs(windowsAnalysis);
+  assert.equal(nativeParagraphs.length, completed.length);
+  assert.deepEqual(windowsParagraphs.map(paragraph => paragraph.id), completed.map(block => block.id));
+  let headingPairs = 0;
+  for (const [index, block] of completed.entries()) {
+    if (!block.heading) continue;
+    function headingBodies(section) {
+      const body = section.trim().split(/^#{3,4} (?:Original|Translation)[^\n]*\n/gm).slice(1);
+      assert.equal(body.length, 2);
+      return body.map(markdown => {
+        const nodes = parseMarkdown(markdown.trim()).children;
+        assert.equal(nodes.length, 1);
+        assert.equal(nodes[0].type, 'paragraph', 'Article titles must stay inside analysis paragraphs');
+        return renderedMarkdownText(markdown.trim());
+      });
+    }
+    assert.deepEqual(headingBodies(windowsParagraphs[index].body), headingBodies(nativeParagraphs[index].body));
+    headingPairs++;
+  }
+  assert.equal(headingPairs, 13);
   const unfinished = blocks.map(block => block.sourceMarkdown.startsWith('Automated reading of large')
     ? { ...block, status: 'failed', error: 'Model stopped.' } : block);
   assert.equal(unfinished.filter(block => block.status === 'failed').length, 1);

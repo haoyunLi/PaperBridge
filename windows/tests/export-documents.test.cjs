@@ -24,6 +24,26 @@ test('restore plain-only structured translations without replacing independent d
   assert.equal(restoreStructuredTranslations(failed), failed);
 });
 
+test('heading passages stay within the analysis outline and retain inline links and literal markers', async () => {
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const { parseMarkdown, renderedMarkdownText } = await import('../src/markdownRendering.mjs');
+  const blocks = [
+    { id: 1, sourceMarkdown: '## See [C#](https://example.org/csharp) ##', text: 'See C#',
+      translationMarkdown: '## 见 [C#](https://example.org/csharp)', status: 'ok', translation: '见 C#' },
+    { id: 2, sourceMarkdown: '# # Heading as data', text: '# Heading as data',
+      translationMarkdown: '# 1. 数据', status: 'ok', translation: '1. 数据' }
+  ];
+  const output = markdownDocuments({ name: 'Outline', blocks }, undefined, 'analysis')[0].content;
+  const tree = parseMarkdown(output).children;
+  assert.deepEqual(tree.filter(n => n.type === 'heading' && n.depth === 1).map(n => n.children[0].value), ['Outline']);
+  const links = tree.filter(n => n.type === 'paragraph').flatMap(n => n.children.filter(c => c.type === 'link').map(c => c.url));
+  assert.deepEqual(links, ['https://example.org/csharp', 'https://example.org/csharp']);
+  assert.equal(tree.some(n => n.type === 'list'), false);
+  assert.ok(renderedMarkdownText(output).includes('# Heading as data'));
+  assert.ok(renderedMarkdownText(output).includes('1. 数据'));
+  assert.ok(markdownDocuments({ name: 'Outline', blocks }, undefined, 'original')[0].content.includes(blocks[0].sourceMarkdown));
+});
+
 const modules = Promise.all([
   import('../src/exportDocuments.mjs'), import('../src/connectedTranslation.mjs'),
   import('../src/academicMarkdown.mjs'), import('../src/outputCache.mjs')

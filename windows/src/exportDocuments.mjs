@@ -1,4 +1,5 @@
 import { usesSharedMarkdown, completedBlockTranslation, restoreStructuredTranslations } from './academicMarkdown.mjs';
+import { parseMarkdown } from './markdownRendering.mjs';
 import { analysisAnnotations, annotationsMarkdown } from './annotationsMarkdown.mjs';
 import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, legacySummaryTextNotice } from './paper.mjs';
 import { connectedTranslationMarkdown } from './connectedTranslationExport.mjs';
@@ -54,15 +55,31 @@ function analysisSummary(paper) {
   return sections.join('\n\n');
 }
 
+// The analysis report has its own outline. A paper heading belongs inside
+// its numbered paragraph, and inline links and scientific notation still apply.
+function analysisParagraphBody(block, markdown) {
+  if (!block.sourceMarkdown || !markdown || !/^\s*#{1,6}[ \t]/.test(markdown)) return markdown;
+  const blocks = parseMarkdown(markdown).children;
+  if (blocks.length !== 1 || blocks[0].type !== 'heading') return markdown;
+  const inline = blocks[0].children;
+  if (!inline.length) return '';
+  const body = markdown.slice(inline[0].position.start.offset, inline.at(-1).position.end.offset);
+  if (parseMarkdown(body).children[0]?.type === 'paragraph') return body;
+  // A heading title may itself begin with a list marker or a literal hash.
+  return body.replace(/^\S/u, first => `&#${first.codePointAt(0)};`);
+}
+
 function analysisDocument(paper, references) {
   const eligible = paper.blocks.filter(block => !block.resource && !references.has(block.id));
   const annotations = analysisAnnotations(paper, new Set(eligible.map(block => block.id)));
   const paragraphs = eligible.map(block => {
     const translation = block.status === 'ok' ? block.translationMarkdown || block.translation
       : block.error ? `[Translation failed] ${block.error}` : '[Translation unavailable]';
+    const original = analysisParagraphBody(block, sourceText(block));
+    const target = analysisParagraphBody(block, translation) || '[Translation unavailable]';
     const saved = annotations.paragraphs.get(block.id);
     const language = normalizeOutputLanguage(block.translationLanguage);
-    return `### Paragraph ${block.id}\n\n${block.bookmark ? '> Bookmarked in PaperBridge\n\n' : ''}#### Original${language ? ` ${language.sourceLanguage}` : ''}\n\n${sourceText(block)}\n\n#### ${labeled('Translation', block.status === 'ok' ? language?.targetLanguage : null)}\n\n${translation || '[Translation unavailable]'}${saved ? `\n\n${saved}` : ''}`;
+    return `### Paragraph ${block.id}\n\n${block.bookmark ? '> Bookmarked in PaperBridge\n\n' : ''}#### Original${language ? ` ${language.sourceLanguage}` : ''}\n\n${original}\n\n#### ${labeled('Translation', block.status === 'ok' ? language?.targetLanguage : null)}\n\n${target}${saved ? `\n\n${saved}` : ''}`;
   }).join('\n\n');
   const connectedLanguage = normalizeOutputLanguage(paper.connectedLanguage);
   const draft = paper.connectedTranslation
