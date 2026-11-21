@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.29 公开便携版与开发分支对照（2026-11-21）
+
+从 GitHub 下载的便携版在 RX 7800 XT 上使用 `translategemma:4b` 翻译 Transformer 编码器段落。两次请求分别生成 80 和 66 个 token，实测生成速度为 126.4 和 128.6 tokens/s。模型采用了术语表中的“逐位置全连接前馈网络”。Ollama 报告模型与显存占用均为 2,881,948,220 字节。重启后保存的原文、公式和译文通过校验。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.29) · 本机报告 `test-artifacts/portable-0229-amd-glossary-66b6sG/result.json`。
+
+使用同一论文第 35、42 段的原文生成全文译稿，标注“注意力函数”，再改用术语“注意力映射函数”并重启、重译。模型两次都采用了指定译法。公开 0.2.29 在旧引文完全消失后仍显示普通批注。开发分支使用渲染后的文字检查旧选区，显示需要复核的提示。两次测试均在重启后保留原引文、笔记正文与珊瑚色高亮。报告分别为 `test-artifacts/baseline029-amd-regenerated-notes-yQVjLM/result.json` 和 `test-artifacts/development029-amd-regenerated-notes-9h0Win/result.json`。
+
 ## 0.2.28 公开便携版 · 2026-11-21（美国中部）
 
 RX 7800 XT 使用 `translategemma:4b` 翻译《Attention Is All You Need》的编码器段落。该段包含公式及术语表中的 `positionwise fully connected feed-forward network`，最终保存的译文采用“逐位置全连接前馈网络”。两次模型请求分别生成 80 和 66 个 token，从发出请求到收到结果分别耗时 4.88 秒和 0.67 秒，生成阶段实测 129.2 和 129.6 tokens/s。Ollama 报告模型大小及显存占用均为 2,881,948,220 字节。关掉并重开软件后，译文、原文和引用资源通过校验。这次使用已安装的本地模型，数据限于该论文段落和这台设备。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.28) · 本机报告 `test-artifacts/portable-0228-amd-glossary-ed2grF/result.json`。

@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.29 公开下载、后台更新与阅读定位（2026-11-21）
+
+在仓库首页用 Edge 下载 Setup 和 Portable。两份文件均为未签名的 x64 EXE，SHA-256 与 GitHub 发布资产及对应校验文件相符，都保留了互联网来源标记 `ZoneId=3`。GitHub 的独立 Windows runner 从公开地址下载两份文件，启动便携版及安装后的应用，均进入首次引导。本机便携版跳过引导，在模型服务不可用时导入带中文文件名的两页 PDF，保存笔记和高亮并在重启后恢复。[公开文件与校验值](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.29) · [公开下载和启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44877257309/job/136766249081)
+
+本机实际安装的 0.2.28 提示 0.2.29，按钮给出的安装地址经 Edge 下载校验。隔离目录内升级、重启并卸载后，原论文、笔记及高亮完整。旧便携版以空缓存启动时，横幅和设置均提供便携版更新。0.2.29 支持自选后台下载。为验证第一款支持此功能的安装版，测试临时将其自报版本设为 0.2.28，下载真正发布的 0.2.29 Setup。应用在资源管理器显示文件前重新校验 SHA-256。测试截获了交给资源管理器的路径，校验了文件本身及互联网来源标记。本机报告为 `test-artifacts/i-mwq24cri-88s/report.json`、`test-artifacts/public028-to029-portable-update-bSB07F/result.json` 及 `test-artifacts/browser-download-0.2.29-sGqtmd/result.json`。
+
+在同一篇 65 节的测试文档中，0.2.28 从概览跳到正文时，目标段落第一次布局在视口顶部以下约 936 像素。0.2.29 首次布局为 15 像素，并修复了立即后退和宽度滑杆焦点。在真实两页 PDF 中，跨页的 `GPT-` 和 `4` 合为 `GPT-4` 并保留起止页。在 15 页真实论文上验证全部 266 段及 PDF 哈希，在界面中合并第 22 段，撤销并重启后，全部段落与原 PDF 均恢复。本机报告为 `test-artifacts/public-0.2.29-navigation-PRGgYk/result.json` 和 `test-artifacts/public-0.2.29-real-pdf-WvJ5uy/result.json`。[AMD 本机译文及批注对照](AMD_DEVICE_TEST.md)
+
 ## Windows 0.2.28 公开下载与阅读器验收（2026-11-21）
 
 在本机通过 Edge 点击 GitHub 首页的安装版和便携版，两个文件的 SHA-256 均匹配发布资产和随附校验文件，签名状态均为 `NotSigned`，两个文件都保留了互联网来源标记 `ZoneId=3`。GitHub 的全新 Windows 环境使用这两个公开下载启动便携版和安装版，均打开首次引导。自动化直接启动 EXE，实际用户在自己设备上处理系统安全确认。[发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44874706096) · [版本及校验文件](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.28)
