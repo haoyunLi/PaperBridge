@@ -14,7 +14,8 @@ export function persistedReadingPosition(location, previous = {}) {
   // Selection belongs to the paper, never to a saved viewport or search origin.
   const { selectedParagraphID: discardedSelection, ...viewport } = previous || {};
   const position = { ...viewport, block: location.block, page: location.page, tab: location.tab,
-    displayMode: location.displayMode, scrollByTab: { ...location.scrollByTab } };
+    displayMode: location.displayMode, scrollByTab: { ...location.scrollByTab },
+    ...(location.tab === 'Paper' && { paperAnchor: location.paperAnchor ?? null }) };
   if (origin !== null) {
     position.scrollByTab.Reader = typeof origin === 'number' ? origin : origin.scrollTop;
     position.readerSearchOrigin = origin;
@@ -43,6 +44,7 @@ export function normalizeReadingLocation(value = {}) {
     page: Number.isInteger(value.page) && value.page > 0 ? value.page : 1,
     search,
     ...(searchOrigin !== null && { searchOrigin }),
+    ...(value.tab === 'Paper' && value.paperAnchor && { paperAnchor: value.paperAnchor }),
     scrollByTab
   };
 }

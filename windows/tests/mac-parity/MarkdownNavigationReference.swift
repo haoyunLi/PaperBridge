@@ -10,7 +10,10 @@ func nativeMarkdownNavigation(fixtures: URL) throws -> [[String: String]] {
     defer { try? FileManager.default.removeItem(at: root) }
     let document = root.appendingPathComponent("preview.html")
     try MarkdownPreviewHTMLRenderer.render(markdown: input, title: "Workshop notes").write(to: document, atomically: true, encoding: .utf8)
-    let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 250))
+    let configuration = WKWebViewConfiguration()
+    configuration.userContentController.addUserScript(WKUserScript(source: MarkdownPreviewView.Coordinator.selectionBridgeScript,
+        injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 250), configuration: configuration)
     let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentView = view
     let coordinator = MarkdownPreviewView.Coordinator()
@@ -32,6 +35,18 @@ func nativeMarkdownNavigation(fixtures: URL) throws -> [[String: String]] {
             if (!target || target.id !== decodeURIComponent(link.hash.slice(1)) || window.scrollY <= 0) throw Error('Heading jump failed');
             jumps.push({ label: link.textContent, id: target.id, heading: target.textContent });
         }
+        const heading = document.getElementById(jumps[0].id);
+        heading.scrollIntoView();
+        const before = window.paperBridge.snapshot();
+        document.querySelector('article').style.width = '230px';
+        document.body.style.fontSize = '25px';
+        window.scrollTo(0, 0);
+        window.paperBridge.restore(before);
+        const after = window.paperBridge.snapshot();
+        if (before.blockText !== heading.textContent || after.blockIndex !== before.blockIndex ||
+            after.blockText !== before.blockText || Math.abs(after.offset - before.offset) > 3 || Math.abs(after.y - before.y) < 10)
+            throw Error('The Mac preview did not restore the same passage after reflow');
+        jumps[0].restoredAfterReflow = after.blockText;
         return jumps;
         """
     var result: Result<Any, Error>?

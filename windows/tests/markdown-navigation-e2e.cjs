@@ -30,6 +30,11 @@ async function run() {
   const open = () => electron.launch({ cwd: root, ...(executablePath && { executablePath }),
     args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(dir, 'profile')],
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: dir } });
+  async function closeWindow(instance) {
+    const closed = instance.waitForEvent('close', { timeout: 15000 });
+    await instance.evaluate(({ BrowserWindow }) => { setImmediate(() => BrowserWindow.getAllWindows()[0].close()); });
+    await closed;
+  }
   let app = await open();
   try {
     let page = await app.firstWindow();
@@ -53,9 +58,7 @@ async function run() {
     }
     const finalScroll = await scroll();
     assert.ok(finalScroll > 100);
-    const closed = app.waitForEvent('close', { timeout: 15000 });
-    await app.evaluate(({ BrowserWindow }) => { setImmediate(() => BrowserWindow.getAllWindows()[0].close()); });
-    await closed;
+    await closeWindow(app);
     app = null;
     const stored = JSON.parse(fs.readFileSync(path.join(dir, 'papers', id + '.json'), 'utf8'));
     assert.ok(Math.abs((stored.position.scrollByTab?.Paper ?? -1) - finalScroll) < 3, 'Closing immediately after the link must save its destination');
@@ -63,7 +66,25 @@ async function run() {
     await page.locator('.document-preview').waitFor();
     await page.waitForFunction(() => document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false');
     await page.waitForFunction(value => Math.abs(document.querySelector('.main-scroll').scrollTop - value) < 4, finalScroll, { timeout: 10000 });
-    console.log(JSON.stringify({ jumps: cases.length * 2, scrollRestored: true, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    if (process.argv.includes('--reflow')) {
+      const heading = process.env.PAPERBRIDGE_MAC_REFERENCE ? cases[0].restoredAfterReflow : 'Results';
+      assert.ok(heading, 'Expected the reflow result from the native Mac preview');
+      const target = () => page.locator('.document-preview [data-paper-kind="translation"]').getByRole('heading', { name: heading, exact: true }).last();
+      const offset = () => target().evaluate(node => node.getBoundingClientRect().top - document.querySelector('.main-scroll').getBoundingClientRect().top);
+      await target().evaluate(node => node.scrollIntoView({ block: 'start', behavior: 'instant' }));
+      const beforeOffset = await offset(), beforeY = await scroll();
+      assert.ok(Math.abs(beforeOffset) < 3);
+      await closeWindow(app); app = null;
+      const settingsFile = path.join(dir, 'settings.json');
+      const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+      fs.writeFileSync(settingsFile, JSON.stringify({ ...settings, fontSize: 27, readingWidth: 560 }));
+      app = await open(); page = await app.firstWindow();
+      await target().waitFor();
+      await page.waitForFunction(() => document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false');
+      assert.ok(Math.abs(await offset() - beforeOffset) < 3, 'The same translated heading must return to its previous place in the viewport');
+      assert.ok(Math.abs(await scroll() - beforeY) > 10, 'The new text geometry must require a different scroll position');
+    }
+    console.log(JSON.stringify({ jumps: cases.length * 2, scrollRestored: true, reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

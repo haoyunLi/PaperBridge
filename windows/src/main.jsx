@@ -2,6 +2,7 @@ import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { documentLinkTarget } from './markdownLinks.mjs';
+import { capturePaperAnchor, restorePaperAnchor } from './paperScroll.mjs';
 import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
@@ -887,7 +888,7 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
         : displayMode === 'bilingual' && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>)}
     </section>;
   }), [blocks, displayMode, referenceIDs, structured]);
-  return <article ref={host} data-view-scope="paperArticle" className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"
+  return <article ref={host} data-view-scope="paperArticle" data-source-mode={sourceMode} data-display-mode={displayMode} className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"
     onMouseUp={event => onSelect(event.currentTarget, 'paper')}>
     {passages}
   </article>;
@@ -1263,7 +1264,8 @@ function App() {
     }
     return { paperId: current.id, sourceMode: paperArticleSource(current).mode, tab, displayMode, block,
       selectedParagraphID: resolveSelectedParagraphID(current),
-      page: pageNumber, search, searchOrigin: searchOrigin.current, scrollByTab };
+      page: pageNumber, search, searchOrigin: searchOrigin.current, scrollByTab,
+      ...(tab === 'Paper' && { paperAnchor: capturePaperAnchor(mainScrollRef.current) }) };
   }
   function recordReadingJump(isAlreadyAtDestination = () => false) {
     const location = currentReadingLocation();
@@ -1335,7 +1337,8 @@ function App() {
             current.position?.tab !== location.tab || current.position?.displayMode !== location.displayMode) return;
         const key = scrollKey(location.tab, location.page);
         const saved = location.scrollByTab?.[key];
-        if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
+        const host = mainScrollRef.current;
+        if (host && !(location.tab === 'Paper' && restorePaperAnchor(host, location.paperAnchor, saved))) host.scrollTop = Number(saved || 0);
         if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
       } finally { finishReadingRestore(owner); }
     });
@@ -1605,7 +1608,7 @@ function App() {
           restoreReaderSearchOrigin(origin);
           persistRestoredReaderPosition();
         } else {
-          if (mainScrollRef.current) mainScrollRef.current.scrollTop = Number(saved || 0);
+          if (host && !(tab === 'Paper' && restorePaperAnchor(host, paperRef.current.position?.paperAnchor, saved))) host.scrollTop = Number(saved || 0);
           if (saved == null && tab === 'Reader') document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
         }
       } finally { finishReadingRestore(owner); }
@@ -1627,7 +1630,9 @@ function App() {
       const top = host?.getBoundingClientRect().top || 0;
       const visible = tab === 'Reader' && !search ? [...host.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12) : null;
       const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
-      commitPaper(current => ({ ...current, position: { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } } }));
+      const paperAnchor = tab === 'Paper' ? capturePaperAnchor(host) : undefined;
+      commitPaper(current => ({ ...current, position: { ...current.position, block, ...(tab === 'Paper' && { paperAnchor }),
+        scrollByTab: { ...current.position?.scrollByTab, [key]: offset } } }));
     }, 350);
   };
   function persistRestoredReaderPosition() {
@@ -1998,7 +2003,8 @@ function App() {
       const location = currentReadingLocation();
       const position = persistedReadingPosition(location, paperRef.current.position);
       const previous = paperRef.current.position || {};
-      if (Object.entries(position.scrollByTab).some(([key, value]) => value !== (previous.scrollByTab?.[key] ?? 0))) {
+      const anchorChanged = tab === 'Paper' && JSON.stringify(position.paperAnchor ?? null) !== JSON.stringify(previous.paperAnchor ?? null);
+      if (anchorChanged || Object.entries(position.scrollByTab).some(([key, value]) => value !== (previous.scrollByTab?.[key] ?? 0))) {
         commitPaper(current => ({ ...current, position }), { deferUndo: true });
       }
     }
