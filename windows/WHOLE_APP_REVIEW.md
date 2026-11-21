@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 0.2.45–0.2.46 更新提示与跨页列表（2026-11-21）
+
+0.2.44 遇到 GitHub Releases API 返回 403 时，安装版和便携版都查不到新版。0.2.45 开始读取项目自己的公开更新清单。发布流程从 GitHub 下载两份发布文件，在干净的 Windows 环境中打开并离线导入论文，再公布版本、文件大小和 SHA-256。清单临时不可用时，应用仍可查询 Releases API。[公开更新清单](https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json) · [0.2.45 发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44904918071/job/136850362000)
+
+让真实的 0.2.45 程序查询公开的 0.2.46 清单，同时将测试中的 Releases API 固定为返回 403。两种发行模式均识别到新版，实际下载对应的 EXE，SHA-256 与 GitHub 发布资产一致，并保留互联网来源标记。两次测试对该 API 的访问次数均为零。从 0.2.45 Setup 覆盖安装到 0.2.46 后，保存的论文、笔记、高亮和阅读外观均恢复，卸载也保留了论文数据。另用 Edge 在仓库首页下载两份 EXE，便携版离线打开期刊、搜索带重音的姓名，保存笔记并重启后定位到同一个词。[0.2.46 公开文件的 Windows 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44905984874/job/136853469118) · [更新清单发布记录](https://github.com/haoyunLi/PaperBridge/actions/runs/44905984874/job/136853961152)
+
+在同一份两页 *emcee v3* 期刊 PDF 上，0.2.45 把第 2 页两项列表与接下来的正文放进了同一个翻译块。0.2.46 新导入时，第 1–2 页的三项列表归在同一段，随后以 “emcee has been widely used” 开头的正文可以单独翻译。732 字符的列表和 323 字符的正文逐字匹配 macOS PDFKit。对旧版已保存的论文保留其分段和标注。若希望在同一份 PDF 上使用新的分段，可以在 More 中重新提取为独立副本。RX 7800 XT 上的公开便携版用两次请求翻译列表、一次请求翻译下一段。双语摘要中的六条引文均能跳回并选中原句。两种窗口、五档缩放下，长标题都有两行空间。[AMD 实测](AMD_DEVICE_TEST.md) ·[macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44905984874/job/136851542921) · [论文原文](https://doi.org/10.21105/joss.01864)
+
 ## 0.2.44 资料库搜索、清除数据和公开启动（2026-11-21）
 
 在公开 0.2.43 上，侧栏搜索会过滤新开的论文库，关闭库时又会把库内的搜索词带回侧栏。0.2.44 用同四个旧工作区复测，侧栏筛选、重新打开库、编辑标签并返回三个动作均保留对应的搜索状态。
