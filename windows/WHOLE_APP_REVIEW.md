@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.69 解析后端、一键安装和公开升级（2026-11-21）
+
+在同一台 RX 7800 XT 上切换 MinerU 后端，自动模式选中独显 DirectML，兼容模式显示 CPU。两种模式都从同一张扫描页读出五段，完成选段翻译和全文翻译。已就绪的环境可复用，一键安装会保留选定后端。NVIDIA 的 CUDA 路径仍待真机验证。
+
+通过 Edge 从 GitHub 首页下载了两个未签名的 EXE，SHA-256 与 Release 一致。便携版验证了离线首次使用与重开，已安装的 0.2.68 显示新版提示，升级到 0.2.69 后论文、高亮、笔记及阅读外观均保留。[公开 Windows 下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44948698940/job/136984147210)
+
 ## 0.2.68 长篇 PDF 的读栏与双语导出（2026-11-21）
 
 使用 Wilson 等人的开放获取论文 *Good enough practices in scientific computing*。公开 0.2.67 新导入时把左栏的编辑、出版日期插进了右栏 Overview。0.2.68 的 Overview 正文与 PDFKit 读出的全文逐字一致，Introduction 独立起段。六位作者的单位编号及贡献符号也跟随姓名。原有译稿仍按保存时的段落和笔记位置打开。其他版式的段落边界仍可能不同。[论文原文](https://doi.org/10.1371/journal.pcbi.1005510)
