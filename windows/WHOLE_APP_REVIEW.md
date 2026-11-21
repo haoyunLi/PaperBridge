@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.34 首次设置时继续阅读（2026-11-21）
+
+macOS 引导在工具或模型下载期间提供 **Continue in Background**。以相同的本地模型服务模拟慢速下载，GitHub 上的 0.2.33 在完成或取消前锁住引导，0.2.34 能立即回到阅读器。公开便携版下载过程中打开了练习论文，随后从设置取消下载，重试成功后在同一篇论文选中模型，重启恢复。模型下载使用受控本机服务。另在 RX 7800 XT 上使用真实 Ollama 推理，复核了 PDF 脚注、目录和重启后的全文译稿。[macOS 引导](https://github.com/haoyunLi/PaperBridge/blob/16e01ac/PaperBridge/Views/OnboardingView.swift#L501-L504) · [AMD 设备报告](AMD_DEVICE_TEST.md)
+
+可选 MinerU 和解释模型步骤按 **Continue** 单独跳过，结束整个引导的 **Skip setup** 出现在前三步。在 980×620 窗口以 150% Electron 页面缩放检查了六步的前进与返回，且高级设置入口仍可操作。桌面测试还覆盖后台取消 MinerU 修复、修复完成时保留后来手选的解析器路径，以及有任务进行时的关闭、键盘焦点和重复点击。发布便携版前后对照记录在 `test-artifacts/guide-public-0.2.33-sOXHtx` 与 `test-artifacts/guide-public-0.2.34-9GBsIg`。
+
+Edge 从 GitHub 首页下载两个 EXE，均带互联网来源标记并匹配发布资产的 SHA-256。全新 Windows runner 从公开链接重新下载，分别启动便携版和安装后的程序。本机测试覆盖了跳过 AI 配置后阅读有中文文件名的 PDF、保存笔记并重启。0.2.33 安装版与便携版均自动发现 0.2.34，便携版下载了校验一致的新便携包，安装版覆盖升级后保留原有论文、注释和外观。记录在 `test-artifacts/browser-download-0.2.34-kFpbNQ`、`test-artifacts/public034-reader-without-models-aXFed3`、`test-artifacts/public033-to034-portable-update-KBNIFT` 和 `test-artifacts/i-mwq74t8l-kkk/report.json`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.34) · [公开下载与首次启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44888165575/job/136799861908)
+
 ## Windows 0.2.33 公开下载及安装升级（2026-11-21）
 
 Edge 从 GitHub 首页下载 x64 安装版和便携版。两个 EXE 均带互联网来源标记，SHA-256 与发布文件一致。全新 Windows runner 从公开链接下载两个包，便携版和安装后的程序均能打开首次引导。本机在模型服务离线时跳过配置，导入中文文件名的两页 PDF 并保存标注，重启后原文、高亮和笔记均恢复。记录在 `test-artifacts/browser-download-0.2.33-AN4ggw` 和 `test-artifacts/public033-reader-without-models-wuWVQv`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.33) · [公开下载后的首次启动](https://github.com/haoyunLi/PaperBridge/actions/runs/44886630347/job/136795001952)

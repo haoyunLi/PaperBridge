@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 0.2.34 公开便携版（2026-11-21）
+
+RX 7800 XT 用本机 Ollama 和 TranslateGemma 4B 翻译 ResNet 小节标题及脚注。标题译为“3.3. 网络架构”，脚注译文保留编号 `2` 与文献引用 `[28]`。另用双栏样张生成两批全文译稿，末条编号 `1` 与译稿在重启后保留。Ollama 报告显存占用 2,881,948,220 字节。记录在 `test-artifacts/public034-pdf-amd-E1swXP/result.json`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.34)
+
 ## 0.2.33 公开便携版的双栏脚注与小节标题（2026-11-21）
 
 RX 7800 XT 用从 GitHub 下载的 0.2.33 便携版再次翻译 ResNet 第 3 页。脚注译为“2 然而，这一假设仍然是一个未解决的问题。参见 [28]。”，小节译为“3.3. 网络架构”。双栏样张的全文译稿分两批完成，末条附注保留编号 `1`，重启后能重新打开译稿。本机报告 `test-artifacts/public033-pdf-amd-hFM0Yk/result.json`。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.33)
