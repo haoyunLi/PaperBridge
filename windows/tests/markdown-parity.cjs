@@ -73,7 +73,9 @@ async function run() {
     translation: index === 1 ? translated.replace('$N = 6$', '[Formula]') : '',
     translationMarkdown: index === 1 ? translated : null,
     error: index === 5 ? 'Local model stopped.' : '', highlights: [], translationHighlights: [],
-    notes: index === 5 ? [{ id: 'stale-note', text: 'Missing citation', offset: 0, kind: 'source', body: 'Retain this stale note.' }] : []
+    notes: index === 2 ? [{ id: 'old-table-note', text: 'Attention42', body: 'Old two-cell selection', scope: 'paper', kind: 'source',
+      offset: null, displayOffset: 11, renderedAnchor: { offset: 11, before: 'MethodScore', after: '' } }]
+      : index === 5 ? [{ id: 'stale-note', text: 'Missing citation', offset: 0, kind: 'source', body: 'Retain this stale note.' }] : []
   }));
   fs.writeFileSync(path.join(workspace, 'papers', `${id}.json`), JSON.stringify({
     id, name: 'Markdown parity fixture', type: 'text', blocks,
@@ -341,6 +343,9 @@ async function run() {
     }, id);
     await page.reload();
     await draft.getByText(/已恢复的段落译文/).first().waitFor();
+    await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Old two-cell selection' }).locator('button').first().click();
+    await page.waitForFunction(id => window.paperBridge.loadPaper(id).then(paper =>
+      paper.blocks[2].notes.find(note => note.id === 'old-table-note')?.quote === 'Attention\t42'), id);
     await page.locator('.saved-annotations .annotation-row').filter({ hasText: 'Methods comparison across cells' }).locator('button').first().click();
     await page.waitForFunction(quote => window.getSelection()?.toString() === quote && document.querySelector('.inspector blockquote')?.textContent === quote, tableQuote);
     for (const note of ['Paper formula selection', 'Reader formula selection', 'Formula in summarySource', 'Formula in summaryTarget', 'Full translation formula selection']) {

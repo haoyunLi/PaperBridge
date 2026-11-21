@@ -18,7 +18,7 @@ import { createUndoEntry, applyUndoEntry, recordUndoEntry, remainingUndoEntries,
 import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
 import { normalizeOutputLanguage, commonOutputLanguage, migrateOutputLanguages } from './outputLanguages.mjs';
 import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
-import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords, markSavedAnnotationRecordsForReview } from './savedAnnotations.mjs';
+import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords, markSavedAnnotationRecordsForReview, restoreSavedAnnotationQuote } from './savedAnnotations.mjs';
 import { annotationCreationTime } from './annotationCreationTime.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
@@ -1881,12 +1881,13 @@ function App() {
         range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
       }
     });
+    const quote = restoreTableQuote(range, text, viewNavigation.records);
     const captured = { text, offset, context: rendered };
     const position = article ? {
       ...selectionOffsets(captured, null, paperArticleSource(paper)), displayMode: viewNavigation.displayMode, sourceMode: viewNavigation.sourceMode
     } : textSelectionOffsets(captured, source, source);
     applyReadingSelection({ id: null, kind: article ? viewNavigation.kind || 'source' : scope === 'summarySource' ? 'source' : 'translation',
-      text, scope, quote: tableSelectionQuote(range, text), ...position, rect: null, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
+      text, scope, quote, ...position, rect: null, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
     setInspector(true); setViewNavigation(null);
   }, [viewNavigation?.requestId, tab, displayMode, paper?.id]);
   const command = name => {
@@ -2002,8 +2003,9 @@ function App() {
         const top = root.closest('.block')?.getBoundingClientRect().top ?? quote.top;
         host.scrollTop += Math.max(top, quote.top - Math.max(0, (host.clientHeight - quote.height) / 2)) - viewport.top;
       } else range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
+      const quote = restoreTableQuote(range, request.text, request.records);
       const captured = { text: request.text, offset: at, context: rendered };
-      applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, quote: tableSelectionQuote(range, request.text), ...textSelectionOffsets(captured, source, markdown),
+      applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, quote, ...textSelectionOffsets(captured, source, markdown),
         scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
       if (request.recordType !== 'evidence') setInspector(true);
       setBlockNavigation(null);
@@ -2996,6 +2998,13 @@ function App() {
     searchOrigin.current = null; setSearch(''); setDisplayMode(mode); setTab('Reader');
     commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
       position: { ...current.position, tab: 'Reader', block: id, displayMode: mode, readerSearchOrigin: undefined } }));
+  }
+  function restoreTableQuote(range, text, records) {
+    const quote = tableSelectionQuote(range, text);
+    if (quote && records?.some(ref => !ref.item.quote && !ref.item.needsReview)) {
+      commitPaper(current => restoreSavedAnnotationQuote(current, records, quote));
+    }
+    return quote;
   }
   function navigateBlockAnnotation(blockId, item, kind, recordType, records) {
     const block = paperRef.current?.blocks.find(entry => entry.id === blockId);

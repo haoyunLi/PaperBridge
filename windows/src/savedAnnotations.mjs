@@ -105,6 +105,11 @@ export function removeSavedAnnotationRecords(paper, refs) {
   return changeSavedAnnotationRecords(paper, refs, (items, selected) => items.filter(item => !selected.has(item)));
 }
 
+export function restoreSavedAnnotationQuote(paper, refs, quote) {
+  return changeSavedAnnotationRecords(paper, refs?.filter(ref => ref.item && !ref.item.needsReview && !ref.item.quote),
+    (items, selected) => items.map(item => selected.has(item) ? { ...item, quote } : item));
+}
+
 export function markSavedAnnotationRecordsForReview(paper, refs) {
   return changeSavedAnnotationRecords(paper, refs?.filter(ref => ref.item && !ref.item.needsReview),
     (items, selected) => items.map(item => selected.has(item) ? { ...item, needsReview: true } : item));
