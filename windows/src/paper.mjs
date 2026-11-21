@@ -1,7 +1,7 @@
 import { sourceExcerpts, isHeading, joinPdfText } from './text.mjs';
 import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
-import { analysisSourceText, markdownBlockKind } from './academicMarkdown.mjs';
+import { analysisSourceText, markdownBlockKind, savedResourceLayoutIssue } from './academicMarkdown.mjs';
 
 import { characterPrefix } from '../electron/library-metadata.mjs';
 
@@ -26,7 +26,10 @@ export function translationRangeIds(blocks, requestedIds = null, excluded = refe
 export function qualityIssues(blocks, excluded = new Set()) {
   return blocks.flatMap(block => {
     const value = String(block.text || '').trim();
-    if (!value || block.heading || block.resource || excluded.has(block.id)) return [];
+    if (block.heading || excluded.has(block.id)) return [];
+    const layoutIssue = savedResourceLayoutIssue(block);
+    if (layoutIssue) return [{ id: block.id, reason: layoutIssue, excerpt: Array.from(value).slice(-160).join(''), reextract: true }];
+    if (!value || block.resource) return [];
     const markdownKind = markdownBlockKind(block);
     if (markdownKind && markdownKind !== 'paragraph') return [];
     let reason = '';

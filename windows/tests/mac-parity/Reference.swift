@@ -79,6 +79,7 @@ private struct Fixtures: Decodable {
     }
     let markdown: [String]
     let scientificNotation: [String]
+    let resourceBoundaries: [String]
     let merges: [Merge]
     let reflows: [Reflow]
     let pageBoundaries: [Merge]
@@ -223,8 +224,13 @@ struct Reference {
         }
         let bundle = try nativeBundleReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
         let library = try nativeLibraryReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
+        let resourceBoundaries = fixtures.resourceBoundaries.map { source in
+            AcademicMarkdownProcessor.parse(source).filter { $0.kind != .separator }.map { segment in
+                ["kind": segment.kind.rawValue, "source": segment.source]
+            }
+        }
         let output: [String: Any] = ["library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
-                                    "scientificNotation": fixtures.scientificNotation.compactMap { AcademicMarkdownProcessor.parse($0).first?.analysisText },
+                                    "resourceBoundaries": resourceBoundaries, "scientificNotation": fixtures.scientificNotation.compactMap { AcademicMarkdownProcessor.parse($0).first?.analysisText },
                                     "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])

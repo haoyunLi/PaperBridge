@@ -203,6 +203,12 @@ for (const { limit, chunks } of published.paragraphChunks) {
 assert.deepEqual(connectedSources(published.paragraphs), published.batches, 'All full-translation batches for the same native-extracted journal article');
 console.log(`Verified ${fixtures.connectedBatches.length} full-translation cases and all ${published.batches.length} batches of the ${published.paragraphs.length}-paragraph emcee paper against macOS.`);
 
+for (const [index, source] of fixtures.resourceBoundaries.entries()) {
+  const blocks = parsedMarkdownBlocks(source);
+  assert.deepEqual(blocks.map(block => ({
+    kind: ({ html: 'rawHTML', list: 'listItem' })[block.markdownKind] ?? block.markdownKind, source: block.sourceMarkdown
+  })), reference.resourceBoundaries[index], 'MinerU resource boundaries and following text, fixture ' + index);
+}
 const notationBlocks = parsedMarkdownBlocks(fixtures.scientificNotation.join('\n\n'));
 assert.deepEqual(summarySourceBlocks(notationBlocks).map(block => block.text), reference.scientificNotation,
   'Scientific identifiers in newly imported MinerU paragraphs match native Mac summary sources');

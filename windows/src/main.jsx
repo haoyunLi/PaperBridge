@@ -778,14 +778,17 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect,
   </div>;
 }
 
-function ReaderQualityWarning({ issue, structured, busy, onEdit, onCompare }) {
+function ReaderQualityWarning({ issue, structured, busy, onEdit, onCompare, onReextract }) {
   return <div className="quality-warning" onClick={event => event.stopPropagation()}>
     <p><AlertCircle size={15} aria-hidden="true" />{issue.reason}</p>
     <div className="row">
-      <button className="button outline" disabled={structured || !!busy} onClick={onEdit}>Edit or Split</button>
+      {issue.reextract
+        ? <button className="button outline" disabled={!!busy} onClick={onReextract}>Re-extract PDF as New Copy</button>
+        : <button className="button outline" disabled={structured || !!busy} onClick={onEdit}>Edit or Split</button>}
       <button className="button outline" onClick={onCompare}>Compare Original</button>
     </div>
-    {structured && <p>MinerU controls these blocks. Review the original or edit an exported Markdown copy to keep the linked assets together.</p>}
+    {issue.reextract && <p>Your annotations and translations stay with this copy.</p>}
+    {structured && !issue.reextract && <p>MinerU controls these blocks. Review the original or edit an exported Markdown copy to keep the linked assets together.</p>}
   </div>;
 }
 
@@ -3514,7 +3517,7 @@ function App() {
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
                 : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && block.id !== authorByline?.id ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
           return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
-          {issue && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
+          {issue && <ReaderQualityWarning issue={issue} onReextract={reextractAsNew} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}
         {paper && tab === 'Original' && <PdfView

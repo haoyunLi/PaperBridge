@@ -52,6 +52,42 @@ test('scientific literals survive Markdown analysis, search, citation validation
   assert.deepEqual(operators.map(block => block.text), ['Pass **kwargs through.', 'Evaluate x**2 for A*.']);
 });
 
+test('resource boundaries keep table cells and code out of model requests while preserving the prose that follows', async () => {
+  const { parsedMarkdownBlocks } = await markdown;
+  const { summarySourceBlocks, translationRangeIds } = await paper;
+  const fixtures = require('./mac-parity/fixtures.json').resourceBoundaries;
+  const expected = [
+    ['list', 'list', 'paragraph'], ['paragraph', 'table', 'paragraph'], ['paragraph', 'table', 'paragraph'],
+    ['html', 'paragraph'], ['html', 'paragraph'], ['code', 'paragraph']
+  ];
+  for (const [i, source] of fixtures.entries()) {
+    const blocks = parsedMarkdownBlocks(source);
+    assert.deepEqual(blocks.map(block => block.markdownKind), expected[i]);
+    const paragraphs = blocks.filter(block => !block.resource);
+    assert.deepEqual(translationRangeIds(blocks), paragraphs.map(block => block.id));
+    assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), paragraphs.map(block => block.text));
+    assert.equal(paragraphs.at(-1).text, source.split('\n').at(-1));
+  }
+  for (const row of ['--- | not a divider', '--- | --- | ---']) {
+    assert.equal(parsedMarkdownBlocks(['| A | B |', row, 'plain text'].join('\n')).some(block => block.resource), false);
+  }
+  assert.equal(parsedMarkdownBlocks('| One |\n| --- |\n| 12 |')[0].resource, true);
+});
+
+test('older table layouts offer recovery without changing the saved blocks or translations', async () => {
+  const { parsedMarkdownBlocks } = await markdown;
+  const { qualityIssues } = await paper;
+  const [table, mixed] = require('./mac-parity/fixtures.json').resourceBoundaries.slice(1, 3);
+  const old = [
+    { id: 16, sourceMarkdown: table, text: 'Original saved text', status: 'ok', translation: '保存的译文' },
+    { id: 19, resource: true, markdownKind: 'table', sourceMarkdown: mixed.slice(mixed.indexOf('<TABLE>')), text: '12.5 28 The difference remained significant.', bookmark: true }
+  ];
+  const snapshot = structuredClone(old);
+  assert.deepEqual(qualityIssues(old).filter(issue => issue.reextract).map(issue => issue.id), [16, 19]);
+  assert.deepEqual(old, snapshot);
+  for (const input of [table, mixed]) assert.equal(qualityIssues(parsedMarkdownBlocks(input)).some(issue => issue.reextract), false);
+});
+
 const prose = 'The analysis describes the input data, filtering decisions, measurement assumptions and uncertainty bounds for the proposed comparison';
 
 test('new Markdown blocks retain their parser kind without changing source, IDs or translation participation', async () => {

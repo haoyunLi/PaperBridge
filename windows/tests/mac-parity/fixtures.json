@@ -371,6 +371,14 @@
       ]
     }
   ],
+  "resourceBoundaries": [
+    "- Validate the chart data\n  against the original PDF.\n- Render all panels.\nThe reviewer confirmed both comparisons.",
+    "The settings are listed below.\nModel | Input field | Limit\n:--- | :---: | ---:\nmodel_A | read_csv | 12\nmodelB | input_y | 28\n\nCalibration continued after the table.",
+    "Results before the table.\n<TABLE>\n<tr><td>12.5</td><td>28</td></tr>\n</table>\n\nThe difference remained significant.",
+    "<figure></FIGURE>\n\nThe image was acquired twice.",
+    "<DETAILS>\n<summary>Reader configuration</summary>\n<p>Details here.</p>\n</details>\n\nBoth readers identified the same record.",
+    "~~~text\nThis example mentions ~~~ in the middle of a line.\naccuracy = 0.86\n~~~\nThe values were averaged."
+  ],
   "scientificNotation": [
     "The calibration uses `model_A` for archive data and `modelA` for new observations. The C# library fits `sigma_x` for each series.",
     "We compare A* search with the p_value criterion using **paired estimates**.",

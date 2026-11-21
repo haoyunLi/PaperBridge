@@ -119,18 +119,19 @@ function segmentKind(lines, index) {
   if (/^<(?:table|figure|details|div|p|pre)\b/i.test(value)) return value.toLowerCase().startsWith('<table') ? 'table' : 'html';
   if (/^!\[[^\]]*\]\([^\n]+\)\s*$/.test(value) || /^<img(?=[\s/>])/i.test(value) && !value.replace(htmlImage, '').trim()) return 'image';
   if (/^#{1,6}\s+/.test(value)) return 'heading';
-  if (/^\|.+\|\s*$/.test(value) && /^\|?\s*[:\- ]+\|/.test(lines[index + 1]?.trim() || '')) return 'table';
+  if (value.includes('|')) {
+    const delimiter = lines[index + 1]?.trim();
+    if (delimiter && /^[:|\s-]+$/.test(delimiter)
+      && parseMarkdown(value + '\n' + delimiter).children[0]?.type === 'table') return 'table';
+  }
   if (/^(?:[-+*]|\d+[.)])\s+/.test(value)) return 'list';
   if (/^>\s?/.test(value)) return 'quote';
   return null;
 }
 
-function closingLine(lines, start, token) {
-  let index = start + 1;
-  if (lines[start].trim().slice(token.length).includes(token)) return index;
+function afterClosingLine(lines, index, closes) {
   while (index < lines.length) {
-    if (lines[index].includes(token)) return index + 1;
-    index++;
+    if (closes(lines[index++])) break;
   }
   return index;
 }
@@ -144,17 +145,23 @@ function parsedMarkdownSegments(markdown) {
     const start = index;
     const trimmed = lines[index].trim();
     if (kind === 'code') {
-      index = closingLine(lines, index, trimmed.slice(0, 3));
+      const fence = trimmed.match(/^(`{3,}|~{3,})/)[0];
+      const endFence = new RegExp('^' + fence[0] + '{' + fence.length + ',}$');
+      index = afterClosingLine(lines, index + 1, line => endFence.test(line.trim()));
     } else if (kind === 'formula') {
-      index = closingLine(lines, index, trimmed.startsWith('$$') ? '$$' : '\\]');
-    } else if (kind === 'table' && trimmed.startsWith('<table')) {
-      index = closingLine(lines, index, '</table>');
-    } else if (kind === 'html') {
-      const tag = trimmed.match(/^<([a-z]+)/i)?.[1];
-      index = tag ? closingLine(lines, index, `</${tag}>`) : index + 1;
+      const endFormula = trimmed.startsWith('$$') ? '$$' : '\\]';
+      index = trimmed.slice(2).includes(endFormula) ? index + 1
+        : afterClosingLine(lines, index + 1, line => line.includes(endFormula));
+    } else if (kind === 'html' || (kind === 'table' && /^<table\b/i.test(trimmed))) {
+      const tag = trimmed.match(/^<([a-z]+)/i)[1];
+      const endTag = new RegExp('</' + tag + '\\s*>', 'i');
+      index = afterClosingLine(lines, index, line => endTag.test(line));
     } else if (kind === 'table') {
       index += 2;
       while (index < lines.length && lines[index].trim() && lines[index].includes('|')) index++;
+    } else if (kind === 'list') {
+      index++;
+      while (index < lines.length && /^\s+\S/.test(lines[index]) && !segmentKind(lines, index)) index++;
     } else if (kind === 'quote') {
       index++;
       while (index < lines.length && /^>\s?/.test(lines[index].trim())) index++;
@@ -210,6 +217,21 @@ export function markdownBlockKind(block) {
   const legacyText = plainText(segments[0].sourceMarkdown);
   if (block.text !== legacyText && block.text !== (markdownHeadingText(block) ?? proseText(source, legacyText))) return null;
   return segments[0].kind;
+}
+
+export function savedResourceLayoutIssue(block) {
+  const source = block.sourceMarkdown;
+  if (!source || !source.includes('\n')) return '';
+  if ((!block.markdownKind || block.markdownKind === 'paragraph') && !block.resource && source.includes('|')
+    && /\n[ \t|:]*-{3}/.test(source) && parsedMarkdownSegments(source).some(segment => segment.kind === 'table')) {
+    return 'This saved paragraph contains a Markdown table. Choose the original PDF to extract the table in a new copy.';
+  }
+  if (block.resource && (!block.markdownKind || block.markdownKind === 'table' || block.markdownKind === 'html')
+    && /^<(?:table|figure|details|div|p|pre)\b/i.test(source) && /<\/[a-z]+\s*>[ \t]*\n\s*\S/i.test(source)
+    && parsedMarkdownSegments(source).some(segment => segment.kind === 'paragraph' || segment.kind === 'heading')) {
+    return 'This saved resource includes text after its closing tag. Choose the original PDF to recover the following paragraphs in a new copy.';
+  }
+  return '';
 }
 
 export function readableMineruBlocks(markdown) {
