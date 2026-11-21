@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.71 改变字号和栏宽后恢复论文位置（2026-11-21）
+
+在 *Tabbed* 的第 28 段关闭窗口，放大论文文字并收窄读栏后重开。旧行为会回到第 19 段；公开 0.2.71 恢复第 28 段原文，段首仍在读栏上缘。另用 100% 和 150% 显示缩放重开同一段，位置偏差在一个 CSS 像素内。Mac 原生预览和 Windows 都验证了字号和排版改变后对重名标题的恢复，Windows 另验证双语模式下的译文一侧。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44951696558/job/136990833084) · [公开 Windows 程序](https://github.com/haoyunLi/PaperBridge/actions/runs/44951696558/job/136993287891)
+
+发布任务验证两份公开 EXE 后，先刷新应用内更新清单，然后自动更新仓库首页。GitHub 首页的安装版、便携版和版本说明均指向本次验收的版本。[首页更新提交](https://github.com/haoyunLi/PaperBridge/commit/9b949ac5)
+
 ## 0.2.70 正文链接、目录和关闭窗口（2026-11-21）
 
 点击 *Tabbed* 正文的 DOI，现在会向系统默认浏览器提交这条链接，论文窗口停在原处。回归测试截获系统打开请求，核对了完整 DOI。[论文](https://doi.org/10.21105/joss.08964)
