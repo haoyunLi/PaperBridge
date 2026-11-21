@@ -1,6 +1,7 @@
 import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, HardDrive, ZoomIn, ZoomOut } from 'lucide-react';
@@ -178,10 +179,22 @@ function useRichAnnotations(host, content, annotations, source) {
     return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
   }, [host, content, annotations, source]);
 }
+function openPaperLink(event) {
+  if (event.defaultPrevented || event.button > 1) return;
+  const link = event.target.closest?.('a[href]');
+  if (!link || !event.currentTarget.contains(link)) return;
+  const url = externalPaperURL(link.getAttribute('href'));
+  if (!url) return;
+  event.preventDefault();
+  const selection = window.getSelection();
+  if (event.detail > 0 && selection && !selection.isCollapsed && selection.containsNode(link, true)) return;
+  api.openPaperLink(url);
+}
+
 function Markdown({ children, annotations, annotationSource = children }) {
   const host = useRef(null);
   useRichAnnotations(host, children, annotations, annotationSource);
-  return <div ref={host} data-markdown-host><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
+  return <div ref={host} data-markdown-host onClick={openPaperLink} onAuxClick={openPaperLink}><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
 }
 function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
 function afterReadingLayout(host, restore) {

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { externalPaperURL } = require('./paper-link.mjs');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
@@ -20,6 +22,8 @@ const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu
 const { createOfficialLinkHandler } = require('./official-links.cjs');
 const { createOpenAICredentialStore, createOpenAIClient } = require('./openai.cjs');
 const developmentBuild = !app.isPackaged && process.env.NODE_ENV !== 'production';
+const readerURL = developmentBuild ? new URL(process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173').href
+  : pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href;
 
 let window;
 let store;
@@ -461,6 +465,12 @@ function registerHandlers() {
       }
     }
   });
+  ipcMain.on('paper:open-link', (event, href) => {
+    if (event.sender !== window?.webContents || event.senderFrame !== event.sender.mainFrame ||
+        event.senderFrame?.url.split('#')[0] !== readerURL) return;
+    const url = externalPaperURL(href);
+    if (url) shell.openExternal(url).catch(error => dialog.showErrorBox('Could not open the paper link', error.message));
+  });
   ipcMain.handle('external:ollama', () => shell.openExternal('https://ollama.com/download/windows'));
 }
 
@@ -529,12 +539,16 @@ function createWindow() {
     applyMenuState(Menu.getApplicationMenu(), menuState);
   });
   const contents = window.webContents;
+  // A browser destination should never replace the reading workspace.
+  contents.on('will-navigate', (event, url) => {
+    if (/^https?:/i.test(url) && url.split('#')[0] !== readerURL) event.preventDefault();
+  });
   const owner = window;
   let processLosses = 0;
   function loadReader() {
     const generation = processLosses;
     const navigation = developmentBuild
-      ? owner.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173')
+      ? owner.loadURL(readerURL)
       : owner.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
     return navigation.catch(error => {
       // A reload, closed window or renderer recovery can supersede the first navigation.

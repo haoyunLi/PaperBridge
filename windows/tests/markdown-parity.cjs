@@ -136,6 +136,32 @@ async function run() {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Markdown parity fixture' }).waitFor();
+    const originalLocation = page.url();
+    await app.evaluate(({ shell, BrowserWindow }) => {
+      global.__paperLinkTargets = [];
+      global.__paperNavigations = [];
+      shell.openExternal = async url => { global.__paperLinkTargets.push(url); };
+      BrowserWindow.getAllWindows()[0].webContents.on('will-navigate', (event, url) => {
+        event.preventDefault();
+        global.__paperNavigations.push(url);
+      });
+    });
+    const sourcePassages = page.locator('.document-preview [data-paper-kind="source"]');
+    const docsLink = sourcePassages.getByRole('link', { name: 'documentation', exact: true });
+    await docsLink.click({ noWaitAfter: true });
+    const reviewLink = sourcePassages.getByRole('link', { name: 'Review', exact: true });
+    await reviewLink.focus();
+    await reviewLink.press('Enter');
+    await docsLink.click({ button: 'middle', noWaitAfter: true });
+    const deadline = Date.now() + 5000;
+    while (await app.evaluate(() => global.__paperLinkTargets.length) < 3 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    assert.deepEqual(await app.evaluate(() => global.__paperLinkTargets), [
+      'https://mscaudill.github.io/tabbed/', 'https://github.com/openjournals/joss-reviews/issues/8964', 'https://mscaudill.github.io/tabbed/'
+    ]);
+    assert.deepEqual(await app.evaluate(() => global.__paperNavigations), []);
+    assert.equal(page.url(), originalLocation);
     assert.equal(await page.locator('.document-preview [data-paper-kind="source"] sup').count(), 1);
     assert.equal(await page.locator('.document-preview [data-paper-kind="translation"] sup').count(), 1);
     assert.equal(await page.locator('.document-preview table td').allInnerTexts().then(cells => cells.join(',')), 'Attention,42');
