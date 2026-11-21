@@ -38,6 +38,16 @@ function isReferenceEntry(text) {
     || (identifier && bibliographicDate.test(authorText) && terminalDOI.test(authorText));
 }
 
+function continuesSplitCitation(text, next) {
+  if (!next || !initialsFirst.test(text) || !/^\p{Ll}/u.test(next.text)) return false;
+  const secondAuthor = text.split(/,\s*/, 2)[1];
+  // A short author list can look like a heading. Use the continued title,
+  // publication year and next numbered citation as evidence across the break.
+  return Boolean(secondAuthor && initialsFirst.test(secondAuthor)
+    && /\b(?:19|20)\d{2}[a-z]?\b/i.test(next.text)
+    && /\[\d+\]\s+(?:\p{Lu}\.\s*)+\p{Lu}[\p{L}'’-]+/u.test(next.text));
+}
+
 function sectionEnd(entries, start) {
   let sawEntry = entries[start].entry || entries[start].inline;
   for (let i = start + 1; i < entries.length; i++) {
@@ -46,7 +56,8 @@ function sectionEnd(entries, start) {
     if (!entry && sawEntry && !entries.slice(i + 1, i + 4).some(item => item.entry)) {
       // PDF extraction can leave a figure caption or its label immediately after the last citation.
       const next = entries[i + 1];
-      if (heading || caption.test(text) || next?.index > index + 1 && caption.test(next.text)) return i;
+      if (heading && !continuesSplitCitation(text, next)) return i;
+      if (caption.test(text) || next?.index > index + 1 && caption.test(next.text)) return i;
     }
     sawEntry ||= entry;
   }

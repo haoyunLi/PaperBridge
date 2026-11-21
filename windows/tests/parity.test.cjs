@@ -145,6 +145,27 @@ test('pasted bibliography boundaries drive the translation queue and summary wit
   }
 });
 
+test('a split author list stays in references before a lettered appendix in a two-column PDF', async () => {
+  const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
+  const body = { id: 1, text: 'We measured the temperature of the chamber.' };
+  const title = { id: 8, heading: true, text: 'A. Measurement Tables' };
+  const appendix = { id: 9, text: 'The appendix lists every calibration run.' };
+  const references = [
+    { id: 2, heading: true, text: 'References' },
+    { id: 3, text: '[34] H. Doe. Calibration at high temperatures, 2016.' },
+    { id: 4, text: '[35] P. Silva. Estimating instrument drift, 2017. [36] J. Stone,' },
+    { id: 5, heading: true, text: 'Z. Lake, A. Field, M. Snow, et al. Long-term' },
+    { id: 6, text: 'measurements of sensor drift. 2018. ' + Array.from({ length: 16 }, (_, i) =>
+      '[' + (i + 37) + '] J. White. Findings from the extended calibration trial and the field measurements. 2020.').join(' ') }
+  ];
+  const blocks = [body, ...references, title, appendix];
+  assert.ok(references.at(-1).text.length > 1200);
+  assert.deepEqual([...referenceBlockIds(blocks)], [2, 3, 4, 5, 6]);
+  assert.deepEqual(translationRangeIds(blocks), [1, 8, 9]);
+  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.id), [1, 9]);
+  assert.deepEqual([...referenceBlockIds([body, ...references.slice(0, 3), title, references.at(-1)])], [2, 3, 4]);
+});
+
 test('translation range counts exactly the unfinished queue including headings', async () => {
   const { referenceBlockIds, translationRangeIds } = await import('../src/paper.mjs');
   const blocks = [
