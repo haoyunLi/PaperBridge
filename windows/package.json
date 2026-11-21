@@ -37,6 +37,7 @@
     "test:settings-models-e2e": "node tests/settings-models-e2e.cjs",
     "test:openai-settings-e2e": "node tests/openai-settings-e2e.cjs",
     "test:import-progress-e2e": "node tests/import-progress-e2e.cjs",
+    "test:scanned-original-e2e": "node tests/scanned-original-e2e.cjs",
     "test:import-modes-e2e": "node tests/import-modes-e2e.cjs",
     "test:pdf-hyphenation-e2e": "node tests/pdf-hyphenation-e2e.cjs",
     "test:mineru-detect-e2e": "node tests/mineru-detect-e2e.cjs",

@@ -230,7 +230,8 @@ struct Reference {
             }
         }
         let importModes = try nativeImportModes(pdf: fixtureURL.deletingLastPathComponent().appendingPathComponent("emcee-v3.pdf"))
-        let output: [String: Any] = ["importModes": importModes, "tableSelectionQuote": try nativeTableSelectionQuote(), "library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
+        let scan = try nativeScannedNotebook(pdf: fixtureURL.deletingLastPathComponent().appendingPathComponent("scanned-notebook.pdf"))
+        let output: [String: Any] = ["scannedNotebook": scan, "importModes": importModes, "tableSelectionQuote": try nativeTableSelectionQuote(), "library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
                                     "resourceBoundaries": resourceBoundaries, "scientificNotation": fixtures.scientificNotation.compactMap { AcademicMarkdownProcessor.parse($0).first?.analysisText },
                                     "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
