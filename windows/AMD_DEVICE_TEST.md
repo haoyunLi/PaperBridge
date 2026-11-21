@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.38 公开便携版与两页期刊论文（2026-11-21）
+
+RX 7800 XT 上的公开便携版使用本地 Ollama 和 TranslateGemma 4B 完成两页 *emcee v3* 的全文翻译，解析出 28 个块。正文一批译为中文，七个参考文献相关块原样保留。导出文件与工作区译稿一致，共 4,795 字节。重新打开便携版后取回了同一译稿与字节一致的 PDF。Ollama 报告模型占用显存 2,881,948,220 字节。这次译稿的技术标题保留了 MCMC，但作者行把 Joe Zuntz 写成了“乔·zun茨”，部分作者单位编号也在译文中丢失。[原期刊论文](https://doi.org/10.21105/joss.01864)
+
+另在 Reader 单段翻译中，把已保存的术语 `flux calibration` 用于含印刷连字 `ﬂux calibration` 的光谱学原文。从实际请求和译文两处确认采用“通量定标”。两次实测记录为 `test-artifacts/emcee-AMD-A0hVg0/result.json` 和 `test-artifacts/search-amd-yp5u8g/result.json`。[公开便携版与校验文件](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.38)
+
 ## 0.2.37 公开便携版的印刷连字与术语（2026-11-21）
 
 用公开 0.2.36 与 0.2.37 便携版在同一台 RX 7800 XT 上翻译相同的英文光谱学句子。原文使用印刷连字 `ﬂux calibration`，术语库存的是普通字母 `flux calibration`，用户指定译文为“通量定标”。两个版本都通过本机中转记录请求，原样转发至同一 Ollama 服务及 TranslateGemma 4B，实测模型显存 2,881,948,220 字节。

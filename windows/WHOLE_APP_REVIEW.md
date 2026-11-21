@@ -1,5 +1,15 @@
 # Windows 全软件功能复查
 
+## 0.2.38 导出后移动补充材料（2026-11-21）
+
+公开 0.2.37 导出包的主稿可以打开附件 Markdown，但附件中的 CSV、图和另一份补充材料均已断链。此次使用同一组文件运行 macOS 原生导出器和 Windows 导出器，再分别移动整个目录。两端的原文及双语稿都能进入同一份补充材料，复核了附件原文及其图和 CSV 的 SHA-256。Windows 还会沿 Markdown 附件继续收集只在下一层引用的文件。MinerU ZIP 沿用既有解包上限，超过 64 MiB 的 Markdown 附件在导出时提示未扫描其中的链接。[原生对照与构建](https://github.com/haoyunLi/PaperBridge/actions/runs/44895078394)
+
+在实际的两页 MinerU 解析 ZIP 中加入测试协议和中文名 CSV。移走导出包后按相对链接从论文进入协议、第二层 Markdown 和 CSV，复核了查询、片段、全部 35 条页码线索和原 PDF。一个未引用的文件未进入解包目录。测试附件由项目添加。记录见 `test-artifacts/nested-real-kit-d4be4489/result.json`。
+
+从已核验的公开便携包运行此次导出。Windows 的五份 Markdown 保留了原文、译文、笔记与页面索引，原 PDF 的 SHA-256 一致，两页预览随包移动。旧包与新包的复现记录为 `test-artifacts/moved-supplement-Ga52S6/result.json` 和 `test-artifacts/moved-supplement-6eJ0N0/result.json`。另用 RX 7800 XT 完成了两页期刊论文全文翻译及重启恢复。[AMD 译文与发现](AMD_DEVICE_TEST.md)
+
+Edge 从 GitHub 首页下载的 Setup 和 Portable 均为未签名 EXE，带互联网来源标记，哈希与公开发行记录一致。从下载的便携版跳过 AI 引导后，离线导入 *emcee v3*、搜索、保存笔记并重启恢复。公开 0.2.37 两种版本都自动提示 0.2.38，便携版后台下载的文件与公开发行版逐字节一致。安装版升级保留论文、笔记、高亮与显示设置。对应记录为 `test-artifacts/browser-download-0.2.38-S7bZRK`、`test-artifacts/journal-search-edge-7BJ4zf`、`test-artifacts/public037-to038-portable-update-5rtnId` 和 `test-artifacts/i-mwqa79z4-c6c/report.json`。全新 Windows runner 从公开链接下载两种 EXE，通过首次引导和再次启动窗口检查。[公开下载启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44895078394/job/136820847883)
+
 ## 0.2.37 阅读器、论文库和术语搜索（2026-11-21）
 
 用 17 个多语段落和 40 个查询比较公开的 Windows 程序与 macOS Foundation 的 `localizedCaseInsensitiveContains`，沿用 Mac 阅读器对查询首尾空白及原译文的处理。针对重音组合、印刷连字、希腊字母、数学符号、韩文和缺失译文设计的这组样例中，0.2.36 有 21 组返回不同的段落编号，0.2.37 全部一致。旧版输入 `undefined` 会列出尚无译文的段落，有时还会把上一侧原文的末尾与另一侧译文的开头当成一个匹配。新版在论文库标题与标签中也能按相同拼写规则搜索，Reader 在清除查询或按 Escape 后恢复原来的位置。公开包记录为 `test-artifacts/multilingual-search-8506os`、`test-artifacts/multilingual-search-lZW6rD`。显卡翻译记录见 [AMD 实测](AMD_DEVICE_TEST.md)。[macOS 和 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44893493123)
