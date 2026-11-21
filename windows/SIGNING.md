@@ -2,6 +2,16 @@
 
 PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Portable）。普通个人电脑允许未签名应用时，两种版本都可运行。请从项目的 GitHub Release 下载实际的 `.exe` 文件。如果 Windows 显示「未知发布者」，请先核对文件来源和该版本的 SHA-256。如果设备允许，而且你信任这一份下载，可以在「更多信息」中选择「仍要运行」。组织管理的设备按管理员的应用策略执行。
 
+### 怎样核对下载的文件
+
+从同一 GitHub Release 下载 EXE 及同名的 `.exe.sha256` 文件，在它们所在的文件夹打开 PowerShell。以 0.2.40 便携版为例，把第一行的文件名换成实际下载的版本或安装版名称，再运行以下命令。显示 `True` 表示 EXE 的内容与该发布页给出的 SHA-256 一致。
+
+```powershell
+$file = 'PaperBridge-Windows-0.2.40-x64-Portable.exe'
+$expected = ((Get-Content -LiteralPath "$file.sha256" -Raw).Trim() -split '\s+')[0]
+(Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $expected
+```
+
 ## 允许运行后没有看到窗口
 
 想先读一篇论文，可以在仓库首页选择 **Download Windows portable (.exe)**。确认下载的文件名以 `-x64-Portable.exe` 结尾，然后从文件资源管理器打开。首次引导里选 **Skip setup** 即可导入 PDF。若选择的是 `-x64-Setup.exe`，请先完成安装，再到开始菜单打开 **PaperBridge**。再次打开已启动的阅读器会把原窗口带到前台。请使用 0.2.36 或更新的便携版，较早版本重复打开时可能清理第一个窗口仍在使用的临时资源。[Windows 下载入口](https://github.com/haoyunLi/PaperBridge#windows-download-preview)

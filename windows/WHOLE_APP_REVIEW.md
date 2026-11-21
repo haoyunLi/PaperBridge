@@ -1,5 +1,17 @@
 # Windows 全软件功能复查
 
+## 0.2.39–0.2.40 作者署名和粘贴章节（2026-11-21）
+
+用同一篇两页 *emcee v3* 论文核对默认的 Reader 逐段翻译、全文翻译、导出和重启恢复。0.2.38 中文作者行丢失了单位编号，还把 Joe Zuntz 的姓名部分音译。0.2.39 在 13 位作者的姓名、顺序和附属单位编号上逐字匹配 PDF 提取的原文。大学或研究所名称仍然翻译。自定义翻译风格、匹配到作者姓名的用户术语、原来已完成的译稿仍按各自的设置和缓存处理。未编号、很长或无法确定归属的署名沿用普通翻译。这一项以论文原文为准；此 PDF 的 Mac 原生清理结果没有收录同一行完整作者。记录见 `test-artifacts/emcee-AMD-SWzlU3/result.json`。[0.2.39 公开包启动与离线阅读](https://github.com/haoyunLi/PaperBridge/actions/runs/44896720430/job/136825892644)
+
+在 macOS 原生处理器上运行八组剪贴板样例。对于正文结束后紧接的“2 Methods”，Windows 保留编号并在同一位置开始下一个阅读段落。紧贴第一条引文的 References 标题独立成段，引用开头的方括号和末尾句号得以保留。独立排版的标题和署名继续可读。旧版便携程序只能跳到 Beginning；新版开发构建的目录可以跳到第 2 块 Methods 和第 3 块 Results。旧版与修复后的桌面记录为 `test-artifacts/clipboard-journal-hu1M6Y` 和 `test-artifacts/clipboard-journal-kHz44z`。[原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44896808892)
+
+公开 0.2.40 重复了上述剪贴板操作。导入产生五个段落，目录跳转和重启恢复均通过。导出的期刊补充材料随文件夹移动后仍能打开图、CSV 和下一级 Markdown。安装版与便携版 0.2.39 都自动提示更新，安装版覆盖升级保留了论文、高亮、笔记和阅读外观，随后卸载也保留了数据。[0.2.40 公开包启动及离线阅读验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44897530664/job/136828278246)
+
+用 Microsoft Edge 从仓库首页实际下载两份 EXE，复核了各自的 SHA-256 和互联网来源标记。打开这份便携版、跳过 AI 设置后，离线导入期刊 PDF，用分解重音搜索 `Bazán`，在第 9 个阅读块保存笔记，重启后恢复到同一个词（原文偏移 15），原 PDF 的 SHA-256 一致。这次测试通过自动化启动文件，未在用户桌面手动点击 SmartScreen。记录为 `test-artifacts/browser-download-0.2.40-S8fuW4` 和 `test-artifacts/journal-search-edge-Ee7XcE`。
+
+在本地 Windows 上用该公开包的应用文件测了 980 × 620 和 1180 × 720 两种窗口。分别设置 Electron 显示缩放为 100%、125%、150%、175%、200%，核对了实际渲染比例。长中英文标题均占两行，约 62.5 个 CSS 像素，下方与元信息间隔 8 个像素，元信息与工具栏间隔 16 个像素，标题悬停可读全文。本机设置页还识别出 RX 7800 XT（16 GiB 专用显存）、AMD 核显、已就绪的 Ollama 和两个已安装模型。记录为 `test-artifacts/title-display-scale-7oIInf` 和 `test-artifacts/public-amd-setup-5Sq9F2`。[AMD 翻译实测](AMD_DEVICE_TEST.md)
+
 ## 0.2.38 导出后移动补充材料（2026-11-21）
 
 公开 0.2.37 导出包的主稿可以打开附件 Markdown，但附件中的 CSV、图和另一份补充材料均已断链。此次使用同一组文件运行 macOS 原生导出器和 Windows 导出器，再分别移动整个目录。两端的原文及双语稿都能进入同一份补充材料，复核了附件原文及其图和 CSV 的 SHA-256。Windows 还会沿 Markdown 附件继续收集只在下一层引用的文件。MinerU ZIP 沿用既有解包上限，超过 64 MiB 的 Markdown 附件在导出时提示未扫描其中的链接。[原生对照与构建](https://github.com/haoyunLi/PaperBridge/actions/runs/44895078394)

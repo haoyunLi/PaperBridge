@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.39–0.2.40 作者署名、单位编号与本地翻译（2026-11-21）
+
+用公开 0.2.39 的便携版重译两页 *emcee v3*，以原 PDF 署名为准。Reader 单段译文、全文译稿和导出的 Markdown 均保留了 13 位作者的原名、顺序和单位编号，包括 `Joe Zuntz8`。标题、单位名称和正文继续由 TranslateGemma 4B 翻译。导出的 4,835 字节与工作区译稿一致，关闭后重新打开，原 PDF 与译稿都可恢复。结果见 `test-artifacts/emcee-AMD-SWzlU3/result.json`。[0.2.39 公开包](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.39) · [原期刊论文](https://doi.org/10.21105/joss.01864)
+
+公开 0.2.40 用同一台 RX 7800 XT、同一篇论文和同一模型再测。两页 PDF 解析出 28 个块，全文翻译完成一批正文，另有原文保留的参考文献标题及六条引文。13 位作者的完整署名通过了逐段、全文、导出三处核对。导出的 4,850 字节逐字匹配工作区译稿，便携版重启后译稿和原 PDF 均一致。另用光谱学句子实测设置好的术语，印刷连字 `ﬂux calibration` 在请求中匹配 `flux calibration`，模型返回“通量定标”。Ollama 报告的显存用量为 2,881,948,220 字节。记录为 `test-artifacts/emcee-AMD-894nUI/result.json` 和 `test-artifacts/search-amd-aKNL6j/result.json`。[0.2.40 公开包](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.40)
+
 ## 0.2.38 公开便携版与两页期刊论文（2026-11-21）
 
 RX 7800 XT 上的公开便携版使用本地 Ollama 和 TranslateGemma 4B 完成两页 *emcee v3* 的全文翻译，解析出 28 个块。正文一批译为中文，七个参考文献相关块原样保留。导出文件与工作区译稿一致，共 4,795 字节。重新打开便携版后取回了同一译稿与字节一致的 PDF。Ollama 报告模型占用显存 2,881,948,220 字节。这次译稿的技术标题保留了 MCMC，但作者行把 Joe Zuntz 写成了“乔·zun茨”，部分作者单位编号也在译文中丢失。[原期刊论文](https://doi.org/10.21105/joss.01864)
