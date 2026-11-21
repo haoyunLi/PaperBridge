@@ -1,5 +1,5 @@
 import { anchorText } from './academicMarkdown.mjs';
-import { blockMarkdown, paperArticleAnchorAvailable, textAnchorAvailable } from './markdownAnchors.mjs';
+import { blockMarkdown, resolvedBlockAnnotation, paperArticleAnchorAvailable, textAnchorAvailable } from './markdownAnchors.mjs';
 import { pdfAnchorKey, pdfPageLabel } from './pdfAnchors.mjs';
 
 function timestamp(value) {
@@ -56,7 +56,10 @@ function annotationRecords(paper) {
         const kind = side || item.kind || 'source';
         const scope = item.scope || 'reader';
         const label = `${scope === 'reader' ? 'Reader' : scope === 'paper' ? 'Paper' : scope} · Block ${block.id} · ${kind}`;
-        append(label, item, category, ['block', block.id, scope, kind, textAnchor(item, order)], anchorText(block, kind), blockMarkdown(block, kind), block.id);
+        const source = anchorText(block, kind);
+        const markdown = blockMarkdown(block, kind);
+        const resolved = resolvedBlockAnnotation(item, source, markdown);
+        append(label, resolved, category, ['block', block.id, scope, kind, textAnchor(resolved, order)], source, markdown, block.id);
       }
     }
   }

@@ -10,6 +10,7 @@ import { claimsMarkdown, parseSummaryClaims, summarySourceBlocks, summarySourceB
 import { blocksFromText, chunkText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { createHash } from 'node:crypto';
+import { markdownAnnotationOffset } from '../../src/markdownAnchors.mjs';
 import { filteredReaderBlocks } from '../../src/textSearch.mjs';
 import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
@@ -182,6 +183,9 @@ const published = reference.publishedPaper;
   const result = applyUndoEntry(laterDeletion, structure);
   assert.deepEqual({
     noteRestored: restored.blocks[0].notes[0]?.body === note.body, bookmarkKept: restored.blocks[1].bookmark,
+    shiftedQuote: markdownAnnotationOffset('🔎 ' + blocks[0].text, note) ?? -1,
+    ambiguousQuote: markdownAnnotationOffset('🔎 ' + note.text + ' ' + note.text, note) ?? -1,
+    missingQuote: markdownAnnotationOffset('', note) ?? -1,
     splitCount: split.blocks.length, annotationUndoAfterSplit: afterSplit.some(entry => entry.type === 'annotations'),
     restoredSources: result.blocks.every((block, i) => block.text === published.paragraphs[i]) && result.blocks.length === published.paragraphs.length,
     laterDeletionKept: !result.blocks[0].notes.length, reopenedBookmark: result.blocks[1].bookmark

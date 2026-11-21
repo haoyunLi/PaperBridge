@@ -313,7 +313,12 @@ async function run() {
     await pdfPage(2, 125);
     await waitFor(() => readPaper(pdfId).position.pdfZoom?.pdf === 125 && readPaper(pdfId).position.displayMode === 'translation',
       'post-edit PDF zoom and reading mode saved');
-    await page.locator('.inspector-title').getByRole('button', { name: 'Undo last highlight or note change', exact: true }).click();
+    assert.equal(await page.locator('.inspector-title').getByRole('button', { name: 'Undo last highlight or note change', exact: true }).isEnabled(), false);
+    await app.evaluate(({ Menu, BrowserWindow }) => {
+      const item = Menu.getApplicationMenu().getMenuItemById('command:undoParagraph');
+      if (!item?.enabled) throw new Error('Undo Paragraph Edit must be available in the Original PDF view');
+      item.click(null, BrowserWindow.getAllWindows()[0]);
+    });
     await waitFor(() => readPaper(pdfId).blocks[1].text === beforePdfText, 'PDF structural Undo saved');
     await pdfPage(1, 125);
     await selected(2, pdfId);

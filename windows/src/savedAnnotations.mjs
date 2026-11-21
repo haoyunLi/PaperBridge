@@ -1,5 +1,5 @@
 import { anchorText } from './academicMarkdown.mjs';
-import { blockMarkdown, paperArticleAnchorAvailable, textAnchorAvailable } from './markdownAnchors.mjs';
+import { blockMarkdown, resolvedBlockAnnotation, paperArticleAnchorAvailable, textAnchorAvailable } from './markdownAnchors.mjs';
 import { isPdfScope, pdfAnchorKey, pdfAnnotationScope, pdfPageLabel } from './pdfAnchors.mjs';
 
 const sideOf = (item, kind) => ['source', 'translation'].includes(kind) ? kind
@@ -54,10 +54,15 @@ export function savedAnnotations(paper) {
     const sequence = order++;
     const kind = sideOf(item, forcedKind);
     const scope = location === 'pdf' ? pdfAnnotationScope(item) : item.scope || (location === 'block' ? 'reader' : '');
-    const anchor = location === 'pdf' ? pdfIdentity(item) : textIdentity(item);
+    let anchor = location === 'pdf' ? pdfIdentity(item) : textIdentity(item);
     let review = Boolean(item.needsReview);
-    if (location === 'block') review ||= !textAnchorAvailable(item, anchorText(block, kind), blockMarkdown(block, kind));
-    else if (location === 'view') {
+    if (location === 'block') {
+      const source = anchorText(block, kind);
+      const markdown = blockMarkdown(block, kind);
+      const resolved = resolvedBlockAnnotation(item, source, markdown);
+      anchor = textIdentity(resolved);
+      review ||= !textAnchorAvailable(resolved, source, markdown);
+    } else if (location === 'view') {
       if (scope === 'paperArticle') review ||= !paperArticleAnchorAvailable(paper, item);
       else {
         const source = { summarySource: paper.summary?.source, summaryTarget: paper.summary?.target,

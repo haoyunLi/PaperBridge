@@ -47,7 +47,7 @@ export function blockMarkdown(block, kind) {
 
 export function selectionOffsets(captured, offset, markdown, anchorSource) {
   const displayOffset = captured.offset;
-  if (!markdown) return { offset, displayOffset };
+  if (!markdown) return { offset, displayOffset, renderedText: captured.context, anchorSource };
   const projection = { displayOffset, renderedSource: markdown, renderedText: captured.context, anchorSource };
   if (Number.isInteger(offset)) return { offset, ...projection };
   const end = displayOffset + captured.text.length;
@@ -106,14 +106,21 @@ export function markdownAnnotationOffset(rendered, item, source = rendered) {
   return first >= 0 && first === rendered.lastIndexOf(item.text) ? first : null;
 }
 
+// Use the live range for grouping while keeping the original saved record for edits and undo.
+export function resolvedBlockAnnotation(item, source, markdown) {
+  if (markdown || item.renderedAnchor || item.needsReview) return item;
+  const offset = markdownAnnotationOffset(source, item);
+  return offset !== null && offset !== item.offset ? { ...item, offset } : item;
+}
+
 export function textAnchorAvailable(item, source, markdown) {
   if (generatedScopes.has(item?.scope)) {
     return typeof markdown === 'string' && markdown.length > 0 &&
       markdownAnnotationOffset(generatedViewText(item.scope, markdown), item, source) !== null;
   }
   if (item?.renderedAnchor) return Boolean(markdown) && hasRenderedAnchor(item);
-  return matchesTextAt(source, item?.offset, item?.text) ||
-    Boolean(markdown && Number.isInteger(item?.offset) && item.offset >= 0 && typeof item.text === 'string' && item.text.length);
+  if (!markdown) return markdownAnnotationOffset(source, item) !== null;
+  return Number.isInteger(item?.offset) && item.offset >= 0 && typeof item.text === 'string' && item.text.length > 0;
 }
 
 export function validTextSelection(item, source, markdown) {

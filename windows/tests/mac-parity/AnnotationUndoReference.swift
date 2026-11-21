@@ -37,6 +37,9 @@ func nativeAnnotationUndo(paragraphs: [String], checksum: String) throws -> [Str
     let reopened = PaperReaderViewModel(workspaceStore: store)
     return [
         "noteRestored": noteRestored, "bookmarkKept": bookmarkKept,
+        "shiftedQuote": saved.resolvedRange(in: "🔎 " + title)?.location ?? -1,
+        "ambiguousQuote": saved.resolvedRange(in: "🔎 " + quote + " " + quote)?.location ?? -1,
+        "missingQuote": saved.resolvedRange(in: "")?.location ?? -1,
         "splitCount": splitCount, "annotationUndoAfterSplit": annotationUndoAfterSplit,
         "restoredSources": reopened.paragraphResults.map(\.original) == paragraphs,
         "laterDeletionKept": reopened.annotations.isEmpty, "reopenedBookmark": reopened.bookmarkedParagraphIDs.contains(2)

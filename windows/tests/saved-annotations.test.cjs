@@ -26,6 +26,30 @@ test('failed navigation marks only the selected anchor group even with duplicate
   }
 });
 
+test('a shifted plain-text note and a highlight at its current offset stay together across edits and export', async () => {
+  const { savedAnnotations } = await helpers;
+  const { applySelectionNote } = await import('../src/noteAnnotations.mjs');
+  const { selectionOffsets, textAnchorAvailable } = await import('../src/markdownAnchors.mjs');
+  const { analysisAnnotations } = await import('../src/annotationsMarkdown.mjs');
+  const text = '🔎 Check the passage.';
+  const saved = note({ text: 'passage', offset: 4, body: 'original' });
+  const offset = text.indexOf(saved.text);
+  const mark = { text: saved.text, offset, color: 'amber' };
+  const input = paper({ blocks: [block({ text, notes: [saved], highlights: [mark] })] });
+  const [entry] = savedAnnotations(input);
+  assert.deepEqual([entry.review, entry.notes.length, entry.highlights.length], [false, 1, 1]);
+  const selection = { id: 1, scope: 'reader', kind: 'source', text: saved.text,
+    ...selectionOffsets({ text: saved.text, offset, context: text }, offset, null, text) };
+  const changed = applySelectionNote(input, selection, 'edited');
+  assert.deepEqual(changed.blocks[0].notes.map(n => [n.id, n.offset, n.body]), [[saved.id, offset, 'edited']]);
+  const exported = analysisAnnotations(input, new Set([1]));
+  assert.equal(exported.appendix, '');
+  assert.equal((exported.paragraphs.get(1).match(/> passage/g) || []).length, 1);
+  assert.equal(textAnchorAvailable({ text: 'aa', offset: 3 }, 'aaa', false), false);
+  assert.equal(textAnchorAvailable({ text: 'aa', offset: 1 }, 'aaa', false), true);
+  assert.equal(textAnchorAvailable({ ...saved, needsReview: true }, text, false), false);
+});
+
 function freeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);
