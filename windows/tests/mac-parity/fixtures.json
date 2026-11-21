@@ -1,0 +1,129 @@
+{
+  "papers": [
+    {
+      "name": "inline-abstract-and-boundaries",
+      "blocks": [
+        {
+          "text": "This paper begins with a preface before formal sections."
+        },
+        {
+          "text": "Abstract: The study evaluates how well the bilingual reader preserves equations and quoted passages. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations."
+        },
+        {
+          "text": "Abstraction Mechanisms"
+        },
+        {
+          "text": "This section has its own evidence and does not belong to the abstract."
+        },
+        {
+          "text": "Methods"
+        },
+        {
+          "text": "Too short."
+        },
+        {
+          "text": "Results\nThe trials recovered both delimiters of the displayed equation in every preserved sample."
+        },
+        {
+          "text": "III. Discussion"
+        },
+        {
+          "text": "Evidence from a small fixture applies only to the configurations included in the test."
+        },
+        {
+          "text": "Conclusion"
+        },
+        {
+          "text": "The source material can be checked independently before using the translated text."
+        }
+      ]
+    },
+    {
+      "name": "structured-headings",
+      "blocks": [
+        {
+          "text": "材料与方法",
+          "sourceMarkdown": "## 材料与方法"
+        },
+        {
+          "text": "我们把两次运行得到的译文逐字符比较，并核对公式、文献编号、段落跳转和保存的批注是否一致。"
+        },
+        {
+          "text": "custom lowercase heading",
+          "sourceMarkdown": "### custom lowercase heading"
+        },
+        {
+          "text": "An unrelated section contributes no evidence to the previous method."
+        },
+        {
+          "text": "结论",
+          "sourceMarkdown": "# 结论"
+        },
+        {
+          "text": "两端读取相同的输入，可以直接比较章节范围和阅读定位，复核同一段原文上的每一个差异。"
+        }
+      ]
+    },
+    {
+      "name": "unicode-boundaries",
+      "blocks": [
+        {
+          "text": "Methods"
+        },
+        {
+          "text": "👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬"
+        },
+        {
+          "text": "👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬"
+        },
+        {
+          "text": "٢.١ Results"
+        },
+        {
+          "text": "The measurements include both boundary cases and keep the full source text."
+        }
+      ]
+    },
+    {
+      "name": "no-headings",
+      "blocks": [
+        {
+          "text": "An unheaded paragraph still provides a source that readers can return to."
+        },
+        {
+          "text": "A second paragraph tests whether the range begins with the right source."
+        }
+      ]
+    },
+    {
+      "name": "extraction-hints",
+      "blocks": [
+        {
+          "text": "the typed formula ends with an incom-"
+        },
+        {
+          "text": "the measured values are defined as"
+        },
+        {
+          "text": "١٢٣ × ٤٥"
+        },
+        {
+          "text": "this deliberately long paragraph contains enough ordinary lowercase words to trigger a missing sentence ending in the quality check"
+        },
+        {
+          "text": "A complete sentence with terminal punctuation."
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "blocks": []
+    }
+  ],
+  "markdown": [
+    "Before $$E=mc^2$$ and `const sample = \"$&\"` After",
+    "Before $x+y$ with \\(v_i\\), \\[a=b\\] and https://example.org/method After",
+    "Before ![chart](images/chart.png) and <sup>2</sup> After",
+    "Before __PAPERBRIDGE_TOKEN_42__ and `sample $' $&` After"
+  ]
+}

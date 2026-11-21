@@ -10,13 +10,42 @@ on:
     paths:
       - 'windows/**'
       - '.github/workflows/windows.yml'
+      - 'PaperBridge/Models.swift'
+      - 'PaperBridge/Services/TextProcessing.swift'
+      - 'PaperBridge/Services/PaperReadingAnalysis.swift'
+      - 'PaperBridge/Services/ReadingGuideBuilder.swift'
+      - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
   pull_request:
     paths:
       - 'windows/**'
       - '.github/workflows/windows.yml'
+      - 'PaperBridge/Models.swift'
+      - 'PaperBridge/Services/TextProcessing.swift'
+      - 'PaperBridge/Services/PaperReadingAnalysis.swift'
+      - 'PaperBridge/Services/ReadingGuideBuilder.swift'
+      - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
 
 jobs:
+  mac-reference:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the macOS source on the shared reading and translation fixtures
+        run: |
+          xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift \
+            PaperBridge/Services/PaperReadingAnalysis.swift PaperBridge/Services/ReadingGuideBuilder.swift \
+            PaperBridge/Services/AcademicMarkdownProcessor.swift windows/tests/mac-parity/Reference.swift \
+            -o "$RUNNER_TEMP/paperbridge-reference"
+          "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-reading-reference
+          path: ${{ runner.temp }}/mac-reference.json
+          if-no-files-found: error
   build:
+    needs: mac-reference
     runs-on: windows-latest
     defaults:
       run:
@@ -30,6 +59,12 @@ jobs:
           cache-dependency-path: windows/package-lock.json
       - run: npm ci
       - run: npm test
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-reading-reference
+          path: ${{ runner.temp }}/mac-reference
+      - name: Compare Windows results with native macOS results
+        run: node tests/mac-parity/compare.mjs "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
       - name: Verify Windows release version
         if: startsWith(github.ref, 'refs/tags/windows-v')
         shell: pwsh
