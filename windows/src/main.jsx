@@ -1878,9 +1878,22 @@ function App() {
     if (paper && !viewNavigation && !blockNavigation) return restoreMainScroll();
     publishReadingRestorationState();
   }, [tab, paper?.id]);
+  useLayoutEffect(() => {
+    if (blockNavigation?.recordType !== 'paragraph' || tab !== 'Reader') return;
+    const host = mainScrollRef.current;
+    const target = host?.querySelector(`#block-${blockNavigation.blockId}`);
+    if (target && paperRef.current?.id === blockNavigation.paperId) {
+      // Settle the viewport before Back, Forward or a paper switch can capture it.
+      target.scrollIntoView({ behavior: 'instant', block: 'start' });
+      const offset = host.scrollTop;
+      commitPaper(current => ({ ...current, position: { ...current.position,
+        scrollByTab: { ...current.position?.scrollByTab, Reader: offset } } }));
+    }
+    setBlockNavigation(null);
+  }, [blockNavigation?.requestId, tab, paper?.id]);
   useEffect(() => {
     const targetTab = blockNavigation?.scope === 'paper' ? 'Paper' : 'Reader';
-    if (!blockNavigation || !paper || tab !== targetTab) return;
+    if (!blockNavigation || blockNavigation.recordType === 'paragraph' || !paper || tab !== targetTab) return;
     let cancelled = false;
     afterReadingLayout(mainScrollRef.current, () => {
       if (cancelled || paperRef.current?.id !== paper.id) return;
@@ -2869,11 +2882,11 @@ function App() {
     }
     const mode = requestedMode ?? (revealSource && displayMode === 'translation' ? 'bilingual' : displayMode);
     recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.selectedParagraphID === id && location.displayMode === mode);
-    setBlockNavigation(null);
+    invalidateReadingScroll();
+    setBlockNavigation({ recordType: 'paragraph', paperId: paperRef.current.id, blockId: id, requestId: crypto.randomUUID() });
     searchOrigin.current = null; setSearch(''); setDisplayMode(mode); setTab('Reader');
     commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
-      position: { ...current.position, block: id, displayMode: mode, readerSearchOrigin: undefined } }));
-    setTimeout(() => document.getElementById(`block-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      position: { ...current.position, tab: 'Reader', block: id, displayMode: mode, readerSearchOrigin: undefined } }));
   }
   function navigateBlockAnnotation(blockId, item, kind, recordType) {
     const block = paperRef.current?.blocks.find(entry => entry.id === blockId);

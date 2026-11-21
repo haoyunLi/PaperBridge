@@ -304,7 +304,23 @@ async function run() {
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     const mapLink = page.locator('.reading-map').getByRole('button', { name: 'Read paragraph 5 →', exact: true });
     await mapLink.waitFor();
+    // Capture the first layout where the source link has mounted its Reader.
+    // A rapid Back from that layout must already point Forward to paragraph 5.
+    await evaluate(() => {
+      const host = document.querySelector('.main-scroll');
+      window.__mapLanding = new Promise(resolve => {
+        const observer = new MutationObserver(() => {
+          const target = host.querySelector('#block-5');
+          if (!target) return;
+          observer.disconnect();
+          resolve(target.getBoundingClientRect().top - host.getBoundingClientRect().top);
+        });
+        observer.observe(host, { childList: true, subtree: true });
+      });
+    });
     await mapLink.click();
+    const landing = await bounded('first visible map destination', evaluate(() => window.__mapLanding), 5000);
+    assert.ok(landing >= -2 && landing < 25, 'the first Reader layout should show paragraph 5; offset=' + landing);
     await page.locator('.reader-list').waitFor();
     assert.equal(await mode('Bilingual').isChecked(), true);
     await page.locator('#block-5 .source-text').getByText(blocks[4].text, { exact: true }).waitFor();
