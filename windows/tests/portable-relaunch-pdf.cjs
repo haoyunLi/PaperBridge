@@ -40,7 +40,10 @@ async function run() {
     while (!port && Date.now() < deadline) {
       assert.equal(first.exitCode, null, 'First launch exited before the reader opened');
       try { port = Number((await fs.readFile(portFile, 'utf8')).split('\n')[0]); }
-      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      catch (error) {
+        // Chromium can hold the port file open briefly while writing it on Windows.
+        if (error.code !== 'ENOENT' && error.code !== 'EBUSY') throw error;
+      }
       if (!port) await delay(150);
     }
     assert.ok(port > 0, 'Expected a debugging port from the isolated reader');
