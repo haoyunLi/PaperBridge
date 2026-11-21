@@ -1,5 +1,17 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.33 公开下载及安装升级（2026-11-21）
+
+Edge 从 GitHub 首页下载 x64 安装版和便携版。两个 EXE 均带互联网来源标记，SHA-256 与发布文件一致。全新 Windows runner 从公开链接下载两个包，便携版和安装后的程序均能打开首次引导。本机在模型服务离线时跳过配置，导入中文文件名的两页 PDF 并保存标注，重启后原文、高亮和笔记均恢复。记录在 `test-artifacts/browser-download-0.2.33-AN4ggw` 和 `test-artifacts/public033-reader-without-models-wuWVQv`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.33) · [公开下载后的首次启动](https://github.com/haoyunLi/PaperBridge/actions/runs/44886630347/job/136795001952)
+
+0.2.32 的两个版本都提示升级。便携版后台下载了校验一致的 0.2.33 文件。安装版覆盖升级后恢复了原有论文、高亮、笔记和阅读外观，卸载后保留论文和设置。测试记录在 `test-artifacts/public032-to033-portable-update-z5jYii` 与 `test-artifacts/i-mwq6drmr-3r4/report.json`。
+
+## 双栏 PDF 的脚注、目录与译文（2026-11-21）
+
+在相同 SHA-256 的单页双栏 PDF 上，macOS 1.10 的 PDFKit 提取器与 Windows 阅读器逐词核对了 137 个词和编号。正文两栏、右栏小节、图注和左下附注的顺序一致。单页的印刷页码未进入正文。Windows 还在目录中单列小节，并将附注从上一段拆开。测试直接比对两端提取文本，统一空白和上标编号与正文之间的空格。[原生对照与 Windows 桌面测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44885921273)
+
+用公开 0.2.32 在 12 页 ResNet PDF 的第 3 页给脚注加高亮和笔记，再用开发版重新打开同一文件。原来的 333 个块保留，笔记仍定位到第 50 块、偏移 223。选择重新提取为独立副本后得到 339 个块。第 1 页网址脚注和第 3 页公式脚注分别独立成段，目录的“3.3. Network Architectures”能回到第 60 块。逐页比对，两次提取的非空白字符及顺序完全相同。新副本与旧工作区的原 PDF 字节一致。另从两个版本分别导入 15 页 Transformer 论文，两次均得到 266 个块，15 页的非空白字符及顺序一致。设备记录在 `test-artifacts/resnet-footnote-upgrade-M9AtFl` 和 `test-artifacts/attention-column-order-z7n0s4`。[AMD 脚注翻译](AMD_DEVICE_TEST.md)
+
 ## Windows 0.2.32 公开下载、升级与论文阅读（2026-11-21）
 
 从 GitHub 首页用 Edge 下载了安装版和便携版，两份 EXE 均未签名，保留互联网来源标记 `ZoneId=3`，SHA-256 同时匹配发布资产和随附校验文件。全新 Windows runner 从公开地址下载并打开便携版，安装 Setup 并启动安装后的应用，两者均进入首次引导。本机便携版在模型和解析服务不可用时跳过配置，导入中文文件名的两页 PDF，保存笔记和高亮并在重启后恢复。浏览器记录在 `test-artifacts/browser-download-0.2.32-0MHQmH`，离线阅读记录在 `test-artifacts/public032-reader-without-models-JePwJJ`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.32) · [两种公开下载的启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44883910590/job/136786822163)
@@ -16,7 +28,7 @@
 
 RX 7800 XT 上用本机 Ollama 对《Attention Is All You Need》的已保存 PDF 文字层生成双语摘要。在 `test-artifacts/summary-amd-tvG7W9` 这次运行中，六条结论共七条引文，逐一点击均在对应的原文段落选中并显示了原句，导出的 `summary-evidence.md` 保留全部段号与引文。另一次运行 `test-artifacts/summary-amd-pruHI5` 的六条结论中四条带有已验证引文。当前原生对照使用相同的受控输入；真实论文的本机结果来自 Windows。
 
-0.2.32 发布后，开发分支修复了长段落在句中切开的问题。一条长 5,786 个字符且能独立容纳在一批里的句子，现在会完整送给模型，末尾的 300 字符引文可校验。带制表符和双空格的原文逐字保留。第四组分批样例已通过 macOS 原生与 Windows 对照。[开发分支的跨平台对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44884191963/job/136785908112)
+0.2.33 修复了长段落在句中切开的问题。一条长 5,786 个字符且能独立容纳在一批里的句子，现在会完整送给模型，末尾的 300 字符引文可校验。带制表符和双空格的原文逐字保留。第四组分批样例已通过 macOS 原生与 Windows 对照。[开发分支的跨平台对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44884191963/job/136785908112)
 
 ## Windows 0.2.31 公开下载与阅读验收（2026-11-21）
 

@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.33 公开便携版的双栏脚注与小节标题（2026-11-21）
+
+RX 7800 XT 用从 GitHub 下载的 0.2.33 便携版再次翻译 ResNet 第 3 页。脚注译为“2 然而，这一假设仍然是一个未解决的问题。参见 [28]。”，小节译为“3.3. 网络架构”。双栏样张的全文译稿分两批完成，末条附注保留编号 `1`，重启后能重新打开译稿。本机报告 `test-artifacts/public033-pdf-amd-hFM0Yk/result.json`。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.33)
+
+开发分支在 RX 7800 XT 上用本机 TranslateGemma 4B 单独翻译 ResNet 第 3 页的脚注和标题。在首次对照中，模型给出的脚注译文保留了文内引用 `[28]`，省略了开头的脚注编号 `2`。把 PDF 里识别出的上标编号留给应用排版后，相同模型的译文保留了两者，下一节标题译为“3.3. 网络架构”。对双栏校准样张生成完整中文译稿时，第二批脚注也保留了编号 `1`。Ollama 报告模型占用 2,881,948,220 字节显存。设备上的前后对照分别保存在 `test-artifacts/resnet-footnote-amd-e7k4Lb` 和 `test-artifacts/resnet-footnote-amd-JvWd1S`。
+
 ## 0.2.32 公开便携版（2026-11-21）
 
 RX 7800 XT 上从 GitHub 下载便携版，用已保存的 15 页《Attention Is All You Need》PDF 文字层生成英中双语摘要。六批输入经过五次合并，得到六条结论。四条结论带有五处引文，逐一点击均在阅读器中选中对应原句，重启后六条结论和引文均恢复。生成、跳转及重启共用时约 63 秒。Ollama 报告 Qwen3 4B Instruct 占用 3,180,247,121 字节显存，TranslateGemma 4B 占用 2,881,948,220 字节显存。
