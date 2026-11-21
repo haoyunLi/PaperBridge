@@ -38,6 +38,13 @@ function isReferenceEntry(text) {
     || (identifier && bibliographicDate.test(authorText) && terminalDOI.test(authorText));
 }
 
+export function splitLeadingReferenceHeading(text) {
+  const label = referenceHeading.exec(text);
+  if (!label) return [text];
+  const entry = text.slice(label[0].length);
+  return isReferenceEntry(entry) ? [label[0].trimEnd(), entry] : [text];
+}
+
 function continuesSplitCitation(text, next) {
   if (!next || !initialsFirst.test(text) || !/^\p{Ll}/u.test(next.text)) return false;
   const secondAuthor = text.split(/,\s*/, 2)[1];

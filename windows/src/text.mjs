@@ -1,5 +1,5 @@
-import { isMethodsHeading } from './references.mjs';
-import { numberedSectionTitle } from './sectionHeadings.mjs';
+import { isMethodsHeading, splitLeadingReferenceHeading } from './references.mjs';
+import { numberedSectionTitle, splitJoinedSections } from './sectionHeadings.mjs';
 import { countCharacters, sectionRanges } from './documentOutline.mjs';
 import { compoundSuffixes, repairSpacedHyphenation } from './spacedHyphenation.mjs';
 
@@ -82,14 +82,16 @@ export function blocksFromText(text) {
   // paragraph pass; a single-line paste only receives the paragraph pass.
   const multiline = input.includes('\n');
   if (multiline) input = input.replace(/\u00ad/g, '');
-  return input.split(/\n\s*\n/).map(part => {
+  return input.split(/\n\s*\n/).flatMap(part => {
     const raw = trimExtractedWhitespace(part);
     const lines = raw.split('\n').map(line => multiline ? normalizeExtractedLine(line) : line).filter(Boolean);
     const joined = lines.length > 1 && isMethodsHeading(lines[0])
       ? lines[0] + '\n' + lines.slice(1).join(' ') : lines.join(' ');
     const value = trimExtractedWhitespace(repairSpacedHyphenation(joined));
-    return value ? { raw, value } : null;
-  }).filter(Boolean)
+    if (!value) return [];
+    const parts = splitJoinedSections(value).flatMap(splitLeadingReferenceHeading);
+    return parts.map(piece => ({ raw: parts.length === 1 ? raw : piece, value: piece }));
+  })
     .map(({ raw, value }, index) => ({ id: index + 1, text: value, page: null, heading: isHeading(raw.includes('\n') ? raw : value), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] }));
 }
 

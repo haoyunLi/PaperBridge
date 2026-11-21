@@ -47,6 +47,30 @@ try {
   assert.equal(path.dirname(work), path.resolve(os.tmpdir()));
   rmSync(work, { recursive: true, force: true });
 }
+const pasted = new Map(fixtures.pastedFrontMatter.map(({ name, text }, index) => {
+  const win = blocksFromText(text).map(block => block.text);
+  assert.equal(win.join(' ').replace(/\s+/g, ' '), text.replace(/\s+/g, ' '), name + ' retains the printed text');
+  return [name, { win, mac: reference.pastedFrontMatter[index] }];
+}));
+assert.equal(pasted.size, reference.pastedFrontMatter.length);
+for (const name of ['scientific title containing numerals', 'single line breaks from the clipboard', 'single physical newlines']) {
+  assert.deepEqual(pasted.get(name).win, pasted.get(name).mac, name);
+}
+const inlineMethods = pasted.get('heading with body in a single paragraph');
+assert.equal(inlineMethods.win.length, 2);
+assert.equal(inlineMethods.win[0], inlineMethods.mac[0]);
+assert.ok(inlineMethods.win[1].startsWith('2 Methods '));
+assert.equal(inlineMethods.win[1].slice(2), inlineMethods.mac[1].replace(/^2\s+/, '').replace('\n', ' '));
+const citation = pasted.get('printed reference heading before first citation');
+assert.equal(citation.win.length, 2);
+assert.equal(citation.win[0], citation.mac[0]);
+assert.ok(citation.win[1].startsWith('[1]') && citation.win[1].endsWith('.'));
+assert.equal(citation.win[1].replace(/^\[|\.$/g, ''), citation.mac[1].replace(/^\[|\.$/g, ''));
+for (const name of ['joined title and names', 'separate names and numbered affiliations', 'isolated section heading between sentences']) {
+  const { win, mac } = pasted.get(name);
+  assert.ok(mac.at(-1).split('\n').at(-1) === win.at(-1), name + ' preserves the same following body sentence');
+}
+console.log('Compared eight clipboard layouts with native macOS and checked the original numbering and citation punctuation.');
 const searchBlocks = fixtures.readerSearch.blocks.map(({ source, translation }, index) => ({ id: index + 1, text: source, translation }));
 assert.deepEqual(fixtures.readerSearch.queries.map(query => filteredReaderBlocks(searchBlocks, query).map(block => block.id)),
   reference.readerSearch, 'Search the source and translation independently, using native case and accent boundaries');

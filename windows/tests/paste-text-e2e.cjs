@@ -32,7 +32,7 @@ async function run() {
   const workspace = fs.mkdtempSync(path.join(artifacts, 'paste-text-'));
   const textA = 'Abstract\n\nAlpha evidence preserves an exact note before another document opens.';
   const textB = 'Results\n\nBeta evidence stays independent when an earlier import returns late.';
-  const textC = 'Discussion\n\nGamma evidence preserves edits made while a different document is still opening.\n\nReferences\n\n[1] A. Example. An earlier controlled study. Journal of Tests, 2025.';
+  const textC = 'Discussion\n\nGamma evidence preserves edits made while a different document is still opening. 2 Methods The spectra were calibrated independently.\n\nReferences [1] A. Example. An earlier controlled study. Journal of Tests, 2025.';
   const paperId = text => crypto.createHash('sha256').update(text.trim()).digest('hex');
   const idA = paperId(textA), idB = paperId(textB), idC = paperId(textC);
   const readPaper = id => JSON.parse(fs.readFileSync(path.join(workspace, 'papers', `${id}.json`), 'utf8'));
@@ -303,6 +303,11 @@ async function run() {
     assert.equal(hasNote(idA, newestNote), true);
     assert.equal(readPaper(idA).blocks[1].text, repaired);
     assert.match(await page.locator('.workspace-status').innerText(), /reference blocks/);
+    const imported = readPaper(idC).blocks;
+    assert.equal(imported.length, 5);
+    assert.equal(imported[2].text, '2 Methods The spectra were calibrated independently.');
+    assert.ok(imported[4].text.startsWith('[1] A. Example.'));
+    assert.equal(await page.locator('.document-outline .outline-row').filter({ hasText: '2 Methods' }).getAttribute('data-paragraph-id'), '3');
 
     stage('long inline draft and controls remain usable at 980px and 200% zoom');
     const longDraft = Array.from({ length: 40 }, (_, at) => `Draft line ${at + 1}: preserve this full paragraph while the sidebar scrolls.`).join('\n');

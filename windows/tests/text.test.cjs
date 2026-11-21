@@ -1,6 +1,26 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('pasted numbered sections and bibliography entries retain their source text and navigation targets', async () => {
+  const { blocksFromText } = await import('../src/text.mjs');
+  const { documentOutline } = await import('../src/documentOutline.mjs');
+  const { referenceBlockIds } = await import('../src/references.mjs');
+  const body = 'The printed flux was stable. 2 Methods The detector was calibrated independently. 3.1 Results The last exposure gave the same reading.';
+  const citation = '[1] Martin, A. (2021). Detection limits. Journal of Testing.';
+  const blocks = blocksFromText(body + '\n\nReferences ' + citation);
+  assert.deepEqual(documentOutline({ blocks }), [{ id: 2, title: '2 Methods' }, { id: 3, title: '3.1 Results' }]);
+  assert.deepEqual([...referenceBlockIds(blocks)], [4, 5]);
+  assert.equal(blocks[4].text, citation);
+  assert.equal(blocks.slice(0, 3).map(block => block.text).join(' '), body);
+  for (const source of ['See Fig. 2 Results show a stable reading in these observations.',
+    'The reading was stable. 2 methods were used to calibrate the instrument.',
+    'A code sample: ' + '\x60done. 2 Methods The detector was calibrated independently.\x60',
+    'The literal equation $x. 2 Methods The sample uses this long variable.$ is preserved.',
+    'References for our second calibration are available on request.']) {
+    assert.deepEqual(blocksFromText(source).map(block => block.text), [source]);
+  }
+});
+
 test('paste text retains paragraphs and identifies sections', async () => {
   const { blocksFromText, readingMap } = await import('../src/text.mjs');
   const blocks = blocksFromText('Abstract\n\nThis is a source passage with enough content to appear in the reading map and link back to its block.\n\n1 Methods\n\nWe tested a careful procedure with a second long passage that has many words.');

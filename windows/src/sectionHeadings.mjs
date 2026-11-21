@@ -1,3 +1,5 @@
+import { protectMarkdown, restoreMarkdown } from './prompts.mjs';
+
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const majorSectionHeadings = new Set([
   'abstract', 'introduction', 'background', 'related work', 'method', 'methods',
@@ -49,6 +51,32 @@ function isLikelySectionHeading(value) {
   const letters = characters.filter(character => /\p{L}/u.test(character)).length;
   const titleCaseWords = words.filter(word => /\p{Uppercase}/u.test(graphemes.segment(word)[Symbol.iterator]().next().value.segment)).length;
   return (letters > 0 ? uppercaseLetters / letters : 0) > 0.6 || titleCaseWords / words.length > 0.8;
+}
+
+// Clipboard text can join the next printed section to the preceding sentence.
+export function splitJoinedSections(value) {
+  const boundary = /(?<=[.!?。！？])[ \t]+(?=\p{Nd}+(?:\.\p{Nd}+)*[ \t]+\p{Lu})/gu;
+  if (value.search(boundary) < 0) return [value];
+  const { text, tokens } = protectMarkdown(value);
+  const parts = [];
+  let start = 0;
+  function append(end) {
+    const piece = text.slice(start, end);
+    parts.push(restoreMarkdown(piece, tokens.filter(([marker]) => piece.includes(marker))));
+  }
+  for (const match of text.matchAll(boundary)) {
+    const next = match.index + match[0].length;
+    const heading = leadingSection.exec(text.slice(next));
+    if (!heading?.[1] || !/^\p{Lu}/u.test(heading[2])) continue;
+    if (/\b(?:figs?|eqs?|refs?|sec|no|vol|pp?|e\.g|i\.e|et al)\.$/i.test(text.slice(Math.max(0, match.index - 12), match.index))) continue;
+    const body = text.slice(next + heading[0].length);
+    if (body.length < 20 || !/^["'“‘(\[]*[\p{Lu}\p{Script=Han}]/u.test(body)) continue;
+    append(match.index);
+    start = next;
+  }
+  if (!parts.length) return [value];
+  append(text.length);
+  return parts;
 }
 
 export function detectedSectionTitle(value) {
