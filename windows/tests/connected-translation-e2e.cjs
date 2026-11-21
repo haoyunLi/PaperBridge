@@ -68,6 +68,14 @@ async function run() {
   try {
     app = await launch();
     let page = await app.firstWindow();
+    async function waitForPaperResult(check, id) {
+      const deadline = Date.now() + 30000;
+      while (Date.now() < deadline) {
+        if (await page.evaluate(check, id)) return;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      throw new Error('Timed out waiting for saved paper ' + id);
+    }
     const chinese = { sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' };
     const french = { sourceLanguage: 'English', targetLanguage: 'French' };
     const exportFullTranslation = async (name, code = 'zh-Hans') => {
@@ -146,7 +154,7 @@ async function run() {
     assert.ok(excerpts.every(excerpt => excerpt.length <= 4800));
     assert.ok(excerpts.every(excerpt => citations.every(citation => !excerpt.includes(citation))));
     const file = fs.readdirSync(path.join(workspace, 'papers')).find(name => /^[a-f\d]{64}\.json$/.test(name));
-    await page.waitForFunction(async id => {
+    await waitForPaperResult(async id => {
       const paper = await window.paperBridge.loadPaper(id);
       return paper?.connectedBlocks?.every(batch => batch.status === 'ok');
     }, path.basename(file, '.json'));
@@ -165,7 +173,7 @@ async function run() {
 
     await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
     await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'hidden' });
-    await page.waitForFunction(async paperId => {
+    await waitForPaperResult(async paperId => {
       const current = await window.paperBridge.loadPaper(paperId);
       return current?.connectedLanguage?.targetLanguage === 'Simplified Chinese' && current.connectedBlocks.every(batch => batch.status === 'ok');
     }, paperId);
@@ -181,7 +189,7 @@ async function run() {
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).waitFor();
     await page.locator('.toolbar-actions').getByRole('button', { name: 'Generate Full Translation' }).click();
     await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'hidden' });
-    await page.waitForFunction(async paperId => {
+    await waitForPaperResult(async paperId => {
       const current = await window.paperBridge.loadPaper(paperId);
       return current?.connectedLanguage?.targetLanguage === 'French' && current.connectedBlocks.every(batch => batch.status === 'ok');
     }, paperId);
@@ -192,7 +200,7 @@ async function run() {
     const frenchExport = await exportFullTranslation('full-translation-french.md', 'fr');
     for (const text of ['Traduction française 1.', 'Traduction française 2.', 'Traduction française 3.']) assert.ok(frenchExport.includes(text));
     await page.getByLabel('Sidebar to language', { exact: true }).selectOption('Simplified Chinese');
-    await page.waitForFunction(async paperId => (await window.paperBridge.loadPaper(paperId))?.connectedLanguage?.targetLanguage === 'Simplified Chinese', paperId);
+    await waitForPaperResult(async paperId => (await window.paperBridge.loadPaper(paperId))?.connectedLanguage?.targetLanguage === 'Simplified Chinese', paperId);
     assert.equal(readPaper().connectedTranslation, regenerated.connectedTranslation);
     assert.deepEqual(readPaper().connectedBlocks, regenerated.connectedBlocks);
     assert.deepEqual(readPaper().connectedLanguage, chinese);
@@ -216,7 +224,7 @@ async function run() {
     await page.getByRole('button', { name: 'Resume unfinished batches', exact: true }).waitFor();
     await openWorkspaceView(page, 'Reader');
     await openWorkspaceView(page, 'Full Translation');
-    await page.waitForFunction(async paperId => {
+    await waitForPaperResult(async paperId => {
       const current = await window.paperBridge.loadPaper(paperId);
       return current?.connectedLanguageConflict === true && current.connectedLanguage === null;
     }, paperId);
@@ -228,7 +236,7 @@ async function run() {
 
     await page.getByRole('button', { name: 'Resume unfinished batches', exact: true }).click();
     await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'hidden' });
-    await page.waitForFunction(async paperId => {
+    await waitForPaperResult(async paperId => {
       const current = await window.paperBridge.loadPaper(paperId);
       return current?.connectedBlocks?.every(batch => batch.status === 'ok') && current.connectedLanguageConflict === true && current.connectedLanguage === null;
     }, paperId);
@@ -249,7 +257,7 @@ async function run() {
     assert.equal(excerpts.length, 12);
     await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
     await page.getByRole('button', { name: 'Stop', exact: true }).waitFor({ state: 'hidden' });
-    await page.waitForFunction(async paperId => {
+    await waitForPaperResult(async paperId => {
       const current = await window.paperBridge.loadPaper(paperId);
       return current?.connectedBlocks?.every(batch => batch.status === 'ok') && current.connectedLanguageConflict === false &&
         current.connectedLanguage?.targetLanguage === 'Simplified Chinese';
@@ -289,7 +297,7 @@ async function run() {
     await openWorkspaceView(page, 'Full Translation');
     const methodsOffset = excerpts.length;
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
-    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.every(batch => batch.status === 'ok'), methodsId);
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.every(batch => batch.status === 'ok'), methodsId);
     const methodRequests = excerpts.slice(methodsOffset);
     assert.deepEqual(methodRequests, [methods.paragraphs.slice(0, 5).join('\n\n'), methods.paragraphs.slice(7).join('\n\n')]);
     const methodsExport = await exportFullTranslation('methods-after-bibliography.md');
@@ -302,7 +310,7 @@ async function run() {
     await openWorkspaceView(page, 'Full Translation');
     const beforeContents = excerpts.length;
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
-    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedContentsChecked === true &&
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedContentsChecked === true &&
       (await window.paperBridge.loadPaper(id)).connectedBlocks.every(b => b.status === 'ok'), contentsId);
     assert.deepEqual(excerpts.slice(beforeContents), [contents.paragraphs.slice(0, 5).join('\n\n'), contents.paragraphs.slice(7).join('\n\n')]);
     assert.ok((await exportFullTranslation('article-with-contents.md')).includes(contents.paragraphs.slice(5, 7).join('\n\n')));
@@ -319,7 +327,7 @@ async function run() {
     await resume.waitFor();
     const formulaFile = path.join(workspace, 'papers', formulaId + '.json');
     const formulaDraft = () => JSON.parse(fs.readFileSync(formulaFile, 'utf8')).connectedBlocks[0];
-    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.errorCode === 'PROTECTED_MARKDOWN_CHANGED', formulaId);
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.errorCode === 'PROTECTED_MARKDOWN_CHANGED', formulaId);
     assert.equal(formulaDraft().output, formulas.join('\n\n'));
     await app.close();
     app = await launch();
@@ -331,7 +339,7 @@ async function run() {
     assert.equal(formulaDraft().output, formulas.join('\n\n'), 'A partial retry cannot replace a complete source batch');
     omitRetryMarker = false;
     await retry.click();
-    await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'ok', formulaId);
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'ok', formulaId);
     assert.equal(formulaDraft().output, '保留公式 $x_1$\n\n续译 $$y = 2$$.');
     assert.equal(excerpts.length - offset, 7);
     assert.deepEqual(excerpts.slice(-3), excerpts.slice(-6, -3));
