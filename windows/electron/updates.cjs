@@ -1,3 +1,4 @@
+const RELEASE_FEED = 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json';
 const RELEASES_API = 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100';
 const RELEASE_TAG = /^windows-v(\d+\.\d+\.\d+)$/;
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -68,7 +69,26 @@ function selectWindowsRelease(releases, currentVersion) {
   return candidates[0] || { status: 'unpublished', currentVersion };
 }
 
+function releaseFromFeed(feed, currentVersion) {
+  const version = feed?.version;
+  if (typeof version !== 'string' || !versionParts(version)) throw new Error('Invalid Windows release version.');
+  const tag = 'windows-v' + version;
+  const prefix = 'PaperBridge-Windows-' + version + '-x64-';
+  const setup = prefix + 'Setup.exe', portable = prefix + 'Portable.exe';
+  const result = releaseResult(tag, setup, currentVersion, portable, {
+    [setup]: feed.files?.Setup, [portable]: feed.files?.Portable
+  });
+  if (!result?.files?.[setup] || !result.files[portable]) throw new Error('Incomplete Windows release checksums.');
+  return result;
+}
+
 async function checkWindowsRelease(currentVersion, fetchImpl = fetch) {
+  try {
+    const feed = await fetchImpl(RELEASE_FEED, {
+      headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(6000)
+    });
+    if (feed.ok) return releaseFromFeed(await feed.json(), currentVersion);
+  } catch { /* The release API can also serve installations that cannot reach the static feed. */ }
   const response = await fetchImpl(RELEASES_API, {
     headers: { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'User-Agent': `PaperBridge-Windows/${currentVersion}` },
     signal: AbortSignal.timeout(10000)
@@ -124,4 +144,4 @@ function createUpdateChecker({ store, currentVersion, checkRelease = checkWindow
   };
 }
 
-module.exports = { compareVersions, releaseUrl, updateDownload, selectWindowsRelease, checkWindowsRelease, createUpdateChecker };
+module.exports = { releaseFromFeed, compareVersions, releaseUrl, updateDownload, selectWindowsRelease, checkWindowsRelease, createUpdateChecker };

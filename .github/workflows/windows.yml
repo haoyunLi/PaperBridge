@@ -184,6 +184,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   verify-public-download:
+    outputs:
+      release_feed: ${{ steps.public-download.outputs.release_feed }}
     needs: build
     if: startsWith(github.ref, 'refs/tags/windows-v') || github.event_name == 'pull_request'
     runs-on: windows-latest
@@ -207,7 +209,8 @@ jobs:
           }
           if ($response.StatusCode -ne 200) { throw "Could not read release $tag (HTTP $($response.StatusCode))" }
           $release = $response.Content | ConvertFrom-Json
-          if ($release.tag_name -cne $tag -or $release.draft) { throw "Expected public release $tag" }
+          if ($release.tag_name -cne $tag -or $release.draft -or $release.prerelease) { throw "Expected stable public release $tag" }
+          $feed = [ordered]@{ version = $version; files = [ordered]@{} }
           foreach ($kind in @('Portable', 'Setup')) {
             $name = "PaperBridge-Windows-$version-x64-$kind.exe"
             $asset = @($release.assets | Where-Object name -eq $name)
@@ -224,9 +227,11 @@ jobs:
             if ($asset[0].digest -cne "sha256:$hash" -or (Get-Content "$file.sha256" -Raw).Trim() -cne "$hash  $name") {
               throw "Public checksum mismatch for $name"
             }
+            $feed.files[$kind] = [ordered]@{ size = $download.Length; sha256 = $hash }
           }
           ./tests/check-distribution.ps1 -Directory $dir.FullName -Version $version
           "portable=$(Join-Path $dir.FullName "PaperBridge-Windows-$version-x64-Portable.exe")" >> $env:GITHUB_OUTPUT
+          "release_feed=$($feed | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
       - uses: actions/setup-node@v4
         if: steps.public-download.outputs.portable != ''
         with:
@@ -243,3 +248,20 @@ jobs:
           npm ci --ignore-scripts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/portable-relaunch-pdf.cjs "$env:PUBLIC_PORTABLE"
+
+  publish-update-feed:
+    needs: verify-public-download
+    if: github.repository == 'haoyunLi/PaperBridge' && startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v8
+        env:
+          VERIFIED_RELEASE: ${{ needs.verify-public-download.outputs.release_feed }}
+        with:
+          script: |
+            const { publishReleaseFeed } = require('./windows/scripts/publish-release-feed.cjs');
+            core.info(await publishReleaseFeed({ repos: github.rest.repos, repo: context.repo,
+              ref: context.ref, feed: JSON.parse(process.env.VERIFIED_RELEASE) }));

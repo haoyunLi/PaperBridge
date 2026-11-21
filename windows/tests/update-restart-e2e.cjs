@@ -33,6 +33,7 @@ async function run() {
       const originalFetch = global.fetch;
       global.__updateReleaseCalls = 0;
       global.fetch = (url, options) => {
+        if (String(url).endsWith('/windows/latest-release.json')) return Promise.resolve(new Response(null, { status: 404 }));
         if (String(url) === 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100') {
           global.__updateReleaseCalls++;
           return Promise.resolve(new Response(JSON.stringify([{ tag_name: fixture.tag, draft: false, prerelease: false,
@@ -103,12 +104,14 @@ async function run() {
     const bytes = 'Portable release fixture for ' + nextVersion;
     const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
     await app.evaluate(({ session, shell }, { identity, bytes, hash }) => {
-      const base = 'https://github.com/haoyunLi/PaperBridge/releases/download/' + identity.tag + '/';
-      const assets = [identity.installerName, identity.portableName].map(name => ({ name, state: 'uploaded',
-        browser_download_url: base + name, size: Buffer.byteLength(bytes), digest: 'sha256:' + hash }));
+      const asset = { size: Buffer.byteLength(bytes), sha256: hash };
+      const feed = { version: identity.tag.slice('windows-v'.length), files: { Setup: asset, Portable: asset } };
       const originalFetch = global.fetch;
-      global.fetch = (url, options) => String(url) === 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100'
-        ? Promise.resolve(Response.json([{ tag_name: identity.tag, assets }])) : originalFetch(url, options);
+      global.fetch = (url, options) => {
+        if (String(url).endsWith('/windows/latest-release.json')) return Promise.resolve(Response.json(feed));
+        if (String(url).startsWith('https://api.github.com/')) return Promise.resolve(new Response(null, { status: 403 }));
+        return originalFetch(url, options);
+      };
       global.__fileRequests = [];
       const partition = session.fromPartition('paperbridge-update-downloads');
       partition.downloadURL = url => {

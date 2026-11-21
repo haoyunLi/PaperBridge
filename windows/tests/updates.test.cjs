@@ -56,8 +56,48 @@ test('update URL and version comparison accept only Windows release tags', () =>
   assert.throws(() => releaseUrl('windows-v0.3.0/../../other'));
 });
 
-test('release fetch uses the official GitHub API and reports errors', async () => {
+const feedUrl = 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json';
+const feed = { version: '0.3.0', files: {
+  Setup: { size: 103, sha256: 'a'.repeat(64) }, Portable: { size: 94, sha256: 'b'.repeat(64) }
+} };
+
+test('public release feed discovers both verified editions without calling the rate-limited API', async () => {
+  const calls = [];
+  const fetchFeed = async (url, options) => {
+    calls.push(url);
+    assert.equal(options.redirect, 'error');
+    return Response.json({ ...feed, url: 'https://example.org/ignored' });
+  };
+  const result = await checkWindowsRelease('0.2.0', fetchFeed);
+  assert.deepEqual(calls, [feedUrl]);
+  assert.equal(result.status, 'available');
+  for (const kind of ['Setup', 'Portable']) {
+    const file = 'PaperBridge-Windows-0.3.0-x64-' + kind + '.exe';
+    const download = updateDownload(result, kind === 'Portable');
+    assert.equal(download.url, 'https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.3.0/' + file);
+    assert.deepEqual(download.file, { name: file, ...feed.files[kind] });
+  }
+  assert.equal((await checkWindowsRelease('0.3.0', fetchFeed)).status, 'current');
+});
+
+test('unavailable or malformed feeds fall back to the official release API', async () => {
+  for (const bad of [new Error('offline'), null, { version: '../escape', files: feed.files },
+    { ...feed, files: { Setup: feed.files.Setup } }, { ...feed, files: { ...feed.files, Portable: { size: -1, sha256: 'x' } } }]) {
+    const calls = [];
+    const result = await checkWindowsRelease('0.2.0', async url => {
+      calls.push(url);
+      if (url !== feedUrl) return Response.json([release('windows-v0.3.1')]);
+      if (bad instanceof Error) throw bad;
+      return Response.json(bad);
+    });
+    assert.deepEqual(calls, [feedUrl, 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100']);
+    assert.equal(result.latestVersion, '0.3.1');
+  }
+});
+
+test('release check uses the API when raw content is blocked and reports failures of both sources', async () => {
   const result = await checkWindowsRelease('0.2.0', async (url, options) => {
+    if (url === feedUrl) return new Response(null, { status: 404 });
     assert.equal(new URL(url).hostname, 'api.github.com');
     assert.match(options.headers['User-Agent'], /PaperBridge-Windows/);
     return { ok: true, json: async () => [release('windows-v0.3.0')] };
