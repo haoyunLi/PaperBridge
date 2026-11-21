@@ -3198,13 +3198,15 @@ function App() {
   }
   function startSummaryFromMenu() {
     if (!canSummarize || busy || taskRef.current) return;
-    setModal(''); setTab('Summary');
-    if (summarySetup) openTaskSetup(summarySetup); else summarize();
+    if (modal === 'more') setModal('');
+    setTab('Summary');
+    summarize();
   }
   function startFullTranslationFromMenu() {
     if (!fullHasSource || busy || taskRef.current) return;
-    setModal(''); setTab('Full Translation');
-    if (fullSetup) openTaskSetup(fullSetup); else fullTranslation();
+    if (modal === 'more') setModal('');
+    setTab('Full Translation');
+    fullTranslation();
   }
   function runPrimaryTask() {
     if (!canPrimaryTask || busy || taskRef.current || editRef.current) return;

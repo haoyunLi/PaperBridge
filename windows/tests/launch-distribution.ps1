@@ -38,8 +38,12 @@ try {
         foreach ($processId in $owned) {
             $candidate = Get-Process -Id $processId -ErrorAction SilentlyContinue
             if (!$candidate -or $candidate.MainWindowHandle -eq 0 -or $candidate.MainWindowTitle -ne 'PaperBridge') { continue }
-            $windowProcess = $candidate
             $window = [System.Windows.Automation.AutomationElement]::FromHandle($candidate.MainWindowHandle)
+            if (!$windowProcess -or $windowProcess.Id -ne $candidate.Id) {
+                # A background shell may launch the reader behind the test runner.
+                try { $window.SetFocus() } catch [System.InvalidOperationException] {}
+            }
+            $windowProcess = $candidate
             if ($window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) {
                 $ready = $true
                 break
