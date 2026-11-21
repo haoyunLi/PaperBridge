@@ -2,7 +2,7 @@ import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { documentLinkTarget } from './markdownLinks.mjs';
-import { capturePaperAnchor, restorePaperAnchor } from './paperScroll.mjs';
+import { capturePaperAnchor, paperModeViewport, restorePaperAnchor, storePaperViewport } from './paperScroll.mjs';
 import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
@@ -1557,15 +1557,21 @@ function App() {
     catch (cause) { setError(cause.message); }
   }
   const changeDisplayMode = mode => {
-    if (mode !== displayMode) invalidateReadingScroll();
-    if (mode !== displayMode && selectionRef.current?.scope === 'paperArticle') {
+    if (mode === displayMode) return;
+    const fromPaper = tab === 'Paper' && !restoringScroll.current ? currentReadingLocation() : null;
+    invalidateReadingScroll();
+    if (tab === 'Paper') { setViewNavigation(null); setBlockNavigation(null); }
+    if (selectionRef.current?.scope === 'paperArticle') {
       void finishNoteEditing();
       window.getSelection()?.removeAllRanges();
       setSelection(null);
     }
     setDisplayMode(mode);
-    commitPaper(current => ({ ...current, position: { ...current.position, displayMode: mode } }));
-    if (mode !== displayMode && tab === 'Reader' && !search) {
+    commitPaper(current => {
+      const position = fromPaper ? persistedReadingPosition(fromPaper, current.position) : current.position;
+      return { ...current, position: { ...position, displayMode: mode } };
+    });
+    if (tab === 'Reader' && !search) {
       const origin = normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin);
       if (origin !== null) scheduleReaderSearchRestore(origin);
     }
@@ -1602,13 +1608,15 @@ function App() {
             paperArticleSource(paperRef.current).mode !== sourceMode || paperRef.current?.position?.tab !== tab ||
             mainScrollRef.current !== host) return;
         const key = tab === 'Original' ? `Original:${page}` : tab;
-        const saved = tab === 'Reader' && search && !clearSearch ? searchScroll.current : paperRef.current?.position?.scrollByTab?.[key];
+        const position = paperRef.current?.position;
+        const view = tab === 'Paper' ? paperModeViewport(position, sourceMode, displayMode) : null;
+        const saved = view ? view.scrollTop : tab === 'Reader' && search && !clearSearch ? searchScroll.current : position?.scrollByTab?.[key];
         const origin = tab === 'Reader' && (!search || clearSearch) ? normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin) : null;
         if (origin !== null) {
           restoreReaderSearchOrigin(origin);
           persistRestoredReaderPosition();
         } else {
-          if (host && !(tab === 'Paper' && restorePaperAnchor(host, paperRef.current.position?.paperAnchor, saved))) host.scrollTop = Number(saved || 0);
+          if (host && !(view && restorePaperAnchor(host, view.anchor, saved))) host.scrollTop = Number(saved || 0);
           if (saved == null && tab === 'Reader') document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
         }
       } finally { finishReadingRestore(owner); }
@@ -1630,9 +1638,12 @@ function App() {
       const top = host?.getBoundingClientRect().top || 0;
       const visible = tab === 'Reader' && !search ? [...host.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12) : null;
       const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
-      const paperAnchor = tab === 'Paper' ? capturePaperAnchor(host) : undefined;
-      commitPaper(current => ({ ...current, position: { ...current.position, block, ...(tab === 'Paper' && { paperAnchor }),
-        scrollByTab: { ...current.position?.scrollByTab, [key]: offset } } }));
+      commitPaper(current => {
+        const position = { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } };
+        return { ...current, position: tab === 'Paper'
+          ? storePaperViewport(position, paperArticleSource(current).mode, displayMode, offset, capturePaperAnchor(host))
+          : position };
+      });
     }, 350);
   };
   function persistRestoredReaderPosition() {
@@ -2018,7 +2029,7 @@ function App() {
   useLayoutEffect(() => {
     if (paper && !viewNavigation && !blockNavigation) return restoreMainScroll();
     publishReadingRestorationState();
-  }, [tab, paper?.id]);
+  }, [tab, paper?.id, tab === 'Paper' ? displayMode : null]);
   useLayoutEffect(() => {
     if (blockNavigation?.recordType !== 'paragraph' || tab !== 'Reader') return;
     const host = mainScrollRef.current;

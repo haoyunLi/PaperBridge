@@ -48,7 +48,7 @@
     "test:installer-e2e": "node tests/installer-e2e.cjs",
     "test:official-links-e2e": "node tests/official-links-e2e.cjs",
     "test:markdown": "node tests/markdown-parity.cjs",
-    "test:markdown-navigation-e2e": "node tests/markdown-navigation-e2e.cjs --reflow",
+    "test:markdown-navigation-e2e": "node tests/markdown-navigation-e2e.cjs --reflow --modes",
     "test:connected-translation-e2e": "node tests/connected-translation-e2e.cjs",
     "test:summary-e2e": "node tests/summary-e2e.cjs",
     "test:terminology-e2e": "node tests/terminology-e2e.cjs",

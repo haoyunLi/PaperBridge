@@ -1,5 +1,7 @@
 const clone = value => structuredClone(value);
 
+import { storePaperViewport } from './paperScroll.mjs';
+
 export function normalizeSearchOrigin(value) {
   if (Number.isFinite(value) && value >= 0) return value;
   if (!value || !Number.isFinite(value.scrollTop) || value.scrollTop < 0 ||
@@ -21,6 +23,9 @@ export function persistedReadingPosition(location, previous = {}) {
     position.readerSearchOrigin = origin;
     if (location.tab === 'Reader' && typeof origin === 'object') position.block = origin.block;
   } else if (location.tab === 'Reader') delete position.readerSearchOrigin;
+  if (location.tab === 'Paper' && location.sourceMode && Number.isFinite(position.scrollByTab.Paper)) {
+    return storePaperViewport(position, location.sourceMode, location.displayMode, position.scrollByTab.Paper, location.paperAnchor ?? null);
+  }
   return position;
 }
 

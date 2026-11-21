@@ -84,7 +84,32 @@ async function run() {
       assert.ok(Math.abs(await offset() - beforeOffset) < 3, 'The same translated heading must return to its previous place in the viewport');
       assert.ok(Math.abs(await scroll() - beforeY) > 10, 'The new text geometry must require a different scroll position');
     }
-    console.log(JSON.stringify({ jumps: cases.length * 2, scrollRestored: true, reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    if (process.argv.includes('--modes')) {
+      const positions = new Map();
+      async function showMode(mode) {
+        await page.getByLabel('Paper display mode').selectOption(mode);
+        await page.locator('.paper-mode-' + mode).waitFor();
+        await page.waitForFunction(() => document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false');
+      }
+      for (const [mode, label] of [['source', 'Second results table'], ['translation', 'Résumé'], ['bilingual', 'Appendix']]) {
+        await showMode(mode);
+        const side = mode === 'bilingual' ? 'translation' : mode;
+        await page.locator('[data-paper-kind="' + side + '"]').getByRole('link', { name: label, exact: true }).press('Enter');
+        positions.set(mode, await scroll());
+      }
+      assert.equal(new Set(positions.values()).size, 3);
+      for (const [mode, y] of positions) {
+        await showMode(mode);
+        assert.ok(Math.abs(await scroll() - y) < 4, mode + ' must keep its own reading position');
+      }
+      await closeWindow(app); app = null;
+      app = await open(); page = await app.firstWindow();
+      for (const [mode, y] of positions) {
+        await showMode(mode);
+        assert.ok(Math.abs(await scroll() - y) < 4, mode + ' must recover its position after restart');
+      }
+    }
+    console.log(JSON.stringify({ jumps: cases.length * 2, scrollRestored: true, modes: process.argv.includes('--modes'), reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

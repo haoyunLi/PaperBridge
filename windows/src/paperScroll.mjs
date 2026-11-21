@@ -1,3 +1,14 @@
+export function paperModeViewport(position, source, mode) {
+  const viewports = position?.paperViewports;
+  if (viewports && Object.keys(viewports).length) return viewports[source + ':' + mode] || { scrollTop: 0, anchor: null };
+  return { scrollTop: position?.scrollByTab?.Paper || 0, anchor: position?.paperAnchor || null };
+}
+
+export function storePaperViewport(position, source, mode, scrollTop, anchor) {
+  return { ...position, paperAnchor: anchor, scrollByTab: { ...position?.scrollByTab, Paper: scrollTop },
+    paperViewports: { ...position?.paperViewports, [source + ':' + mode]: { scrollTop, anchor } } };
+}
+
 const passageSelector = '[data-paper-block-id] [data-paper-kind]';
 
 export function capturePaperAnchor(host) {
