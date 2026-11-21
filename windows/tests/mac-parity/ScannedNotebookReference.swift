@@ -88,7 +88,17 @@ func nativeScannedNotebook(pdf: URL) throws -> [String: Any] {
     }
     let data = try Data(contentsOf: archived)
     guard data == (try Data(contentsOf: pdf)) else { throw failure("Archived scan bytes changed") }
-    return ["originalSHA256": SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
+    func needsOCR(_ mode: ReaderDisplayMode, section: String) -> Bool {
+        reopened.displayMode = mode
+        let markdown = reopened.previewMarkdown
+        guard let range = markdown.range(of: section, options: .backwards) else { return false }
+        let body = markdown[range.upperBound...]
+        return body.contains("No selectable text was found.") &&
+            (body.contains("OCR") || body.contains("scanned image-only PDF"))
+    }
+    return ["translationNeedsOCR": needsOCR(.translationOnly, section: "translation of selectable text"),
+            "bilingualNeedsOCR": needsOCR(.bilingual, section: "# Extracted bilingual text"),
+            "originalSHA256": SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined(),
             "paragraphs": paper.paragraphs.count, "canTranslate": reopened.canTranslate,
             "canSummarize": reopened.canSummarize, "canTranslateFull": reopened.canGenerateConnectedTranslation,
             "restoredPage": 2]

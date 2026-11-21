@@ -111,8 +111,25 @@ async function run() {
       return host?.dataset.pdfZoom === '125' && Math.abs(host.scrollTop - host.querySelector('[data-pdf-page="2"]').offsetTop - target) < 2;
     }, target);
     result.restoredPage = 2;
+    await app.evaluate(({ dialog, shell }, destination) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [destination] });
+      shell.showItemInFolder = () => {};
+    }, dir);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
+    await page.getByText(/Exported .*original PDF to /).waitFor();
+    const folder = path.join(dir, 'scanned-notebook_PaperBridge');
+    assert.deepEqual(fs.readFileSync(path.join(folder, 'original.pdf')), bytes);
+    function needsOCR(prefix) {
+      const filename = fs.readdirSync(folder).find(name => name.startsWith(prefix) && name.endsWith('.md'));
+      const markdown = fs.readFileSync(path.join(folder, filename), 'utf8');
+      assert.equal((markdown.match(/!\[Original PDF page \d+\]/g) || []).length, 3);
+      return /^> No selectable text was found\..*OCR/m.test(markdown);
+    }
+    result.translationNeedsOCR = needsOCR('paper_translation');
+    result.bilingualNeedsOCR = needsOCR('paper_bilingual');
     assert.deepEqual(result, { canTranslate: false, canSummarize: false, canTranslateFull: false,
-      paragraphs: 0, originalSHA256: id, restoredPage: 2 });
+      paragraphs: 0, originalSHA256: id, restoredPage: 2, translationNeedsOCR: true, bilingualNeedsOCR: true });
     if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
       const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
       assert.deepEqual(result, native.scannedNotebook, 'scanned paper and restored page match the Mac reader');

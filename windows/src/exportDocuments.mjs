@@ -122,10 +122,12 @@ export function markdownDocuments(input, _legacyTargetLanguage, kind) {
     const target = block.translationMarkdown || block.translation || '*Not translated*';
     return block.heading ? `${source}\n\n${target}` : `### ${block.id}\n\n${source}\n\n${target}`;
   }).join('\n\n');
+  const scanNotice = paper.type === 'pdf' && !structured && !original.trim()
+    ? '> No selectable text was found. Translation requires a PDF text layer or an OCR parser.' : '';
   const documents = [
     descriptor('original', 'Original', original),
-    descriptor('translated', 'Translated', translated),
-    descriptor('bilingual', 'Bilingual', `${bilingual}\n\n${annotations}`)
+    descriptor('translated', 'Translated', translated || scanNotice),
+    descriptor('bilingual', 'Bilingual', [bilingual || scanNotice, annotations].filter(Boolean).join('\n\n'))
   ];
   if (!kind) documents.push(analysis());
   if (paper.connectedTranslation) {

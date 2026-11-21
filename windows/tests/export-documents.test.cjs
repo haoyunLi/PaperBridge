@@ -44,6 +44,23 @@ test('heading passages stay within the analysis outline and retain inline links 
   assert.ok(markdownDocuments({ name: 'Outline', blocks }, undefined, 'original')[0].content.includes(blocks[0].sourceMarkdown));
 });
 
+test('a textless scan retains its OCR guidance alongside PDF notes in both export paths', async () => {
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const scan = { name: 'Scanned lab book.pdf', type: 'pdf', sourceMode: 'pdf', blocks: [],
+    pdfNotes: [{ id: 'scan-note', page: 1, text: 'Figure caption', body: 'Keep the original page for comparison.' }] };
+  for (const kind of ['bilingual', 'translated']) {
+    const bundled = markdownDocuments(scan).find(doc => doc.kind === kind);
+    const single = markdownDocuments(scan, undefined, kind)[0];
+    assert.equal(single.content, bundled.content);
+    assert.match(single.content, /^> No selectable text was found\..*OCR/);
+    if (kind === 'bilingual') assert.ok(single.content.includes(scan.pdfNotes[0].body));
+  }
+  const text = { ...scan, blocks: [{ id: 1, text: 'This page has selectable text.', status: 'pending' }] };
+  const readable = markdownDocuments(text).find(doc => doc.kind === 'bilingual').content;
+  assert.doesNotMatch(readable, /No selectable text was found/);
+  assert.ok(readable.includes(text.blocks[0].text));
+});
+
 const modules = Promise.all([
   import('../src/exportDocuments.mjs'), import('../src/connectedTranslation.mjs'),
   import('../src/academicMarkdown.mjs'), import('../src/outputCache.mjs')
