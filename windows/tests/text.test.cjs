@@ -139,6 +139,20 @@ test('import stages preserve ICU whitespace boundaries and remove soft hyphens a
   assert.equal(blocksFromText(source + '\nMore evidence.')[0].text, 'Boundary re-\ufeffsults and results plus results. More evidence.');
 });
 
+test('raised numbers follow their attached word or formula on the same PDF line', async () => {
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, y, width, height) => ({ str, transform: [height, 0, 0, height, x, y], width, height });
+  const items = [
+    item('Runtime O(n', 80, 610, 65, 12), item('2', 145, 614, 4, 7), item(' · d).', 149, 610, 32, 12),
+    item('Proceedings', 80, 590, 66, 12), item('1, 3', 146, 594, 10, 7), item(', Basel.', 156, 590, 42, 12),
+    item('4', 290, 594, 5, 7)
+  ];
+  const lines = pageLines({ items }, [0, 0, 600, 800]).map(line => line.text);
+  assert.ok(lines.includes('Runtime O(n2 · d).'));
+  assert.ok(lines.includes('Proceedings1, 3, Basel.'));
+  assert.ok(lines.includes('4'), 'An unconnected number is not appended to a distant word');
+});
+
 test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
   const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
   const item = (str, x, y, width, vertical = false) => ({

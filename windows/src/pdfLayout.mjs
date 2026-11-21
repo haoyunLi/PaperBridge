@@ -1,7 +1,8 @@
-import { normalizeExtractedLine } from './text.mjs';
+import { joinPdfText, normalizeExtractedLine } from './text.mjs';
 
 function textRows(items, left, bottom, width) {
   const rows = [];
+  let previousText;
   for (const [index, item] of items.entries()) {
     if (!item.str?.trim()) continue;
     const x = item.transform[4] - left;
@@ -9,14 +10,22 @@ function textRows(items, left, bottom, width) {
     const vertical = Math.abs(item.transform[1]) > Math.abs(item.transform[0]);
     if (vertical && /^arxiv:/i.test(item.str.trim()) && (x < width * 0.08 || x > width * 0.92)) continue;
     const height = item.height || 12;
-    let row = rows.find(candidate => candidate.vertical === vertical && Math.abs(candidate.y - y) < Math.max(2, height * 0.4));
+    // Superscript numbers often have their own baseline and are emitted
+    // directly after the name, word or formula they qualify. Keep that row.
+    const raisedSuffix = !vertical && previousText && !previousText.vertical &&
+      /^[\p{Nd}]+(?:\s*[,–-]\s*\p{Nd}+)*$/u.test(item.str.trim()) && /\p{L}/u.test(previousText.text) &&
+      height < previousText.height * 0.88 && y > previousText.y + height * 0.18 && y < previousText.y + previousText.height * 0.75 &&
+      Math.abs(x - previousText.end) <= height * 0.5;
+    let row = raisedSuffix ? previousText.row : rows.find(candidate => candidate.vertical === vertical && Math.abs(candidate.y - y) < Math.max(2, height * 0.4));
     if (!row) {
       row = { y, items: [], vertical };
       rows.push(row);
     }
     const previous = items[index - 1];
     const spaceBefore = previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
-    row.items.push({ text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore });
+    const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore };
+    row.items.push(placed);
+    previousText = { ...placed, vertical, row };
   }
   return rows.sort((a, b) => b.y - a.y);
 }
@@ -78,6 +87,43 @@ function hasProse(text) {
     (text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu)?.length || 0) >= 15;
 }
 
+// An editorial rail may sit well to the left of the page midpoint. Require
+// distinct publication labels plus a repeatedly aligned wide prose column.
+function journalSidebarBoundary(rows, width) {
+  const labels = new Set();
+  let top = -Infinity, bottom = Infinity;
+  for (const { items, vertical, y } of rows) {
+    if (vertical) continue;
+    for (const item of items) {
+      if (item.x > width * 0.15) break;
+      const label = /^(doi|editors?|reviewers?|received|submitted|accepted|published|licen[cs]e)\s*(?::|$)/i.exec(item.text.trim());
+      if (label) {
+        labels.add(label[1].toLowerCase());
+        top = Math.max(top, y);
+        bottom = Math.min(bottom, y);
+      }
+    }
+  }
+  if (labels.size < 3) return null;
+  const sharedBand = rows.filter(row => !row.vertical && row.y >= bottom && row.y <= top);
+  const mainStarts = new Map();
+  for (const { items } of sharedBand) {
+    const first = items.findIndex(item => item.x >= width * 0.2);
+    if (first < 0 || items[first].x > width * 0.4 || items.at(-1).end - items[first].x < width * 0.42 ||
+        !hasProse(items.slice(first).map(item => item.text).join(' '))) continue;
+    const x = Math.round(items[first].x);
+    mainStarts.set(x, (mainStarts.get(x) || 0) + 1);
+  }
+  const best = [...mainStarts].sort((a, b) => b[1] - a[1])[0];
+  if (!best || best[1] < 5) return null;
+  // Place the cut in empty space, allowing a few points of body indentation.
+  const boundary = best[0] - 4;
+  if (sharedBand.some(row => row.items.some(item => item.x < boundary && item.end > boundary))) return null;
+  const leftRows = sharedBand.filter(row => row.items[0].end <= boundary);
+  const mainRows = sharedBand.filter(row => row.items.some(item => Math.abs(item.x - best[0]) <= 2));
+  return leftRows.length >= 5 && mainRows.length >= 5 ? boundary : null;
+}
+
 export function pageLines(content, [left, bottom, right, top]) {
   const pageHeight = top - bottom;
   const width = right - left;
@@ -89,8 +135,21 @@ export function pageLines(content, [left, bottom, right, top]) {
     if (line.x >= mid - tolerance) return 'right';
     return 'spanning';
   };
-  const rows = textRows(content.items, left, bottom, width).map(({ y, items, vertical }) => {
-    items.sort((a, b) => a.x - b.x);
+  const physicalRows = textRows(content.items, left, bottom, width);
+  for (const row of physicalRows) row.items.sort((a, b) => a.x - b.x);
+  const sidebar = journalSidebarBoundary(physicalRows, width);
+  if (sidebar !== null) {
+    return physicalRows.flatMap(({ y, items, vertical }) => {
+      if (vertical || items.some(item => item.x < sidebar && item.end > sidebar)) return [lineFromItems(items, y, vertical, pageHeight)];
+      const article = items.filter(item => item.x >= sidebar);
+      const margin = items.filter(item => item.x < sidebar);
+      const lines = [];
+      if (margin.length) lines.push({ ...lineFromItems(margin, y, false, pageHeight), journalMetadata: true });
+      if (article.length) lines.push(lineFromItems(article, y, false, pageHeight));
+      return lines;
+    });
+  }
+  const rows = physicalRows.map(({ y, items, vertical }) => {
     const split = vertical ? 0 : splitAtGutter(items, mid, tolerance);
     const parts = split ? [items.slice(0, split), items.slice(split)] : [items];
     return { y, items, vertical, parts: parts.map(part => lineFromItems(part, y, vertical, pageHeight)) };
@@ -122,7 +181,30 @@ export function pageLines(content, [left, bottom, right, top]) {
   });
 }
 
+function publicationFrontMatter(lines) {
+  const groups = [];
+  let previous;
+  for (const line of lines) {
+    const gap = previous ? previous.y - line.y : 0;
+    const wraps = previous && !line.independent && !previous.independent &&
+      Math.abs(line.height - previous.height) < previous.height * 0.08 &&
+      Math.abs(line.x - previous.x) <= previous.height * 0.4 && gap > 0 && gap <= previous.height * 1.45;
+    if (wraps) {
+      const paragraph = groups.at(-1)[0];
+      paragraph.text = joinPdfText(paragraph.text, line.text);
+    } else groups.push([{ ...line }]);
+    previous = line;
+  }
+  return groups;
+}
+
 export function pdfReadingGroups(lines) {
+  if (lines.some(line => line.journalMetadata)) {
+    const metadata = lines.filter(line => line.journalMetadata).map(line => /^\s*•/u.test(line.text) ? { ...line, independent: true } : line);
+    const article = lines.filter(line => !line.journalMetadata);
+    const section = article.findIndex(line => /^(?:\d+\.?\s+)?(?:abstract|summary|introduction)\s*$/i.test(line.text));
+    return section >= 0 ? [...publicationFrontMatter(article.slice(0, section)), metadata, article.slice(section)] : [article, metadata];
+  }
   if (!lines.some(line => line.lane)) return [lines];
   const groups = [];
   let left = [];

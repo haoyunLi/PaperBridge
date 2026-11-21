@@ -4,8 +4,8 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { revealSidebarSource, openWorkspaceView } = require('../sidebar-controls.cjs');
 
-async function checkColumnPDF(app, page, prompts) {
-  const filename = path.join(__dirname, 'column-footnote.pdf');
+async function importPDF(app, page, name) {
+  const filename = path.join(__dirname, name);
   const bytes = fs.readFileSync(filename);
   const id = createHash('sha256').update(bytes).digest('hex');
   await app.evaluate(({ dialog }, file) => {
@@ -13,9 +13,14 @@ async function checkColumnPDF(app, page, prompts) {
   }, filename);
   await revealSidebarSource(page);
   await page.getByRole('button', { name: 'Open PDF', exact: true }).click();
-  await page.getByRole('heading', { name: 'column-footnote.pdf', exact: true }).waitFor();
+  await page.getByRole('heading', { name, exact: true }).waitFor();
   await openWorkspaceView(page, 'Reader');
   const blocks = (await page.evaluate(paperId => window.paperBridge.loadPaper(paperId), id)).blocks;
+  return { id, blocks, bytes };
+}
+
+async function checkColumnPDF(app, page, prompts) {
+  const { id, blocks, bytes } = await importPDF(app, page, 'column-footnote.pdf');
   const text = blocks.map(block => block.text).join('\n');
   const anchors = ['The sensor recorded changes', 'The recorded value agreed',
     'The second trial used', 'The review included', '3.3. Network Architectures',
@@ -69,4 +74,26 @@ async function checkColumnPDF(app, page, prompts) {
   assert.ok(requestsForNote.every(prompt => !prompt.includes('1This note')));
 }
 
-module.exports = { checkColumnPDF };
+async function checkJournalSidebar(app, page) {
+  const { id, blocks } = await importPDF(app, page, 'emcee-v3.pdf');
+  assert.equal(id, '79889217fa1b876c8e8932e6a803b557fab6aaaf47bb55979b00105c4099579a');
+  assert.equal(blocks[0].text, 'emcee v3: A Python ensemble sampling toolkit for affine-invariant MCMC');
+  assert.ok(blocks[1].text.startsWith('Daniel Foreman-Mackey1, Will M. Farr1, 2, Manodeep Sinha3, 4'));
+  assert.ok(blocks[1].text.endsWith('Oriol Abril Pla15'));
+  assert.ok(blocks[2].text.includes('Center for Computational Astrophysics') && blocks[2].text.endsWith('Pompeu Fabra, Barcelona'));
+  const summary = blocks.findIndex(block => block.text === 'Summary');
+  const refs = blocks.findIndex(block => block.text === 'References');
+  assert.ok(summary > 3 && refs > summary);
+  const metadata = blocks.slice(3, summary).map(block => block.text);
+  assert.deepEqual(metadata.filter(text => text.startsWith('•')), ['• Review', '• Repository', '• Archive', '• @benjaminrose', '• @mattpitkin']);
+  assert.ok(metadata.join(' ').includes('Submitted: 28 October 2019 Published: 17 November 2019'));
+  assert.ok(metadata.join(' ').includes('Creative Commons Attribution'));
+  const body = blocks.slice(summary + 1, refs).map(block => block.text).join(' ');
+  assert.ok(body.startsWith('emcee is a Python library implementing a class of affine-invariant ensemble samplers'));
+  assert.doesNotMatch(body, /Published:|Software\s*• Review|Creative Commons Attribution/);
+  assert.ok(body.includes('tqdm') && body.includes('h5py') && body.includes('GitHub'));
+  const { planConnectedBatches } = await import('../../src/connectedTranslation.mjs');
+  const originals = planConnectedBatches(blocks).filter(batch => batch.kind === 'original');
+  assert.deepEqual(originals.map(batch => batch.source), blocks.slice(refs).map(block => block.text));
+}
+module.exports = { checkColumnPDF, checkJournalSidebar };
