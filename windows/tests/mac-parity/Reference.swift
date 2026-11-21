@@ -147,6 +147,9 @@ struct Reference {
         let published: [String: Any] = [
             "sha256": SHA256.hash(data: publishedPDF).map { String(format: "%02x", $0) }.joined(),
             "paragraphs": body,
+            "paragraphChunks": [500, 1000, 1800].map { limit -> [String: Any] in
+                ["limit": limit, "chunks": body.map { TextProcessing.chunkParagraph($0, maxChars: limit) }]
+            },
             "batches": TextProcessing.buildTextBatches(body, maxChars: TextProcessing.connectedTranslationBatchChars)
         ]
         let bibliographies = fixtures.bibliographies.map { fixture in

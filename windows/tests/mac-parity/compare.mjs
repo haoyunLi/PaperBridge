@@ -6,7 +6,7 @@ import { createStore } from '../../electron/storage.cjs';
 import { libraryLabel } from '../../electron/library-metadata.mjs';
 import { writeBundle } from '../../electron/bundle.cjs';
 import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
-import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
+import { blocksFromText, chunkText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { createHash } from 'node:crypto';
 import { filteredReaderBlocks } from '../../src/textSearch.mjs';
@@ -161,6 +161,10 @@ const published = reference.publishedPaper;
 const publishedBytes = readFileSync(new URL('./emcee-v3.pdf', import.meta.url));
 assert.equal(createHash('sha256').update(publishedBytes).digest('hex'), published.sha256);
 assert.ok(published.paragraphs.join(' ').includes('emcee') && published.paragraphs.length > 5);
+for (const { limit, chunks } of published.paragraphChunks) {
+  assert.deepEqual(published.paragraphs.map(text => chunkText(text, limit)), chunks,
+    'Per-paragraph translation of the native-extracted emcee paper at ' + limit + ' characters');
+}
 assert.deepEqual(connectedSources(published.paragraphs), published.batches, 'All full-translation batches for the same native-extracted journal article');
 console.log(`Verified ${fixtures.connectedBatches.length} full-translation cases and all ${published.batches.length} batches of the ${published.paragraphs.length}-paragraph emcee paper against macOS.`);
 
