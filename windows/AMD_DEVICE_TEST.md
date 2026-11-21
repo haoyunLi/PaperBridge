@@ -1,5 +1,21 @@
 # Windows AMD 真机回归
 
+## 0.2.48 深层目录下的 MinerU 与段落来源（2026-11-21）
+
+在本机 RX 7800 XT 上使用 MinerU 4.1.7 的 DirectML 后端解析两页期刊 PDF。设备回归把 Windows 临时目录设置到 280 个字符深处，解析工具根目录为 286 个字符。导入得到 28 个块，Reader 可读，Original 能渲染原始页。解析结束后临时工作目录已清理。另用 382 字符的中文及空格路径传入 PDF，验证了生成的 ZIP。[测试用论文](https://doi.org/10.21105/joss.01864)
+
+另外从 GitHub 下载 0.2.48 便携版，在 0.2.47 导入失败的相同缓存路径和 278 字符临时目录重新导入。该公开包恢复使用原有模型，抽查的 ONNX 文件哈希、修改时间和缓存配置一致。MinerU 摘要的模型输入有 21 段，比 0.2.47 多四个标题。六条结论中共有四条通过原文核验的引文，重启后内容一致。改用 PDF 文字层重新导入，摘要输入从 16 段增加到 21 段，这次生成了六条结论和五条可跳转的引文。两次均使用 Qwen3 4B Instruct 和 TranslateGemma 4B。[公开包下载与离线启动](https://github.com/haoyunLi/PaperBridge/actions/runs/44909863386/job/136865012268)
+
+要从源码复测，在 Windows 项目目录中运行以下 PowerShell 命令。若 MinerU 安装在自定义目录，可先将 `PAPERBRIDGE_LIVE_MINERU` 设为设置页显示的 `mineru.exe` 完整路径。命令仅为测试进程设置独立的临时目录与模型缓存。
+
+```powershell
+$env:PAPERBRIDGE_LIVE_PDF = (Resolve-Path 'tests/mac-parity/emcee-v3.pdf').Path
+$env:PAPERBRIDGE_LIVE_DIRECTML = '1'
+$env:PAPERBRIDGE_LIVE_LONG_PATHS = '1'
+npm run build
+npm run test:live-mineru
+```
+
 ## 0.2.47 从公开便携版生成和离线阅读摘要（2026-11-21）
 
 在 RX 7800 XT 上从公开便携版导入两页 *emcee v3*。本地 Qwen3 4B Instruct 生成六条结论，TranslateGemma 4B 翻译成中文。六条引文分别跳到 Reader 的 P20、P19、P17、P18、P17 和 P21，并选中所引的原句。关闭后重新打开，双语摘要、引文和 PDF 原文件仍可读回。再打开 0.2.46 保存的摘要，将本地模型服务设为不可用，0.2.47 仍能显示六条结论及其引文，没有请求模型。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.47) · [Windows 公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44907689194/job/136858455185)

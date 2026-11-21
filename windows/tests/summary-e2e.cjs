@@ -14,6 +14,8 @@ async function run() {
   const translationModel = 'translation-test:latest';
   const opening = 'The team calibrated each sensor in the Montre\u0301al laboratory before collecting baseline measurements and repeating the procedure at a second site.';
   const tail = 'At the end of the Montre\u0301al study the test failed under low visibility conditions.';
+  const headingQuote = 'Measurement Uncertainty Across Independent Replicates';
+  const numberedHeading = '2. ' + headingQuote;
   const unvalidated = 'The appendix reported a separate measurement without a confidence interval.';
   const longParagraph = `${'Repeated measurements reproduced the control. '.repeat(340)}${tail} ${unvalidated}`;
   const references = 'This reference entry must never be sent to the summary model.';
@@ -35,6 +37,9 @@ async function run() {
     let answer;
     if (prompt.startsWith('Summarize this academic paper excerpt')) {
       requests.push({ kind: 'excerpt', model, payload, options });
+      if (payload.includes(numberedHeading)) {
+        return response.end(JSON.stringify({ done: true, response: JSON.stringify({ claims: [claim('The paper discusses calibration uncertainty', 1, headingQuote)] }) }));
+      }
       if (regenerate === 'cutoff') return response.end('{"response":"Incomplete replacement","done":true,"done_reason":"length"}');
       if (regenerate === 'hold') { held = response; return; }
       answer = { claims: [
@@ -72,7 +77,7 @@ async function run() {
   try {
     app = await launch();
     let page = await app.firstWindow();
-    const readTail = async block => {
+    const readSource = async (block, quote = tail) => {
       const label = `Read original block ${block} →`;
       const claim = page.locator('.evidence-claim').filter({ hasText: label });
       if (await claim.getAttribute('open') === null) await claim.locator('summary').click();
@@ -83,7 +88,7 @@ async function run() {
         const range = selection.getRangeAt(0).getBoundingClientRect();
         const viewport = document.querySelector('.main-scroll').getBoundingClientRect();
         return range.top >= viewport.top && range.bottom <= viewport.bottom;
-      }, { block, tail });
+      }, { block, tail: quote });
     };
     const openSummaryFromMenu = () => app.evaluate(({ Menu, BrowserWindow }) => {
       const command = Menu.getApplicationMenu().getMenuItemById('command:generateSummary');
@@ -173,7 +178,7 @@ async function run() {
     await openWorkspaceView(page, 'Reader');
     await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Translation', exact: true }).check();
     await openWorkspaceView(page, 'Overview');
-    await readTail(2);
+    await readSource(2);
     assert.equal(await page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: 'Bilingual', exact: true }).isChecked(), true);
 
     regenerate = 'cutoff';
@@ -200,11 +205,11 @@ async function run() {
     await openSummaryFromMenu();
     await page.getByText(/The summary response was cut off/).waitFor();
     assert.ok(requests.length > beforeRefresh, 'The menu still requests a new summary after paper edits');
-    await readTail(3);
+    await readSource(3);
     await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
     await openWorkspaceView(page, 'Overview');
     assert.equal(await page.getByText(staleNotice).count(), 0);
-    await readTail(2);
+    await readSource(2);
     await splitOpening();
     await app.close();
     app = null;
@@ -213,12 +218,19 @@ async function run() {
     await openWorkspaceView(page, 'Overview');
     await page.getByText(staleNotice).waitFor();
     assert.equal(await page.locator('.evidence-claim[open]').count(), 0);
-    await readTail(3);
-    await app.close(); app = null;
+    await readSource(3);
     const paperDir = path.join(workspace, 'papers');
     const file = fs.readdirSync(paperDir).find(name => /^[a-f\d]{64}\.json$/.test(name));
     const saved = JSON.parse(fs.readFileSync(path.join(paperDir, file), 'utf8'));
     assert.deepEqual(saved.summary.claims.flatMap(item => item.sources), [{ paragraphID: 1, quote: opening }, { paragraphID: 3, quote: tail }]);
+    await revealSidebarSource(page);
+    await openPasteText(page);
+    await page.locator('.paste-area').fill(numberedHeading + '\n\nWe calibrated the same detector under three independent conditions.');
+    await loadPastedText(page, { view: 'Paper' });
+    await openSummaryFromMenu();
+    await page.getByText('Summary saved. Only exact-match source quotations are linked.', { exact: true }).waitFor();
+    await readSource(1, headingQuote);
+    await page.locator('#block-1.heading-block.current').waitFor();
     console.log('Summary verified: responsive language panels, keyboard disclosures, batch-specific citations, cancelled regeneration, and exact source navigation after split, undo, and restart.');
   } finally {
     held?.destroy();
