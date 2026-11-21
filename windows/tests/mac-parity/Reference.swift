@@ -156,7 +156,14 @@ struct Reference {
         ]
         let journalMarkdown = try String(contentsOf: fixtureURL.deletingLastPathComponent().appendingPathComponent("emcee-v3-mineru.md"), encoding: .utf8)
         let structured = AcademicMarkdownProcessor.assignParagraphs(in: AcademicMarkdownProcessor.parse(journalMarkdown))
+        let structuredPaper = PaperDocument(name: "emcee v3", checksum: checksum, cleanedText: structured.paragraphs.joined(separator: "\n\n"),
+                                           paragraphs: structured.paragraphs, excludedReferenceParagraphs: [], referenceSectionTitle: nil,
+                                           markdownSegments: structured.segments)
+        let structuredRanges: [[String: Any]] = PaperReadingAnalysis.sections(in: structuredPaper).map {
+            ["title": $0.title, "startId": $0.id, "ids": $0.paragraphIDs]
+        }
         let structuredJournal: [String: Any] = [
+            "translationRanges": structuredRanges,
             "headings": structured.segments.filter { $0.kind == .heading && $0.paragraphID != nil }.compactMap(\.analysisText),
             "body": structured.paragraphs,
             "summaryBatches": SummaryEvidence.sourceBatches(structured.paragraphs)

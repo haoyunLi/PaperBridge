@@ -373,6 +373,17 @@
   ],
   "papers": [
     {
+      "name": "distinct scientific section identifiers",
+      "blocks": [
+        { "text": "Calibration for model_A in C#", "sourceMarkdown": "## Calibration for `model_A` in C#" },
+        { "text": "The first calibration uses the archived observations." },
+        { "text": "Calibration for modelA in C#", "sourceMarkdown": "## Calibration for `modelA` in C#" },
+        { "text": "The second calibration uses the new observations." },
+        { "text": "Conclusions for A* search", "sourceMarkdown": "## **Conclusions** for A* search" },
+        { "text": "Both estimates use the same evaluation set." }
+      ]
+    },
+    {
       "name": "inline-abstract-and-boundaries",
       "blocks": [
         {

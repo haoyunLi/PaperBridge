@@ -1,3 +1,4 @@
+import { renderedMarkdownText } from './markdownRendering.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { commonOutputLanguage, normalizeOutputLanguage } from './outputLanguages.mjs';
 
@@ -107,21 +108,29 @@ function parsedMarkdownSegments(markdown) {
   return segments;
 }
 
+// Earlier MinerU imports removed literal #, * and _ from the saved display text.
+const headingTextCache = new WeakMap();
+
+export function markdownHeadingText(block) {
+  const source = block.sourceMarkdown;
+  if (typeof source !== 'string' || !/^#{1,6}[ \t]+\S[^\r\n]*$/u.test(source.trim())) return null;
+  const cached = headingTextCache.get(block);
+  if (cached?.source === source) return cached.title;
+  const title = renderedMarkdownText(source.trim()).trim() || block.text || plainText(source);
+  headingTextCache.set(block, { source, title });
+  return title;
+}
+
 export function parsedMarkdownBlocks(markdown) {
-  return parsedMarkdownSegments(markdown).map(({ kind, sourceMarkdown }, index) => ({
-    id: index + 1,
-    text: plainText(sourceMarkdown),
-    sourceMarkdown,
-    markdownKind: kind,
-    page: null,
-    heading: kind === 'heading',
-    resource: ['image', 'formula', 'table', 'code', 'html'].includes(kind),
-    translation: '',
-    status: 'pending',
-    bookmark: false,
-    highlights: [],
-    notes: []
-  }));
+  return parsedMarkdownSegments(markdown).map(({ kind, sourceMarkdown }, index) => {
+    const block = {
+      id: index + 1, text: plainText(sourceMarkdown), sourceMarkdown, markdownKind: kind,
+      page: null, heading: kind === 'heading', resource: ['image', 'formula', 'table', 'code', 'html'].includes(kind),
+      translation: '', status: 'pending', bookmark: false, highlights: [], notes: []
+    };
+    if (block.heading) block.text = markdownHeadingText(block) ?? block.text;
+    return block;
+  });
 }
 
 // Old workspaces lack markdownKind. Recognize only a complete, unchanged

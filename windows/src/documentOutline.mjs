@@ -1,3 +1,4 @@
+import { markdownHeadingText } from './academicMarkdown.mjs';
 import { referenceBlockIds } from './references.mjs';
 
 import { detectedSectionTitle, trimWhitespace } from './sectionHeadings.mjs';
@@ -11,9 +12,10 @@ export function documentOutline(paper) {
   const readable = blocks.filter(block => Number.isInteger(block.id) && block.id > 0 &&
     !block.resource && !references.has(block.id) && typeof block.text === 'string' && trimWhitespace(block.text));
   if (paper?.sourceMode === 'mineru') {
-    const headings = readable.filter(block => typeof block.sourceMarkdown === 'string' &&
-      /^#{1,6}\p{White_Space}+[^\p{White_Space}]/u.test(trimWhitespace(block.sourceMarkdown)))
-      .map(block => ({ id: block.id, title: block.text }));
+    const headings = readable.flatMap(block => {
+      const title = markdownHeadingText(block);
+      return title ? [{ id: block.id, title }] : [];
+    });
     if (headings.length) return headings;
   }
   const detected = readable.flatMap(block => {
@@ -29,8 +31,7 @@ export function sectionRanges(blocks, excluded = referenceBlockIds(blocks)) {
   for (const block of blocks) {
     if (block.resource || excluded.has(block.id) || !block.text?.trim()) continue;
     const label = block.text.replace(/^#{1,6}\s+/, '').trim();
-    const explicitHeading = /^#{1,6}[ \t]+\S/u.test(block.sourceMarkdown?.trim() || '');
-    const title = explicitHeading ? label : detectedSectionTitle(label) || (block.heading ? label : '');
+    const title = markdownHeadingText(block) || detectedSectionTitle(label) || (block.heading ? label : '');
     if (title || !sections.length) sections.push({ title, startId: block.id, ids: [] });
     sections.at(-1).ids.push(block.id);
   }

@@ -34,9 +34,13 @@ function collectText(node, parentTag, parts) {
 export function generatedViewText(scope, markdown) {
   const cached = generatedViews.get(scope);
   if (cached?.markdown === markdown) return cached.text;
-  const parts = [];
-  collectText(processor.runSync(processor.parse(markdown)), undefined, parts);
-  const text = parts.join('');
+  const text = renderedMarkdownText(markdown);
   generatedViews.set(scope, { markdown, text });
   return text;
+}
+
+export function renderedMarkdownText(markdown) {
+  const parts = [];
+  collectText(processor.runSync(processor.parse(markdown)), undefined, parts);
+  return parts.join('');
 }

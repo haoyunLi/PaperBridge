@@ -209,6 +209,8 @@ assert.deepEqual(structuredSource.filter(block => block.heading).map(block => bl
   'All body headings from the same MinerU paper appear in summary source order');
 const nativeJournal = reference.structuredJournal;
 assert.equal(structuredSource.length, nativeJournal.body.length);
+assert.deepEqual(sectionRanges(structuredSource), nativeJournal.translationRanges,
+  'The MinerU journal has the same named ranges and paragraph membership as the native Mac paper');
 const byline = structuredSource.find(block => block.text.startsWith('Daniel Foreman-Mackey'));
 assert.ok(byline, 'Numbered author byline is included in the summary');
 const nativeByline = nativeJournal.body[byline.id - 1];

@@ -2,6 +2,24 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const markdown = import('../src/academicMarkdown.mjs');
 const paper = import('../src/paper.mjs');
+test('structured section names preserve identifiers on import and in searches of older workspaces', async () => {
+  const { parsedMarkdownBlocks } = await markdown;
+  const { documentOutline, sectionRanges } = await import('../src/documentOutline.mjs');
+  const { filteredReaderBlocks } = await import('../src/textSearch.mjs');
+  const fixture = require('./mac-parity/fixtures.json').papers.find(p => p.name === 'distinct scientific section identifiers');
+  const imported = parsedMarkdownBlocks(fixture.blocks.map(b => b.sourceMarkdown || b.text).join('\n\n'));
+  assert.deepEqual(imported.map(b => b.text), fixture.blocks.map(b => b.text));
+  const old = imported.map(b => Object.freeze({ ...b, text: b.text.replace(/[#*_]/g, '') }));
+  for (const blocks of [imported, old]) {
+    const headings = [0, 2, 4].map(i => ({ id: i + 1, title: fixture.blocks[i].text }));
+    assert.deepEqual(documentOutline({ sourceMode: 'mineru', blocks }), headings);
+    assert.deepEqual(sectionRanges(blocks).map(s => [s.title, s.ids]), headings.map(h => [h.title, [h.id, h.id + 1]]));
+    assert.deepEqual(filteredReaderBlocks(blocks, 'model_A').map(b => b.id), [1]);
+    assert.deepEqual(filteredReaderBlocks(blocks, 'modelA').map(b => b.id), [3]);
+    assert.deepEqual(filteredReaderBlocks(blocks, 'C#').map(b => b.id), [1, 3]);
+  }
+});
+
 const prose = 'The analysis describes the input data, filtering decisions, measurement assumptions and uncertainty bounds for the proposed comparison';
 
 test('new Markdown blocks retain their parser kind without changing source, IDs or translation participation', async () => {
