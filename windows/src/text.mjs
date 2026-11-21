@@ -64,7 +64,9 @@ export function joinPdfText(left, right) {
     if (/^\p{N}/u.test(right)) return left + right;
     const word = left.slice(0, -1).match(/[^\p{White_Space}]+/gu)?.at(-1);
     const next = right.match(/^[^\p{White_Space}]+/u)[0].replace(/^\p{P}+|\p{P}+$/gu, '').toLowerCase();
-    const removeHyphen = word && !/[-‐]/u.test(word) && !compoundSuffixes.has(next)
+    // "English-" + "to-German" keeps the hyphen before the compound suffix.
+    const suffix = next.split(/[-‐]/u, 1)[0];
+    const removeHyphen = word && !/[-‐]/u.test(word) && !compoundSuffixes.has(suffix)
       && (/^\p{Lowercase}/u.test(right) || countCharacters(word, 6) <= 5);
     return (removeHyphen ? left.slice(0, -1) : left) + right;
   }

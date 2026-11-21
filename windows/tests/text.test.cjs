@@ -222,6 +222,8 @@ test('PDF line and page wrapping preserve compound hyphens and separate paragrap
   const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
   assert.equal(joinLines(['It uses attention-', 'based inference and repro-', 'ducible evaluation.']), 'It uses attention-based inference and reproducible evaluation.');
   assert.equal(joinLines(['A state-of-the-', 'art model at low‐', 'resolution.']), 'A state-of-the-art model at low‐resolution.');
+  assert.equal(joinLines(['The English-', 'to-German and end-', 'to-end tasks.']), 'The English-to-German and end-to-end tasks.');
+  assert.equal(joinLines(['an inter-', 'national-based comparison']), 'an international-based comparison');
   const blocks = stitchPageBlocks([
     { page: 1, text: 'The paper proposes attention-' },
     { page: 2, text: 'based inference with a slower alternative' },

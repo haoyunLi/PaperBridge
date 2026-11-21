@@ -270,6 +270,17 @@
           "body": "sequence note"
         }
       ]
+    },
+    {
+      "name": "hyphenated language pair at line break",
+      "left": "The English-",
+      "right": "to-German task.",
+      "windowsText": "The English-to-German task."
+    },
+    {
+      "name": "continued root before a hyphenated adjective",
+      "left": "an inter-",
+      "right": "national-based comparison."
     }
   ],
   "reflows": [
