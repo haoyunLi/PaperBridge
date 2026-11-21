@@ -41,6 +41,10 @@ async function run() {
       translation: `段落 ${index + 1}。${index === 3 ? '检索目标。' : ''}` + '这项研究比较独立实验的证据，并解释结果的适用范围。'.repeat(8)
     }))
   };
+  document.blocks[0].text += ' Échelle Straße';
+  document.blocks[0].translation = 'Spectrum ' + document.blocks[0].translation;
+  delete document.blocks[1].translation;
+  document.blocks[1].status = 'pending';
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify(settings));
   fs.writeFileSync(paperPath, JSON.stringify(document));
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
@@ -118,6 +122,11 @@ async function run() {
     await mode('Bilingual').check();
     await toBlock(20);
     const beforeSearch = await scroll();
+    for (const [query, expected] of [['  E\u0301CHELLE  ', 1], ['STRASSE', 1], ['Straße Spectrum', 0], ['undefined', 0]]) {
+      await search().fill(query);
+      await page.waitForFunction(count => document.querySelectorAll('.reader-list > .block').length === count, expected);
+      if (expected) await page.locator('#block-1').waitFor();
+    }
     await search().fill('检索目标');
     await page.waitForFunction(() => document.querySelectorAll('.reader-list > .block').length === 1 && document.querySelector('#block-4'));
     await search().press('Escape');

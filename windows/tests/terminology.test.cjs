@@ -27,6 +27,19 @@ test('glossary replaces a case-insensitive duplicate without crossing directions
   assert.throws(() => upsertGlossaryTerm([], entry('test', character.repeat(301))), /300 characters/);
 });
 
+test('saved terminology uses full, accent-sensitive matches and preserves approved text', async () => {
+  const { matchingGlossaryTerms, glossaryTermMatchesQuery, upsertGlossaryTerm } = await import('../src/terminology.mjs');
+  const street = entry('Straße', 'street');
+  const accent = entry('échelle', 'scale');
+  const terms = [street, accent, entry('f', 'letter'), entry('ﬂux', 'flux')];
+  assert.deepEqual(matchingGlossaryTerms(terms, 'STRASSE, E\u0301CHELLE, ﬂux', 'English', 'Simplified Chinese')
+    .map(term => term.source).sort(), ['Straße', 'échelle', 'ﬂux'].sort());
+  assert.ok(glossaryTermMatchesQuery(street, 'strasse'));
+  assert.equal(glossaryTermMatchesQuery(accent, 'echelle'), false);
+  const reverse = entry('Straße', 'reverse', 'Simplified Chinese', 'English');
+  assert.deepEqual(upsertGlossaryTerm([street, reverse], entry('STRASSE', 'new')), [reverse, entry('STRASSE', 'new')]);
+});
+
 test('all translation prompts serialize terminology as JSON data', async () => {
   const {
     translationPrompt, markdownTranslationPrompt, connectedTranslationPrompt, selectionTranslationPrompt, strictSelectionTranslationPrompt

@@ -4,11 +4,15 @@ import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBloc
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { createHash } from 'node:crypto';
+import { filteredReaderBlocks } from '../../src/textSearch.mjs';
 import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const searchBlocks = fixtures.readerSearch.blocks.map(({ source, translation }, index) => ({ id: index + 1, text: source, translation }));
+assert.deepEqual(fixtures.readerSearch.queries.map(query => filteredReaderBlocks(searchBlocks, query).map(block => block.id)),
+  reference.readerSearch, 'Search the source and translation independently, using native case and accent boundaries');
 const practice = blocksFromText(practiceParagraphs.join('\n\n'));
 assert.deepEqual(practice.map(block => block.text), reference.practice, 'Built-in practice paper text and segmentation');
 const papers = [...fixtures.papers, { name: 'built-in practice', blocks: practice }];

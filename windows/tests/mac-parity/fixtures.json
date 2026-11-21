@@ -13,9 +13,13 @@
       {"source": "İ", "translation": null},
       {"source": "ı", "translation": null},
       {"source": "æ", "translation": null},
-      {"source": "e\u0301", "translation": null}
+      {"source": "e\u0301", "translation": null},
+      {"source": "x\u0304", "translation": null},
+      {"source": "𝑥", "translation": null},
+      {"source": "A\u0308\u0304", "translation": null},
+      {"source": "한글", "translation": null}
     ],
-    "queries": ["  ÉCHELLE  ", "E\u0301CHELLE", "echelle", "CAFE\u0301", "boundary next", "undefined", "STRASSE", "SS", "ος", "οσ", "μm", "flux", "CO2", "CO₂", "Istanbul", "  \n\t  ", "translation", "etude", "s", "f", "l", "i", "I", "i\u0307", "ı", "ae", "e", "ß", "fl", "é", "İ", "\u0301"]
+    "queries": ["  ÉCHELLE  ", "E\u0301CHELLE", "echelle", "CAFE\u0301", "boundary next", "undefined", "STRASSE", "SS", "ος", "οσ", "μm", "flux", "CO2", "CO₂", "Istanbul", "  \n\t  ", "translation", "etude", "s", "f", "l", "i", "I", "i\u0307", "ı", "ae", "e", "ß", "fl", "é", "İ", "\u0301", "x", "x\u0304", "\u0304", "𝑥", "a", "ä", "ǟ", "한글"]
   },
   "summaryConsolidation": {
     "paragraphs": [

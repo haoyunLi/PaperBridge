@@ -31,6 +31,7 @@ import { modelSettingsPatch } from './modelCatalog.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
 import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
+import { filteredReaderBlocks, searchableText, searchKey } from './textSearch.mjs';
 import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
@@ -3234,8 +3235,12 @@ function App() {
   }, [paper?.blocks, referenceIDs, unfinishedTranslationIds]);
   const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper?.blocks, referenceIDs]);
   const extractionIssuesById = useMemo(() => new Map(extractionIssues.map(issue => [issue.id, issue])), [extractionIssues]);
-  const filteredLibrary = library.filter(item => `${item.name} ${(item.tags || []).join(' ')}`.toLowerCase().includes(librarySearch.toLowerCase()));
-  const visibleBlocks = paper?.blocks.filter(block => !search || `${block.text} ${block.translation}`.toLowerCase().includes(search.toLowerCase())) || [];
+  const filteredLibrary = useMemo(() => {
+    if (!librarySearch) return library;
+    const needle = searchKey(librarySearch);
+    return library.filter(item => searchableText(`${item.name} ${(item.tags || []).join(' ')}`).includes(needle));
+  }, [library, librarySearch]);
+  const visibleBlocks = useMemo(() => filteredReaderBlocks(paper?.blocks || [], search), [paper?.blocks, search]);
   const paragraphExplanation = cachedExplanation(paper, activeBlock, explanationLanguage, settings);
   const translatedCount = paper?.blocks.filter(block => block.status === 'ok' && !block.resource && !referenceIDs.has(block.id)).length || 0;
   const failedCount = paper?.blocks.filter(block => block.status === 'failed' && !block.resource && !referenceIDs.has(block.id)).length || 0;
