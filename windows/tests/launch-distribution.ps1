@@ -9,6 +9,12 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 $condition = [System.Windows.Automation.PropertyCondition]::new(
     [System.Windows.Automation.AutomationElement]::NameProperty, 'Skip setup')
+if (!('PaperBridgeSmoke.ReaderInput' -as [type])) {
+    Add-Type -Namespace PaperBridgeSmoke -Name ReaderInput -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool PostMessage(System.IntPtr hwnd, uint message, System.IntPtr key, System.IntPtr flags);
+'@
+}
 $original = @{}
 $testEnvironment = @{
     ELECTRON_RUN_AS_NODE = '1'
@@ -28,6 +34,8 @@ try {
     $owned = @($launcher.Id)
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     $ready = $false
+    $pressedEscape = [DateTime]::MinValue
+    $settingsFile = Join-Path $testEnvironment.PAPERBRIDGE_WORKSPACE 'settings.json'
     do {
         if ($launcher.HasExited) { throw "Launcher exited before onboarding (exit $($launcher.ExitCode))" }
         # The Portable wrapper extracts a second executable. Only inspect
@@ -46,7 +54,24 @@ try {
             $windowProcess = $candidate
             if ($window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)) {
                 $ready = $true
+                Write-Output 'Observed the Skip setup button through UI Automation'
                 break
+            }
+            # Some Windows sessions expose the native menu through UI Automation
+            # before Chromium publishes its accessibility tree. Escape dismisses
+            # onboarding and saves its completion only through the live renderer.
+            if (Test-Path -LiteralPath $settingsFile) {
+                $saved = Get-Content -LiteralPath $settingsFile -Raw | ConvertFrom-Json
+                if ($pressedEscape -ne [DateTime]::MinValue -and $saved.onboardingCompletedVersion -ge 1) {
+                    $ready = $true
+                    Write-Output 'Verified the guide handled a native Escape key and saved onboarding completion'
+                    break
+                }
+                if ([DateTime]::UtcNow -gt $pressedEscape.AddSeconds(1)) {
+                    $null = [PaperBridgeSmoke.ReaderInput]::PostMessage($candidate.MainWindowHandle, 0x0100, [IntPtr]27, [IntPtr]0x10001)
+                    $null = [PaperBridgeSmoke.ReaderInput]::PostMessage($candidate.MainWindowHandle, 0x0101, [IntPtr]27, [IntPtr](-1073676287))
+                    $pressedEscape = [DateTime]::UtcNow
+                }
             }
         }
         if (!$ready) { Start-Sleep -Milliseconds 350 }

@@ -29,4 +29,4 @@ PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Porta
 
 ## 发布包启动验收
 
-GitHub 的 Windows 工作流先启动打包好的 Portable，再安装 Setup 并打开安装目录中的 PaperBridge.exe。测试使用独立工作区，从与源码无关的目录无参数启动应用，读取首次向导按钮并正常关闭。测试有意保留会干扰旧包的开发环境变量。发布后另一个全新 Windows runner 从公开下载链接重新下载两个文件，核对校验文件及 GitHub asset digest，再重复启动验收。自动化直接启动程序，不模拟浏览器的信誉提示或个人设备的管理策略。
+GitHub 的 Windows 工作流先启动打包好的 Portable，再安装 Setup 并打开安装目录中的 PaperBridge.exe。测试使用独立工作区，从与源码无关的目录无参数启动应用，通过 Windows 辅助功能读取首次向导按钮，或向测试窗口发送 Esc 并核对向导完成状态已保存。安装版还会最小化窗口，再次启动并验证原窗口恢复，最后正常关闭。测试有意保留会干扰旧包的开发环境变量。发布后另一个全新 Windows runner 从公开下载链接重新下载两个文件，核对校验文件及 GitHub asset digest，再重复启动验收。自动化直接启动程序，不模拟浏览器的信誉提示或个人设备的管理策略。
