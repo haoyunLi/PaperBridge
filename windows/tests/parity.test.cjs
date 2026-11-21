@@ -50,7 +50,37 @@ test('reference exclusion stops when methods resume after bibliography', async (
     { id: 6, text: 'Reproducible methods after references.' }
   ];
   assert.deepEqual([...referenceBlockIds(blocks)], [3, 4]);
-  assert.deepEqual(sectionRanges(blocks).map(section => section.title), ['Introduction', 'References', 'STAR Methods']);
+  assert.deepEqual(sectionRanges(blocks), [
+    { title: 'Introduction', startId: 1, ids: [1, 2] },
+    { title: 'STAR Methods', startId: 5, ids: [5, 6] }
+  ]);
+});
+
+test('translation sections use explicit and inline headings, preserve IDs and match overview words', async () => {
+  const { sectionRanges, overviewSectionIds } = await import('../src/paper.mjs');
+  const body = { id: 2, text: 'The article starts without a standalone heading.' };
+  assert.deepEqual(sectionRanges([{ id: 1, text: 'Figure 1', resource: true }]), []);
+  assert.deepEqual(sectionRanges([body]), [{ startId: 2, title: 'Document', ids: [2] }]);
+  const blocks = [body,
+    { id: 3, text: 'Abstract: Our blinded reviewers repeated each measurement.' },
+    { id: 4, text: 'Figure 2', resource: true },
+    { id: 5, text: 'Both reviewers reported similar findings.' },
+    { id: 6, text: 'Abstraction Mechanisms', sourceMarkdown: '## Abstraction Mechanisms' },
+    { id: 8, text: '2 Methods We retained all evidence from both independent reviewers' },
+    { id: 9, text: 'concluding remarks', sourceMarkdown: '### concluding remarks' },
+    { id: 10, text: 'The independent analyses reached the same conclusion.' },
+    { id: 11, text: '结论', heading: true },
+    { id: 12, text: '研究结果在两组样本中一致。' }];
+  const groups = sectionRanges(blocks);
+  assert.deepEqual(groups.map(s => [s.title, s.ids]), [
+    ['Opening material', [2]], ['Abstract:', [3, 5]], ['Abstraction Mechanisms', [6]], ['2 Methods', [8]],
+    ['concluding remarks', [9, 10]], ['结论', [11, 12]]
+  ]);
+  assert.deepEqual(overviewSectionIds(groups), [3, 5, 9, 10, 11, 12]);
+  assert.deepEqual(overviewSectionIds([
+    { title: 'Préabstract', ids: [1] }, { title: 'Conclusion論', ids: [2] },
+    { title: 'Non_abstract', ids: [3] }, { title: 'Abstract / Résumé', ids: [4] }
+  ]), [4]);
 });
 
 test('reference ranges recognize inline and unlabelled bibliographies without losing later body text', async () => {

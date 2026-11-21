@@ -10,7 +10,7 @@ const majorSectionHeadings = new Set([
 const leadingSection = /^(\p{Decimal_Number}+(?:\.\p{Decimal_Number}+)*\p{White_Space}+)?(Abstract|Introduction|Background|Related Work|Methods?|Methodology|Materials and Methods|Experimental Setup|Experiments?|Evaluation|Results?|Discussion|Conclusions?|Appendix|Acknowledg(?:e)?ments)([.:])?\p{White_Space}+/iu;
 const firstLineBreak = /[\n\v\f\r\u0085\u2028\u2029]/u;
 const trimWhitespace = value => value.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
-const countCharacters = (value, limit = Infinity) => {
+export const countCharacters = (value, limit = Infinity) => {
   let count = 0;
   for (const segment of graphemes.segment(value)) {
     if (++count >= limit) break;
@@ -51,7 +51,7 @@ function isLikelySectionHeading(value) {
   return (letters > 0 ? uppercaseLetters / letters : 0) > 0.6 || titleCaseWords / words.length > 0.8;
 }
 
-function detectedSectionTitle(value) {
+export function detectedSectionTitle(value) {
   const first = formatLeadingSectionHeading(value).split(firstLineBreak).map(trimWhitespace).find(Boolean);
   return first && isLikelySectionHeading(first) ? first : null;
 }

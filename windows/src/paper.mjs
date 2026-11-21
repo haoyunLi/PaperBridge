@@ -1,4 +1,5 @@
 import { isHeading, joinPdfText } from './text.mjs';
+import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { markdownBlockKind } from './academicMarkdown.mjs';
 
@@ -20,14 +21,24 @@ export function libraryLabel(title, tags) {
   };
 }
 
-export function sectionRanges(blocks) {
+export function sectionRanges(blocks, excluded = referenceBlockIds(blocks)) {
   const sections = [];
   for (const block of blocks) {
-    if (block.heading) sections.push({ title: block.text.replace(/^#{1,6}\s*/, '').trim(), startId: block.id, ids: [] });
-    if (!sections.length) sections.push({ title: 'Opening material', startId: block.id, ids: [] });
+    if (block.resource || excluded.has(block.id) || !block.text?.trim()) continue;
+    const label = block.text.replace(/^#{1,6}\s+/, '').trim();
+    const explicitHeading = /^#{1,6}[ \t]+\S/u.test(block.sourceMarkdown?.trim() || '');
+    const title = explicitHeading ? label : detectedSectionTitle(label) || (block.heading ? label : '');
+    if (title || !sections.length) sections.push({ title, startId: block.id, ids: [] });
     sections.at(-1).ids.push(block.id);
   }
+  if (sections.length && !sections[0].title) sections[0].title = sections.length === 1 ? 'Document' : 'Opening material';
   return sections;
+}
+
+export function overviewSectionIds(sections) {
+  const overviewTitle = /(?<![\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\u200C\u200D])(?:abstract|conclusions?|concluding remarks)(?![\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\u200C\u200D])|摘要|结论/iu;
+  return sections.filter(section => overviewTitle.test(section.title))
+    .flatMap(section => section.ids);
 }
 
 export function translationRangeIds(blocks, requestedIds = null, excluded = referenceBlockIds(blocks), retryId = null) {
@@ -44,9 +55,9 @@ export function qualityIssues(blocks, excluded = new Set()) {
     let reason = '';
     if (/[A-Za-z]{2,}[-‐]\s*$/.test(value)) reason = 'Possible cut-off word at the end. Compare with the next block and original page.';
     else if (/\b(?:in case of|where we|such as|given by|defined as)\s*$/i.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';
-    else if (/^[\d\s.,()[\]+=×÷−*/^_]+$/.test(value)) reason = 'Possible detached number, equation fragment, or plot label. Check the original before merging.';
-    else if (value.length > 100 && !/[.!?。！？:：;；]["'”’）)\]]*\s*$/.test(value)) reason = 'No sentence-ending punctuation was found. This can be valid near a formula; check the source.';
-    return reason ? [{ id: block.id, reason, excerpt: Array.from(value).slice(-160).join('') }] : [];
+    else if (/^[\p{Nd}\p{White_Space}.,()[\]+=×÷−*/^_]+$/u.test(value)) reason = 'Possible detached number, equation fragment, or plot label. Check the original before merging.';
+    else if (value.length > 100 && !/[.!?。！？:：;；]["'”’）)\]]*\s*$/.test(value) && countCharacters(value, 101) > 100) reason = 'No sentence-ending punctuation was found. This can be valid near a formula; check the source.';
+    return reason && !detectedSectionTitle(value) ? [{ id: block.id, reason, excerpt: Array.from(value).slice(-160).join('') }] : [];
   });
 }
 

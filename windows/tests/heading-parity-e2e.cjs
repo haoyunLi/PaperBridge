@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
-const { revealSidebarSource } = require('./sidebar-controls.cjs');
+const { revealSidebarSource, openPasteText, loadPastedText } = require('./sidebar-controls.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -150,7 +150,8 @@ async function run() {
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
     await page.locator('.modal').getByRole('button', { name: 'Translation Range', exact: true }).click();
     assert.match(await page.getByRole('button', { name: /^All unfinished blocks/ }).innerText(), /3 blocks/);
-    assert.match(await page.getByRole('button', { name: /^Choose section: Study design/ }).innerText(), /3 unfinished blocks/);
+    assert.match(await page.getByRole('button', { name: /^Choose section: Study design/ }).innerText(), /1 unfinished block/);
+    assert.match(await page.getByRole('button', { name: /^Choose section: 2 Methods/ }).innerText(), /2 unfinished blocks/);
     assert.equal(await page.getByRole('button', { name: /^Abstract & Conclusion/ }).isDisabled(), true);
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
 
@@ -244,6 +245,37 @@ async function run() {
     assert.equal(legacySettings.lineHeight, 1.9, 'rendering headings must not reinterpret legacy proportional spacing');
     assert.equal(legacySettings.lineSpacing, null);
     await reopened.screenshot({ path: path.join(artifacts, 'heading-parity-legacy-appearance.png') });
+    const passages = [
+      'Abstract: We measured the change across two independent cohorts.',
+      'Abstraction Mechanisms', 'An intervening section should stay untranslated.',
+      'Concluding Remarks', 'The final checks confirmed the direction of the effect.',
+      'References', '[1] An example citation. Journal of Testing. 2022.'
+    ];
+    await revealSidebarSource(reopened);
+    await openPasteText(reopened);
+    await reopened.locator('.paste-area').fill(passages.join('\n\n'));
+    const rangeId = await loadPastedText(reopened, { view: 'Reader' });
+    const ranges = async () => {
+      await reopened.getByRole('button', { name: 'More ···', exact: true }).click();
+      await reopened.getByRole('dialog').getByRole('button', { name: 'Translation Range', exact: true }).click();
+    };
+    await ranges();
+    const overview = reopened.getByRole('button', { name: /^Abstract & Conclusion/ });
+    assert.match(await overview.innerText(), /3 blocks/);
+    assert.equal(await reopened.getByRole('button', { name: /^Choose section: References/ }).count(), 0);
+    const previousRequests = requests.length;
+    await overview.click();
+    const expected = [1, 4, 5];
+    await reopened.waitForFunction(async ({ id, expected }) => {
+      const paper = await window.paperBridge.loadPaper(id);
+      return expected.every(index => paper?.blocks[index - 1]?.status === 'ok');
+    }, { id: rangeId, expected });
+    assert.deepEqual(requests.slice(previousRequests).map(request => passages.find(text => request.prompt.endsWith('\n' + text))),
+      expected.map(index => passages[index - 1]));
+    const savedRange = await reopened.evaluate(id => window.paperBridge.loadPaper(id), rangeId);
+    assert.deepEqual(savedRange.blocks.filter(block => block.status === 'ok').map(block => block.id), expected);
+    await ranges();
+    assert.equal(await overview.isDisabled(), true);
     console.log('Heading parity checks passed: full Paper preview, source/bilingual/translation modes, late-block and translated-side annotations, compact rendering, shared appearance sliders, legacy proportional spacing after restart, classification, retry, actions and exports.');
   } finally {
     await app?.close();

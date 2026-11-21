@@ -75,4 +75,13 @@ test('normal paragraph diagnostics and explicit reference exclusions remain inta
   assert.match(qualityIssues(blocks)[2].reason, /detached number/);
   assert.match(qualityIssues(blocks)[3].reason, /sentence-ending punctuation/);
   assert.deepEqual(qualityIssues(blocks, new Set([1, 3])).map(issue => issue.id), [2, 4]);
+  const combined = 'e\u0301';
+  const boundary = [
+    { id: 1, text: 'Abstract: These introductory details are deliberately long enough to reach the warning threshold '.repeat(2) },
+    { id: 2, text: combined.repeat(100) }, { id: 3, text: combined.repeat(101) }, { id: 4, text: '３ + ２０' }
+  ];
+  const issues = qualityIssues(boundary);
+  assert.deepEqual(issues.map(issue => issue.id), [3, 4]);
+  assert.match(issues[0].reason, /sentence-ending punctuation/);
+  assert.match(issues[1].reason, /detached number/);
 });

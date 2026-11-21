@@ -12,7 +12,7 @@ import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnc
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, readingMap, chunkText, isHeading } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { libraryLabel, referenceBlockIds, sectionRanges, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -3129,8 +3129,14 @@ function App() {
   const selectionResults = lookupCache.get(lookupKey) || {};
   const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
   const outline = useMemo(() => documentOutline(paper), [paper]);
-  const sections = useMemo(() => sectionRanges(paper?.blocks || []), [paper]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
+  const unfinishedTranslationIds = useMemo(() => translationRangeIds(paper?.blocks || [], null, referenceIDs), [paper?.blocks, referenceIDs]);
+  const sections = useMemo(() => {
+    const unfinished = new Set(unfinishedTranslationIds);
+    return sectionRanges(paper?.blocks || [], referenceIDs).map(section => ({
+      ...section, unfinished: section.ids.filter(id => unfinished.has(id))
+    }));
+  }, [paper?.blocks, referenceIDs, unfinishedTranslationIds]);
   const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper?.blocks, referenceIDs]);
   const extractionIssuesById = useMemo(() => new Map(extractionIssues.map(issue => [issue.id, issue])), [extractionIssues]);
   const filteredLibrary = library.filter(item => `${item.name} ${(item.tags || []).join(' ')}`.toLowerCase().includes(librarySearch.toLowerCase()));
@@ -3149,14 +3155,14 @@ function App() {
     '--document-sidebar-width': `${sidebarWidth}px`,
     '--research-inspector-width': `${inspectorWidth}px`
   };
-  const currentSection = sections.findLast(section => section.startId <= (paper?.position?.block || activeBlock || 1));
-  const currentSectionIds = translationRangeIds(paper?.blocks || [], currentSection?.ids || [], referenceIDs);
+  const currentReadingBlock = paper?.position?.block || activeBlock || 1;
+  const currentSection = !referenceIDs.has(currentReadingBlock) && sections.findLast(section => section.startId <= currentReadingBlock);
+  const currentSectionIds = currentSection?.unfinished || [];
   const activeQueue = translationQueueRef.current;
   const queuedSectionIds = modal === 'range' && activeQueue && activeQueue.token === taskRef.current
     ? new Set(activeQueue.queue.slice(activeQueue.next).map(block => block.id)) : null;
   const queuedSectionCount = queuedSectionIds ? currentSection?.ids.filter(id => queuedSectionIds.has(id)).length || 0 : 0;
-  const abstractConclusionIds = translationRangeIds(paper?.blocks || [], sections.filter(section => /abstract|conclusion|摘要|结论/i.test(section.title)).flatMap(section => section.ids), referenceIDs);
-  const unfinishedTranslationIds = translationRangeIds(paper?.blocks || [], null, referenceIDs);
+  const abstractConclusionIds = translationRangeIds(paper?.blocks || [], overviewSectionIds(sections), referenceIDs);
   const structuredFull = usesSharedMarkdown(paper);
   const defaultExportBundle = paper?.type === 'pdf' || structuredFull;
   const canExport = Boolean(defaultExportBundle || paper?.blocks.length);
@@ -3437,9 +3443,9 @@ function App() {
       </div>}
       {modal === 'range' && <div className="menu-list">
         <button disabled={!!busy || !abstractConclusionIds.length} onClick={() => { setModal(''); translateBlocks(abstractConclusionIds); }}>Abstract & Conclusion <small>{abstractConclusionIds.length} blocks</small></button>
-        <button disabled={!!busy || !currentSectionIds.length} onClick={() => { setModal(''); translateBlocks(currentSectionIds); }}>Current section: {currentSection?.title || 'Opening material'} <small>{currentSectionIds.length} blocks</small></button>
+        <button disabled={!!busy || !currentSectionIds.length} onClick={() => { setModal(''); translateBlocks(currentSectionIds); }}>{currentSection ? 'Current section: ' + currentSection.title : 'No current section'} <small>{currentSectionIds.length} blocks</small></button>
         {currentSection && <button disabled={!queuedSectionCount} onClick={() => { if (prioritizeSection(currentSection)) setModal(''); }}>Prioritize current section in queue{queuedSectionIds && <small>{queuedSectionCount ? `${queuedSectionCount} queued ${queuedSectionCount === 1 ? 'block' : 'blocks'}` : 'No queued blocks'}</small>}</button>}
-        {sections.map(section => { const ids = translationRangeIds(paper.blocks, section.ids, referenceIDs); return <button key={section.startId} disabled={!!busy || !ids.length} onClick={() => { setModal(''); translateBlocks(ids); }}>Choose section: {section.title}<small>{ids.length} unfinished blocks</small></button>; })}
+        {sections.map(section => <button key={section.startId} disabled={!!busy || !section.unfinished.length} onClick={() => { setModal(''); translateBlocks(section.unfinished); }}>Choose section: {section.title}<small>{section.unfinished.length} unfinished blocks</small></button>)}
         <button disabled={!!busy || !unfinishedTranslationIds.length} onClick={() => { setModal(''); translateBlocks(unfinishedTranslationIds); }}>All unfinished blocks <small>{unfinishedTranslationIds.length} blocks</small></button>
       </div>}
 
