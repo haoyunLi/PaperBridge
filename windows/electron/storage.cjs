@@ -24,6 +24,7 @@ const defaults = {
   pdfExtractionMode: 'mineruPreferred',
   quickLookupModel: 'translategemma:4b',
   autoCheckUpdates: true,
+  autoDownloadUpdates: false,
   onboardingCompletedVersion: 0,
   onboardingPage: 0,
   setupComponents: { ollama: true, models: true, mineru: true }

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage, session } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -14,6 +14,7 @@ const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, s
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
 const { importPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
 const { createUpdateChecker, releaseUrl, updateDownload } = require('./updates.cjs');
+const { UpdateDownload, chromiumTransfer } = require('./update-download.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
 const { createOfficialLinkHandler } = require('./official-links.cjs');
@@ -22,6 +23,7 @@ const developmentBuild = !app.isPackaged && process.env.NODE_ENV !== 'production
 
 let window;
 let store;
+let updateFiles;
 const mineruJobs = createMineruJobGuard();
 const pendingMineruResults = new Map();
 let setupManager = null;
@@ -147,12 +149,28 @@ function registerHandlers() {
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   let availableDownload = null;
+  let refreshedLegacyTag = null;
+  const backgroundUpdatesEnabled = () => {
+    const prefs = store.settings();
+    return prefs.autoCheckUpdates !== false && prefs.autoDownloadUpdates === true;
+  };
   ipcMain.handle('updates:check', async (_event, automatic = false) => {
-    const result = await checkUpdates(automatic);
+    const portable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE);
+    let result = await checkUpdates(automatic);
     if (result.status === 'skipped') return result;
-    availableDownload = updateDownload(result, Boolean(process.env.PORTABLE_EXECUTABLE_FILE));
-    return { ...result, downloadLabel: availableDownload?.label };
+    let candidate = updateDownload(result, portable);
+    if (candidate && !candidate.file && result.fromCache && !result.stale && backgroundUpdatesEnabled() && refreshedLegacyTag !== result.tag) {
+      refreshedLegacyTag = result.tag;
+      // Before 0.2.29 the daily cache contained filenames only. Fetch current
+      // release evidence once when an existing user opts into background downloads.
+      try { result = await checkUpdates(false); candidate = updateDownload(result, portable); } catch { /* Keep the browser download available offline. */ }
+    }
+    availableDownload = candidate;
+    if (candidate && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
+    else if (!candidate || candidate.tag !== updateFiles.state.tag) updateFiles.cancel();
+    return { ...result, downloadLabel: candidate?.label, updateFile: updateFiles.state };
   });
+  ipcMain.handle('updates:reveal', (_event, tag) => updateFiles.show(tag));
   ipcMain.handle('updates:download', (_event, tag) => {
     if (!availableDownload || availableDownload.tag !== tag) throw new Error('Check for updates to find the current download.');
     return shell.openExternal(availableDownload.url);
@@ -179,7 +197,10 @@ function registerHandlers() {
     const data = await response.json();
     return (data.models || []).map(model => ({ name: model.name || model.model, sizeVram: model.size_vram || 0, size: model.size || 0 }));
   });
-  ipcMain.handle('settings:save', (_event, settings) => store.saveSettings(settings));
+  ipcMain.handle('settings:save', (_event, settings) => {
+    store.saveSettings(settings);
+    if ((settings.autoCheckUpdates === false || settings.autoDownloadUpdates !== true) && updateFiles.state.phase === 'downloading') updateFiles.cancel();
+  });
   ipcMain.handle('openai:key-status', () => ({ hasKey: openAICredentials.status() }));
   ipcMain.handle('openai:key-save', (_event, key) => {
     openAICredentials.save(key);
@@ -231,6 +252,8 @@ function registerHandlers() {
   ipcMain.handle('paper:clear-data', () => {
     activeImportArchive = null;
     revokeOpenAIConsent();
+    updateFiles.cancel();
+    availableDownload = null;
     store.clearData();
   });
   ipcMain.handle('pdf:import', async () => {
@@ -537,6 +560,11 @@ async function startApp() {
   app.setName(developmentBuild ? 'PaperBridge Dev' : 'PaperBridge');
   if (developmentBuild && !process.env.PAPERBRIDGE_WORKSPACE) app.setPath('userData', path.join(app.getPath('appData'), 'PaperBridge Dev'));
   store = createStore(process.env.PAPERBRIDGE_WORKSPACE || path.join(app.getPath('userData'), 'workspace'));
+  const updateRoot = process.env.PAPERBRIDGE_WORKSPACE || path.join(process.env.LOCALAPPDATA || app.getPath('userData'), app.getName());
+  updateFiles = new UpdateDownload({ directory: path.join(updateRoot, 'update-downloads'),
+    transfer: chromiumTransfer(session.fromPartition('paperbridge-update-downloads')),
+    notify: state => { if (window && !window.isDestroyed()) window.webContents.send('updates:file-state', state); },
+    reveal: filename => shell.showItemInFolder(filename), currentVersion: app.getVersion(), runningPortable: process.env.PORTABLE_EXECUTABLE_FILE });
   openAICredentials = createOpenAICredentialStore({ file: path.join(store.root, 'openai-key.bin'), safeStorage });
   openAIClient = createOpenAIClient();
   setupManager = new SetupManager({
@@ -564,6 +592,7 @@ app.on('before-quit', event => {
     }
     return;
   }
+  updateFiles?.cancel();
   modelPullManager.cancel(); mineruJobs.cancel(); revokeOpenAIConsent();
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

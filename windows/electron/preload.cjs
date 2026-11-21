@@ -3,6 +3,12 @@ contextBridge.exposeInMainWorld('paperBridge', {
   bootstrap: () => ipcRenderer.invoke('bootstrap'),
   updateMenuState: state => ipcRenderer.invoke('menu:update-state', state),
   checkUpdates: automatic => ipcRenderer.invoke('updates:check', automatic),
+  revealUpdate: tag => ipcRenderer.invoke('updates:reveal', tag),
+  onUpdateFile: callback => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('updates:file-state', listener);
+    return () => ipcRenderer.removeListener('updates:file-state', listener);
+  },
   downloadUpdate: tag => ipcRenderer.invoke('updates:download', tag),
   openUpdateRelease: tag => ipcRenderer.invoke('updates:open-release', tag),
   importPdf: () => ipcRenderer.invoke('pdf:import'),

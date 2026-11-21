@@ -98,7 +98,63 @@ async function run() {
     assert.equal(restored.currentVersion, currentVersion);
     assert.equal(restored.releaseUrl, `https://github.com/haoyunLi/PaperBridge/releases/tag/${identity.tag}`);
     assert.deepEqual(JSON.parse(fs.readFileSync(cacheFile, 'utf8')), cached, 'Startup within 24 hours must not refresh the cache timestamp');
-    console.log('A release discovered through the native menu remained visible after a real Electron restart, using its validated daily cache.');
+    // The fixture supplies bytes at Chromium's transport boundary. The app
+    // performs the actual edition selection, file verification and persistence.
+    const bytes = 'Portable release fixture for ' + nextVersion;
+    const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+    await app.evaluate(({ session, shell }, { identity, bytes, hash }) => {
+      const base = 'https://github.com/haoyunLi/PaperBridge/releases/download/' + identity.tag + '/';
+      const assets = [identity.installerName, identity.portableName].map(name => ({ name, state: 'uploaded',
+        browser_download_url: base + name, size: Buffer.byteLength(bytes), digest: 'sha256:' + hash }));
+      const originalFetch = global.fetch;
+      global.fetch = (url, options) => String(url) === 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100'
+        ? Promise.resolve(Response.json([{ tag_name: identity.tag, assets }])) : originalFetch(url, options);
+      global.__fileRequests = [];
+      const partition = session.fromPartition('paperbridge-update-downloads');
+      partition.downloadURL = url => {
+        global.__fileRequests.push(url);
+        const item = new (process.getBuiltinModule('node:events').EventEmitter)();
+        item.getURLChain = () => [url];
+        item.getReceivedBytes = () => Buffer.byteLength(bytes);
+        item.setSavePath = file => { item.destination = file; };
+        partition.emit('will-download', { preventDefault() { throw new Error('Unexpected fixture URL'); } }, item);
+        setImmediate(() => {
+          process.getBuiltinModule('node:fs').writeFileSync(item.destination, bytes);
+          item.emit('updated');
+          item.emit('done', {}, 'completed');
+        });
+      };
+      shell.showItemInFolder = filename => { global.__revealed = filename; };
+    }, { identity, bytes, hash });
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    const background = page.getByLabel('Download new Windows releases in the background');
+    assert.equal(await background.isChecked(), false);
+    await page.getByRole('button', { name: 'Check now', exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Check now' && !button.disabled));
+    assert.deepEqual(await app.evaluate(() => global.__fileRequests), []);
+    await background.check();
+    const reveal = page.getByRole('button', { name: 'Show downloaded update', exact: true });
+    try { await reveal.last().waitFor({ timeout: 20000 }); }
+    catch (error) {
+      console.error('Download state:', await page.locator('.update-banner').innerText(), await app.evaluate(() => global.__fileRequests));
+      throw error;
+    }
+    assert.deepEqual(await app.evaluate(() => global.__fileRequests), ['https://github.com/haoyunLi/PaperBridge/releases/download/' + identity.tag + '/' + identity.portableName]);
+    const savedFile = path.join(workspace, 'update-downloads', identity.portableName);
+    assert.equal(fs.readFileSync(savedFile, 'utf8'), bytes);
+    await page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag);
+    assert.equal(await app.evaluate(() => global.__revealed), savedFile);
+    await app.close(); app = null;
+    app = await launch(true);
+    page = await app.firstWindow();
+    await page.locator('.update-banner').getByRole('button', { name: 'Show downloaded update' }).waitFor();
+    assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, true);
+    await app.evaluate(({ shell }) => { shell.showItemInFolder = () => { throw new Error('Changed download must never be revealed'); }; });
+    fs.writeFileSync(savedFile, 'x'.repeat(bytes.length));
+    await assert.rejects(page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag), /no longer matches/);
+    await page.locator('.update-banner').getByRole('button', { name: 'Download portable update' }).waitFor();
+    console.log('Official browser links, opt-in download handoff, verified edition, offline restart and changed-file rejection passed.');
   } finally { await app?.close(); }
 }
 

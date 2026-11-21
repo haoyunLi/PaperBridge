@@ -136,13 +136,16 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
       </fieldset>}
       {section === 'updates' && <Group title={`Windows updates · ${updates.version || 'unknown version'}`}>
         <label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>
+        <label className="settings-checkbox"><input type="checkbox" disabled={settings.autoCheckUpdates === false} checked={settings.autoDownloadUpdates === true} onChange={event => onSettings({ autoDownloadUpdates: event.target.checked })} />Download new Windows releases in the background</label>
         <div className="row">
           <button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
           {updates.downloadLabel && <button className="button blue" onClick={updates.onDownload}>{updates.downloadLabel}</button>}
           {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
         </div>
         {updates.status && <p role="status">{updates.status}</p>}
-        {updates.downloadLabel && <p>Your browser downloads the update from GitHub. Open the downloaded file when you’re ready.</p>}
+        {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}
+        {updates.filePhase === 'ready' ? <p>File Explorer shows the verified file. Close PaperBridge before opening the new version.</p>
+          : updates.downloadLabel && <p>The download button opens GitHub in your browser.</p>}
         <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
       </Group>}
       {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data keeps original PDF copies and the separately encrypted OpenAI key.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}

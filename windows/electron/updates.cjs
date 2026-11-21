@@ -21,23 +21,31 @@ function releaseUrl(tag) {
   return `https://github.com/haoyunLi/PaperBridge/releases/tag/${tag}`;
 }
 
-function releaseResult(tag, installerName, currentVersion, portableName) {
+function releaseResult(tag, installerName, currentVersion, portableName, files) {
   if (typeof tag !== 'string') return null;
   const latestVersion = RELEASE_TAG.exec(tag)?.[1];
   if (!versionParts(currentVersion) || !versionParts(latestVersion)) return null;
   const names = [`PaperBridge-Windows-${latestVersion}-x64-Setup.exe`, `PaperBridge Setup ${latestVersion}.exe`];
   if (!names.includes(installerName)) return null;
-  return { status: compareVersions(latestVersion, currentVersion) > 0 ? 'available' : 'current', currentVersion, latestVersion, tag,
+  const verifiedFiles = {};
+  const portable = `PaperBridge-Windows-${latestVersion}-x64-Portable.exe`;
+  for (const name of [installerName, ...(portableName === portable ? [portable] : [])]) {
+    const file = files?.[name];
+    if (Number.isSafeInteger(file?.size) && file.size > 0 && typeof file.sha256 === 'string' && /^[a-f0-9]{64}$/.test(file.sha256)) {
+      verifiedFiles[name] = { size: file.size, sha256: file.sha256 };
+    }
+  }
+  return { ...(Object.keys(verifiedFiles).length > 0 && { files: verifiedFiles }), status: compareVersions(latestVersion, currentVersion) > 0 ? 'available' : 'current', currentVersion, latestVersion, tag,
     installerName, releaseUrl: releaseUrl(tag),
     ...(portableName === `PaperBridge-Windows-${latestVersion}-x64-Portable.exe` ? { portableName } : {}) };
 }
 
 function updateDownload(result, portable) {
   if (result?.status !== 'available') return null;
-  const release = releaseResult(result.tag, result.installerName, result.currentVersion, result.portableName);
+  const release = releaseResult(result.tag, result.installerName, result.currentVersion, result.portableName, result.files);
   if (release?.status !== 'available') return null;
   const filename = portable ? release.portableName : release.installerName;
-  return filename ? { tag: release.tag, label: portable ? 'Download portable update' : 'Download installer',
+  return filename ? { ...(release.files?.[filename] && { file: { name: filename, ...release.files[filename] } }), tag: release.tag, label: portable ? 'Download portable update' : 'Download installer',
     url: `https://github.com/haoyunLi/PaperBridge/releases/download/${release.tag}/${encodeURIComponent(filename)}` } : null;
 }
 
@@ -48,8 +56,11 @@ function selectWindowsRelease(releases, currentVersion) {
     const uploaded = release.assets.filter(asset => asset?.state === 'uploaded');
     const version = RELEASE_TAG.exec(release.tag_name)?.[1];
     const portableName = uploaded.find(asset => asset.name === `PaperBridge-Windows-${version}-x64-Portable.exe`)?.name;
+    const files = Object.fromEntries(uploaded.filter(asset => typeof asset.name === 'string' && typeof asset.digest === 'string' && /^sha256:[a-f0-9]{64}$/.test(asset.digest)
+      && asset.browser_download_url === `https://github.com/haoyunLi/PaperBridge/releases/download/${release.tag_name}/${encodeURIComponent(asset.name)}`)
+      .map(asset => [asset.name, { size: asset.size, sha256: asset.digest.slice(7) }]));
     return uploaded.flatMap(asset => {
-      const result = releaseResult(release.tag_name, asset.name, currentVersion, portableName);
+      const result = releaseResult(release.tag_name, asset.name, currentVersion, portableName, files);
       return result ? [result] : [];
     });
   });
@@ -69,7 +80,7 @@ async function checkWindowsRelease(currentVersion, fetchImpl = fetch) {
 function validatedCache(record, currentVersion, time) {
   if (!record || record.cacheVersion !== 1 || !Number.isSafeInteger(record.lastCheckAt) || record.lastCheckAt <= 0 || record.lastCheckAt > time) return null;
   const result = record.release === null ? { status: 'unpublished', currentVersion }
-    : releaseResult(record.release?.tag, record.release?.installerName, currentVersion, record.release?.portableName);
+    : releaseResult(record.release?.tag, record.release?.installerName, currentVersion, record.release?.portableName, record.release?.files);
   return result ? { result, lastCheckAt: record.lastCheckAt } : null;
 }
 
@@ -95,11 +106,11 @@ function createUpdateChecker({ store, currentVersion, checkRelease = checkWindow
         .then(() => checkRelease(version))
         .then(value => {
           const result = value?.status === 'unpublished' ? { status: 'unpublished', currentVersion: version }
-            : ['available', 'current'].includes(value?.status) && releaseResult(value.tag, value.installerName, version, value.portableName);
+            : ['available', 'current'].includes(value?.status) && releaseResult(value.tag, value.installerName, version, value.portableName, value.files);
           if (!result || (value.latestVersion != null && value.latestVersion !== result.latestVersion)) throw new Error('Invalid Windows release information.');
           // Store identities only. URLs and available/current status are always rebuilt.
           memoryCache = { cacheVersion: 1, lastCheckAt: now(), release: result.status === 'unpublished' ? null
-            : { tag: result.tag, installerName: result.installerName, ...(result.portableName && { portableName: result.portableName }) } };
+            : { tag: result.tag, installerName: result.installerName, ...(result.portableName && { portableName: result.portableName }), ...(result.files && { files: result.files }) } };
           try { store.saveUpdateCheckState(memoryCache); }
           catch { return { ...result, cachePersisted: false }; }
           return result;
