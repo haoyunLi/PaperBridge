@@ -91,14 +91,19 @@ async function run() {
   const settings = { ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, translationModel: 'translategemma:4b',
     explainModel: 'translategemma:4b', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
     autoCheckUpdates: false, onboardingCompletedVersion: 1, fontSize: 16, lineSpacing: 5, readingWidth: 920 };
+  const continued = 'D    measurements: repeat and  repeat. ' +
+    'This sentence explains the observations and states the limits of the controlled experiment. '.repeat(18);
+  const repeatedNote = { id: 'second-repeat', text: 'repeat', offset: continued.lastIndexOf('repeat'), body: 'Keep the second occurrence.', kind: 'source' };
   const originalBlocks = [
     { id: 1, text: 'Target paragraph reports a careful experiment with reproducible evidence.', translation: 'Saved first translation.', status: 'ok' },
     { id: 2, text: 'Results', heading: true, translation: '结果', status: 'ok' },
     { id: 3, text: 'Pending Heading With Enough Words To Wrap Beside Its Translation And Menu Actions', heading: true },
-    { id: 4, text: 'Unrelated paragraph preserves its previously reviewed translation.', translation: 'Untouched reviewed translation.', status: 'ok' },
-    { id: 5, text: 'This sentence explains the observations and states the limits of the controlled experiment. '.repeat(18) },
+    { id: 4, text: 'Unrelated paragraph reports 3-', translation: 'Untouched reviewed translation.', status: 'ok' },
+    { id: 50, text: continued, notes: [repeatedNote] },
     { id: 6, text: 'Retained image resource', resource: true },
-    { id: 7, text: 'The last paragraph closes the experiment and remains available for independent translation.' }
+    { id: 70, text: 'The last paragraph closes the experiment and remains available for independent translation.' },
+    { id: 80, text: 'References', heading: true },
+    { id: 90, text: '[1] Example, A. (2020). A cited study. Journal of Examples.' }
   ].map(block => ({ heading: false, translation: '', status: 'pending', bookmark: false,
     highlights: [], translationHighlights: [], notes: [], ...block }));
   const paper = { id, name: 'Reader actions fixture', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
@@ -212,8 +217,13 @@ async function run() {
     assert.equal(await action('Reflow at Full Sentences').count(), 0);
     await page.getByRole('heading', { name: paper.name, exact: true }).click();
     await closed();
-    await openMenu(7);
-    assert.equal(await action('Merge with Next').isDisabled(), true);
+    await openMenu(6);
+    for (const name of ['Merge with Previous', 'Merge with Next', 'Edit or Split...', 'Reflow at Full Sentences'])
+      assert.equal(await action(name).isDisabled(), true, 'A saved resource keeps its source');
+    await page.keyboard.press('Escape');
+    await openMenu(70);
+    assert.equal(await action('Merge with Previous').isDisabled(), true, 'A body paragraph cannot absorb a resource');
+    assert.equal(await action('Merge with Next').isDisabled(), true, 'A body paragraph cannot absorb the reference section');
     await page.keyboard.press('Escape');
 
     // Mac's readingAppearance environment overrides heading sizes and line spacing.
@@ -306,7 +316,8 @@ async function run() {
     assert.equal(readPaper().blocks[3].translation, originalBlocks[3].translation);
     assert.equal(readPaper().blocks[1].translation, originalBlocks[1].translation);
     await page.getByRole('button', { name: 'Resume Translation', exact: true }).click();
-    await waitFor(() => readPaper().blocks.filter(item => !item.resource).every(item => item.status === 'ok'), 'unfinished batch complete');
+    await waitFor(() => readPaper().blocks.filter(item => !item.resource && item.id < 80).every(item => item.status === 'ok'), 'unfinished body batch complete');
+    assert.deepEqual(readPaper().blocks.slice(-2).map(item => item.status), ['pending', 'pending']);
     assert.equal(readPaper().blocks[0].translation, successful, 'ordinary range skips the completed target');
     assert.equal(readPaper().blocks[3].translation, originalBlocks[3].translation, 'ordinary range skips unrelated completed output');
 
@@ -314,7 +325,7 @@ async function run() {
     mode = 'hold';
     await bodyAction(1, 'Translate This Paragraph');
     await waitFor(() => heldResponse, 'held explicit retry');
-    for (const number of [1, 3, 7]) {
+    for (const number of [1, 3, 70]) {
       assert.equal(await block(number).getByRole('button', { name: number === 3 ? 'Heading actions' : 'Paragraph actions', exact: true }).isDisabled(), true);
     }
     assert.equal(await page.getByRole('dialog', { name: /^Repair Paragraph/ }).count(), 0);
@@ -353,7 +364,16 @@ async function run() {
     assert.match(readPaper().blocks[0].text, /Results/);
     await undo();
     await waitFor(() => readPaper().blocks.length === beforeStructure.length, 'merge undo');
-    await bodyAction(5, 'Reflow at Full Sentences');
+    await bodyAction(50, 'Merge with Previous');
+    await waitFor(() => readPaper().blocks[3].text.startsWith('Unrelated paragraph reports 3D measurements: repeat and repeat.'), 'PDF line break and legacy spacing repaired');
+    const joined = readPaper().blocks[3];
+    const retained = joined.notes.find(note => note.id === repeatedNote.id);
+    assert.equal(retained.offset, joined.text.lastIndexOf('repeat'));
+    assert.equal(retained.needsReview, false);
+    await undo();
+    await waitFor(() => readPaper().blocks.some(item => item.id === 50 && item.text === continued), 'restored sparse IDs and raw source');
+    assert.equal(readPaper().blocks.find(item => item.id === 50).notes[0].offset, repeatedNote.offset);
+    await bodyAction(50, 'Reflow at Full Sentences');
     await waitFor(() => readPaper().blocks.length > beforeStructure.length, 'direct sentence reflow from menu');
     await undo();
     await waitFor(() => JSON.stringify(readPaper().blocks.map(item => ({ id: item.id, text: item.text }))) === JSON.stringify(beforeStructure), 'reflow undo source restored');
@@ -409,7 +429,7 @@ async function run() {
       'keyboard, Escape, light dismissal and one open menu', 'heading font sizes, source mode, narrow and 200% zoom layout',
       'explicit completed-block retranslation and unfinished range isolation', 'cancellation and failure retain saved output',
       'explanation selection without automatic inference and cancelled stale lookup', 'busy, MinerU, first/last gates',
-      'direct edit, merge, reflow and undo', 'long Markdown request chunking, exact protected output and restart persistence'
+      'sparse-ID merge and reflow, duplicate note offsets, resource and reference boundaries, undo', 'long Markdown request chunking, exact protected output and restart persistence'
     ] };
     progress('All assertions passed; beginning cleanup');
   } catch (error) {

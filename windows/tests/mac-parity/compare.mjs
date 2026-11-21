@@ -25,8 +25,16 @@ for (const [index, fixture] of papers.entries()) {
 
 assert.equal(reference.merges.length, fixtures.merges.length);
 let preservedWindowsJoins = 0;
-for (const [index, { name, left, right, windowsText }] of fixtures.merges.entries()) {
-  const actual = mergeBlocks({ text: left }, { text: right }).text;
+for (const [index, { name, left, right, windowsText, marks = [] }] of fixtures.merges.entries()) {
+  const source = (text, id) => ({ text, notes: marks.filter(mark => mark.paragraph === id).map(mark =>
+    ({ text: mark.quote, offset: mark.offset, body: mark.body, kind: mark.translation ? 'translation' : 'source' })) });
+  const merged = mergeBlocks(source(left, 1), source(right, 2));
+  const actual = merged.text;
+  const notes = marks.map(mark => {
+    const note = merged.notes.find(note => note.body === mark.body);
+    return { paragraph: 1, quote: note.text, offset: note.offset, body: note.body, review: Boolean(note.needsReview) };
+  });
+  assert.deepEqual(notes, reference.annotations[index], name + ' annotations');
   if (windowsText !== undefined) {
     assert.equal(actual, windowsText, name);
     if (actual !== reference.merges[index]) {

@@ -225,6 +225,51 @@
       "left": "a low‐",
       "right": "resolution figure.",
       "windowsText": "a low‐resolution figure."
+    },
+    {
+      "name": "anchors across paragraphs",
+      "left": "First echo and another echo.",
+      "right": "A second paragraph echoes the result.",
+      "marks": [
+        {
+          "paragraph": 1,
+          "quote": "echo",
+          "offset": 23,
+          "body": "second echo"
+        },
+        {
+          "paragraph": 2,
+          "quote": "echoes",
+          "offset": 19,
+          "body": "right note"
+        },
+        {
+          "paragraph": 1,
+          "quote": "译文",
+          "offset": 0,
+          "body": "translation note",
+          "translation": true
+        }
+      ]
+    },
+    {
+      "name": "anchor removed with line-break hyphen",
+      "left": "A micro-",
+      "right": "RNA sequence repeats.",
+      "marks": [
+        {
+          "paragraph": 1,
+          "quote": "micro-",
+          "offset": 2,
+          "body": "old spelling"
+        },
+        {
+          "paragraph": 2,
+          "quote": "sequence",
+          "offset": 4,
+          "body": "sequence note"
+        }
+      ]
     }
   ],
   "reflows": [

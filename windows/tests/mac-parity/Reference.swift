@@ -13,6 +13,14 @@ private struct Fixtures: Decodable {
     struct Merge: Decodable {
         let left: String
         let right: String
+        let marks: [Mark]?
+    }
+    struct Mark: Decodable {
+        let paragraph: Int
+        let quote: String
+        let offset: Int
+        let body: String
+        let translation: Bool?
     }
     struct Reflow: Decodable {
         let text: String
@@ -61,13 +69,26 @@ struct Reference {
             return try AcademicMarkdownProcessor.restoreProtectedTokens(in: translated, from: payload)
         }
         let merges = fixtures.merges.map { TextProcessing.mergeForReading($0.left, $0.right) }
+        let annotations = fixtures.merges.enumerated().map { index, fixture -> [[String: Any]] in
+            let old = [ParagraphResult(id: 1, original: fixture.left, translation: "译文"),
+                       ParagraphResult(id: 2, original: fixture.right, translation: "译文")]
+            let new = [ParagraphResult(id: 1, original: merges[index])]
+            let mapping = ParagraphMutationMapping(oldRange: 0..<2, replacementCount: 1)
+            return (fixture.marks ?? []).map { mark in
+                let original = PaperAnnotation(paragraphID: mark.paragraph, side: mark.translation == true ? .translation : .original,
+                                               quote: mark.quote, rangeLocation: mark.offset, rangeLength: mark.quote.utf16.count, note: mark.body)
+                let result = mapping.remap(original, old: old, new: new)
+                return ["paragraph": result.paragraphID, "quote": result.quote, "offset": result.rangeLocation,
+                        "body": result.note, "review": result.needsReview ?? false]
+            }
+        }
         let reflows = fixtures.reflows.map { fixture -> [String] in
             let paragraphs = TextProcessing.splitForReading(fixture.text, targetChars: fixture.target)
             // The Reader applies a reflow only when it produces more than one paragraph.
             return paragraphs.count > 1 ? paragraphs : [fixture.text]
         }
         let output: [String: Any] = ["papers": papers, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
-                                     "merges": merges, "reflows": reflows]
+                                     "merges": merges, "reflows": reflows, "annotations": annotations]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
     }

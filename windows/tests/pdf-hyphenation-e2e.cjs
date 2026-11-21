@@ -16,7 +16,10 @@ const expectedLines = [
   'We compare a well-known model-based method with T-cell data and end-to-end training.',
   'A state-of-the-art model uses international-based controls.',
   'Math tokens x- y and x - y plus re- Sults remain as written.',
-  'Four-pass boundary aabbccddeeffgghhiijjkkllmmnnoopp remains stable.'
+  'Four-pass boundary aabbccddeeffgghhiijjkkllmmnnoopp remains stable.',
+  'The coordinate system uses a 3D representation of the sample.',
+  'We compare predictions from the GPT-4 model on the same data.',
+  'The range of scores was 12-3 in the original table.'
 ];
 
 function fixturePdf(legacy = false) {
@@ -31,7 +34,10 @@ function fixturePdf(legacy = false) {
       `BT /F1 10 Tf 42 590 Td (${compounds}) Tj ET`,
       'BT /F1 10 Tf 42 540 Td (A state-of-the- art model uses inter- national- based controls.) Tj ET',
       'BT /F1 10 Tf 42 490 Td (Math tokens x- y and x - y plus re- Sults remain as written.) Tj ET',
-      `BT /F1 8 Tf 42 440 Td (Four-pass boundary ${fourPassChain} remains stable.) Tj ET`
+      `BT /F1 8 Tf 42 440 Td (Four-pass boundary ${fourPassChain} remains stable.) Tj ET`,
+      'BT /F1 10 Tf 42 390 Td (The coordinate system uses a 3-) Tj 0 -12 Td (D representation of the sample.) Tj ET',
+      'BT /F1 10 Tf 42 340 Td (We compare predictions from the GPT-) Tj 0 -12 Td (4 model on the same data.) Tj ET',
+      'BT /F1 10 Tf 42 290 Td (The range of scores was 12-) Tj 0 -12 Td (3 in the original table.) Tj ET'
     ].join('\n');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
