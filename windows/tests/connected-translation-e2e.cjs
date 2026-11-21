@@ -114,6 +114,9 @@ async function run() {
     await app.close(); app = null;
 
     const interrupted = readPaper();
+    assert.equal(interrupted.connectedBatchVersion, 2);
+    // The ASCII fixture has the same partition under both versions. Resume it as a pre-upgrade draft.
+    interrupted.connectedBatchVersion = 1;
     assert.deepEqual(interrupted.connectedLanguage, chinese, 'New successful, failed and pending batches share their explicit task direction');
     for (const batch of interrupted.connectedBlocks.filter(batch => batch.kind === 'translation')) assert.deepEqual(batch.translationLanguage, chinese);
     // Recreate a migrated successful legacy batch whose historical direction is
@@ -145,7 +148,7 @@ async function run() {
       return paper?.connectedBlocks?.every(batch => batch.status === 'ok');
     }, path.basename(file, '.json'));
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'));
-    assert.equal(saved.connectedBatchVersion, 1);
+    assert.equal(saved.connectedBatchVersion, 1, 'Resume keeps the previous draft partition');
     assert.ok(saved.blocks.every(block => block.status === 'pending'), 'Plain connected translation should leave Reader output independent');
     assert.equal(saved.connectedBlocks[0].translationLanguage, null, 'Resume must retain the unknown language of its reused successful batch');
     for (const batch of saved.connectedBlocks.filter(batch => batch.kind === 'translation').slice(1)) assert.deepEqual(batch.translationLanguage, chinese);
@@ -165,6 +168,7 @@ async function run() {
     }, paperId);
     assert.equal(excerpts.length, 8, 'Force regeneration must replace every translated batch before assigning a known whole-draft language');
     const regenerated = readPaper();
+    assert.equal(regenerated.connectedBatchVersion, 2, 'Explicit regeneration adopts current character boundaries');
     assert.deepEqual(regenerated.connectedLanguage, chinese);
     for (const batch of regenerated.connectedBlocks.filter(batch => batch.kind === 'translation')) assert.deepEqual(batch.translationLanguage, chinese);
     assert.equal(await exportFullTranslation('full-translation-regenerated.md'), regenerated.connectedTranslation);

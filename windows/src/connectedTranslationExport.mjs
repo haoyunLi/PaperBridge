@@ -1,5 +1,5 @@
 import { completedBlockTranslation, usesSharedMarkdown } from './academicMarkdown.mjs';
-import { connectedBatchVersion, planConnectedBatches } from './connectedTranslation.mjs';
+import { supportsConnectedBatchVersion, planConnectedBatches } from './connectedTranslation.mjs';
 import { referenceBlockIds } from './paper.mjs';
 import { migrateOutputLanguages, normalizeOutputLanguage } from './outputLanguages.mjs';
 
@@ -39,9 +39,9 @@ export function connectedTranslationMarkdown(input, _legacyTargetLanguage, conte
     unit = 'paragraph(s)';
   } else {
     const saved = paper.connectedBlocks;
-    if (paper.connectedShared || paper.connectedBatchVersion !== connectedBatchVersion || !Array.isArray(saved) || !saved.length) return content;
+    if (paper.connectedShared || !supportsConnectedBatchVersion(paper.connectedBatchVersion) || !Array.isArray(saved) || !saved.length) return content;
     if (saved.some(batch => batch?.kind === 'translation' && mismatchedLanguage(batch.translationLanguage))) return content;
-    const planned = planConnectedBatches(paper.blocks);
+    const planned = planConnectedBatches(paper.blocks, paper.connectedBatchVersion);
     if (planned.length !== saved.length || saved.some((batch, index) => !batch ||
         batch.kind !== planned[index].kind || batch.source !== planned[index].source || typeof batch.output !== 'string' ||
         !['ok', 'failed', 'pending'].includes(batch.status))) return content;

@@ -1,11 +1,14 @@
 import { referenceBlockIds } from './paper.mjs';
-import { pdfFootnoteMarker } from './text.mjs';
+import { pdfFootnoteMarker, sourceExcerpts } from './text.mjs';
+import { countCharacters } from './sectionHeadings.mjs';
 import { isLikelyOverexpandedSelection, protectMarkdown, restoreMarkdown } from './prompts.mjs';
 
 const maxExcerptChars = 4800;
-export const connectedBatchVersion = 1;
+export const connectedBatchVersion = 2;
+export const supportsConnectedBatchVersion = version => version === 1 || version === connectedBatchVersion;
 
-function splitExcerpt(source) {
+// Keep the original partition when resuming or exporting a saved version 1 draft.
+function splitLegacyExcerpt(source) {
   const { text, tokens } = protectMarkdown(source);
   if (text.length <= maxExcerptChars) return [source];
 
@@ -32,7 +35,14 @@ function splitExcerpt(source) {
   return pieces;
 }
 
-export function planConnectedBatches(blocks) {
+function splitSourceExcerpt(source) {
+  const { text, tokens } = protectMarkdown(source);
+  if (text.length <= maxExcerptChars) return [source];
+  return sourceExcerpts(text, maxExcerptChars).map(piece => restoreMarkdown(piece, tokens.filter(([marker]) => piece.includes(marker))));
+}
+
+export function planConnectedBatches(blocks, version = connectedBatchVersion) {
+  const splitExcerpt = version === 1 ? splitLegacyExcerpt : splitSourceExcerpt;
   const references = referenceBlockIds(blocks);
   const batches = [];
   let excerpt = '';
@@ -58,7 +68,10 @@ export function planConnectedBatches(blocks) {
     }
     for (const piece of splitExcerpt(source)) {
       const candidate = excerpt ? `${excerpt}\n\n${piece}` : piece;
-      if (excerpt && protectMarkdown(candidate).text.length > maxExcerptChars) flush();
+      if (excerpt) {
+        const masked = protectMarkdown(candidate).text;
+        if (masked.length > maxExcerptChars && (version === 1 || countCharacters(masked, maxExcerptChars + 1) > maxExcerptChars)) flush();
+      }
       excerpt = excerpt ? candidate : piece;
     }
   }
@@ -67,7 +80,7 @@ export function planConnectedBatches(blocks) {
 }
 
 export function pendingConnectedBatches(paper) {
-  if (paper?.connectedBatchVersion !== connectedBatchVersion || paper.connectedStale) return [];
+  if (!supportsConnectedBatchVersion(paper?.connectedBatchVersion) || paper.connectedStale) return [];
   return (paper.connectedBlocks || []).filter(batch => batch.kind === 'translation' && batch.status !== 'ok');
 }
 

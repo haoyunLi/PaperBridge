@@ -30,7 +30,7 @@ import { readerLineHeight } from '../electron/reading-appearance.mjs';
 import { modelSettingsPatch } from './modelCatalog.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalOpenAIError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
-import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
+import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
 import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
 import './onboarding.css';
 import 'katex/dist/katex.min.css';
@@ -2475,6 +2475,8 @@ function App() {
         setStatus('Using the saved connected full translation.');
         return;
       }
+      const resume = !force && !current.connectedStale && supportsConnectedBatchVersion(current.connectedBatchVersion);
+      const batchVersion = resume ? current.connectedBatchVersion : connectedBatchVersion;
       let inheritedLanguageConflict = false;
       const saveDraft = batches => commitPaper(paper => ({
         ...paper, connectedBlocks: [...batches],
@@ -2483,7 +2485,7 @@ function App() {
         connectedLanguage: inheritedLanguageConflict ? null
           : commonOutputLanguage(batches.filter(batch => batch.kind === 'translation').map(batch => batch.translationLanguage))
             || (batches.every(batch => batch.kind === 'original') && config.sourceLanguage === config.targetLanguage ? normalizeOutputLanguage(config) : null),
-        connectedBatchVersion, connectedShared: false, connectedStale: false
+        connectedBatchVersion: batchVersion, connectedShared: false, connectedStale: false
       }));
       if (config.sourceLanguage === config.targetLanguage) {
         const source = current.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
@@ -2491,9 +2493,8 @@ function App() {
         setStatus('Source and target languages match. The full draft uses the original text.');
         return;
       }
-      const previous = !force && !current.connectedStale && current.connectedBatchVersion === connectedBatchVersion
-        ? current.connectedBlocks : [];
-      const batches = planConnectedBatches(current.blocks).map((batch, index) => {
+      const previous = resume ? current.connectedBlocks : [];
+      const batches = planConnectedBatches(current.blocks, batchVersion).map((batch, index) => {
         const saved = previous?.[index];
         if (saved?.kind === batch.kind && saved.source === batch.source && saved.pdfFootnoteMarker === batch.pdfFootnoteMarker && saved.status === 'ok' && saved.output) return saved;
         return { ...batch, output: batch.source, translationLanguage: batch.kind === 'translation' ? normalizeOutputLanguage(config) : null,

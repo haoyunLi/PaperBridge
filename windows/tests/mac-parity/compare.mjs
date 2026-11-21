@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
+import { createHash } from 'node:crypto';
+import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
@@ -48,6 +50,19 @@ for (const [index, { name, paragraphs }] of fixtures.summaryBatches.entries()) {
   const rendered = summarySourceBatches(blocks).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
   assert.deepEqual(rendered, reference.summaryBatches[index], name);
 }
+
+const connectedSources = paragraphs => planConnectedBatches(paragraphs.map((text, i) => ({ id: i + 1, text }))).map(batch => batch.source);
+assert.equal(reference.connectedBatches.length, fixtures.connectedBatches.length);
+for (const [index, { name, paragraphs }] of fixtures.connectedBatches.entries()) {
+  const text = paragraphs.map(({ text, repeat = 1, prefix = '', suffix = '' }) => prefix + text.repeat(repeat) + suffix);
+  assert.deepEqual(connectedSources(text), reference.connectedBatches[index], name);
+}
+const published = reference.publishedPaper;
+const publishedBytes = readFileSync(new URL('./emcee-v3.pdf', import.meta.url));
+assert.equal(createHash('sha256').update(publishedBytes).digest('hex'), published.sha256);
+assert.ok(published.paragraphs.join(' ').includes('emcee') && published.paragraphs.length > 5);
+assert.deepEqual(connectedSources(published.paragraphs), published.batches, 'All full-translation batches for the same native-extracted journal article');
+console.log(`Verified ${fixtures.connectedBatches.length} full-translation cases and all ${published.batches.length} batches of the ${published.paragraphs.length}-paragraph emcee paper against macOS.`);
 
 assert.equal(reference.bibliographies.length, fixtures.bibliographies.length);
 for (const [index, fixture] of fixtures.bibliographies.entries()) {

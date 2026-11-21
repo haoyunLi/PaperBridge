@@ -1,6 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('new full-paper excerpts use complete characters and preserve scientific prose and markup', async () => {
+  const { planConnectedBatches } = await import('../src/connectedTranslation.mjs');
+  const plan = paragraphs => planConnectedBatches(paragraphs.map((text, i) => ({ id: i + 1, text }))).map(batch => batch.source);
+  for (const character of ['e\u0301', '👩‍🔬', '𠮷']) {
+    const first = 'a'.repeat(4799) + character;
+    assert.deepEqual(plan([first + 'b'.repeat(40)]), [first, 'b'.repeat(40)]);
+  }
+  const paragraphs = ['𠮷'.repeat(1600), 'é'.normalize('NFD').repeat(1500)];
+  assert.deepEqual(plan(paragraphs), [paragraphs.join('\n\n')]);
+  const opening = 'The reference sensor recorded two independent estimates.';
+  const sentence = 'The sensor calibration was repeated '.repeat(131) + 'in  both\ttrials.';
+  assert.deepEqual(plan([opening + ' ' + sentence]), [opening + ' ' + sentence]); // still below the limit
+  const extended = [opening, opening, opening, sentence].join(' ');
+  const parts = plan([extended]);
+  assert.ok(parts.at(-1).endsWith(sentence), 'A complete sentence that fits a fresh batch stays together');
+  const formula = '$$' + 'x+1'.repeat(2200) + '$$';
+  const withMarkup = 'a'.repeat(4794) + formula + 'bc'.repeat(100);
+  const preserved = plan([withMarkup]);
+  assert.equal(preserved.join(''), withMarkup);
+  assert.equal(preserved.filter(piece => piece.includes(formula)).length, 1);
+});
+
 test('connected translation groups adjacent paragraphs and leaves resources and references in order', async () => {
   const { planConnectedBatches } = await import('../src/connectedTranslation.mjs');
   const blocks = [
@@ -74,6 +96,7 @@ test('last-resort local translation takes protected bytes and split technical wo
 test('long excerpts preserve punctuation, Unicode, and whole protected figures at a batch boundary', async () => {
   const { planConnectedBatches, restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
   const { protectMarkdown } = await import('../src/prompts.mjs');
+  const { countCharacters } = await import('../src/sectionHeadings.mjs');
   const image = `data:image/png;base64,${'A'.repeat(7000)}`;
   const source = `${'a'.repeat(4799)}😀${'b'.repeat(4788)}${image}?! \$x=2\$ tail.`;
   const batches = planConnectedBatches([{ id: 1, text: source }]);
@@ -82,7 +105,7 @@ test('long excerpts preserve punctuation, Unicode, and whole protected figures a
   assert.equal(batches.filter(batch => batch.source.includes(image)).length, 1);
   for (const batch of batches) {
     assert.doesNotMatch(batch.source, /^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/);
-    assert.ok(protectMarkdown(batch.source).text.length <= 4800);
+    assert.ok(countCharacters(protectMarkdown(batch.source).text) <= 4800);
   }
   const protectedBlock = protectMarkdown(`Equation $x=2$ and ${image}`);
   const [first, second] = protectedBlock.tokens.map(([marker]) => marker);
@@ -90,6 +113,24 @@ test('long excerpts preserve punctuation, Unicode, and whole protected figures a
   for (const output of [first, `${first} ${second} ${second}`, `${second} ${first}`]) {
     assert.throws(() => restoreConnectedExcerpt(output, protectedBlock.tokens), /Retry this batch/);
   }
+});
+
+test('version 1 Unicode drafts retain the original batch numbering and failure metadata on export', async () => {
+  const { planConnectedBatches, pendingConnectedBatches } = await import('../src/connectedTranslation.mjs');
+  const { connectedTranslationMarkdown } = await import('../src/connectedTranslationExport.mjs');
+  const blocks = [{ id: 1, text: 'a'.repeat(4799) + 'e\u0301' + 'b'.repeat(40) }];
+  const saved = planConnectedBatches(blocks, 1);
+  assert.equal(saved[0].source.at(-1), 'e');
+  assert.equal(saved[1].source[0], '\u0301');
+  assert.notDeepEqual(saved, planConnectedBatches(blocks));
+  const first = { ...saved[0], status: 'ok', output: 'A previously translated excerpt.' };
+  const second = { ...saved[1], status: 'failed', output: saved[1].source, error: 'Interrupted' };
+  const paper = { blocks, connectedBatchVersion: 1, connectedBlocks: [first, second],
+    connectedTranslation: first.output + '\n\n' + second.output };
+  assert.deepEqual(pendingConnectedBatches(paper), [second]);
+  const md = connectedTranslationMarkdown(paper);
+  assert.match(md, /Connected translation failed for batch 2/);
+  assert.ok(md.includes(first.output) && md.endsWith(second.source));
 });
 
 test('connected batch status survives model switches and excludes stale or legacy drafts from resume', async () => {

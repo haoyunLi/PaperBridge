@@ -151,6 +151,67 @@
       "valid": false
     }
   ],
+  "connectedBatches": [
+    {
+      "name": "extended graphemes within one batch across paragraphs",
+      "paragraphs": [
+        {
+          "text": "𠮷",
+          "repeat": 1600
+        },
+        {
+          "text": "é",
+          "repeat": 1500
+        }
+      ]
+    },
+    {
+      "name": "unbroken extended characters at the batch edge",
+      "paragraphs": [
+        {
+          "text": "x",
+          "repeat": 4799,
+          "suffix": "👩‍🔬followup"
+        }
+      ]
+    },
+    {
+      "name": "entire calibration sentence moves to the next batch",
+      "paragraphs": [
+        {
+          "prefix": "The reference sensor was stable. It was tested in a second chamber. This provided the reference used in the next trial. ",
+          "text": "The sensor calibration was repeated ",
+          "repeat": 131,
+          "suffix": "in both trials."
+        }
+      ]
+    },
+    {
+      "name": "two paragraph breaks count toward the maximum",
+      "paragraphs": [
+        {
+          "text": "x",
+          "repeat": 4795
+        },
+        {
+          "text": "abc"
+        },
+        {
+          "text": "tiny final paragraph"
+        }
+      ]
+    },
+    {
+      "name": "model receives composed and decomposed symbols as written",
+      "paragraphs": [
+        {
+          "text": "The signal é and force 𝑭 were measured. ",
+          "repeat": 120,
+          "suffix": "Last run."
+        }
+      ]
+    }
+  ],
   "summaryBatches": [
     {
       "name": "keep a long complete sentence together when the preceding sentences fill its remaining space",

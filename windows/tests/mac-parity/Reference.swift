@@ -36,9 +36,13 @@ private struct Fixtures: Decodable {
             let suffix: String?
         }
         let paragraphs: [Paragraph]
+        var texts: [String] {
+            paragraphs.map { ($0.prefix ?? "") + String(repeating: $0.text, count: $0.repeat ?? 1) + ($0.suffix ?? "") }
+        }
     }
     let summaryEvidence: [Evidence]
     let summaryBatches: [Batch]
+    let connectedBatches: [Batch]
     struct Bibliography: Decodable {
         let paragraphs: [String]
     }
@@ -119,11 +123,19 @@ struct Reference {
             let output = String(decoding: try JSONSerialization.data(withJSONObject: object), as: UTF8.self)
             return SummaryEvidence.parse(output, paper: paper, providedText: "[P1]\n" + paragraph).flatMap(\.sources).map(\.quote)
         }
-        let summaryBatches = fixtures.summaryBatches.map { fixture in
-            SummaryEvidence.sourceBatches(fixture.paragraphs.map {
-                ($0.prefix ?? "") + String(repeating: $0.text, count: $0.repeat ?? 1) + ($0.suffix ?? "")
-            })
+        let summaryBatches = fixtures.summaryBatches.map { SummaryEvidence.sourceBatches($0.texts) }
+        let connectedBatches = fixtures.connectedBatches.map {
+            TextProcessing.buildTextBatches($0.texts, maxChars: TextProcessing.connectedTranslationBatchChars)
         }
+        let publishedPDF = try Data(contentsOf: fixtureURL.deletingLastPathComponent().appendingPathComponent("emcee-v3.pdf"))
+        let publishedText = try PDFTextExtractor().extractText(from: publishedPDF)
+        let paragraphs = TextProcessing.splitIntoParagraphs(TextProcessing.cleanExtractedText(publishedText))
+        let body = TextProcessing.excludeReferenceSection(from: paragraphs).bodyParagraphs
+        let published: [String: Any] = [
+            "sha256": SHA256.hash(data: publishedPDF).map { String(format: "%02x", $0) }.joined(),
+            "paragraphs": body,
+            "batches": TextProcessing.buildTextBatches(body, maxChars: TextProcessing.connectedTranslationBatchChars)
+        ]
         let bibliographies = fixtures.bibliographies.map { fixture in
             let result = TextProcessing.excludeReferenceSection(from: fixture.paragraphs)
             return ["body": result.bodyParagraphs, "references": result.referenceParagraphs]
@@ -158,7 +170,7 @@ struct Reference {
         let pdfBytes = try Data(contentsOf: pdfURL)
         let columnPDF = try PDFTextExtractor().extractText(from: pdfBytes)
         let pdfHash = SHA256.hash(data: pdfBytes).map { String(format: "%02x", $0) }.joined()
-        let output: [String: Any] = ["columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let output: [String: Any] = ["publishedPaper": published, "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))

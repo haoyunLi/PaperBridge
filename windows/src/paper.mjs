@@ -1,4 +1,4 @@
-import { chunkText, isHeading, joinPdfText } from './text.mjs';
+import { sourceExcerpts, isHeading, joinPdfText } from './text.mjs';
 import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { markdownBlockKind } from './academicMarkdown.mjs';
@@ -55,46 +55,11 @@ export function summarySourceBlocks(blocks) {
   return blocks.filter(block => !block.heading && !block.resource && !references.has(block.id) && block.text?.trim());
 }
 
-function boundedSourcePieces(text, limit) {
-  if (text.length <= limit) return [text];
-  const pieces = [];
-  let start = 0, count = 0;
-  for (const { index } of graphemes.segment(text)) {
-    if (count === limit) {
-      pieces.push(text.slice(start, index).trim());
-      start = index;
-      count = 0;
-    }
-    count++;
-  }
-  pieces.push(text.slice(start).trim());
-  return pieces;
-}
-
-function summaryPieces(text) {
-  // Match the native sentence/clause boundaries, but keep the original spacing
-  // inside each excerpt so every quote sent to the model exists in the paper.
-  const limit = 5900, source = text.trim();
-  if (source.length <= limit) return [source];
-  const pieces = [];
-  let offset = 0;
-  for (const chunk of chunkText(source, limit)) {
-    const start = offset;
-    for (const [word] of chunk.matchAll(/\P{White_Space}+/gu)) {
-      const index = source.indexOf(word, offset);
-      if (index < 0 || source.slice(offset, index).trim()) return boundedSourcePieces(source, limit);
-      offset = index + word.length;
-    }
-    pieces.push(...boundedSourcePieces(source.slice(start, offset).trim(), limit));
-  }
-  return source.slice(offset).trim() ? boundedSourcePieces(source, limit) : pieces;
-}
-
 export function summarySourceBatches(blocks) {
   const batches = [];
   let batch = [], length = 0;
   for (const { id, text } of blocks) {
-    for (const piece of summaryPieces(text)) {
+    for (const piece of sourceExcerpts(text, 5900)) {
       if (!piece) continue;
       const size = `[P${id}]\n`.length + countCharacters(piece);
       if (length && length + 2 + size > 6000) {

@@ -201,7 +201,7 @@ function packChunks(segments, limit) {
   return packed;
 }
 
-function splitChunkWord(word, limit) {
+function splitChunkUnits(word, limit) {
   // Protected formulas, figures and links must survive even when a token is
   // adjacent to prose. Only an atomic token may exceed the requested limit.
   const units = [];
@@ -243,8 +243,30 @@ export function chunkText(text, maxLength = 1800) {
       clauses = clauses.flatMap(piece => graphemeCount(piece) > limit ? packChunks(piece.split(boundary), limit) : [piece]);
     }
     return clauses.flatMap(piece => graphemeCount(piece) > limit
-      ? packChunks(piece.split(/\p{White_Space}+/u).flatMap(word => graphemeCount(word) > limit ? splitChunkWord(word, limit) : [word]), limit)
+      ? packChunks(piece.split(/\p{White_Space}+/u).flatMap(word => graphemeCount(word) > limit ? splitChunkUnits(word, limit) : [word]), limit)
       : [piece]);
   });
   return packChunks(pieces, limit);
+}
+
+export function sourceExcerpts(text, limit) {
+  // Match the native sentence/clause boundaries, but keep the original spacing
+  // inside each excerpt so every quote sent to the model exists in the paper.
+  const source = text.trim();
+  if (source.length <= limit || countCharacters(source, limit + 1) <= limit) return [source];
+  const hardSplit = value => splitChunkUnits(value, limit).map(piece => piece.trim()).filter(Boolean);
+  const pieces = [];
+  let offset = 0;
+  for (const chunk of chunkText(source, limit)) {
+    const start = offset;
+    for (const [word] of chunk.matchAll(/\P{White_Space}+/gu)) {
+      const index = source.indexOf(word, offset);
+      if (index < 0 || source.slice(offset, index).trim()) return hardSplit(source);
+      offset = index + word.length;
+    }
+    const original = source.slice(start, offset).trim();
+    if (original.length <= limit || countCharacters(original, limit + 1) <= limit) pieces.push(original);
+    else pieces.push(...hardSplit(original));
+  }
+  return source.slice(offset).trim() ? hardSplit(source) : pieces;
 }
