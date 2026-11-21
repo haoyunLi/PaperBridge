@@ -39,8 +39,12 @@ export function generatedViewText(scope, markdown) {
   return text;
 }
 
+export function parseMarkdown(markdown) {
+  return processor.parse(markdown);
+}
+
 export function renderedMarkdownText(markdown) {
   const parts = [];
-  collectText(processor.runSync(processor.parse(markdown)), undefined, parts);
+  collectText(processor.runSync(parseMarkdown(markdown)), undefined, parts);
   return parts.join('');
 }

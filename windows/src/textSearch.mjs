@@ -1,5 +1,5 @@
 import { caseFold, lookupFolding } from 'unicode-case-folding';
-import { markdownHeadingText } from './academicMarkdown.mjs';
+import { analysisSourceText } from './academicMarkdown.mjs';
 import { trimWhitespace } from './sectionHeadings.mjs';
 
 const turkic = /^(tr|az)(-|$)/i.test(Intl.DateTimeFormat().resolvedOptions().locale);
@@ -53,6 +53,6 @@ export function searchableText(raw = '') {
 export function filteredReaderBlocks(blocks, query) {
   const needle = searchKey(trimWhitespace(query));
   if (!needle) return blocks;
-  return blocks.filter(block => searchableText(markdownHeadingText(block) ?? block.text).includes(needle)
+  return blocks.filter(block => searchableText(analysisSourceText(block)).includes(needle)
     || (block.translation && searchableText(block.translation).includes(needle)));
 }

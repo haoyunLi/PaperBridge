@@ -1,6 +1,6 @@
 // Keep results under the settings that produced them, as macOS workspaces do.
 import { activeAIModel, aiCacheNamespace } from './aiSettings.mjs';
-import { usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { analysisSourceText, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { migrateOutputLanguages, normalizeOutputLanguage } from './outputLanguages.mjs';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -35,7 +35,8 @@ export function cachedExplanation(paper, id, language, settings) {
   if (!paper || !settings) return null;
   const key = explanationKey(id, language, settings);
   const result = paper.paragraphExplanations?.[key];
-  return result?.source === paper.blocks.find(block => block.id === id)?.text ? result : null;
+  const block = paper.blocks.find(block => block.id === id);
+  return block && result?.source === analysisSourceText(block) ? result : null;
 }
 
 function switchParagraphOutputs(paper, previous, next) {

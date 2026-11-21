@@ -203,6 +203,13 @@ for (const { limit, chunks } of published.paragraphChunks) {
 assert.deepEqual(connectedSources(published.paragraphs), published.batches, 'All full-translation batches for the same native-extracted journal article');
 console.log(`Verified ${fixtures.connectedBatches.length} full-translation cases and all ${published.batches.length} batches of the ${published.paragraphs.length}-paragraph emcee paper against macOS.`);
 
+const notationBlocks = parsedMarkdownBlocks(fixtures.scientificNotation.join('\n\n'));
+assert.deepEqual(summarySourceBlocks(notationBlocks).map(block => block.text), reference.scientificNotation,
+  'Scientific identifiers in newly imported MinerU paragraphs match native Mac summary sources');
+const legacyNotation = notationBlocks.map(block => ({ ...block, text: block.text.replace(/[#*_]/g, '') }));
+assert.deepEqual(summarySourceBlocks(legacyNotation).map(block => block.text), reference.scientificNotation,
+  'Reading an earlier MinerU workspace recovers the same identifiers without changing its saved offsets');
+
 const structuredText = readFileSync(new URL('./emcee-v3-mineru.md', import.meta.url), 'utf8');
 const structuredSource = summarySourceBlocks(parsedMarkdownBlocks(structuredText));
 assert.deepEqual(structuredSource.filter(block => block.heading).map(block => block.text), reference.structuredJournal.headings,

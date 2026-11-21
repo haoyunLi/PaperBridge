@@ -1,4 +1,4 @@
-import { renderedMarkdownText } from './markdownRendering.mjs';
+import { parseMarkdown, renderedMarkdownText } from './markdownRendering.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { commonOutputLanguage, normalizeOutputLanguage } from './outputLanguages.mjs';
 
@@ -47,6 +47,68 @@ function plainText(markdown) {
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
     .replace(/[#*_`]/g, '')).trim();
+}
+
+// Only leaf text and inline code can contribute literal Markdown punctuation.
+function markdownLiteralRanges(markdown) {
+  const ranges = [];
+  function visit(node) {
+    if (node.type === 'inlineCode') {
+      ranges.push({ start: node.position.start.offset, end: node.position.end.offset, value: node.value });
+    } else if (node.type === 'text') {
+      const start = node.position.start.offset;
+      const raw = markdown.slice(start, node.position.end.offset);
+      // MinerU sometimes splits bold author names across numbered affiliation tags.
+      const splitAuthorStyle = /^,\s*\d+\*\*,\s+.+\*\*$/u.test(raw)
+        && markdown.slice(Math.max(0, start - 6), start).toLowerCase() === '</sup>'
+        && markdown.slice(node.position.end.offset, node.position.end.offset + 5).toLowerCase() === '<sup>';
+      for (const match of raw.matchAll(/&#(?:x[\da-f]+|\d+);|\\([\\#*_`])|\*+|_+|[#`]/gi)) {
+        const [token, escaped] = match;
+        if (splitAuthorStyle && token === '**') continue;
+        ranges.push({ start: start + match.index, end: start + match.index + token.length, value: escaped ?? (token.startsWith('&#') ? readableHtml(token) : token) });
+      }
+    } else {
+      for (const child of node.children || []) visit(child);
+    }
+  }
+  visit(parseMarkdown(markdown));
+  return ranges;
+}
+
+function proseText(markdown, legacyText) {
+  if (!/[#*_`]/.test(markdown)) return legacyText;
+  const literals = markdownLiteralRanges(markdown);
+  if (!literals.length) return legacyText;
+  // Keep literal code out of the formula, link and HTML substitutions as well.
+  let prefix = '\uE000';
+  const decoded = readableHtml(markdown);
+  while (decoded.includes(prefix)) prefix += '\uE000';
+  const pieces = [];
+  let end = 0;
+  for (const [index, literal] of literals.entries()) {
+    pieces.push(markdown.slice(end, literal.start), prefix + index + '\uE001');
+    end = literal.end;
+  }
+  pieces.push(markdown.slice(end));
+  const pattern = new RegExp(prefix + '(\\d+)\uE001', 'g');
+  return plainText(pieces.join('')).replace(pattern, (_, index) => literals[Number(index)].value);
+}
+
+const sourceTextCache = new WeakMap();
+
+export function analysisSourceText(block) {
+  if (!block) return '';
+  const { sourceMarkdown, text } = block;
+  if (!sourceMarkdown || block.resource) return text || '';
+  const heading = markdownHeadingText(block);
+  if (heading !== null) return heading;
+  const cached = sourceTextCache.get(block);
+  if (cached?.markdown === sourceMarkdown && cached.text === text) return cached.result;
+  // Only reconstruct text that is demonstrably the output of the old importer.
+  // A user-edited paragraph remains authoritative even with older Markdown attached.
+  const result = text === plainText(sourceMarkdown) ? proseText(sourceMarkdown, text) : text;
+  sourceTextCache.set(block, { markdown: sourceMarkdown, text, result });
+  return result;
 }
 
 function segmentKind(lines, index) {
@@ -129,6 +191,7 @@ export function parsedMarkdownBlocks(markdown) {
       translation: '', status: 'pending', bookmark: false, highlights: [], notes: []
     };
     if (block.heading) block.text = markdownHeadingText(block) ?? block.text;
+    else if (!block.resource) block.text = proseText(sourceMarkdown, block.text);
     return block;
   });
 }
@@ -143,7 +206,9 @@ export function markdownBlockKind(block) {
   if (kind === 'paragraph') return kind;
   if (block.markdownKind != null && block.markdownKind !== kind) return null;
   const segments = parsedMarkdownSegments(source);
-  if (segments.length !== 1 || plainText(segments[0].sourceMarkdown) !== block.text) return null;
+  if (segments.length !== 1) return null;
+  const legacyText = plainText(segments[0].sourceMarkdown);
+  if (block.text !== legacyText && block.text !== (markdownHeadingText(block) ?? proseText(source, legacyText))) return null;
   return segments[0].kind;
 }
 

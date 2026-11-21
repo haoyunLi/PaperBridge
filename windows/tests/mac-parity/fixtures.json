@@ -371,6 +371,11 @@
       ]
     }
   ],
+  "scientificNotation": [
+    "The calibration uses `model_A` for archive data and `modelA` for new observations. The C# library fits `sigma_x` for each series.",
+    "We compare A* search with the p_value criterion using **paired estimates**.",
+    "For the λ_fit estimator, [variable x_y](https://example.org/data) denotes a local parameter."
+  ],
   "papers": [
     {
       "name": "distinct scientific section identifiers",

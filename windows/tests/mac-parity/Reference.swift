@@ -78,6 +78,7 @@ private struct Fixtures: Decodable {
         let target: Int
     }
     let markdown: [String]
+    let scientificNotation: [String]
     let merges: [Merge]
     let reflows: [Reflow]
     let pageBoundaries: [Merge]
@@ -222,7 +223,9 @@ struct Reference {
         }
         let bundle = try nativeBundleReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
         let library = try nativeLibraryReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
-        let output: [String: Any] = ["library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal, "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+        let output: [String: Any] = ["library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
+                                    "scientificNotation": fixtures.scientificNotation.compactMap { AcademicMarkdownProcessor.parse($0).first?.analysisText },
+                                    "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))

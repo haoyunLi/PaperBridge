@@ -20,6 +20,38 @@ test('structured section names preserve identifiers on import and in searches of
   }
 });
 
+test('scientific literals survive Markdown analysis, search, citation validation and old workspaces', async () => {
+  const { parsedMarkdownBlocks, analysisSourceText, anchorText } = await markdown;
+  const { summarySourceBlocks, revalidateSummaryClaims, summaryNeedsTextRefresh, markdownSummaryTextVersion } = await paper;
+  const { filteredReaderBlocks } = await import('../src/textSearch.mjs');
+  const source = 'We compare `model_A` and `modelA` using C# and **paired** A* search. ' +
+    'The `x**2 + [$a$](path) + <T>` result uses [p_value](url) and $x_y$ with ![plot](chart.png).';
+  const [fresh] = parsedMarkdownBlocks(source);
+  const original = 'We compare model_A and modelA using C# and paired A* search. ' +
+    'The x**2 + [$a$](path) + <T> result uses p_value and [Formula] with [Figure].';
+  assert.equal(fresh.text, original);
+  const legacyText = 'We compare modelA and modelA using C and paired A search. The x2 + [[Formula]](path) +  result uses pvalue and [Formula] with [Figure].';
+  const old = Object.freeze({ ...fresh, text: legacyText });
+  const claim = { text: 'Method', sources: [{ paragraphID: 1, quote: 'model_A and modelA using C#' }] };
+  for (const block of [old, fresh]) {
+    assert.equal(analysisSourceText(block), original);
+    assert.equal(summarySourceBlocks([block])[0].text, original);
+    assert.deepEqual(filteredReaderBlocks([block], 'p_value'), [block]);
+    assert.deepEqual(revalidateSummaryClaims([claim], [block]), [claim]);
+  }
+  assert.equal(anchorText(old, 'source'), legacyText);
+  const edited = { ...old, text: 'Locally edited paragraph.' };
+  assert.equal(analysisSourceText(edited), edited.text);
+  assert.deepEqual(revalidateSummaryClaims([claim], [edited])[0].sources, []);
+  assert.equal(summaryNeedsTextRefresh({ blocks: [old], summary: {} }), true);
+  assert.equal(summaryNeedsTextRefresh({ blocks: [fresh], summary: {} }), false);
+  assert.equal(summaryNeedsTextRefresh({ blocks: [old], summary: { markdownTextVersion: markdownSummaryTextVersion } }), false);
+  const [escaped] = parsedMarkdownBlocks('Unicode λ_fit and \\_escaped\\_ with `__init__` and &#95;.');
+  assert.equal(escaped.text, 'Unicode λ_fit and _escaped_ with __init__ and _.');
+  const operators = parsedMarkdownBlocks('Pass **kwargs through.\n\nEvaluate x**2 for A*.');
+  assert.deepEqual(operators.map(block => block.text), ['Pass **kwargs through.', 'Evaluate x**2 for A*.']);
+});
+
 const prose = 'The analysis describes the input data, filtering decisions, measurement assumptions and uncertainty bounds for the proposed comparison';
 
 test('new Markdown blocks retain their parser kind without changing source, IDs or translation participation', async () => {

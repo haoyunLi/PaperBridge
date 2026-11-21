@@ -1,6 +1,6 @@
 import { usesSharedMarkdown, completedBlockTranslation } from './academicMarkdown.mjs';
 import { analysisAnnotations, annotationsMarkdown } from './annotationsMarkdown.mjs';
-import { referenceBlockIds, revalidateSummaryClaims } from './paper.mjs';
+import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, legacySummaryTextNotice } from './paper.mjs';
 import { connectedTranslationMarkdown } from './connectedTranslationExport.mjs';
 import { commonOutputLanguage, migrateOutputLanguages, normalizeOutputLanguage, readerOutputLanguage } from './outputLanguages.mjs';
 
@@ -46,8 +46,8 @@ function analysisDocument(paper, references) {
   const draft = paper.connectedTranslation
     ? `\n\n## ${labeled('Connected Full Translation', connectedLanguage?.targetLanguage)}\n\n${connectedTranslationMarkdown(paper)}` : '';
   const referenceNotice = references.size ? '> The reference section was excluded from translation.\n\n' : '';
-  const sourceNotice = Array.isArray(paper.summary?.claims)
-    ? '> AI interpretation is unverified. Matching a quotation confirms its location, not whether it supports the claim.\n\n' : '';
+  const sourceNotice = (summaryNeedsTextRefresh(paper) ? '> ' + legacySummaryTextNotice + '\n\n' : '')
+    + (Array.isArray(paper.summary?.claims) ? '> AI interpretation is unverified. Matching a quotation confirms its location, not whether it supports the claim.\n\n' : '');
   const summaryHeading = (side, fallback) => knownLanguage(paper.summary?.[`${side}Language`])
     ? labeled('Whole-paper summary', paper.summary[`${side}Language`]) : fallback;
   return `# ${paper.name}\n\n${referenceNotice}## ${summaryHeading('source', 'Source summary')}\n\n${paper.summary?.source || ''}\n\n## ${summaryHeading('target', 'Target summary')}\n\n${paper.summary?.target || ''}\n\n## Checked sources\n\n${sourceNotice}${evidence || 'No exact source quotations validated.'}${draft}${paragraphs ? `\n\n## Paragraphs\n\n${paragraphs}` : ''}${annotations.appendix ? `\n\n${annotations.appendix}` : ''}`;

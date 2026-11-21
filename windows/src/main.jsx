@@ -10,8 +10,8 @@ import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnc
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
-import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
 import { createUndoEntry, applyUndoEntry, recordUndoEntry, remainingUndoEntries, remapPositionAfterStructureChange } from './paperUndo.mjs';
@@ -755,7 +755,8 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect,
   return <div className="summary-view">
     <div className="section-heading"><h2>Whole-paper Summary</h2><button className="button blue" disabled={!!busy || !canSummarize} onClick={setupSummary || summarize}><Sparkles size={16} /> {setupSummary ? 'Set up summary' : paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
-      {paper.summary.stale && <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>}
+      {paper.summary.stale ? <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>
+        : summaryNeedsTextRefresh(paper) && <Notice>{legacySummaryTextNotice}</Notice>}
       <p className="summary-evidence-note">AI-generated summary. Source links show where quotations appear. Verify research findings and the model’s interpretation against the original paper.</p>
       <div className="summary-panels">
         <article className="summary-card" data-view-scope="summarySource" tabIndex={0} aria-label="Source summary text" onMouseUp={event => onSelect(event.currentTarget, 'summarySource')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
@@ -1966,7 +1967,7 @@ function App() {
       const rendered = domText(root, rich);
       const source = anchorText(block, request.kind);
       const markdown = rich && blockMarkdown(block, request.kind);
-      const at = markdownAnnotationOffset(rendered, request, source);
+      const at = markdownAnnotationOffset(rendered, request, request.recordType === 'evidence' ? analysisSourceText(block) : source);
       const range = block && validBlockAnchor(block, request, request.kind, markdown) && at !== null ? textRangeAt(root, at, request.text.length, rich) : null;
       if (!range) {
         if (request.recordType === 'evidence') {
@@ -2422,10 +2423,11 @@ function App() {
     try {
       const config = settingsRef.current;
       if (!await prepareTaskAI(config, ['explanation'], token)) return;
-      const output = await generate(activeAIModel(config, 'explanation'), explainPrompt(block.text, block.text, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
+      const source = analysisSourceText(block);
+      const output = await generate(activeAIModel(config, 'explanation'), explainPrompt(source, source, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
       if (!token.cancelled) {
         const settingsKey = explanationKey(id, explanationLanguage, settings);
-        const result = { id, language: explanationLanguage, source: block.text, output, settingsKey };
+        const result = { id, language: explanationLanguage, source, output, settingsKey };
         commitPaper(current => ({ ...current, paragraphExplanations: { ...current.paragraphExplanations, [settingsKey]: result } }));
         setInspector(true);
       }
@@ -2493,7 +2495,7 @@ function App() {
         targetSummary = claimsMarkdown(translations);
       }
       requireActiveTask(token);
-      commitPaper(paper => ({ ...paper, summary: { source: sourceSummary, target: targetSummary, claims, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } }));
+      commitPaper(paper => ({ ...paper, summary: { source: sourceSummary, target: targetSummary, claims, markdownTextVersion: markdownSummaryTextVersion, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } }));
       setStatus('Summary saved. Only exact-match source quotations are linked.');
     } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
   }
@@ -2961,10 +2963,12 @@ function App() {
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
   function navigate(id, { revealSource = false, quote, mode: requestedMode } = {}) {
     const block = paperRef.current?.blocks.find(block => block.id === id);
-    if (!block || (quote && !block.text.includes(quote))) return;
+    if (!block) return;
     if (!quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
     if (quote) {
-      const match = summaryQuoteMatch(anchorText(block, 'source'), quote, { unique: true });
+      const text = analysisSourceText(block);
+      if (!summaryQuoteMatch(text, quote)) return;
+      const match = summaryQuoteMatch(text, quote, { unique: true });
       if (match) {
         navigateBlockAnnotation(id, { ...match, scope: 'reader' }, 'source', 'evidence');
         return;
@@ -3315,7 +3319,8 @@ function App() {
   const menuReady = ready && modal !== 'onboarding' && modal !== 'paragraphEdit';
   const menuBusy = Boolean(busy || onboardingBusy);
   const readingLayoutAvailable = Boolean(paper && !pendingImport && !modal);
-  const canPrimaryTask = tab === 'Summary' ? canSummarize && (!paper.summary || paper.summary.stale)
+  const refreshSummary = paper?.summary?.stale || (tab === 'Summary' && summaryNeedsTextRefresh(paper));
+  const canPrimaryTask = tab === 'Summary' ? canSummarize && (!paper.summary || refreshSummary)
     : tab === 'Full Translation' ? fullHasSource && fullTranslationNeedsWork : translatedCount < translatableCount;
   const primarySetup = tab === 'Summary' ? summarySetup : tab === 'Full Translation' ? fullSetup : translationSetup;
   function primaryLabel() {
@@ -3325,7 +3330,7 @@ function App() {
     }
     if (tab === 'Summary') {
       if (!paper?.summary) return 'Summarize Paper';
-      return paper.summary.stale ? 'Refresh Summary' : 'Summary Ready';
+      return refreshSummary ? 'Refresh Summary' : 'Summary Ready';
     }
     if (tab === 'Full Translation') {
       if (!paper?.connectedTranslation) return 'Generate Full Translation';

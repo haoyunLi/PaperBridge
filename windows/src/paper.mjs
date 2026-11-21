@@ -1,7 +1,7 @@
 import { sourceExcerpts, isHeading, joinPdfText } from './text.mjs';
 import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
-import { markdownBlockKind } from './academicMarkdown.mjs';
+import { analysisSourceText, markdownBlockKind } from './academicMarkdown.mjs';
 
 import { characterPrefix } from '../electron/library-metadata.mjs';
 
@@ -38,9 +38,24 @@ export function qualityIssues(blocks, excluded = new Set()) {
   });
 }
 
+export const markdownSummaryTextVersion = 1;
+export const legacySummaryTextNotice = 'An earlier version omitted characters from this paper’s Markdown. Regenerate the summary to use the original notation.';
+
+export function summaryNeedsTextRefresh(paper) {
+  if (!paper?.summary || paper.summary.markdownTextVersion >= markdownSummaryTextVersion) return false;
+  const blocks = paper.blocks || [];
+  const references = referenceBlockIds(blocks);
+  return blocks.some(block => block.sourceMarkdown && !block.resource && !references.has(block.id)
+    && analysisSourceText(block) !== block.text);
+}
+
 export function summarySourceBlocks(blocks) {
   const references = referenceBlockIds(blocks);
-  return blocks.filter(block => !block.resource && !references.has(block.id) && block.text?.trim());
+  return blocks.flatMap(block => {
+    if (block.resource || references.has(block.id)) return [];
+    const text = analysisSourceText(block);
+    return text?.trim() ? [text === block.text ? block : { ...block, text }] : [];
+  });
 }
 
 export function summarySourceBatches(blocks) {
@@ -155,7 +170,7 @@ export function revalidateSummaryClaims(claims, blocks) {
   if (!Array.isArray(claims)) return null;
   const byId = new Map(blocks.map(block => [block.id, block]));
   return claims.map(claim => ({ ...claim, sources: (Array.isArray(claim?.sources) ? claim.sources : []).flatMap(source => {
-    const quote = summaryQuoteMatch(byId.get(source?.paragraphID)?.text, source?.quote)?.text;
+    const quote = summaryQuoteMatch(analysisSourceText(byId.get(source?.paragraphID)), source?.quote)?.text;
     return quote ? [{ ...source, quote }] : [];
   }) }));
 }
@@ -172,7 +187,7 @@ export function remapSummaryEvidence(summary, before, after, { start, beforeEnd,
       const index = indices.get(source.paragraphID);
       const candidates = index < start ? [after[index]] : index >= beforeEnd ? [after[index + afterEnd - beforeEnd]] : replacement;
       const matches = candidates.flatMap(block => {
-        const quote = summaryQuoteMatch(block?.text, source.quote)?.text;
+        const quote = summaryQuoteMatch(analysisSourceText(block), source.quote)?.text;
         return quote ? [{ ...source, paragraphID: block.id, quote }] : [];
       });
       if (matches.length !== 1) return [];
