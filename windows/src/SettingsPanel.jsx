@@ -138,10 +138,11 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>
         <div className="row">
           <button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
-          {updates.availableVersion && <button className="button blue" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
+          {updates.downloadLabel && <button className="button blue" onClick={updates.onDownload}>{updates.downloadLabel}</button>}
+          {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
         </div>
         {updates.status && <p role="status">{updates.status}</p>}
-        <p>Download the Setup or Portable edition from the official release page.</p>
+        {updates.downloadLabel && <p>Your browser downloads the update from GitHub. Open the downloaded file when you’re ready.</p>}
         <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
       </Group>}
       {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data keeps original PDF copies and the separately encrypted OpenAI key.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}

@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { compareVersions, releaseUrl, selectWindowsRelease, checkWindowsRelease, createUpdateChecker } = require('../electron/updates.cjs');
+const { compareVersions, releaseUrl, updateDownload, selectWindowsRelease, checkWindowsRelease, createUpdateChecker } = require('../electron/updates.cjs');
 
 const release = (tag, options = {}) => ({ tag_name: tag, draft: false, prerelease: false,
   assets: [{ name: `PaperBridge Setup ${tag.replace('windows-v', '')}.exe`, state: 'uploaded' }], ...options });
@@ -30,6 +30,24 @@ test('Windows update check recognizes the public setup filename and ignores othe
   const versions = [release('v1.10.0'), release('windows-v0.2.0', { assets })];
   assert.equal(selectWindowsRelease(versions, '0.1.0').installerName, installer);
   assert.equal(selectWindowsRelease(versions, '0.2.0').status, 'current');
+});
+
+test('download targets match the uploaded edition and official version even for historical installers', () => {
+  const version = '0.3.0';
+  const tag = 'windows-v' + version;
+  const setup = 'PaperBridge Setup 0.3.0.exe';
+  const portable = 'PaperBridge-Windows-0.3.0-x64-Portable.exe';
+  const assets = [{ name: setup, state: 'uploaded', browser_download_url: 'https://example.org/other' },
+    { name: portable, state: 'starter' }];
+  const check = current => selectWindowsRelease([release(tag, { assets })], current);
+  const base = 'https://github.com/haoyunLi/PaperBridge/releases/download/' + tag + '/';
+  assert.equal(updateDownload(check('0.2.0'), false).url, base + encodeURIComponent(setup));
+  assert.equal(updateDownload(check('0.2.0'), true), null);
+  assets[1].state = 'uploaded';
+  assert.equal(updateDownload(check('0.2.0'), true).url, base + portable);
+  assert.equal(updateDownload(check(version), false), null);
+  assert.equal(updateDownload({ ...check('0.2.0'), portableName: '../another.exe' }, true), null);
+  assert.equal(updateDownload({ ...check('0.2.0'), installerName: 'unrelated.exe' }, false), null);
 });
 
 test('update URL and version comparison accept only Windows release tags', () => {

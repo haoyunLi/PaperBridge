@@ -16,8 +16,9 @@ async function run() {
   const cacheFile = path.join(workspace, 'updates.json');
   fs.writeFileSync(settingsFile, JSON.stringify({ ...defaults, autoCheckUpdates: false,
     onboardingCompletedVersion: 1, ollamaBaseURL: 'http://127.0.0.1:9' }));
-  const launch = () => electron.launch({ args: ['.'], cwd: root,
-    env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const launch = (portable = false) => electron.launch({ args: ['.'], cwd: root,
+    env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace,
+      PORTABLE_EXECUTABLE_FILE: portable ? path.join(workspace, 'PaperBridge Portable.exe') : '' }, timeout: 30000 });
   let app;
   try {
     app = await launch();
@@ -26,7 +27,8 @@ async function run() {
     const currentVersion = await app.evaluate(({ app }) => app.getVersion());
     const parts = currentVersion.split('.').map(Number);
     const nextVersion = `${parts[0]}.${parts[1] + 1}.0`;
-    const identity = { tag: `windows-v${nextVersion}`, installerName: `PaperBridge-Windows-${nextVersion}-x64-Setup.exe` };
+    const identity = { tag: `windows-v${nextVersion}`, installerName: `PaperBridge-Windows-${nextVersion}-x64-Setup.exe`,
+      portableName: `PaperBridge-Windows-${nextVersion}-x64-Portable.exe` };
     await app.evaluate((_electron, fixture) => {
       const originalFetch = global.fetch;
       global.__updateReleaseCalls = 0;
@@ -34,7 +36,7 @@ async function run() {
         if (String(url) === 'https://api.github.com/repos/haoyunLi/PaperBridge/releases?per_page=100') {
           global.__updateReleaseCalls++;
           return Promise.resolve(new Response(JSON.stringify([{ tag_name: fixture.tag, draft: false, prerelease: false,
-            assets: [{ name: fixture.installerName, state: 'uploaded' }] }]), { status: 200 }));
+            assets: [fixture.installerName, fixture.portableName].map(name => ({ name, state: 'uploaded' })) }]), { status: 200 }));
         }
         return originalFetch(url, options);
       };
@@ -59,12 +61,14 @@ async function run() {
       shell.openExternal = async url => { global.__updateLinks.push(url); };
     });
     const releaseButton = page.getByRole('button', { name: `View Windows ${nextVersion} release`, exact: true });
+    await page.getByRole('button', { name: 'Download installer', exact: true }).click();
     await releaseButton.click();
     await page.getByRole('link', { name: 'View release history', exact: true }).click();
     await page.getByLabel(/Check official Windows releases/).check();
     await releaseButton.waitFor();
     assert.equal(await page.locator('.update-banner').count(), 0, 'An automatic cache hit must respect Later');
     assert.deepEqual(await app.evaluate(() => global.__updateLinks), [
+      `https://github.com/haoyunLi/PaperBridge/releases/download/${identity.tag}/${identity.installerName}`,
       `https://github.com/haoyunLi/PaperBridge/releases/tag/${identity.tag}`, 'https://github.com/haoyunLi/PaperBridge/releases'
     ]);
     await page.getByRole('button', { name: 'Check now', exact: true }).click();
@@ -75,10 +79,18 @@ async function run() {
     app = null;
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoCheckUpdates, true);
 
-    app = await launch();
+    app = await launch(true);
     page = await app.firstWindow();
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await page.locator('.update-banner').getByText(`PaperBridge for Windows ${nextVersion} is available`, { exact: true }).waitFor();
+    await app.evaluate(({ shell }) => {
+      global.__updateLinks = [];
+      shell.openExternal = async url => { global.__updateLinks.push(url); };
+    });
+    await page.locator('.update-banner').getByRole('button', { name: 'Download portable update', exact: true }).click();
+    assert.deepEqual(await app.evaluate(() => global.__updateLinks),
+      [`https://github.com/haoyunLi/PaperBridge/releases/download/${identity.tag}/${identity.portableName}`]);
+    await assert.rejects(page.evaluate(() => window.paperBridge.downloadUpdate('windows-v99.0.0')), /Check for updates/);
     // After restart there is no fake release provider: the banner must come from disk.
     const restored = await page.evaluate(() => window.paperBridge.checkUpdates(true));
     assert.equal(restored.status, 'available');

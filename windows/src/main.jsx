@@ -1442,6 +1442,11 @@ function App() {
     } catch (cause) { if (!automatic) setUpdateStatus(cause.message); }
     finally { if (!automatic) setCheckingUpdates(false); }
   }
+  async function downloadUpdate() {
+    if (!updateInfo?.downloadLabel) return;
+    try { await api.downloadUpdate(updateInfo.tag); }
+    catch (cause) { setError(cause.message); }
+  }
   async function openUpdateRelease() {
     if (!updateInfo?.tag) return;
     try { await api.openUpdateRelease(updateInfo.tag); }
@@ -3323,7 +3328,12 @@ function App() {
       {(error || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
         {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
-        {showUpdateBanner && <div className="update-banner" role="status"><div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong><p>Review the official release before downloading. Your papers remain on this computer.</p></div><button className="button blue" onClick={openUpdateRelease}>View release</button><button className="button ghost" onClick={() => setDeferredUpdateTag(updateInfo.tag)}>Later</button></div>}
+        {showUpdateBanner && <div className="update-banner" role="status">
+          <div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong></div>
+          {updateInfo.downloadLabel && <button className="button blue" onClick={downloadUpdate}>{updateInfo.downloadLabel}</button>}
+          <button className="button outline" onClick={openUpdateRelease}>View release</button>
+          <button className="button ghost" onClick={() => setDeferredUpdateTag(updateInfo.tag)}>Later</button>
+        </div>}
         {busy && <TaskProgress busy={busy} progress={progress} status={status} />}
         {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
         {paper && <div className={`save-status ${workspaceSave.status}`} role={workspaceSave.status === 'error' ? 'alert' : 'status'}>
@@ -3444,7 +3454,7 @@ function App() {
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, runningModels, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
-        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateInfo?.downloadLabel, onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView items={filteredLibrary} query={librarySearch} setQuery={setLibrarySearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}

@@ -13,7 +13,7 @@ const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
 const { importPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
-const { createUpdateChecker, releaseUrl } = require('./updates.cjs');
+const { createUpdateChecker, releaseUrl, updateDownload } = require('./updates.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
 const { createOfficialLinkHandler } = require('./official-links.cjs');
@@ -146,7 +146,17 @@ function registerHandlers() {
   ipcMain.on('app:close-ready', event => { if (event.sender === window?.webContents) finishClose(); });
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
-  ipcMain.handle('updates:check', (_event, automatic = false) => checkUpdates(automatic));
+  let availableDownload = null;
+  ipcMain.handle('updates:check', async (_event, automatic = false) => {
+    const result = await checkUpdates(automatic);
+    if (result.status === 'skipped') return result;
+    availableDownload = updateDownload(result, Boolean(process.env.PORTABLE_EXECUTABLE_FILE));
+    return { ...result, downloadLabel: availableDownload?.label };
+  });
+  ipcMain.handle('updates:download', (_event, tag) => {
+    if (!availableDownload || availableDownload.tag !== tag) throw new Error('Check for updates to find the current download.');
+    return shell.openExternal(availableDownload.url);
+  });
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
   ipcMain.handle('mineru:runtime', (_event, executable) => mineruRuntime(executable, setupManager.toolsRoot));
