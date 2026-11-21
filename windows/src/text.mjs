@@ -57,14 +57,19 @@ export function finishExtractedPdfText(value) {
 }
 
 export function joinPdfText(left, right) {
-  const previous = left.match(/(?:^|\s)(\p{L}+(?:[-‐]\p{L}+)*)[-‐]$/u)?.[1];
-  const next = right.match(/^\p{Ll}[\p{L}]*/u)?.[0];
-  if (!previous || !next) {
-    const needsSpace = left && right && !/[/(]$/u.test(left) && !/^\p{P}/u.test(right);
-    return left + (needsSpace ? ' ' : '') + right;
+  if (/[-‐]$/u.test(left) && /^[\p{L}\p{N}]/u.test(right)) {
+    // A standalone minus and a numerical range or model identifier must keep
+    // their sign when the two sides come from different PDF lines.
+    if (/\p{White_Space}[-‐]$/u.test(left)) return left + ' ' + right;
+    if (/^\p{N}/u.test(right)) return left + right;
+    const word = left.slice(0, -1).match(/[^\p{White_Space}]+/gu)?.at(-1);
+    const next = right.match(/^[^\p{White_Space}]+/u)[0].replace(/^\p{P}+|\p{P}+$/gu, '').toLowerCase();
+    const removeHyphen = word && !/[-‐]/u.test(word) && !compoundSuffixes.has(next)
+      && (/^\p{Lowercase}/u.test(right) || countCharacters(word, 6) <= 5);
+    return (removeHyphen ? left.slice(0, -1) : left) + right;
   }
-  const compound = /[-‐]/.test(previous) || compoundSuffixes.has(next.toLowerCase());
-  return (compound ? left : left.slice(0, -1)) + right;
+  const needsSpace = left && right && !/[/(]$/u.test(left) && !/^\p{P}/u.test(right);
+  return left + (needsSpace ? ' ' : '') + right;
 }
 
 export function blocksFromText(text) {

@@ -125,5 +125,153 @@
     "Before $x+y$ with \\(v_i\\), \\[a=b\\] and https://example.org/method After",
     "Before ![chart](images/chart.png) and <sup>2</sup> After",
     "Before __PAPERBRIDGE_TOKEN_42__ and `sample $' $&` After"
+  ],
+  "merges": [
+    {
+      "name": "ordinary",
+      "left": "A short sentence.",
+      "right": "A second sentence."
+    },
+    {
+      "name": "short token and digit",
+      "left": "A 3-",
+      "right": "D representation."
+    },
+    {
+      "name": "long token and uppercase",
+      "left": "A feature-",
+      "right": "XYZ module."
+    },
+    {
+      "name": "short token and uppercase",
+      "left": "micro-",
+      "right": "RNA expression."
+    },
+    {
+      "name": "compound suffix",
+      "left": "The attention-",
+      "right": "Based network."
+    },
+    {
+      "name": "suffix with punctuation",
+      "left": "an attention-",
+      "right": "based, approach."
+    },
+    {
+      "name": "nested compound",
+      "left": "state-of-the-",
+      "right": "art measurements."
+    },
+    {
+      "name": "numbers",
+      "left": "Experiment 12-",
+      "right": "3 shows the result.",
+      "windowsText": "Experiment 12-3 shows the result."
+    },
+    {
+      "name": "source whitespace",
+      "left": " \tRepeated   quote and   quote.  ",
+      "right": " \tAnother\t\tquote. \t"
+    },
+    {
+      "name": "punctuation",
+      "left": "ratio (",
+      "right": "x/y)"
+    },
+    {
+      "name": "chinese punctuation",
+      "left": "结果",
+      "right": "，见下图。"
+    },
+    {
+      "name": "heading and body",
+      "left": "Results",
+      "right": "We find a difference."
+    },
+    {
+      "name": "source trailing separator",
+      "left": "path/",
+      "right": "segment"
+    },
+    {
+      "name": "empty left",
+      "left": "",
+      "right": "   body "
+    },
+    {
+      "name": "empty right",
+      "left": "first  half",
+      "right": " \t"
+    },
+    {
+      "name": "combining characters",
+      "left": "A ééééé-",
+      "right": "X signal."
+    },
+    {
+      "name": "model identifier",
+      "left": "The GPT-",
+      "right": "4 model.",
+      "windowsText": "The GPT-4 model."
+    },
+    {
+      "name": "separate arithmetic sign",
+      "left": "The difference is x -",
+      "right": "2 units.",
+      "windowsText": "The difference is x - 2 units."
+    },
+    {
+      "name": "printed compound hyphen",
+      "left": "a low‐",
+      "right": "resolution figure.",
+      "windowsText": "a low‐resolution figure."
+    }
+  ],
+  "reflows": [
+    {
+      "name": "ordinary paragraphs",
+      "text": "This sentence ends here. The second sentence gives evidence. The third sentence confirms the result.",
+      "target": 50
+    },
+    {
+      "name": "one indivisible sentence",
+      "text": "This is an unusually long sentence with no safe break in the middle of it.",
+      "target": 20
+    },
+    {
+      "name": "three CJK sentences",
+      "text": "这一段介绍方法。第二句描述结果。第三句指出局限。",
+      "target": 17
+    },
+    {
+      "name": "graphemes fitting together",
+      "text": "This test uses 👩‍🔬👩‍🔬👩‍🔬. This test ends here. Another sentence follows.",
+      "target": 42
+    },
+    {
+      "name": "combining characters",
+      "text": "The value is éééé. We measure it. A final sentence follows.",
+      "target": 34
+    },
+    {
+      "name": "spaces between sentences",
+      "text": "This result is stable.    The model agrees.   A third sentence follows.",
+      "target": 42
+    },
+    {
+      "name": "fits without mutation",
+      "text": "An example with 👩‍🔬👩‍🔬. A final sentence.",
+      "target": 37
+    },
+    {
+      "name": "oversized first sentence",
+      "text": "This single sentence greatly exceeds our small limit without any valid break. Next. Last.",
+      "target": 16
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "target": 20
+    }
   ]
 }

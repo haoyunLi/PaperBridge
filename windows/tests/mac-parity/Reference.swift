@@ -10,7 +10,17 @@ private struct Fixtures: Decodable {
         let blocks: [Block]
     }
     let papers: [Paper]
+    struct Merge: Decodable {
+        let left: String
+        let right: String
+    }
+    struct Reflow: Decodable {
+        let text: String
+        let target: Int
+    }
     let markdown: [String]
+    let merges: [Merge]
+    let reflows: [Reflow]
 }
 
 @main
@@ -50,7 +60,15 @@ struct Reference {
                                          .replacingOccurrences(of: "After", with: "后文")
             return try AcademicMarkdownProcessor.restoreProtectedTokens(in: translated, from: payload)
         }
-        let data = try JSONSerialization.data(withJSONObject: ["papers": papers, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs], options: [.sortedKeys])
+        let merges = fixtures.merges.map { TextProcessing.mergeForReading($0.left, $0.right) }
+        let reflows = fixtures.reflows.map { fixture -> [String] in
+            let paragraphs = TextProcessing.splitForReading(fixture.text, targetChars: fixture.target)
+            // The Reader applies a reflow only when it produces more than one paragraph.
+            return paragraphs.count > 1 ? paragraphs : [fixture.text]
+        }
+        let output: [String: Any] = ["papers": papers, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+                                     "merges": merges, "reflows": reflows]
+        let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
     }
 }

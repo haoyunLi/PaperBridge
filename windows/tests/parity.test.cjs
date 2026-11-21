@@ -501,6 +501,35 @@ test('MinerU paragraph pages follow unique source text without changing saved wo
   assert.equal(locateMineruPages(located, hints, pdf, 5), located);
 });
 
+test('manual merge maps duplicate quotes through trimmed and collapsed whitespace on each side', async () => {
+  const { mergeBlocks } = await import('../src/paper.mjs');
+  const left = '  repeat   repeat  ';
+  const right = '\t repeat\t\trepeat.  ';
+  const note = (text, offset) => ({ text, offset, kind: 'source', body: 'Quoted source', displayOffset: offset });
+  const merged = mergeBlocks({ text: left, notes: [note('repeat', left.lastIndexOf('repeat'))],
+    highlights: [note('repeat   repeat', left.indexOf('repeat'))] },
+  { text: right, notes: [note('repeat', right.lastIndexOf('repeat'))], highlights: [note('repeat', right.indexOf('repeat'))] });
+  assert.equal(merged.text, 'repeat repeat repeat repeat.');
+  assert.deepEqual(merged.notes.map(item => [item.offset, item.displayOffset, item.needsReview]), [[7, 7, false], [21, 21, false]]);
+  assert.deepEqual([merged.highlights[1].offset, merged.highlights[1].needsReview], [14, false]);
+  assert.equal(merged.highlights[0].needsReview, true);
+  assert.equal(merged.highlights[0].text, 'repeat   repeat');
+});
+
+test('Reader reflow counts graphemes and keeps duplicate quotes anchored despite changing sentence spacing', async () => {
+  const { reflowBlock } = await import('../src/paper.mjs');
+  const text = 'The 👩‍🔬 repeats.    It repeats. It repeats.';
+  const originals = [...text.matchAll(/repeats/g)].map(({ index }) => ({ text: 'repeats', offset: index, color: 'amber' }));
+  const block = { text, highlights: originals };
+  const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].length;
+  assert.equal(reflowBlock(block, graphemes)[0], block);
+  const result = reflowBlock(block, 27);
+  assert.deepEqual(result.map(piece => piece.text), ['The 👩‍🔬 repeats. It repeats.', 'It repeats.']);
+  assert.deepEqual(result.flatMap(piece => piece.highlights.map(highlight => highlight.offset)),
+    result.flatMap(piece => [...piece.text.matchAll(/repeats/g)].map(match => match.index)));
+  assert.ok(result.every(piece => piece.highlights.every(mark => mark.needsReview === false)));
+});
+
 test('sentence reflow keeps the annotated phrase in its new block', async () => {
   const { reflowBlock } = await import('../src/paper.mjs');
   const original = { id: 1, text: 'First complete sentence. Second complete sentence. Third complete sentence.',

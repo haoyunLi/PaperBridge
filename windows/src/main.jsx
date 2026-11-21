@@ -2987,7 +2987,7 @@ function App() {
     const current = paperRef.current;
     if (!current || busy || taskRef.current || modal || current.sourceMode === 'mineru') return;
     const block = current.blocks.find(block => block.id === id);
-    if (!block) return;
+    if (!block || block.resource) return;
     selectParagraph(id);
     editRef.current = { paperId: current.id, id, text: block.text };
     setEdit(editRef.current);
@@ -3015,10 +3015,12 @@ function App() {
     modifyBlocks(index, 1, replacements);
   }
   function reflowParagraph(id) {
-    const block = paper.blocks.find(item => item.id === id);
+    const index = blockIndexes.get(id);
+    const block = paper.blocks[index];
+    if (!block || block.resource) return;
     const pieces = reflowBlock(block);
     if (pieces.length === 1) { setStatus(`Block ${id} is already short enough or has no safe sentence boundary.`); return; }
-    modifyBlocks(id - 1, 1, pieces);
+    modifyBlocks(index, 1, pieces);
     setStatus(`Reflowed block ${id} into ${pieces.length} complete-sentence blocks.`);
   }
   function captureViewSelection(surface, scope) {
@@ -3146,13 +3148,20 @@ function App() {
       setSelection(null); setNoteDraft('');
     }
   }
-  function mergeBlock(id) { if (id > 1) mergeNextBlock(id - 1); }
-  function mergeNextBlock(id) { if (id < paper.blocks.length) modifyBlocks(id - 1, 2, [mergeBlocks(paper.blocks[id - 1], paper.blocks[id])]); }
+  function canMergeAt(index) {
+    const left = paper?.blocks[index], right = paper?.blocks[index + 1];
+    return Boolean(left && right && !left.resource && !right.resource && referenceIDs.has(left.id) === referenceIDs.has(right.id));
+  }
+  function mergeAdjacent(index) {
+    if (!canMergeAt(index)) return;
+    modifyBlocks(index, 2, [mergeBlocks(paper.blocks[index], paper.blocks[index + 1])]);
+  }
   const lookupKey = useMemo(() => selectionLookupInput(paper, selection, settings, explanationLanguage, glossary)?.key,
     [paper, selection, settings, explanationLanguage, glossary]);
   const selectionResults = lookupCache.get(lookupKey) || {};
   const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
   const outline = useMemo(() => documentOutline(paper), [paper]);
+  const blockIndexes = useMemo(() => new Map(paper?.blocks.map((block, index) => [block.id, index])), [paper?.blocks]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
   const unfinishedTranslationIds = useMemo(() => translationRangeIds(paper?.blocks || [], null, referenceIDs), [paper?.blocks, referenceIDs]);
   const sections = useMemo(() => {
@@ -3380,6 +3389,7 @@ function App() {
           </>}
         </div>}
         {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': readerLineHeight(settings), '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{!busy && status && <Notice className="workspace-status">{status}</Notice>}{visibleBlocks.map(block => {
+          const index = blockIndexes.get(block.id);
           const issue = extractionIssuesById.get(block.id);
           const original = <BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />;
           const translation = !block.resource && !referenceIDs.has(block.id) && (block.status === 'ok'
@@ -3388,7 +3398,7 @@ function App() {
               : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
                 : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
-          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} isFirst={block.id === paper.blocks[0]?.id} isLast={block.id === paper.blocks.at(-1)?.id} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeBlock(block.id)} onMergeNext={() => mergeNextBlock(block.id)} onReflow={() => reflowParagraph(block.id)} /></div>
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
           {issue && <ReaderQualityWarning issue={issue} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}

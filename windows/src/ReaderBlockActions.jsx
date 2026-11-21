@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { Bookmark, CircleEllipsis, Lightbulb, RotateCw } from 'lucide-react';
 import './reader-block-actions.css';
 
-export default function ReaderBlockActions({ block, busy, structured, isFirst, isLast, canTranslate, displayMode,
+export default function ReaderBlockActions({ block, busy, structured, canMergePrevious, canMergeNext, canTranslate, displayMode,
   onBookmark, onExplain, onTranslate, onEdit, onMergePrevious, onMergeNext, onReflow }) {
   const menuId = useId();
   const triggerId = `${menuId}-trigger`;
@@ -14,7 +14,7 @@ export default function ReaderBlockActions({ block, busy, structured, isFirst, i
   const [open, setOpen] = useState(false);
   const heading = Boolean(block.heading);
   const menuLabel = heading ? 'Heading actions' : 'Paragraph actions';
-  const structureDisabled = Boolean(busy || structured);
+  const structureDisabled = Boolean(busy || structured || block.resource);
   const menuItems = () => [...(menu.current?.querySelectorAll('button[role="menuitem"]:not(:disabled)') || [])];
 
   function positionMenu() {
@@ -152,8 +152,8 @@ export default function ReaderBlockActions({ block, busy, structured, isFirst, i
         : canTranslate && <button type="button" role="menuitem" tabIndex={-1} onClick={() => choose(onTranslate)}>Translate This Paragraph</button>}
       <button type="button" role="menuitem" tabIndex={-1} disabled={structureDisabled} onClick={() => choose(onEdit)}>{heading ? 'Edit or Split' : 'Edit or Split...'}</button>
       {!heading && <div role="separator" />}
-      <button type="button" role="menuitem" tabIndex={-1} disabled={Boolean(structureDisabled || isFirst)} onClick={() => choose(onMergePrevious)}>Merge with Previous</button>
-      <button type="button" role="menuitem" tabIndex={-1} disabled={Boolean(structureDisabled || isLast)} onClick={() => choose(onMergeNext)}>Merge with Next</button>
+      <button type="button" role="menuitem" tabIndex={-1} disabled={Boolean(structureDisabled || !canMergePrevious)} onClick={() => choose(onMergePrevious)}>Merge with Previous</button>
+      <button type="button" role="menuitem" tabIndex={-1} disabled={Boolean(structureDisabled || !canMergeNext)} onClick={() => choose(onMergeNext)}>Merge with Next</button>
       {!heading && <button type="button" role="menuitem" tabIndex={-1} disabled={structureDisabled} onClick={() => choose(onReflow)}>Reflow at Full Sentences</button>}
     </div>
   </div>;

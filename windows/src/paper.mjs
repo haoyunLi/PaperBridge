@@ -230,26 +230,81 @@ export function splitBlockNearMiddle(block) {
   return best === null ? [block] : splitBlockAt(block, best);
 }
 
-export function reflowBlock(block, targetChars = 900) {
-  if (block.text.length <= targetChars) return [block];
-  const boundaries = sentenceBoundaries(block.text);
+// The edit positions refer to the original UTF-16 string, just like selection
+// offsets in the Reader. This also keeps two occurrences of the same quote distinct.
+function rewriteParagraphSpacing(block, edits) {
+  if (!edits.length) return block;
   const pieces = [];
-  let remaining = block;
-  let start = 0;
-  let previous = 0;
-  for (const end of [...boundaries, block.text.length]) {
-    if (end - start > targetChars && previous > start) {
-      const [left, right] = splitBlockAt(remaining, previous - start);
-      pieces.push(left);
-      remaining = right;
-      start = block.text.length - remaining.text.length;
+  let cursor = 0;
+  for (const edit of edits) {
+    pieces.push(block.text.slice(cursor, edit.start), edit.space);
+    cursor = edit.end;
+  }
+  const text = pieces.join('') + block.text.slice(cursor);
+  function relocate(item) {
+    if (!matchesQuote(block.text, item.text, item.offset)) return forReview(item);
+    let offset = item.offset;
+    for (const edit of edits) {
+      if (edit.end <= item.offset) offset += edit.space.length - (edit.end - edit.start);
+      else if (edit.start < item.offset + item.text.length) return forReview(item);
+      else break;
     }
-    previous = end;
+    return moveSourceAnnotation(item, text, offset);
+  }
+  return { ...block, text, highlights: (block.highlights || []).map(relocate),
+    notes: (block.notes || []).map(note => note.kind === 'translation' ? note : relocate(note)) };
+}
+
+export function reflowBlock(block, targetChars = 900) {
+  const { text } = block;
+  if (text.length <= targetChars || countCharacters(text, targetChars + 1) <= targetChars) return [block];
+  const edits = [];
+  const cuts = [];
+  let previousEnd = 0, delta = 0, groupLength = 0;
+  function setGap(end, space) {
+    if (text.slice(previousEnd, end) === space) return;
+    edits.push({ start: previousEnd, end, space });
+    delta += space.length - (end - previousEnd);
+  }
+  for (const end of [...sentenceBoundaries(text), text.length]) {
+    const raw = text.slice(previousEnd, end);
+    const sentence = raw.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, '');
+    if (!sentence) continue;
+    const start = previousEnd + raw.indexOf(sentence);
+    const length = countCharacters(sentence, targetChars + 1);
+    if (groupLength && groupLength + 1 + length > targetChars) {
+      cuts.push(previousEnd + delta);
+      groupLength = 0;
+    }
+    setGap(start, previousEnd ? ' ' : '');
+    previousEnd = start + sentence.length;
+    groupLength += (groupLength ? 1 : 0) + length;
+  }
+  if (!cuts.length) return [block];
+  setGap(text.length, '');
+  let remaining = rewriteParagraphSpacing(block, edits);
+  const fullLength = remaining.text.length;
+  const pieces = [];
+  for (const cut of cuts) {
+    const offset = fullLength - remaining.text.length;
+    const [first, rest] = splitBlockAt(remaining, cut - offset);
+    pieces.push(first);
+    remaining = rest;
   }
   return [...pieces, remaining];
 }
 
-export function mergeBlocks(left, right) {
+function normalizeMergeSpacing(block) {
+  const edits = [];
+  for (const match of block.text.matchAll(/^\p{White_Space}+|\p{White_Space}+$|[\t ]{2,}/gu)) {
+    const start = match.index, end = start + match[0].length;
+    edits.push({ start, end, space: start === 0 || end === block.text.length ? '' : ' ' });
+  }
+  return rewriteParagraphSpacing(block, edits);
+}
+
+export function mergeBlocks(first, second) {
+  const left = normalizeMergeSpacing(first), right = normalizeMergeSpacing(second);
   const text = joinPdfText(left.text, right.text);
   const rightStart = text.length - right.text.length;
   const move = (item, source, start) => matchesQuote(source, item.text, item.offset) ? moveSourceAnnotation(item, text, start + item.offset) : forReview(item);
