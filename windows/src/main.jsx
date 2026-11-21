@@ -1,11 +1,7 @@
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import rehypeKatex from 'rehype-katex';
+import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, HardDrive, ZoomIn, ZoomOut } from 'lucide-react';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
@@ -67,12 +63,6 @@ const pdfZoomPercent = value => Number.isFinite(value)
   ? Math.max(pdfMinZoom, Math.min(pdfMaxZoom, Math.round(value / pdfZoomStep) * pdfZoomStep)) : pdfFitZoom;
 const pdfOffsetAtFit = (host, page, zoom) => Math.max(0, host.scrollTop - page.offsetTop) * pdfFitZoom / zoom;
 const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
-const markdownPlugins = [remarkGfm, remarkMath];
-const markdownSchema = {
-  ...defaultSchema,
-  protocols: { ...defaultSchema.protocols, src: [...(defaultSchema.protocols?.src || []), 'data'] }
-};
-const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeKatex];
 const richHighlights = new Map();
 const annotationStyles = ['amber', 'teal', 'blue', 'coral', 'note'];
 const currentHighlightColors = ['amber', 'teal', 'coral'];

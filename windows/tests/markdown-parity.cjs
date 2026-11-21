@@ -443,9 +443,12 @@ async function run() {
     const changed = JSON.parse(fs.readFileSync(savedPath, 'utf8'));
     changed.blocks[1].sourceMarkdown = changed.blocks[1].sourceMarkdown.replace('Ashish', 'Changed');
     changed.blocks[1].text = changed.blocks[1].text.replace('Ashish', 'Changed');
+    changed.summary.target = 'A regenerated summary without the earlier formula.';
     fs.writeFileSync(savedPath, JSON.stringify(changed));
     app = await launch();
     const reopened = await app.firstWindow();
+    const staleSummary = reopened.locator('.saved-annotations .annotation-row').filter({ hasText: 'Formula in summaryTarget' });
+    await staleSummary.locator('.annotation-label').filter({ hasText: 'source changed, review needed' }).waitFor();
     await reopened.locator('.saved-annotations .annotation-row').filter({ hasText: crossNote }).locator('button').first().click();
     await reopened.getByText('The saved Markdown text no longer matches this view.', { exact: false }).waitFor();
     assert.equal(await reopened.evaluate(() => CSS.highlights.get('paperbridge-amber')?.size || 0), 0);

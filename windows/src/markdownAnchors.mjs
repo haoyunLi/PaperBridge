@@ -1,3 +1,6 @@
+import { generatedViewText } from './markdownRendering.mjs';
+
+const generatedScopes = new Set(['fullTranslation', 'summarySource', 'summaryTarget']);
 const contextSize = 32;
 const markdownViews = new Set(['paperArticle', 'summarySource', 'summaryTarget', 'fullTranslation']);
 const paperDisplayModes = new Set(['source', 'bilingual', 'translation']);
@@ -104,6 +107,10 @@ export function markdownAnnotationOffset(rendered, item, source = rendered) {
 }
 
 export function textAnchorAvailable(item, source, markdown) {
+  if (generatedScopes.has(item?.scope)) {
+    return typeof markdown === 'string' && markdown.length > 0 &&
+      markdownAnnotationOffset(generatedViewText(item.scope, markdown), item, source) !== null;
+  }
   if (item?.renderedAnchor) return Boolean(markdown) && hasRenderedAnchor(item);
   return matchesTextAt(source, item?.offset, item?.text) ||
     Boolean(markdown && Number.isInteger(item?.offset) && item.offset >= 0 && typeof item.text === 'string' && item.text.length);

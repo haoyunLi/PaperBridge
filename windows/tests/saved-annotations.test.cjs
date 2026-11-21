@@ -90,6 +90,32 @@ test('rendered Markdown and article anchors group only complete identical ranges
   assert.equal(entries[1].notes[0].item, input.viewNotes[0]);
 });
 
+test('regenerated drafts and summaries review removed quotes and retain uniquely relocated rendered selections', async () => {
+  const { savedAnnotations } = await helpers;
+  const { annotationsMarkdown } = await import('../src/annotationsMarkdown.mjs');
+  const oldTerm = '注意力函数';
+  for (const scope of ['fullTranslation', 'summarySource', 'summaryTarget']) {
+    const item = { scope, offset: 0, text: oldTerm, body: 'Review the definition' };
+    const highlight = { ...item, color: 'coral' };
+    function draft(markdown) {
+      return paper({ connectedTranslation: markdown, summary: { source: markdown, target: markdown },
+        viewNotes: [item], viewHighlights: [highlight] });
+    }
+    const removed = draft('注意力映射函数。 [paper](https://example.org/' + oldTerm + ')');
+    const entry = savedAnnotations(removed)[0];
+    assert.equal(entry.review, true);
+    assert.equal(entry.records.length, 2);
+    assert.match(annotationsMarkdown(removed), /source changed, review needed/);
+    assert.equal(savedAnnotations(draft('新的**注意力**函数。'))[0].review, false);
+    assert.equal(savedAnnotations(draft('新的**注意力**函数。第二个注意力函数。'))[0].review, true);
+  }
+  const formula = { scope: 'fullTranslation', text: 'N=6', offset: null,
+    renderedAnchor: { offset: 2, before: 'A ', after: ' layers.' } };
+  const marked = connectedTranslation => paper({ connectedTranslation, viewNotes: [formula] });
+  assert.equal(savedAnnotations(marked('A $N = 6$ layers.'))[0].review, false);
+  assert.equal(savedAnnotations(marked('A $N = 8$ layers.'))[0].review, true);
+});
+
 test('friendly labels infer legacy view sides and retain PDF scopes and page ranges', async () => {
   const { savedAnnotations, annotationLabel } = await helpers;
   const scopes = ['summarySource', 'summaryTarget', 'fullTranslation'];
