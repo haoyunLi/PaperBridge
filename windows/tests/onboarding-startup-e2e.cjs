@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { checkStartupRecovery } = require('./startup-recovery.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -37,6 +38,7 @@ async function run() {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.locator('.welcome').waitFor({ timeout: 20000 });
+    await checkStartupRecovery(page, page.locator('.welcome'));
     await app.evaluate(({ ipcMain }) => {
       const bootstrap = ipcMain._invokeHandlers.get('bootstrap');
       ipcMain.removeHandler('bootstrap');

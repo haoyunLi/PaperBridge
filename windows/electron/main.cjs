@@ -75,6 +75,7 @@ function finishClose() {
 function requestRendererClose(quitting = false) {
   quitAfterClose ||= quitting;
   if (closeRequested || !window || window.isDestroyed()) return;
+  if (window.webContents.isCrashed()) { finishClose(); return; }
   closeRequested = true;
   window.webContents.send('paperbridge:prepare-close');
   closeTimer = setTimeout(finishClose, 10_000);
@@ -106,7 +107,9 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
   return response;
 }
 
-function progress(data) { if (window && !window.isDestroyed()) window.webContents.send('paperbridge:progress', data); }
+function progress(data) {
+  if (window && !window.isDestroyed() && !window.webContents.isCrashed()) window.webContents.send('paperbridge:progress', data);
+}
 
 function importPdfBytes(bytes, name) {
   const imported = importPdfAsset(bytes, name, store.pdfPath);
@@ -517,25 +520,56 @@ function createWindow() {
     applyMenuState(Menu.getApplicationMenu(), menuState);
   });
   const contents = window.webContents;
-  contents.once('destroyed', () => {
+  const owner = window;
+  let processLosses = 0;
+  function loadReader() {
+    const generation = processLosses;
+    const navigation = developmentBuild
+      ? owner.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173')
+      : owner.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    return navigation.catch(error => {
+      // A reload, closed window or renderer recovery can supersede the first navigation.
+      if (generation === processLosses && error.code !== 'ERR_ABORTED' && error.errno !== -3) throw error;
+    });
+  }
+  function discardPendingResults() {
     for (const [resourceId, pending] of pendingMineruResults) {
       if (pending.sender !== contents) continue;
       pendingMineruResults.delete(resourceId);
       removeMineruResult(store.root, resourceId);
     }
+  }
+  contents.once('destroyed', discardPendingResults);
+  contents.on('render-process-gone', (_event, { reason, exitCode }) => {
+    processLosses++;
+    if (reason === 'clean-exit' || owner.isDestroyed() || closeReady) return;
+    revokeOpenAIConsent();
+    for (const controller of requests.values()) controller.abort();
+    modelPullManager.cancel();
+    mineruJobs.cancel();
+    setupManager?.cancel();
+    activeImportArchive = null;
+    activeBundle = null;
+    discardPendingResults();
+    if (closeRequested) { finishClose(); return; }
+    const generation = processLosses;
+    void dialog.showMessageBox(owner, {
+      type: 'error', title: 'PaperBridge reader stopped', message: 'The reader closed unexpectedly.',
+      detail: `Reopen the reader to return to your last saved workspace.\n\nThe reader reported ${reason} (exit code ${exitCode}).`,
+      buttons: ['Reopen reader', 'Close PaperBridge'], defaultId: 0, cancelId: 1, noLink: true
+    }).then(({ response }) => {
+      if (owner.isDestroyed() || generation !== processLosses || closeReady || closeRequested) return;
+      if (response === 0) return loadReader();
+      quitAfterClose = true;
+      finishClose();
+    }).catch(showStartupError);
   });
   window.on('close', event => {
     if (closeReady) return;
     event.preventDefault();
     requestRendererClose(false);
   });
-  const navigation = developmentBuild
-    ? window.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173')
-    : window.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-  return navigation.catch(error => {
-    // Reloading or closing the window can replace its first navigation.
-    if (error.code !== 'ERR_ABORTED' && error.errno !== -3) throw error;
-  });
+  return loadReader();
 }
 
 function showStartupError(error) {
@@ -563,7 +597,7 @@ async function startApp() {
   const updateRoot = process.env.PAPERBRIDGE_WORKSPACE || path.join(process.env.LOCALAPPDATA || app.getPath('userData'), app.getName());
   updateFiles = new UpdateDownload({ directory: path.join(updateRoot, 'update-downloads'),
     transfer: chromiumTransfer(session.fromPartition('paperbridge-update-downloads')),
-    notify: state => { if (window && !window.isDestroyed()) window.webContents.send('updates:file-state', state); },
+    notify: state => { if (window && !window.isDestroyed() && !window.webContents.isCrashed()) window.webContents.send('updates:file-state', state); },
     reveal: filename => shell.showItemInFolder(filename), currentVersion: app.getVersion(), runningPortable: process.env.PORTABLE_EXECUTABLE_FILE });
   openAICredentials = createOpenAICredentialStore({ file: path.join(store.root, 'openai-key.bin'), safeStorage });
   openAIClient = createOpenAIClient();

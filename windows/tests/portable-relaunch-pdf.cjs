@@ -5,6 +5,7 @@ const { spawn, execFileSync } = require('node:child_process');
 const { setTimeout: delay } = require('node:timers/promises');
 const { chromium } = require('playwright-core');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
+const { checkStartupRecovery } = require('./startup-recovery.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -46,7 +47,9 @@ async function run() {
     browser = await chromium.connectOverCDP('http://127.0.0.1:' + port);
     const context = browser.contexts()[0];
     const page = context.pages()[0] || await context.waitForEvent('page');
-    await page.getByRole('button', { name: 'Skip setup', exact: true }).click();
+    const skipSetup = page.getByRole('button', { name: 'Skip setup', exact: true });
+    await checkStartupRecovery(page, skipSetup);
+    await skipSetup.click();
     await page.locator('.welcome').waitFor();
     await waitForExit(launch([]));
     const pdf = await fs.readFile(path.join(__dirname, 'mac-parity', 'emcee-v3.pdf'));

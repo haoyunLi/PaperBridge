@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.41",
+  "version": "0.2.42",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -32,6 +32,7 @@
     "test:menu-ui-e2e": "node tests/menu-ui-e2e.cjs",
     "test:setup-components-e2e": "node tests/setup-components-e2e.cjs",
     "test:onboarding-e2e": "node tests/onboarding-e2e.cjs",
+    "test:renderer-recovery-e2e": "node tests/renderer-recovery-e2e.cjs",
     "test:onboarding-startup-e2e": "node tests/onboarding-startup-e2e.cjs",
     "test:settings-models-e2e": "node tests/settings-models-e2e.cjs",
     "test:openai-settings-e2e": "node tests/openai-settings-e2e.cjs",

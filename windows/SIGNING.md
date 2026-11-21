@@ -16,6 +16,8 @@ $expected = ((Get-Content -LiteralPath "$file.sha256" -Raw).Trim() -split '\s+')
 
 想先读一篇论文，可以在仓库首页选择 **Download Windows portable (.exe)**。确认下载的文件名以 `-x64-Portable.exe` 结尾，然后从文件资源管理器打开。首次引导里选 **Skip setup** 即可导入 PDF。若选择的是 `-x64-Setup.exe`，请先完成安装，再到开始菜单打开 **PaperBridge**。再次打开已启动的阅读器会把原窗口带到前台。请使用 0.2.36 或更新的便携版，较早版本重复打开时可能清理第一个窗口仍在使用的临时资源。[Windows 下载入口](https://github.com/haoyunLi/PaperBridge#windows-download-preview)
 
+从 0.2.42 起，如果窗口一直停在 **Opening PaperBridge…**，展开 **Trouble opening PaperBridge?** 后，点 **Try again** 可重新加载阅读器。这个入口在主界面脚本读取失败时也能使用。如果阅读器进程意外退出，Windows 对话框会显示原因和退出码。选 **Reopen reader** 可恢复最后保存的论文和标注，选 **Close PaperBridge** 可退出。仍未保存的编辑取决于上一次保存时间。
+
 如果点「仍要运行」后仍然没有窗口，请记下文件名、Windows 显示的完整提示，以及发生时间。旧版在带有 `ELECTRON_RUN_AS_NODE` 环境变量的系统上曾出现静默退出。公开版已修复这一问题，发布测试也覆盖了这种环境。[启动验收记录](WHOLE_APP_REVIEW.md)
 
 可以用启动时间区分两种原因。在「事件查看器 → Windows 日志 → 应用程序」中，事件 1000 的故障应用为 PaperBridge 时，记录故障模块和异常代码。如果系统提示应用控制阻止了运行，请查看「应用程序和服务日志 → Microsoft → Windows → CodeIntegrity → Operational」中的事件 3077，或「AppLocker → EXE and DLL」中的事件 8004。核对文件名及时间后可将对应信息交给维护者。历史日志可能已轮换。[微软的应用崩溃说明](https://learn.microsoft.com/en-us/troubleshoot/windows-server/performance/troubleshoot-application-service-crashing-behavior) · [微软的应用控制事件说明](https://learn.microsoft.com/en-us/windows/security/application-security/application-control/app-control-for-business/operations/querying-application-control-events-centrally-using-advanced-hunting)
