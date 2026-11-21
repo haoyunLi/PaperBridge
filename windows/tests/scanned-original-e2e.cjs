@@ -131,6 +131,10 @@ async function run() {
       await page.locator('.pdf-continuous').evaluate(host => { host.scrollTop = host.scrollHeight; });
       await page.locator('.pdf-toolbar').getByText(/page 8 of 8/).waitFor();
       await visibleEndPages(page);
+      await page.setViewportSize({ width: 1250, height: 650 });
+      await page.locator('.pdf-continuous').evaluate(host => { host.scrollTop = host.scrollHeight; });
+      await page.setViewportSize({ width: 1250, height: 970 });
+      await visibleEndPages(page);
     }
     await app.close();
     app = await launch();

@@ -51,8 +51,8 @@ func nativeScannedNotebook(pdf: URL) throws -> [String: Any] {
 
     let (window, reader) = try show(model)
     guard let document = reader.document else { throw failure("Missing PDF document") }
-    let colors = [[182, 69, 53], [43, 136, 87], [67, 93, 176]]
-    for (index, color) in colors.enumerated() {
+    // The notebook prints a red, green and blue square on successive pages.
+    for index in 0..<3 {
         guard let page = document.page(at: index) else { throw failure("Missing scan page") }
         let bounds = page.bounds(for: .mediaBox)
         let thumbnail = page.thumbnail(of: NSSize(width: 180, height: 180), for: .mediaBox)
@@ -64,9 +64,8 @@ func nativeScannedNotebook(pdf: URL) throws -> [String: Any] {
         let channels = [sample.redComponent, sample.greenComponent, sample.blueComponent]
         // DeviceRGB is unprofiled. Identify the printed swatch by its dominant
         // channel and contrast, which survive PDFKit's display-profile conversion.
-        let dominant = color.firstIndex(of: color.max()!)!
-        let others = channels.indices.filter { $0 != dominant }.map { channels[$0] }
-        guard channels[dominant] > (others.max() ?? 0) + 0.16 else {
+        let others = channels.indices.filter { $0 != index }.map { channels[$0] }
+        guard channels[index] > (others.max() ?? 0) + 0.16 else {
             throw failure("Wrong scan swatch on page \(index + 1): \(channels)")
         }
     }
