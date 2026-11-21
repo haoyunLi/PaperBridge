@@ -62,7 +62,7 @@ async function run() {
     `![Figure](${figure})`,
     'Unsafe <img src="javascript:alert(1)" onerror="window.__paperbridgeUnsafe=true"><script>window.__paperbridgeUnsafe=true</script> text.',
     'A paragraph whose previous translation failed. ' + protectedExample,
-    'Repeat repeat repeat.',
+    'Repeat repeat repeat. (See [documentation](https://mscaudill.github.io/tabbed/))',
     '## References',
     '[1] Reference entry remains in the original language. [Measurements](data/measurements.csv#rows) [Missing appendix](data/missing.csv)'
   ].join('\n\n'));
@@ -109,8 +109,11 @@ async function run() {
       response.statusCode = 503;
       return response.end('{}');
     }
-    const markdown = input.split('Markdown block:\n').at(-1)
+    let markdown = input.split('Markdown block:\n').at(-1)
       .replace('Research title', '研究标题').replace('A paragraph whose previous translation failed.', '已恢复的段落译文。');
+    if (markdown.includes('Repeat repeat repeat.')) {
+      markdown = markdown.replace('documentation', '文档').replaceAll('(', '（').replaceAll(')', '）');
+    }
     if (duplicateMarkerOnce && input.includes('previous translation failed')) {
       duplicateMarkerOnce = false;
       return response.end(JSON.stringify({ response: markdown + ' __PAPERBRIDGE_TOKEN_0__', done: true }));
@@ -281,6 +284,7 @@ async function run() {
     assert.match(await draft.innerText(), /阿什什∗报告了一个测量结果/);
     assert.match(await draft.innerText(), /A paragraph whose previous translation failed/);
     assert.match(await draft.innerText(), /Reference entry remains in the original language/);
+    assert.equal(await draft.getByRole('link', { name: '文档', exact: true }).getAttribute('href'), 'https://mscaudill.github.io/tabbed/');
     assert.equal(await draft.locator('table td').count(), 2);
     assert.equal(await draft.locator('img[src^="data:image/png"]').count(), 2);
     assert.equal(requests.length, 4, 'Only unfinished text blocks should be submitted');
@@ -289,6 +293,7 @@ async function run() {
     }
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.locator('#block-1 .translation-text').getByText('研究标题', { exact: true }).waitFor();
+    assert.equal(await page.locator('#block-7 .translation-text').getByRole('link', { name: '文档', exact: true }).getAttribute('href'), 'https://mscaudill.github.io/tabbed/');
     await page.locator('#block-6 .failure').getByRole('button', { name: 'Retry', exact: true }).click();
     await page.locator('#block-6 .failure').getByText(/changed a protected formula/).waitFor();
     const failed = (await page.evaluate(id => window.paperBridge.loadPaper(id), id)).blocks[5];

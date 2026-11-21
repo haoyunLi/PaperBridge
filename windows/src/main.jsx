@@ -11,7 +11,7 @@ import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOf
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
-import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { reviewSavedReferenceCoverage } from './references.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -2335,7 +2335,7 @@ function App() {
         setBusy({ label: `Translating block ${block.id} · ${index + 1} of ${total}` });
         setProgress({ done: index, total, failed });
         try {
-          const protectedBlock = block.sourceMarkdown ? protectMarkdown(block.sourceMarkdown) : null;
+          const protectedBlock = block.sourceMarkdown ? protectStructuredMarkdown(block.sourceMarkdown) : null;
           let output = block.sourceMarkdown || block.text;
           if (config.sourceLanguage !== config.targetLanguage && block.id !== authorByline?.id) {
             const marker = pdfFootnoteMarker(block);

@@ -10,6 +10,28 @@ test('Markdown translation tokens preserve formulas and figure references', asyn
   assert.throws(() => restoreMarkdown('A model dropped every token.', protectedBlock.tokens));
 });
 
+test('structured translation keeps clickable link destinations when the model localizes punctuation', async () => {
+  const { protectStructuredMarkdown } = await import('../src/academicMarkdown.mjs');
+  const { restoreMarkdown } = await import('../src/prompts.mjs');
+  const { parseMarkdown } = await import('../src/markdownRendering.mjs');
+  const source = '(see [documentation](https://mscaudill.github.io/tabbed/)) and [**notes**](docs/a_(2).md "Notes").';
+  const { text, tokens } = protectStructuredMarkdown(source);
+  const localized = text.replace('documentation', '文档').replace('notes', '说明')
+    .replaceAll('(', '（').replaceAll(')', '）');
+  const result = restoreMarkdown(localized, tokens);
+  const links = parseMarkdown(result).children[0].children.filter(node => node.type === 'link');
+  assert.deepEqual(links.map(({ url, title }) => [url, title]), [
+    ['https://mscaudill.github.io/tabbed/', null], ['docs/a_(2).md', 'Notes']
+  ]);
+  assert.ok(result.startsWith('（see [文档](https://mscaudill.github.io/tabbed/)）'));
+  assert.ok(result.endsWith('[**说明**](docs/a_(2).md "Notes").'));
+
+  const rich = '[](#empty) [![figure](fig.png)](fig.pdf) and `[literal](text)`';
+  const protectedRich = protectStructuredMarkdown(rich);
+  assert.equal(restoreMarkdown(protectedRich.text, protectedRich.tokens), rich);
+  assert.throws(() => restoreMarkdown(text.replace(tokens[1][0], ''), tokens));
+});
+
 test('Markdown translation also protects HTML, fenced code, bracket formulas, and URLs', async () => {
   const { protectMarkdown, restoreMarkdown } = await import('../src/prompts.mjs');
   const original = [

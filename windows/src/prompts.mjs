@@ -64,14 +64,22 @@ export const summaryPrompt = (blocks, language) => `Summarize this academic pape
 export const mergeSummaryPrompt = (partials, language) => `Consolidate these partial summary claims into at most six concise claims in ${language}. Return only JSON with the same schema: {"claims":[{"text":"one concise claim","sources":[{"paragraphID":1,"quote":"exact continuous source words"}]}]}. Keep each claim under 500 characters with at most two sources. Retain only paragraph IDs and exact quotes already present in the input. Do not invent links between unrelated claims.\n\n${JSON.stringify({ claims: partials })}`;
 export const summaryQuotePrompt = (claim, paragraphID, paragraph) => `Claim: ${claim}\n\nSource paragraph [P${paragraphID}]: ${paragraph}\n\nChoose one continuous 20–200 character quote copied exactly from this source paragraph that directly supports the claim. Return only the quote, without quotation marks or commentary. If the paragraph does not support the claim, return NONE.`;
 
-export function protectMarkdown(markdown) {
+export function protectMarkdown(markdown, literalRanges = []) {
   const tokens = [];
   const pattern = /__PAPERBRIDGE_TOKEN_\d+__|```[\s\S]*?```|~~~[\s\S]*?~~~|<table\b[\s\S]*?<\/table>|!\[[^\]]*\]\([^)]+\)|\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|`[^`\n]+`|<[^>]+>|https?:\/\/[^\s)>]+|data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]+|(?<!\\)\$(?!\$)(?:\\.|[^$\n])+\$/gi;
-  const text = markdown.replace(pattern, match => {
+  function protect(match) {
     const token = `__PAPERBRIDGE_TOKEN_${tokens.length}__`;
     tokens.push([token, match]);
     return token;
-  });
+  }
+  let text = '';
+  let offset = 0;
+  for (const [start, end] of literalRanges) {
+    text += markdown.slice(offset, start).replace(pattern, protect);
+    text += protect(markdown.slice(start, end));
+    offset = end;
+  }
+  text += markdown.slice(offset).replace(pattern, protect);
   return { text, tokens };
 }
 

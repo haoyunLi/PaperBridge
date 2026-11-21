@@ -1,9 +1,31 @@
 import { parseMarkdown, renderedMarkdownText } from './markdownRendering.mjs';
+import { protectMarkdown } from './prompts.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { commonOutputLanguage, normalizeOutputLanguage } from './outputLanguages.mjs';
 
 export function usesSharedMarkdown(paper) {
   return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
+}
+
+export function protectStructuredMarkdown(markdown) {
+  if (!markdown.includes('](')) return protectMarkdown(markdown);
+  const ranges = [];
+  function visit(node) {
+    if (node.type === 'link') {
+      const start = node.position.start.offset;
+      const end = node.position.end.offset;
+      const labelEnd = node.children.at(-1)?.position.end.offset ?? start + 1;
+      if (markdown[start] === '[' && markdown.startsWith('](', labelEnd)) {
+        // Translate the label while preserving the punctuation that makes it a link.
+        if (labelEnd === start + 1) ranges.push([start, end]);
+        else ranges.push([start, start + 1], [labelEnd, end]);
+      }
+      return;
+    }
+    node.children?.forEach(visit);
+  }
+  visit(parseMarkdown(markdown));
+  return protectMarkdown(markdown, ranges);
 }
 
 export function completedBlockTranslation(block, references) {
