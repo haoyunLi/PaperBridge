@@ -134,7 +134,7 @@ jobs:
 
   verify-public-download:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/windows-v')
+    if: startsWith(github.ref, 'refs/tags/windows-v') || github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 12
     permissions:
@@ -147,12 +147,20 @@ jobs:
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $dir = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'Public downloads')
-          $release = Invoke-RestMethod "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME"
+          $tag = "windows-v$version"
+          $response = Invoke-WebRequest "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" -SkipHttpErrorCheck
+          if ($response.StatusCode -eq 404 -and $env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            Write-Output "Version $version has not been published yet."
+            return
+          }
+          if ($response.StatusCode -ne 200) { throw "Could not read release $tag (HTTP $($response.StatusCode))" }
+          $release = $response.Content | ConvertFrom-Json
+          if ($release.tag_name -cne $tag -or $release.draft) { throw "Expected public release $tag" }
           foreach ($kind in @('Portable', 'Setup')) {
             $name = "PaperBridge-Windows-$version-x64-$kind.exe"
             $asset = @($release.assets | Where-Object name -eq $name)
             if ($asset.Count -ne 1) { throw "Expected exactly one $name" }
-            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:GITHUB_REF_NAME/$name"
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$name"
             $file = Join-Path $dir.FullName $name
             Invoke-WebRequest $url -OutFile $file -MaximumRetryCount 3
             Invoke-WebRequest "$url.sha256" -OutFile "$file.sha256" -MaximumRetryCount 3

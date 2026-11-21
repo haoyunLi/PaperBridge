@@ -43,7 +43,10 @@ export function finishExtractedPdfText(value) {
 export function joinPdfText(left, right) {
   const previous = left.match(/(?:^|\s)(\p{L}+(?:[-‐]\p{L}+)*)[-‐]$/u)?.[1];
   const next = right.match(/^\p{Ll}[\p{L}]*/u)?.[0];
-  if (!previous || !next) return left + ' ' + right;
+  if (!previous || !next) {
+    const needsSpace = left && right && !/[/(]$/u.test(left) && !/^\p{P}/u.test(right);
+    return left + (needsSpace ? ' ' : '') + right;
+  }
   const compound = /[-‐]/.test(previous) || compoundSuffixes.has(next.toLowerCase());
   return (compound ? left : left.slice(0, -1)) + right;
 }

@@ -78,6 +78,18 @@ test('new pasted text uses Mac single-line and multiline spaced-hyphen passes', 
   assert.equal(joinPdfText('Legacy re- sults', 'stay bound to notes.'), 'Legacy re- sults stay bound to notes.');
 });
 
+test('PDF lines and manual paragraph merges retain punctuation spacing and annotation offsets', async () => {
+  const { joinLines } = await import('../src/text.mjs');
+  const { mergeBlocks } = await import('../src/paper.mjs');
+  assert.equal(joinLines(['Ratio (', 'A/', 'B', ')', ', measured twice.']), 'Ratio (A/B), measured twice.');
+  assert.equal(joinLines(['结果', '，见图一。']), '结果，见图一。');
+  const marked = { text: 'test', offset: 2, color: 'amber' };
+  const merged = mergeBlocks({ text: 'Result', notes: [] }, { text: ', test.', highlights: [marked] });
+  assert.equal(merged.text, 'Result, test.');
+  assert.equal(merged.highlights[0].offset, 8);
+  assert.equal(merged.highlights[0].needsReview, false);
+});
+
 test('PDF item reconstruction repairs spaced fragments without changing line geometry', async () => {
   const { pageLines } = await import('../src/pdfLayout.mjs');
   const { blocksFromLines } = await import('../src/text.mjs');

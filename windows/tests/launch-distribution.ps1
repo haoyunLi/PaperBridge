@@ -30,7 +30,8 @@ try {
         $original[$name] = [Environment]::GetEnvironmentVariable($name)
         [Environment]::SetEnvironmentVariable($name, $testEnvironment[$name])
     }
-    $launcher = Start-Process -FilePath $binary -WorkingDirectory $root -PassThru
+    $launchDirectory = [IO.Path]::GetTempPath()
+    $launcher = Start-Process -FilePath $binary -WorkingDirectory $launchDirectory -PassThru
     $owned = @($launcher.Id)
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     $ready = $false
@@ -93,7 +94,7 @@ public static extern bool IsIconic(System.IntPtr hwnd);
             Start-Sleep -Milliseconds 100
         }
         if (![PaperBridgeSmoke.WindowState]::IsIconic($handle)) { throw 'Could not minimize the reader for the second launch' }
-        $secondLauncher = Start-Process -FilePath $binary -WorkingDirectory $root -PassThru
+        $secondLauncher = Start-Process -FilePath $binary -WorkingDirectory $launchDirectory -PassThru
         if (!$secondLauncher.WaitForExit(60000) -or $secondLauncher.ExitCode -ne 0) { throw 'The second launch did not hand off to the reader' }
         $deadline = [DateTime]::UtcNow.AddSeconds(10)
         while ([PaperBridgeSmoke.WindowState]::IsIconic($handle) -and [DateTime]::UtcNow -lt $deadline) {
@@ -117,7 +118,14 @@ public static extern bool IsIconic(System.IntPtr hwnd);
         $resolved = (Resolve-Path -LiteralPath $root).Path
         if ([IO.Path]::GetDirectoryName($resolved) -eq [IO.Path]::GetTempPath().TrimEnd('\') -and
             [IO.Path]::GetFileName($resolved) -match '^PaperBridge smoke [0-9a-f]{32}$') {
-            Remove-Item -LiteralPath $resolved -Recurse -Force
+            # Windows can briefly retain a handle after the process exits.
+            for ($attempt = 1; $attempt -le 6; $attempt++) {
+                try { Remove-Item -LiteralPath $resolved -Recurse -Force -ErrorAction Stop; break }
+                catch [System.IO.IOException] {
+                    if ($attempt -eq 6) { throw }
+                    Start-Sleep -Milliseconds (250 * $attempt)
+                }
+            }
         }
     }
 }
