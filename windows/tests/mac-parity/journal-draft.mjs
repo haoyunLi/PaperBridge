@@ -65,23 +65,24 @@ export function verifyJournalDraft(native, exportDirectory) {
   const windowsParagraphs = paragraphs(windowsAnalysis);
   assert.equal(nativeParagraphs.length, completed.length);
   assert.deepEqual(windowsParagraphs.map(paragraph => paragraph.id), completed.map(block => block.id));
-  let headingPairs = 0;
-  for (const [index, block] of completed.entries()) {
-    if (!block.heading) continue;
-    function headingBodies(section) {
-      const body = section.trim().split(/^#{3,4} (?:Original|Translation)[^\n]*\n/gm).slice(1);
-      assert.equal(body.length, 2);
-      return body.map(markdown => {
-        const nodes = parseMarkdown(markdown.trim()).children;
+  function reportText(section, heading) {
+    const sides = section.trim().split(/^#{3,4} (?:Original|Translation)[^\n]*\n/gm).slice(1);
+    assert.equal(sides.length, 2);
+    return sides.map(side => {
+      const markdown = side.trim();
+      if (heading) {
+        const nodes = parseMarkdown(markdown).children;
         assert.equal(nodes.length, 1);
         assert.equal(nodes[0].type, 'paragraph', 'Article titles must stay inside analysis paragraphs');
-        return renderedMarkdownText(markdown.trim());
-      });
-    }
-    assert.deepEqual(headingBodies(windowsParagraphs[index].body), headingBodies(nativeParagraphs[index].body));
-    headingPairs++;
+      }
+      return renderedMarkdownText(markdown).replace(/\s+/gu, ' ').trim();
+    });
   }
-  assert.equal(headingPairs, 13);
+  assert.equal(completed.filter(block => block.heading).length, 13);
+  for (const [index, block] of completed.entries()) {
+    assert.deepEqual(reportText(windowsParagraphs[index].body, block.heading),
+      reportText(nativeParagraphs[index].body, block.heading), `Analysis paragraph ${block.id} differs`);
+  }
   const unfinished = blocks.map(block => block.sourceMarkdown.startsWith('Automated reading of large')
     ? { ...block, status: 'failed', error: 'Model stopped.' } : block);
   assert.equal(unfinished.filter(block => block.status === 'failed').length, 1);
