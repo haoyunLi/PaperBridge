@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
-import { blocksFromText, practiceParagraphs, readingMap } from '../../src/text.mjs';
+import { blocksFromText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
+import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
@@ -48,10 +49,20 @@ for (const [index, { name, text, target }] of fixtures.reflows.entries()) {
   assert.deepEqual(reflowBlock({ text }, target).map(block => block.text), reference.reflows[index], name);
 }
 
+assert.equal(reference.pageBoundaries.length, fixtures.pageBoundaries.length);
+for (const [index, { name, left, right, windowsText }] of fixtures.pageBoundaries.entries()) {
+  const actual = stitchPageBlocks([left, right].map((text, page) => ({ text, page: page + 1, heading: isHeading(text) })));
+  const native = reference.pageBoundaries[index];
+  assert.equal(actual.length, native.length, name + ' segmentation');
+  assert.deepEqual(actual.map(block => block.text), windowsText ? [windowsText] : native, name);
+  assert.deepEqual(actual.map(block => [block.page, block.endPage ?? block.page]),
+    native.length === 1 ? [[1, 2]] : [[1, 1], [2, 2]], name + ' provenance');
+}
+
 const restored = fixtures.markdown.map(source => {
   const { text, tokens } = protectMarkdown(source);
   return restoreMarkdown(text.replaceAll('Before', '前文').replaceAll('After', '后文'), tokens);
 });
 assert.deepEqual(restored, reference.markdown);
 assert.deepEqual(restored, fixtures.markdown.map(source => source.replaceAll('Before', '前文').replaceAll('After', '后文')));
-console.log(`Checked ${papers.length} papers, ${restored.length} translations, ${fixtures.merges.length} merges and ${fixtures.reflows.length} reflows against native macOS. ${preservedWindowsJoins} joins preserved Windows scientific punctuation.`);
+console.log(`Checked ${papers.length} papers, ${restored.length} translations, ${fixtures.merges.length} merges, ${fixtures.reflows.length} reflows and ${fixtures.pageBoundaries.length} page boundaries against native macOS. ${preservedWindowsJoins} joins preserved Windows scientific punctuation.`);

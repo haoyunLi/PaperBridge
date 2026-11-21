@@ -37,8 +37,13 @@ export function stitchPageBlocks(blocks) {
     const adjacent = (previous?.endPage ?? previous?.page) === block.page - 1;
     const prose = previous && !previous.heading && !block.heading && !previous.resource && !block.resource &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
-      !/^(?:figure|fig\.|table|references|bibliography|图|表|\[\d+\])\b/i.test(right);
-    const continuation = /[\p{Ll}‐-]$/u.test(left) && /^[\p{Ll},;:)]/u.test(right);
+      !/^(?:(?:figure|table|references|bibliography)\b|fig\.\s*\d|[图表]\s*\d|\[\d+\]|\d+[.)]\s)/iu.test(right);
+    const proseContinuation = /[\p{Ll}‐-]$/u.test(left) && /^[\p{Ll},;:)]/u.test(right);
+    // Technical tokens can resume with a digit or capital at the top of the
+    // next page. Require following prose so an isolated label stays separate.
+    const technicalContinuation = /[\p{L}\p{N}][-‐]$/u.test(left)
+      && /^[\p{Lu}\p{N}][\p{L}\p{N}-]*\s+\p{Ll}/u.test(right);
+    const continuation = proseContinuation || technicalContinuation;
     if (adjacent && prose && continuation && (left.length >= 20 || /[‐-]$/.test(left))) {
       previous.text = joinPdfText(left, right);
       previous.endPage = block.page;

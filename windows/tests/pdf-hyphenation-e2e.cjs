@@ -20,7 +20,8 @@ const expectedLines = [
   'The coordinate system uses a 3D representation of the sample.',
   'We compare predictions from the GPT-4 model on the same data.',
   'The range of scores was 12-3 in the original table.',
-  'The English-to-German task uses an end-to-end system.'
+  'The English-to-German task uses an end-to-end system.',
+  'We evaluate predictions from GPT-4 across two physical pages.'
 ];
 
 function fixturePdf(legacy = false) {
@@ -39,16 +40,22 @@ function fixturePdf(legacy = false) {
       'BT /F1 10 Tf 42 390 Td (The coordinate system uses a 3-) Tj 0 -12 Td (D representation of the sample.) Tj ET',
       'BT /F1 10 Tf 42 340 Td (We compare predictions from the GPT-) Tj 0 -12 Td (4 model on the same data.) Tj ET',
       'BT /F1 10 Tf 42 290 Td (The range of scores was 12-) Tj 0 -12 Td (3 in the original table.) Tj ET',
-      'BT /F1 10 Tf 42 240 Td (The English-) Tj 0 -12 Td (to-German task uses an end-) Tj 0 -12 Td (to-end system.) Tj ET'
+      'BT /F1 10 Tf 42 240 Td (The English-) Tj 0 -12 Td (to-German task uses an end-) Tj 0 -12 Td (to-end system.) Tj ET',
+      'BT /F1 10 Tf 42 80 Td (We evaluate predictions from GPT-) Tj ET'
     ].join('\n');
+  const continuation = 'BT /F1 10 Tf 42 710 Td (4 across two physical pages.) Tj ET';
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    legacy ? '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' : '<< /Type /Pages /Kids [3 0 R 7 0 R] /Count 2 >>',
     '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Oblique >>',
     `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`
   ];
+  if (!legacy) objects.push(
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 8 0 R >>',
+    `<< /Length ${Buffer.byteLength(continuation)} >>\nstream\n${continuation}\nendstream`
+  );
   let body = '%PDF-1.4\n';
   const offsets = [0];
   for (const [index, object] of objects.entries()) {
@@ -170,6 +177,8 @@ async function run() {
     const imported = readPaper(id);
     assert.equal(imported.sourceMode, 'pdf');
     assert.equal(imported.extraction, 'PDF.js');
+    const spanning = imported.blocks.find(block => block.text === expectedLines.at(-1));
+    assert.deepEqual([spanning?.page, spanning?.endPage], [1, 2], 'joined model name retains its two original pages');
     const extracted = imported.blocks.map(block => block.text);
     for (const expected of expectedLines) {
       assert.ok(extracted.includes(expected), `Missing extracted paragraph: ${expected}\n${extracted.join('\n')}`);
