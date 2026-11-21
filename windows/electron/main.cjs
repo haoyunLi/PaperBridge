@@ -401,6 +401,7 @@ function registerHandlers() {
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
     const job = mineruJobs.begin();
     const reportProgress = status => { if (!job.cancelled) progress({ kind: 'mineru', requestId, status }); };
+    const tempRoot = path.toNamespacedPath(path.resolve(os.tmpdir()));
     let staging = null;
     try {
       const detected = await detectMineruExecutable(executable, setupManager.toolsRoot);
@@ -409,7 +410,7 @@ function registerHandlers() {
       // MinerU repeats the input stem inside its temporary result paths. A SHA-256
       // filename can push these paths past the Windows path limit, so use a short
       // private input name while retaining the unchanged original in our library.
-      staging = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-'));
+      staging = fs.mkdtempSync(path.join(tempRoot, 'paperbridge-mineru-'));
       const stagedPdf = path.join(staging, 'paper.pdf');
       const output = path.join(staging, 'output');
       fs.copyFileSync(pdf, stagedPdf);
@@ -451,7 +452,7 @@ function registerHandlers() {
       mineruJobs.finish(job);
       if (staging) {
         const resolved = path.resolve(staging);
-        if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
+        if (path.dirname(resolved) !== tempRoot || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
         fs.rmSync(resolved, { recursive: true, force: true });
       }
     }

@@ -39,7 +39,8 @@ function mineru4Environment(toolsRoot, backend) {
   const home = path.join(toolsRoot, 'mineru4-data');
   const env = {
     ...process.env,
-    MINERU_HOME: home,
+    // MinerU creates long model-derived filenames under this directory on Windows.
+    MINERU_HOME: path.toNamespacedPath(home),
     MINERU_TELEMETRY_DISABLED: '1',
     MINERU_MODEL_SMALL_BACKEND: 'onnx',
     MINERU_MODEL_ONNX_DEVICE: backend === 'pipeline' ? 'cpu' : 'auto',
@@ -56,7 +57,7 @@ function mineruInvocation(detected, pdf, output, backend, toolsRoot) {
     const archive = path.join(output, 'paper.zip');
     return {
       command: detected.kitExecutable,
-      args: ['parse', pdf, '-o', archive, '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
+      args: ['parse', path.toNamespacedPath(pdf), '-o', path.toNamespacedPath(archive), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
       env: mineru4Environment(toolsRoot, backend)
     };
   }

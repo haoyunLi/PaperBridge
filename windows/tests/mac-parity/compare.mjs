@@ -5,13 +5,14 @@ import os from 'node:os';
 import { createStore } from '../../electron/storage.cjs';
 import { libraryLabel } from '../../electron/library-metadata.mjs';
 import { writeBundle } from '../../electron/bundle.cjs';
-import { claimsMarkdown, parseSummaryClaims, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
+import { claimsMarkdown, parseSummaryClaims, summarySourceBlocks, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
 import { blocksFromText, chunkText, isHeading, practiceParagraphs, readingMap } from '../../src/text.mjs';
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { createHash } from 'node:crypto';
 import { filteredReaderBlocks } from '../../src/textSearch.mjs';
 import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
 import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
+import { parsedMarkdownBlocks } from '../../src/academicMarkdown.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
@@ -172,11 +173,28 @@ for (const { limit, chunks } of published.paragraphChunks) {
 assert.deepEqual(connectedSources(published.paragraphs), published.batches, 'All full-translation batches for the same native-extracted journal article');
 console.log(`Verified ${fixtures.connectedBatches.length} full-translation cases and all ${published.batches.length} batches of the ${published.paragraphs.length}-paragraph emcee paper against macOS.`);
 
+const structuredText = readFileSync(new URL('./emcee-v3-mineru.md', import.meta.url), 'utf8');
+const structuredSource = summarySourceBlocks(parsedMarkdownBlocks(structuredText));
+assert.deepEqual(structuredSource.filter(block => block.heading).map(block => block.text), reference.structuredJournal.headings,
+  'All body headings from the same MinerU paper appear in summary source order');
+const nativeJournal = reference.structuredJournal;
+assert.equal(structuredSource.length, nativeJournal.body.length);
+const byline = structuredSource.find(block => block.text.startsWith('Daniel Foreman-Mackey'));
+assert.ok(byline, 'Numbered author byline is included in the summary');
+const nativeByline = nativeJournal.body[byline.id - 1];
+// Windows keeps the printed affiliation numbers attached to names. Native Markdown plaintext inserts spaces around superscripts.
+assert.equal(byline.text.replace(/\s/g, ''), nativeByline.replace(/\s/g, ''));
+const taggedByline = text => `[P${byline.id}]\n${text}`;
+assert.deepEqual(taggedSummaryBatches(structuredSource), nativeJournal.summaryBatches.map(batch =>
+  batch.replace(taggedByline(nativeByline), taggedByline(byline.text))), 'All MinerU journal passages and Reader IDs in the summary input');
+
 assert.equal(reference.bibliographies.length, fixtures.bibliographies.length);
 for (const [index, fixture] of fixtures.bibliographies.entries()) {
   const blocks = blocksFromText(fixture.paragraphs.join('\n\n'));
   const excluded = referenceBlockIds(blocks);
   assert.deepEqual([...excluded], fixture.referenceIds, fixture.name);
+  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), reference.bibliographies[index].body,
+    fixture.name + ' summary includes all headings outside the reference section');
   assert.deepEqual({
     body: blocks.filter(block => !excluded.has(block.id)).map(block => block.text),
     references: blocks.filter(block => excluded.has(block.id)).map(block => block.text)

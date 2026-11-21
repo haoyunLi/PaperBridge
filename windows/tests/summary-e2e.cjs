@@ -98,7 +98,7 @@ async function run() {
     };
     await revealSidebarSource(page);
     await openPasteText(page);
-    await page.locator('.paste-area').fill([opening, longParagraph, 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
+    await page.locator('.paste-area').fill([opening, longParagraph, 'Limitations', 'We could only measure response times in daylight.', 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
     await loadPastedText(page, { view: 'Paper' });
     await openWorkspaceView(page, 'Overview');
     await page.locator('.toolbar-actions').getByRole('button', { name: 'Summarize Paper' }).click();
@@ -146,6 +146,7 @@ async function run() {
     assert.equal(excerpts.length, 4);
     assert.ok(excerpts.every(item => item.payload.length <= 6000 && !item.payload.includes(references) && !item.payload.includes('Earlier calibration.')));
     assert.match(excerpts.at(-1).payload, /\[P2\][\s\S]*low visibility conditions/);
+    assert.ok(excerpts.at(-1).payload.includes('[P3]\nLimitations\n\n[P4]\nWe could only measure response times in daylight.'));
     assert.ok(excerpts.at(-1).payload.includes(appendix));
     const merges = requests.filter(item => item.kind === 'merge');
     assert.equal(merges.length, 3);

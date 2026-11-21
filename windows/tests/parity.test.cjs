@@ -129,7 +129,7 @@ test('pasted bibliography boundaries drive the translation queue and summary wit
     assert.deepEqual(blocks.map(block => block.text), paragraphs, name + ' source and paragraph boundaries');
     assert.deepEqual([...referenceBlockIds(blocks)], referenceIds, name);
     assert.deepEqual(translationRangeIds(blocks), expectedBody.map(block => block.id), name);
-    assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), expectedBody.filter(block => !block.heading).map(block => block.text), name);
+    assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), expectedBody.map(block => block.text), name);
   }
   const wrapped = require('./mac-parity/fixtures.json').bibliographies.find(f => f.paragraphs.some(text => text.includes('\n')));
   const saved = wrapped.paragraphs.map((text, i) => ({ id: i + 1, text: text.replaceAll('\n', ' ') }));
@@ -162,7 +162,7 @@ test('a split author list stays in references before a lettered appendix in a tw
   assert.ok(references.at(-1).text.length > 1200);
   assert.deepEqual([...referenceBlockIds(blocks)], [2, 3, 4, 5, 6]);
   assert.deepEqual(translationRangeIds(blocks), [1, 8, 9]);
-  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.id), [1, 9]);
+  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.id), [1, 8, 9]);
   assert.deepEqual([...referenceBlockIds([body, ...references.slice(0, 3), title, references.at(-1)])], [2, 3, 4]);
 });
 
@@ -234,7 +234,7 @@ test('summary excerpts keep original paragraph IDs and whole Unicode characters 
     { id: 6, heading: true, text: 'Appendix' },
     { id: 7, text: 'The appendix remains eligible.' }
   ]);
-  assert.deepEqual(source.map(block => block.id), [2, 7]);
+  assert.deepEqual(source.map(block => block.id), [1, 2, 6, 7]);
   const batches = summarySourceBatches(source);
   assert.equal(batches.flat().filter(block => block.id === 2).map(block => block.text).join(''), long);
   assert.ok(batches.every(batch => batch.map(({ id, text }) => `[P${id}]\n${text}`).join('\n\n').length <= 6000));

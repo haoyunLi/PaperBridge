@@ -102,6 +102,8 @@ async function checkJournalSidebar(app, page, prompts) {
     const { summarySourceBlocks, summarySourceBatches } = await import('../../src/paper.mjs');
     const batches = summarySourceBatches(summarySourceBlocks(blocks));
     assert.equal(batches.length, native.summaryBatches.length);
+    assert.ok(native.summaryBatches.some(batch => /(?:^|\n\n)\[P\d+\]\nSummary(?:\n\n|$)/.test(batch)));
+    assert.ok(batches.flat().some(item => item.id === blocks[summary].id && item.text === 'Summary'));
     // The Windows extractor retains the printed sidebar and full byline. Source IDs point into each edition’s own Reader.
     const closingBlocks = blocks.slice(moves - 1, moves + 2);
     assert.deepEqual(batches.at(-1).slice(-3), closingBlocks.map(({ id, text }) => ({ id, text })));

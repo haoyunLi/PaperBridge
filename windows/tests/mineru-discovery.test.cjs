@@ -135,12 +135,31 @@ test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with a
   const output = path.join(paths.root, 'output');
   const automatic = mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot);
   assert.equal(automatic.command, kit);
-  assert.deepEqual(automatic.args, ['parse', pdf, '-o', path.join(output, 'paper.zip'), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
+  assert.deepEqual(automatic.args, ['parse', path.toNamespacedPath(pdf), '-o', path.toNamespacedPath(path.join(output, 'paper.zip')), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
   assert.equal(automatic.env.MINERU_MODEL_ONNX_DEVICE, 'auto');
   assert.equal(automatic.env.MINERU_TELEMETRY_DISABLED, '1');
-  assert.equal(automatic.env.MINERU_HOME, path.join(paths.toolsRoot, 'mineru4-data'));
+  assert.equal(automatic.env.MINERU_HOME, path.toNamespacedPath(path.join(paths.toolsRoot, 'mineru4-data')));
   assert.equal(automatic.env.MINERU_CONFIG, undefined);
   assert.equal(mineruInvocation(modern, pdf, output, 'pipeline', paths.toolsRoot).env.MINERU_MODEL_ONNX_DEVICE, 'cpu');
   const legacy = await detectMineruExecutable(paths.onPath, paths.toolsRoot, options);
   assert.deepEqual(mineruInvocation(legacy, pdf, output, 'pipeline', paths.toolsRoot).args, ['-p', pdf, '-o', output, '-b', 'pipeline']);
+});
+
+test('long Windows parser paths retain the configured cache and staged PDF', { skip: process.platform !== 'win32' }, t => {
+  const { root } = fixture(t);
+  const parent = path.join(root, ...Array(8).fill('带空格的期刊工作区 associated source files'));
+  const pdf = path.join(parent, 'paper.pdf');
+  const cache = path.join(parent, 'tools', 'mineru4-data');
+  assert.ok(pdf.length > 260);
+  fs.mkdirSync(cache, { recursive: true });
+  fs.writeFileSync(pdf, 'staged source');
+  fs.writeFileSync(path.join(cache, 'config.yaml'), 'existing configuration');
+  const invocation = mineruInvocation({ kitExecutable: 'mineru-kit.exe' }, pdf, parent, 'auto', path.dirname(cache));
+  assert.equal(invocation.env.MINERU_HOME, path.toNamespacedPath(cache));
+  assert.equal(invocation.args[1], path.toNamespacedPath(pdf));
+  assert.equal(invocation.args[3], path.toNamespacedPath(path.join(parent, 'paper.zip')));
+  assert.equal(fs.readFileSync(path.join(invocation.env.MINERU_HOME, 'config.yaml'), 'utf8'), 'existing configuration');
+  assert.equal(fs.readFileSync(invocation.args[1], 'utf8'), 'staged source');
+  fs.writeFileSync(invocation.args[3], 'parser output');
+  assert.equal(fs.readFileSync(path.join(parent, 'paper.zip'), 'utf8'), 'parser output');
 });

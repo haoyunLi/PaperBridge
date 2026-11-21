@@ -15,7 +15,7 @@ test('new Markdown blocks retain their parser kind without changing source, IDs 
   assert.deepEqual(blocks.map(block => block.markdownKind), ['heading', 'paragraph', 'list', 'quote', 'image', 'formula', 'table', 'html']);
   assert.deepEqual(blocks.map(markdownBlockKind), blocks.map(block => block.markdownKind));
   assert.deepEqual(qualityIssues(blocks).map(issue => issue.id), [2]);
-  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.id), [2, 3, 4]);
+  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.id), [1, 2, 3, 4]);
   assert.deepEqual(translationRangeIds(blocks), [1, 2, 3, 4]);
 });
 

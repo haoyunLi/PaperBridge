@@ -40,7 +40,7 @@ export function qualityIssues(blocks, excluded = new Set()) {
 
 export function summarySourceBlocks(blocks) {
   const references = referenceBlockIds(blocks);
-  return blocks.filter(block => !block.heading && !block.resource && !references.has(block.id) && block.text?.trim());
+  return blocks.filter(block => !block.resource && !references.has(block.id) && block.text?.trim());
 }
 
 export function summarySourceBatches(blocks) {
