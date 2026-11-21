@@ -52,12 +52,36 @@ function mineru4Environment(toolsRoot, backend) {
   return env;
 }
 
+function createMineruStaging(detected, temporary, localAppData) {
+  const prefix = 'paperbridge-mineru-';
+  let root = path.resolve(temporary);
+  if (process.platform === 'win32' && detected.kitExecutable) {
+    // MinerU's ZIP writer joins "images/name.jpg" to its output directory.
+    // Windows only accepts those embedded forward slashes in ordinary DOS/UNC paths.
+    const ordinary = value => value.replace(/^\\\\\?\\UNC\\/i, '\\\\').replace(/^\\\\\?\\(?=[a-z]:\\)/i, '');
+    root = ordinary(root);
+    // Leave room under MAX_PATH for MinerU's nested temporary files on machines
+    // with long paths disabled. Prefer the user's configured TEMP when it fits.
+    const nestedImage = path.join(prefix + 'XXXXXX', 'output', '.mineru-kit-XXXXXXXX', 'images', 'page_123456_chart_123456.jpg');
+    if (path.join(root, nestedImage).length >= 260 && localAppData && path.isAbsolute(localAppData)) {
+      const fallback = path.join(ordinary(localAppData), 'Temp');
+      if (fallback.length < root.length) {
+        try {
+          fs.mkdirSync(fallback, { recursive: true });
+          return { root: fallback, directory: fs.mkdtempSync(path.join(fallback, prefix)) };
+        } catch { /* The configured TEMP can still work when long paths are enabled. */ }
+      }
+    }
+  }
+  return { root, directory: fs.mkdtempSync(path.join(root, prefix)) };
+}
+
 function mineruInvocation(detected, pdf, output, backend, toolsRoot) {
   if (detected.kitExecutable) {
     const archive = path.join(output, 'paper.zip');
     return {
       command: detected.kitExecutable,
-      args: ['parse', path.toNamespacedPath(pdf), '-o', path.toNamespacedPath(archive), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
+      args: ['parse', path.toNamespacedPath(pdf), '-o', archive, '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
       env: mineru4Environment(toolsRoot, backend)
     };
   }
@@ -105,4 +129,4 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
       : 'MinerU was not found in PaperBridge managed tools or on PATH. Install it in Local AI setup or enter its full path.') };
 }
 
-module.exports = { candidates, detectMineruExecutable, mineru4Environment, mineruInvocation };
+module.exports = { candidates, createMineruStaging, detectMineruExecutable, mineru4Environment, mineruInvocation };

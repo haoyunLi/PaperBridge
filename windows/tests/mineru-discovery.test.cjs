@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { candidates, detectMineruExecutable, mineruInvocation } = require('../electron/mineru-discovery.cjs');
+const { candidates, createMineruStaging, detectMineruExecutable, mineruInvocation } = require('../electron/mineru-discovery.cjs');
 const { mineruPaths, claimMineruSetup, beginMineruActivation, commitMineruActivation } = require('../electron/mineru-installation.cjs');
 
 function fixture(t) {
@@ -135,7 +135,7 @@ test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with a
   const output = path.join(paths.root, 'output');
   const automatic = mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot);
   assert.equal(automatic.command, kit);
-  assert.deepEqual(automatic.args, ['parse', path.toNamespacedPath(pdf), '-o', path.toNamespacedPath(path.join(output, 'paper.zip')), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
+  assert.deepEqual(automatic.args, ['parse', path.toNamespacedPath(pdf), '-o', path.join(output, 'paper.zip'), '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto']);
   assert.equal(automatic.env.MINERU_MODEL_ONNX_DEVICE, 'auto');
   assert.equal(automatic.env.MINERU_TELEMETRY_DISABLED, '1');
   assert.equal(automatic.env.MINERU_HOME, path.toNamespacedPath(path.join(paths.toolsRoot, 'mineru4-data')));
@@ -143,6 +143,24 @@ test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with a
   assert.equal(mineruInvocation(modern, pdf, output, 'pipeline', paths.toolsRoot).env.MINERU_MODEL_ONNX_DEVICE, 'cpu');
   const legacy = await detectMineruExecutable(paths.onPath, paths.toolsRoot, options);
   assert.deepEqual(mineruInvocation(legacy, pdf, output, 'pipeline', paths.toolsRoot).args, ['-p', pdf, '-o', output, '-b', 'pipeline']);
+});
+
+test('MinerU 4 stages chart images in ordinary paths, including when TEMP is deeply nested', { skip: process.platform !== 'win32' }, t => {
+  const { root } = fixture(t);
+  const kit = { kitExecutable: 'mineru-kit.exe' };
+  const local = path.join(root, 'local');
+  const normal = createMineruStaging(kit, path.toNamespacedPath(root), local);
+  assert.equal(normal.root, root);
+  const deep = path.join(root, ...Array(12).fill('带空格的期刊工作区 document data'));
+  fs.mkdirSync(deep, { recursive: true });
+  const fallback = createMineruStaging(kit, deep, local);
+  assert.equal(fallback.root, path.join(local, 'Temp'));
+  for (const { root: parent, directory } of [normal, fallback]) {
+    assert.equal(path.dirname(directory), parent);
+    assert.ok(fs.statSync(directory).isDirectory());
+    const args = mineruInvocation(kit, path.join(directory, 'paper.pdf'), path.join(directory, 'output'), 'auto', root).args;
+    assert.equal(args[3], path.join(directory, 'output', 'paper.zip'));
+  }
 });
 
 test('long Windows parser paths retain the configured cache and staged PDF', { skip: process.platform !== 'win32' }, t => {
@@ -157,7 +175,7 @@ test('long Windows parser paths retain the configured cache and staged PDF', { s
   const invocation = mineruInvocation({ kitExecutable: 'mineru-kit.exe' }, pdf, parent, 'auto', path.dirname(cache));
   assert.equal(invocation.env.MINERU_HOME, path.toNamespacedPath(cache));
   assert.equal(invocation.args[1], path.toNamespacedPath(pdf));
-  assert.equal(invocation.args[3], path.toNamespacedPath(path.join(parent, 'paper.zip')));
+  assert.equal(invocation.args[3], path.join(parent, 'paper.zip'));
   assert.equal(fs.readFileSync(path.join(invocation.env.MINERU_HOME, 'config.yaml'), 'utf8'), 'existing configuration');
   assert.equal(fs.readFileSync(invocation.args[1], 'utf8'), 'staged source');
   fs.writeFileSync(invocation.args[3], 'parser output');

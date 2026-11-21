@@ -6,7 +6,7 @@ const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
-const { detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
+const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('./mineru-resources.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
@@ -406,7 +406,6 @@ function registerHandlers() {
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
     const job = mineruJobs.begin();
     const reportProgress = status => { if (!job.cancelled) progress({ kind: 'mineru', requestId, status }); };
-    const tempRoot = path.toNamespacedPath(path.resolve(os.tmpdir()));
     let staging = null;
     try {
       const detected = await detectMineruExecutable(executable, setupManager.toolsRoot);
@@ -415,9 +414,9 @@ function registerHandlers() {
       // MinerU repeats the input stem inside its temporary result paths. A SHA-256
       // filename can push these paths past the Windows path limit, so use a short
       // private input name while retaining the unchanged original in our library.
-      staging = fs.mkdtempSync(path.join(tempRoot, 'paperbridge-mineru-'));
-      const stagedPdf = path.join(staging, 'paper.pdf');
-      const output = path.join(staging, 'output');
+      staging = createMineruStaging(detected, os.tmpdir(), process.env.LOCALAPPDATA);
+      const stagedPdf = path.join(staging.directory, 'paper.pdf');
+      const output = path.join(staging.directory, 'output');
       fs.copyFileSync(pdf, stagedPdf);
       const invocation = mineruInvocation(detected, stagedPdf, output, backend, setupManager.toolsRoot);
       await new Promise((resolve, reject) => {
@@ -436,7 +435,7 @@ function registerHandlers() {
       });
       mineruJobs.check(job);
       const file = detected.kitExecutable
-        ? await unpackMineruArchive(path.join(output, 'paper.zip'), path.join(staging, 'result'), () => mineruJobs.check(job))
+        ? await unpackMineruArchive(path.join(output, 'paper.zip'), path.join(staging.directory, 'result'), () => mineruJobs.check(job))
         : findMineruMarkdown(output, path.parse(stagedPdf).name);
       mineruJobs.check(job);
       if (!file) throw new Error('MinerU finished without a Markdown file.');
@@ -456,8 +455,8 @@ function registerHandlers() {
     } finally {
       mineruJobs.finish(job);
       if (staging) {
-        const resolved = path.resolve(staging);
-        if (path.dirname(resolved) !== tempRoot || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
+        const resolved = path.resolve(staging.directory);
+        if (path.dirname(resolved) !== staging.root || !path.basename(resolved).startsWith('paperbridge-mineru-')) throw new Error('Unexpected MinerU staging path.');
         fs.rmSync(resolved, { recursive: true, force: true });
       }
     }
