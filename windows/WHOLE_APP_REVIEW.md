@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## Windows 0.2.35 全文分批、期刊版式和公开下载（2026-11-21）
+
+在相同输入下，两端的全文分批器对五组边界样例及一篇公开期刊论文给出了逐字相同的批次。论文对照使用 macOS PDFKit 提取的十个正文段落。Windows 另从原 PDF 独立导入，《emcee v3》标题从两块合为一块，作者上标回到对应姓名旁，左栏日期和版权信息与正文分开。两个版本的第一页保留相同的非空白字符，第二页内容和顺序一致。ResNet 和 Transformer 分别仍有 339 和 266 个块。ResNet 第三页还修复了词内的排版断词。原提取存档继续使用原来的段落编号。在公开版之间升级后点击标题笔记，仍能选中旧记录第 2 块的 `affine-invariant MCMC`。记录见 `test-artifacts/journal-corpus-foYPlC` 和 `test-artifacts/journal-title-note-jaQjJW`。[原论文](https://doi.org/10.21105/joss.01864) · [两端对照和发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44890535898)
+
+0.2.34 已翻好的批次与续译输入在升级时原样保留。用受控翻译服务使第二批中断，0.2.35 续译只发送了一次请求。重新生成后，组合重音字符完整保留在同一批次。结果在 `test-artifacts/unicode-upgrade-COJO8L`。真实模型的结果见 [AMD 设备报告](AMD_DEVICE_TEST.md)。
+
+Edge 从 GitHub 首页下载了两个 x64 EXE，互联网标记均为 `ZoneId=3`，二者均未签名，SHA-256 匹配发布记录。干净的 Windows runner 分别打开了便携版与安装后的程序。本机用离线模型地址测试了跳过引导、导入 PDF、保存笔记和重启。0.2.34 的两种版本都自动发现了 0.2.35。便携版下载的文件通过校验，安装版覆盖升级后保留了论文、标注及阅读外观。记录在 `test-artifacts/browser-download-0.2.35-ZZtyqg`、`test-artifacts/public035-reader-without-models-UvqWxb`、`test-artifacts/public034-to035-portable-update-QtEYFH` 及 `test-artifacts/i-mwq83m6b-u5c/report.json`。[公开下载启动记录](https://github.com/haoyunLi/PaperBridge/actions/runs/44890535898/job/136806730303)
+
 ## Windows 0.2.34 首次设置时继续阅读（2026-11-21）
 
 macOS 引导在工具或模型下载期间提供 **Continue in Background**。以相同的本地模型服务模拟慢速下载，GitHub 上的 0.2.33 在完成或取消前锁住引导，0.2.34 能立即回到阅读器。公开便携版下载过程中打开了练习论文，随后从设置取消下载，重试成功后在同一篇论文选中模型，重启恢复。模型下载使用受控本机服务。另在 RX 7800 XT 上使用真实 Ollama 推理，复核了 PDF 脚注、目录和重启后的全文译稿。[macOS 引导](https://github.com/haoyunLi/PaperBridge/blob/16e01ac/PaperBridge/Views/OnboardingView.swift#L501-L504) · [AMD 设备报告](AMD_DEVICE_TEST.md)

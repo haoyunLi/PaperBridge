@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.35 公开便携版（2026-11-21）
+
+在 RX 7800 XT 上从 GitHub 公开便携版导入两页 *emcee v3* PDF。新提取产生 28 个块。Ollama 加载 TranslateGemma 4B，报告 `size_vram = 2881948220` 字节。全文翻译完成一批正文，参考文献标题及六项条目均保留原文。英文标题完整译为“emcee v3：用于仿射不变的 MCMC 的 Python 组合采样工具包”。提取的英文作者行保留单位上标，模型在中文作者行中省略了部分编号。
+
+通过该公开包内的应用执行 **Full Translation Markdown**，导出的 4,862 字节逐字匹配工作区译稿。重启便携版后译文仍在，原 PDF 的 SHA-256 与导入前一致。记录在 `test-artifacts/emcee-AMD-E3IFri/result.json`，导出样本为同目录 `paper-full.md`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.35) · [原论文](https://doi.org/10.21105/joss.01864)
+
 ## 0.2.34 公开便携版（2026-11-21）
 
 RX 7800 XT 用本机 Ollama 和 TranslateGemma 4B 翻译 ResNet 小节标题及脚注。标题译为“3.3. 网络架构”，脚注译文保留编号 `2` 与文献引用 `[28]`。另用双栏样张生成两批全文译稿，末条编号 `1` 与译稿在重启后保留。Ollama 报告显存占用 2,881,948,220 字节。记录在 `test-artifacts/public034-pdf-amd-E1swXP/result.json`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.34)
