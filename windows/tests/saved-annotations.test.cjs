@@ -6,6 +6,26 @@ const note = (extra = {}) => ({ id: 'same-id', text: 'quote', offset: 0, body: '
 const block = (extra = {}) => ({ id: 1, text: 'quote then quote', translation: 'quote then quote', ...extra });
 const paper = (extra = {}) => ({ blocks: [block()], summary: { source: 'quote', target: 'quote' },
   connectedTranslation: 'quote', ...extra });
+test('failed navigation marks only the selected anchor group even with duplicate or absent IDs', async () => {
+  const { savedAnnotations, markSavedAnnotationRecordsForReview } = await helpers;
+  for (const id of ['same-id', undefined]) {
+    const missing = note({ id, text: 'missing', body: 'missing note' });
+    const present = note({ id, body: 'valid note' });
+    const marked = { id, text: 'missing', offset: 0, color: 'teal' };
+    const old = paper({ blocks: [block({ notes: [missing, present], highlights: [marked] })],
+      viewNotes: [{ ...missing, scope: 'fullTranslation' }, { ...present, scope: 'summarySource' }] });
+    const entries = savedAnnotations(old);
+    const badBlock = entries.find(entry => entry.records.some(ref => ref.item === missing));
+    const badView = entries.find(entry => entry.records.some(ref => ref.item === old.viewNotes[0]));
+    const changed = markSavedAnnotationRecordsForReview(markSavedAnnotationRecordsForReview(old, badBlock.records), badView.records);
+    assert.ok(changed.blocks[0].notes[0].needsReview && changed.blocks[0].highlights[0].needsReview && changed.viewNotes[0].needsReview);
+    assert.strictEqual(changed.blocks[0].notes[1], present);
+    assert.strictEqual(changed.viewNotes[1], old.viewNotes[1]);
+    const replaced = structuredClone(old);
+    assert.strictEqual(markSavedAnnotationRecordsForReview(replaced, badBlock.records), replaced);
+  }
+});
+
 function freeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);

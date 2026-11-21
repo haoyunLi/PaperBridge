@@ -8,7 +8,7 @@ const modes = [
   { value: 'translation', label: 'Translation' }
 ];
 
-export default function ReaderToolbar({ displayMode, onDisplayMode, search, onSearch, searchRef, canUndo, onUndo }) {
+export default function ReaderToolbar({ displayMode, onDisplayMode, search, onSearch, searchRef, canUndo, onUndo, onUndoParagraph }) {
   return <div className="reader-top" role="region" aria-label="Reader controls">
     <div className="reader-display-modes" role="radiogroup" aria-label="Reading mode">
       {modes.map(mode => <label key={mode.value}>
@@ -31,6 +31,7 @@ export default function ReaderToolbar({ displayMode, onDisplayMode, search, onSe
       {search && <button className="icon-button clear-reader-search" aria-label="Clear search" title="Clear search"
         onClick={() => { onSearch(''); searchRef.current?.focus({ preventScroll: true }); }}><X size={14} /></button>}
     </div>
+    {onUndoParagraph && <button className="button outline" onClick={onUndoParagraph}>Undo paragraph edit</button>}
     <button className="icon-button undo-button" aria-label="Undo last change" title="Undo last change"
       disabled={!canUndo} onClick={onUndo}><Undo2 size={16} /></button>
   </div>;

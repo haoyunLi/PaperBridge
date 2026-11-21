@@ -44,7 +44,7 @@ async function run() {
     assert.equal(values.translateSelection, false);
     assert.equal(values.onboarding, true);
 
-    const available = { ready: true, hasPaper: true, hasSelection: true, canUndo: true, canPrimaryTask: true,
+    const available = { ready: true, hasPaper: true, hasSelection: true, canUndo: true, canUndoAnnotation: true, canUndoParagraph: true, canPrimaryTask: true,
       canGoBack: true, canGoForward: true, canSummarize: true, canFullTranslation: true, canLookupSelection: true, canExport: true, canUseReadingLayout: true };
     await update(available);
     values = await native();

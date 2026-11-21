@@ -100,6 +100,15 @@ async function run() {
     await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
     await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), 'one undo for one typing session');
 
+    await textarea.fill('New edit still focused when undo is invoked');
+    await waitFor(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('command:undoAnnotation').enabled), 'annotation menu enabled for unblurred note');
+    await app.evaluate(({ Menu, BrowserWindow }) => {
+      const item = Menu.getApplicationMenu().getMenuItemById('command:undoAnnotation');
+      item.click(item, BrowserWindow.getAllWindows()[0]);
+    });
+    await waitFor(async () => await textarea.inputValue() === exactBody, 'native annotation undo restores focused editor');
+    await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), 'native undo persists restored text');
+
     await selectText(page, '#block-1 .source-text', 'Beta control');
     await page.getByPlaceholder('What should you remember?').fill('selection switch flushes me');
     await selectText(page, '#block-1 .source-text', 'Alpha passage');

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('../electron/menu-state.cjs');
 
-const readyPaper = { ready: true, hasPaper: true, busy: false, hasSelection: true, canUndo: true, canPrimaryTask: true,
+const readyPaper = { ready: true, hasPaper: true, busy: false, hasSelection: true, canUndo: true, canUndoAnnotation: true, canUndoParagraph: true, canPrimaryTask: true,
   canGoBack: true, canGoForward: true, canSummarize: true, canFullTranslation: true, canLookupSelection: true, canExport: true, checkingUpdates: false, canUseReadingLayout: true };
 
 test('startup and empty-workspace menus cannot dispatch paper or selection actions', () => {
@@ -12,6 +12,14 @@ test('startup and empty-workspace menus cannot dispatch paper or selection actio
     assert.equal(empty[command], false, `${command} needs a paper`);
   }
   for (const command of ['openPdf', 'library', 'glossary', 'settings', 'setup', 'onboarding', 'checkUpdates']) assert.equal(empty[command], true);
+});
+
+test('native undo commands distinguish notes, paragraph edits and other workspace changes', () => {
+  const onlyBookmark = menuCommandState({ ...readyPaper, canUndoAnnotation: false, canUndoParagraph: false });
+  assert.deepEqual([onlyBookmark.undo, onlyBookmark.undoAnnotation, onlyBookmark.undoParagraph], [true, false, false]);
+  const busy = menuCommandState({ ...readyPaper, busy: true });
+  assert.equal(busy.undoAnnotation, true);
+  assert.equal(busy.undoParagraph, false);
 });
 
 test('busy work disables import/export and generation while keeping navigation and annotations available', () => {

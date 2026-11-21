@@ -283,8 +283,17 @@ async function run() {
     await page.locator('#block-4').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     await waitFor(() => readPaper().blocks[3].translation === '编辑后生成且应保留的新译文。', 'unrelated post-edit translation');
-    await page.locator('.reader-top .undo-button').click();
-    await waitFor(() => readPaper().blocks.length === 3, 'undo saved');
+    const unrelatedBookmark = page.locator('#block-1').getByRole('button', { name: 'Bookmark', exact: true });
+    await unrelatedBookmark.click();
+    await waitFor(() => readPaper().blocks[0].bookmark, 'post-edit bookmark');
+    const nativeUndoState = await app.evaluate(({ Menu }) => {
+      const menu = Menu.getApplicationMenu();
+      return ['undo', 'undoParagraph', 'undoAnnotation'].map(name => menu.getMenuItemById('command:' + name).enabled);
+    });
+    assert.deepEqual(nativeUndoState, [true, true, false]);
+    await page.getByRole('button', { name: 'Undo paragraph edit', exact: true }).click();
+    await waitFor(() => readPaper().blocks.length === 3, 'targeted paragraph undo saved');
+    assert.equal(readPaper().blocks[0].bookmark, true);
     assert.equal(readPaper().connectedStale, false);
     assert.equal(readPaper().connectedTranslation, paper.connectedTranslation);
     const restored = readPaper().blocks;

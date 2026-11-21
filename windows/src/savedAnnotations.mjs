@@ -96,10 +96,20 @@ export function savedAnnotations(paper) {
     : b.time - a.time || a.order - b.order);
 }
 
-// A stale UI ref cannot delete a replacement record that happens to reuse its ID.
 export function removeSavedAnnotationRecords(paper, refs) {
+  return changeSavedAnnotationRecords(paper, refs, (items, selected) => items.filter(item => !selected.has(item)));
+}
+
+export function markSavedAnnotationRecordsForReview(paper, refs) {
+  return changeSavedAnnotationRecords(paper, refs?.filter(ref => ref.item && !ref.item.needsReview),
+    (items, selected) => items.map(item => selected.has(item) ? { ...item, needsReview: true } : item));
+}
+
+// Stale navigation and deletion requests may only change the saved records
+// they were opened from. Historical workspaces can reuse or omit annotation IDs.
+function changeSavedAnnotationRecords(paper, refs, change) {
   if (!paper || !refs?.length) return paper;
-  const removals = new Map();
+  const selections = new Map();
   const slot = (location, blockId, field) => JSON.stringify([location, blockId ?? null, field]);
   for (const ref of refs) {
     if (!ref?.item || !['note', 'highlight'].includes(ref.category)) continue;
@@ -109,18 +119,18 @@ export function removeSavedAnnotationRecords(paper, refs) {
     else if (['view', 'pdf'].includes(ref.location)) field = `${ref.location}${ref.category === 'note' ? 'Notes' : 'Highlights'}`;
     else continue;
     const key = slot(ref.location, ref.blockId, field);
-    if (!removals.has(key)) removals.set(key, new Set());
-    removals.get(key).add(ref.item);
+    if (!selections.has(key)) selections.set(key, new Set());
+    selections.get(key).add(ref.item);
   }
   let result = paper;
-  function filtered(items, location, blockId, field) {
-    const remove = removals.get(slot(location, blockId, field));
-    return remove && items?.some(item => remove.has(item)) ? items.filter(item => !remove.has(item)) : items;
+  function updated(items, location, blockId, field) {
+    const selected = selections.get(slot(location, blockId, field));
+    return selected && items?.some(item => selected.has(item)) ? change(items, selected) : items;
   }
   const blocks = (paper.blocks || []).map(block => {
     let next = block;
     for (const field of ['notes', 'highlights', 'translationHighlights']) {
-      const items = filtered(block[field], 'block', block.id, field);
+      const items = updated(block[field], 'block', block.id, field);
       if (items !== block[field]) next = { ...next, [field]: items };
     }
     return next;
@@ -128,7 +138,7 @@ export function removeSavedAnnotationRecords(paper, refs) {
   if (blocks.some((block, index) => block !== paper.blocks[index])) result = { ...result, blocks };
   for (const location of ['view', 'pdf']) for (const category of ['Notes', 'Highlights']) {
     const field = `${location}${category}`;
-    const items = filtered(paper[field], location, undefined, field);
+    const items = updated(paper[field], location, undefined, field);
     if (items !== paper[field]) result = { ...result, [field]: items };
   }
   return result;

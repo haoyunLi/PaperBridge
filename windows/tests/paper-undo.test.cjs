@@ -5,6 +5,23 @@ const paperHelpers = import('../src/paper.mjs');
 
 function paper(blocks, extra = {}) { return { id: 'test-paper', blocks: blocks.map((block, index) => ({ id: index + 1, status: 'pending', ...block })), ...extra }; }
 
+test('annotation, bookmark and paragraph undo have independent capacity and respect remapped anchors', async () => {
+  const { createUndoEntry, recordUndoEntry, remainingUndoEntries, applyUndoEntry } = await undo;
+  const base = paper([{ text: 'A sentence.' }]);
+  const bookmark = createUndoEntry(base, paper([{ text: 'A sentence.', bookmark: true }]));
+  assert.equal(bookmark.type, 'bookmark');
+  const structure = createUndoEntry(base, paper([{ text: 'A.' }, { text: 'B.' }]));
+  const marks = Array.from({ length: 21 }, (_, index) => createUndoEntry(base, paper([{ text: 'A sentence.', notes: [{ id: String(index) }] }])));
+  let history = [structure, bookmark];
+  for (const mark of marks) history = recordUndoEntry(history, mark);
+  assert.deepEqual(history, [structure, bookmark, ...marks.slice(1)]);
+  assert.deepEqual(remainingUndoEntries(history, marks.at(-1)), history.slice(0, -1));
+  assert.deepEqual(remainingUndoEntries(history, structure), []);
+  const newer = { ...structure };
+  assert.deepEqual(recordUndoEntry(history, newer), [structure, newer]);
+  assert.deepEqual(applyUndoEntry({ ...base, blocks: [{ ...base.blocks[0], bookmark: true }] }, bookmark), base);
+});
+
 test('undo restores the freshness of a matching full draft and keeps newer results for review', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const source = paper([{ text: 'First. Second.' }], {

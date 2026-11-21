@@ -74,7 +74,21 @@ export function createUndoEntry(before, after, range) {
     return changes.length ? [{ id: after.blocks[index].id, source: sourceKey(block), changes }] : [];
   });
   const changes = changedFields(before, after, documentFields);
-  return blocks.length || changes.length ? { ...base, type: 'annotations', blocks, changes } : null;
+  if (!blocks.length && !changes.length) return null;
+  const bookmarkOnly = !changes.length && blocks.every(block => block.changes.every(change => change.field === 'bookmark'));
+  return { ...base, type: bookmarkOnly ? 'bookmark' : 'annotations', blocks, changes };
+}
+
+export function recordUndoEntry(history, entry) {
+  // A structural edit remaps paragraph IDs and annotation offsets.
+  const valid = entry.type === 'structure' ? history.filter(item => item.type === 'structure') : history;
+  const sameType = valid.filter(item => item.type === entry.type);
+  const oldest = sameType.length >= 20 ? sameType[0] : null;
+  return [...valid.filter(item => item !== oldest), entry];
+}
+
+export function remainingUndoEntries(history, undone) {
+  return history.filter(item => item !== undone && (undone.type !== 'structure' || item.type === 'structure'));
 }
 
 // Undo only fields that still have this action's value. A later change to a note
@@ -262,7 +276,7 @@ function restoreStructuralAnnotations(restored, current, after) {
 
 export function applyUndoEntry(current, entry) {
   if (!current || !entry || current.id !== entry.paperId || current.sourceMode !== entry.sourceMode) return current;
-  if (entry.type === 'annotations') {
+  if (entry.type === 'annotations' || entry.type === 'bookmark') {
     const byId = new Map(entry.blocks.map(block => [block.id, block]));
     return { ...undoFields(current, entry.changes), blocks: current.blocks.map(block => {
       const patch = byId.get(block.id);

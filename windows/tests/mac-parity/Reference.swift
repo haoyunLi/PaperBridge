@@ -85,7 +85,7 @@ private struct Fixtures: Decodable {
 
 @main
 struct Reference {
-    static func main() throws {
+    @MainActor static func main() throws {
         let fixtureURL = URL(fileURLWithPath: CommandLine.arguments[1])
         let fixtures = try JSONDecoder().decode(Fixtures.self, from: Data(contentsOf: fixtureURL))
         let sample = Fixtures.Paper(name: "built-in practice",
@@ -144,8 +144,9 @@ struct Reference {
         let publishedText = try PDFTextExtractor().extractText(from: publishedPDF)
         let paragraphs = TextProcessing.splitIntoParagraphs(TextProcessing.cleanExtractedText(publishedText))
         let body = TextProcessing.excludeReferenceSection(from: paragraphs).bodyParagraphs
+        let checksum = SHA256.hash(data: publishedPDF).map { String(format: "%02x", $0) }.joined()
         let published: [String: Any] = [
-            "sha256": SHA256.hash(data: publishedPDF).map { String(format: "%02x", $0) }.joined(),
+            "sha256": checksum, "annotationUndo": try nativeAnnotationUndo(paragraphs: body, checksum: checksum),
             "paragraphs": body,
             "summaryBatches": SummaryEvidence.sourceBatches(body),
             "paragraphChunks": [500, 1000, 1800].map { limit -> [String: Any] in

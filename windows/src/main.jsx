@@ -14,11 +14,11 @@ import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, tra
 import { anchorText, locateMineruPages, mineruPageMapVersion, readableMineruBlocks, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
-import { createUndoEntry, applyUndoEntry, remapPositionAfterStructureChange } from './paperUndo.mjs';
+import { createUndoEntry, applyUndoEntry, recordUndoEntry, remainingUndoEntries, remapPositionAfterStructureChange } from './paperUndo.mjs';
 import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
 import { normalizeOutputLanguage, commonOutputLanguage, migrateOutputLanguages } from './outputLanguages.mjs';
 import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
-import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords } from './savedAnnotations.mjs';
+import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords, markSavedAnnotationRecordsForReview } from './savedAnnotations.mjs';
 import { annotationCreationTime } from './annotationCreationTime.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
@@ -906,9 +906,9 @@ function LibraryLabelEditor({ item, onSave, onSaved, onCancel }) {
 function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, navigatePdf, removeRecords }) {
   const entries = useMemo(() => savedAnnotations(paper), [paper]);
   if (!entries.length) return null;
-  function navigateRecord(ref) {
-    if (ref.location === 'block') navigateBlockAnnotation(ref.blockId, ref.item, ref.kind, ref.category);
-    else if (ref.location === 'view') navigateView(ref.item);
+  function navigateRecord(ref, records) {
+    if (ref.location === 'block') navigateBlockAnnotation(ref.blockId, ref.item, ref.kind, ref.category, records);
+    else if (ref.location === 'view') navigateView(ref.item, records);
     else navigatePdf(ref.item);
   }
   function removalLabel(ref) {
@@ -925,7 +925,7 @@ function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, naviga
       const primary = entry.notes[0] || entry.highlights[0];
       const colors = [...new Set(entry.highlights.map(ref => displayHighlightColor(ref.item.color)).filter(Boolean))];
       return <div className="annotation-row" data-annotation-key={entry.key} key={entry.key}>
-        <button className="annotation-navigate" onClick={() => navigateRecord(primary)}>
+        <button className="annotation-navigate" onClick={() => navigateRecord(primary, entry.records)}>
           <b className="annotation-label">{entry.label}{entry.review ? ' · source changed, review needed' : ''}</b>
           {colors.length > 0 && <span className="annotation-colors">{colors.map(highlightColorName).join(', ')} highlight</span>}
           <span className="annotation-quote" title={entry.quote}>{entry.quote}</span>
@@ -1085,7 +1085,8 @@ function App() {
   const [edit, setEdit] = useState(null);
   const editRef = useRef(null);
   editRef.current = edit;
-  const [undo, setUndo] = useState([]);
+  const [undo, setUndoState] = useState([]);
+  const undoHistory = useRef(undo);
   const [readingHistoryState, setReadingHistoryState] = useState({ back: 0, forward: 0 });
   const pendingUndoSnapshot = useRef(null);
   const noteEditingIdentity = useRef('');
@@ -1124,14 +1125,33 @@ function App() {
   });
   if (!readingHistory.current) readingHistory.current = createReadingHistory(50);
 
+  function setUndo(entries) {
+    if (!entries.length) {
+      pendingUndoSnapshot.current = null;
+      noteEditingIdentity.current = '';
+    }
+    undoHistory.current = entries;
+    setUndoState(entries);
+  }
+  function saveUndoEntry(before, after, range) {
+    const entry = createUndoEntry(before, after, range);
+    if (entry) setUndo(recordUndoEntry(undoHistory.current, entry));
+  }
+  function finishNoteUndo() {
+    if (noteEditingIdentity.current && pendingUndoSnapshot.current) {
+      saveUndoEntry(pendingUndoSnapshot.current, paperRef.current);
+      pendingUndoSnapshot.current = null;
+    }
+    noteEditingIdentity.current = '';
+  }
   const commitPaper = (updater, { delay = 0, deferUndo = false, undoRange } = {}) => {
     const current = paperRef.current;
     const next = typeof updater === 'function' ? updater(current) : updater;
     if (next === current) return current;
     if (pendingUndoSnapshot.current && !deferUndo) {
-      const entry = createUndoEntry(pendingUndoSnapshot.current, next, undoRange);
+      saveUndoEntry(pendingUndoSnapshot.current, next, undoRange);
       pendingUndoSnapshot.current = null;
-      if (entry) setUndo(previous => [...previous, entry].slice(-20));
+      noteEditingIdentity.current = '';
     }
     paperRef.current = next; setPaper(next);
     if (next) saveQueue.current.schedule(next, delay);
@@ -1144,12 +1164,7 @@ function App() {
     }, { deferUndo: true });
   }
   async function finishNoteEditing() {
-    if (noteEditingIdentity.current && pendingUndoSnapshot.current) {
-      const entry = createUndoEntry(pendingUndoSnapshot.current, paperRef.current);
-      pendingUndoSnapshot.current = null;
-      if (entry) setUndo(previous => [...previous, entry].slice(-20));
-    }
-    noteEditingIdentity.current = '';
+    finishNoteUndo();
     return saveQueue.current.flush();
   }
   async function retryPaperSave() {
@@ -1493,12 +1508,16 @@ function App() {
       if (origin !== null) scheduleReaderSearchRestore(origin);
     }
   };
-  const rememberUndo = () => { pendingUndoSnapshot.current = paperRef.current; };
-  function undoLastChange() {
-    const entry = undo.at(-1);
+  function rememberUndo() {
+    finishNoteUndo();
+    pendingUndoSnapshot.current = paperRef.current;
+  }
+  function undoLastChange(type) {
+    finishNoteUndo();
+    const history = undoHistory.current;
+    const entry = type ? history.findLast(item => item.type === type) : history.at(-1);
     if (!entry) return;
     if (entry.type === 'structure' && taskRef.current) { setError('Finish or stop the current task before undoing a source edit.'); return; }
-    noteEditingIdentity.current = '';
     const restored = commitPaper(current => applyUndoEntry(current, entry));
     if (entry.type === 'structure') {
       resetStructureNavigation();
@@ -1506,7 +1525,7 @@ function App() {
       setPageNumber(restoredPage);
       restoreMainScroll({ clearSearch: true, page: restoredPage });
     } else setNoteDraft(findSelectionNote(restored, selectionRef.current)?.body || '');
-    setUndo(previous => previous.slice(0, -1));
+    setUndo(remainingUndoEntries(history, entry));
   }
   const restoreMainScroll = ({ clearSearch = false, page = pageNumber } = {}) => {
     const generation = readingRestoration.current;
@@ -1839,7 +1858,7 @@ function App() {
     const { text, scope } = viewNavigation;
     const offset = markdownAnnotationOffset(rendered, viewNavigation, source);
     const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, text.length, true);
-    if (!range) { markViewAnchorForReview(viewNavigation); setViewNavigation(null); return; }
+    if (!range) { markViewAnchorForReview(viewNavigation.records); setViewNavigation(null); return; }
     const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
     const generation = readingRestoration.current;
     afterReadingLayout(host, () => {
@@ -1877,7 +1896,9 @@ function App() {
     else if (name === 'translateSelection') { if (selection && !busy) runSelection('translate'); }
     else if (name === 'explainSelection') { if (selection && !busy) runSelection('explain'); }
     else if (name === 'highlightSelection') { if (selection) addHighlight('amber'); }
-    else if (name === 'undo') { if (paper && undo.length) undoLastChange(); }
+    else if (name === 'undo') { if (paper) undoLastChange(); }
+    else if (name === 'undoAnnotation') { if (paper) undoLastChange('annotations'); }
+    else if (name === 'undoParagraph') { if (paper && !busy) undoLastChange('structure'); }
     else if (name === 'readingBack') goBackInReading();
     else if (name === 'readingForward') goForwardInReading();
     else if (name === 'settings') openSettings();
@@ -1953,9 +1974,7 @@ function App() {
           setBlockNavigation(null);
           return;
         }
-        commitPaper(current => ({ ...current, blocks: current.blocks.map(item => item.id !== request.blockId ? item : request.recordType === 'note'
-          ? { ...item, notes: (item.notes || []).map(note => note.id === request.id ? { ...note, needsReview: true } : note) }
-          : { ...item, [request.kind === 'translation' ? 'translationHighlights' : 'highlights']: (item[request.kind === 'translation' ? 'translationHighlights' : 'highlights'] || []).map(highlight => (request.id ? highlight.id === request.id : highlight.text === request.text && highlight.offset === request.offset && highlight.color === request.color && blockAnnotationScope(highlight) === request.scope) ? { ...highlight, needsReview: true } : highlight) }) }));
+        commitPaper(current => markSavedAnnotationRecordsForReview(current, request.records));
         setError(`The saved ${request.scope === 'paper' ? 'Paper' : 'Reader'} text no longer matches this block. The annotation was kept for review.`);
         setBlockNavigation(null);
         return;
@@ -2874,8 +2893,8 @@ function App() {
     if (next === currentPaper) return;
     const identity = noteSelectionIdentity(currentPaper.id, currentSelection);
     if (noteEditingIdentity.current !== identity) {
-      noteEditingIdentity.current = identity;
       rememberUndo();
+      noteEditingIdentity.current = identity;
     }
     commitPaper(next, { delay: 350, deferUndo: true });
   }
@@ -2959,14 +2978,12 @@ function App() {
     commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
       position: { ...current.position, tab: 'Reader', block: id, displayMode: mode, readerSearchOrigin: undefined } }));
   }
-  function navigateBlockAnnotation(blockId, item, kind, recordType) {
+  function navigateBlockAnnotation(blockId, item, kind, recordType, records) {
     const block = paperRef.current?.blocks.find(entry => entry.id === blockId);
     const scope = blockAnnotationScope(item);
     const targetTab = scope === 'paper' ? 'Paper' : 'Reader';
     if (item.needsReview || !block || !validBlockAnchor(block, item, kind)) {
-      if (!item.needsReview && block) commitPaper(current => ({ ...current, blocks: current.blocks.map(entry => entry.id !== blockId ? entry : recordType === 'note'
-        ? { ...entry, notes: (entry.notes || []).map(note => note.id === item.id ? { ...note, needsReview: true } : note) }
-        : { ...entry, [kind === 'translation' ? 'translationHighlights' : 'highlights']: (entry[kind === 'translation' ? 'translationHighlights' : 'highlights'] || []).map(highlight => highlight === item ? { ...highlight, needsReview: true } : highlight) }) }));
+      if (block) commitPaper(current => markSavedAnnotationRecordsForReview(current, records));
       setError(`The saved ${scope === 'paper' ? 'Paper' : 'Reader'} text no longer matches this block. The annotation was kept for review.`);
       return;
     }
@@ -2978,20 +2995,17 @@ function App() {
     if (tab !== targetTab || displayMode !== mode || search) setSelection(null);
     if (recordType !== 'evidence') setInspector(true);
     setSearch(''); searchOrigin.current = null; setDisplayMode(mode); setTab(targetTab);
-    setBlockNavigation({ ...item, scope, blockId, kind, recordType, requestId: crypto.randomUUID() });
+    setBlockNavigation({ ...item, scope, blockId, kind, recordType, records, requestId: crypto.randomUUID() });
     commitPaper(current => ({ ...current, ...(scope === 'reader' && { selectedParagraphID: blockId }),
       position: { ...current.position, tab: targetTab, ...(scope === 'reader' && { block: blockId }), displayMode: mode, readerSearchOrigin: undefined } }));
   }
-  function markViewAnchorForReview(item) {
-    if (!item.needsReview) commitPaper(current => ({ ...current,
-        viewNotes: (current.viewNotes || []).map(note => note.id === item.id ? { ...note, needsReview: true } : note),
-        viewHighlights: (current.viewHighlights || []).map(highlight => highlight.id === item.id ? { ...highlight, needsReview: true } : highlight)
-    }));
+  function markViewAnchorForReview(records) {
+    commitPaper(current => markSavedAnnotationRecordsForReview(current, records));
     setError('The saved Markdown text no longer matches this view. The annotation was kept for review.');
   }
-  function navigateView(item) {
+  function navigateView(item, records) {
     if (!validViewAnchor(paperRef.current, item)) {
-      markViewAnchorForReview(item);
+      markViewAnchorForReview(records);
       return;
     }
     const targetTab = markdownViewTab(item.scope);
@@ -3006,7 +3020,7 @@ function App() {
     if (article) changeDisplayMode(item.displayMode);
     setInspector(true);
     setTab(targetTab);
-    setViewNavigation({ ...item, requestId: crypto.randomUUID() });
+    setViewNavigation({ ...item, records, requestId: crypto.randomUUID() });
   }
   function navigatePdf(item) {
     if (item.needsReview) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
@@ -3345,13 +3359,17 @@ function App() {
     else if (tab === 'Full Translation') fullTranslation();
     else translateBlocks(unfinishedTranslationIds);
   }
-  const canUndo = undo.length > 0 && (!menuBusy || undo.at(-1)?.type !== 'structure');
+  const pendingNoteUndo = Boolean(noteEditingIdentity.current && pendingUndoSnapshot.current);
+  const canUndoAnnotation = pendingNoteUndo || undo.some(entry => entry.type === 'annotations');
+  const canUndoParagraph = !menuBusy && undo.some(entry => entry.type === 'structure');
+  const latestType = pendingNoteUndo ? 'annotations' : undo.at(-1)?.type;
+  const canUndo = Boolean(latestType && (latestType !== 'structure' || !menuBusy));
   useEffect(() => {
-    api.updateMenuState({ ready: menuReady, hasPaper: Boolean(paper), busy: menuBusy, hasSelection: Boolean(selection), canUndo, canUseReadingLayout: readingLayoutAvailable,
+    api.updateMenuState({ ready: menuReady, hasPaper: Boolean(paper), busy: menuBusy, hasSelection: Boolean(selection), canUndo, canUndoAnnotation, canUndoParagraph, canUseReadingLayout: readingLayoutAvailable,
       canGoBack: readingHistoryState.back > 0, canGoForward: readingHistoryState.forward > 0,
       canPrimaryTask: Boolean(canPrimaryTask), canSummarize, canFullTranslation: Boolean(fullHasSource),
       canLookupSelection: Boolean(selection) && !menuBusy, canExport, checkingUpdates }).catch(cause => setError(cause.message));
-  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, Boolean(fullHasSource), canExport, checkingUpdates]);
+  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, canUndoAnnotation, canUndoParagraph, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, Boolean(fullHasSource), canExport, checkingUpdates]);
 
   if (!ready || !settings) return error
     ? <main className="loading"><section role="alert"><h1>Could not open your workspace</h1><p>{error}</p>
@@ -3442,7 +3460,8 @@ function App() {
         </div>}
       </div>}
       {paper && !pendingImport && tab === 'Reader' && <ReaderToolbar displayMode={displayMode} onDisplayMode={changeDisplayMode}
-        search={search} onSearch={changeSearch} searchRef={searchRef} canUndo={canUndo} onUndo={undoLastChange} />}
+        search={search} onSearch={changeSearch} searchRef={searchRef} canUndo={canUndo} onUndo={() => undoLastChange()}
+        onUndoParagraph={canUndoParagraph && latestType !== 'structure' ? () => undoLastChange('structure') : null} />}
       <div className={`main-scroll${paper && !pendingImport ? tab === 'Reader' ? ' reader-scroll' : tab === 'Summary' ? ' summary-scroll' : '' : ''}`} ref={mainScrollRef} data-reading-paper-id={paper?.id || ''}
         aria-busy={Boolean(paper && (readingLayoutState.paperId !== paper.id || readingLayoutState.busy))}
         onWheelCapture={handleMainScrollIntent} onPointerDownCapture={handleMainScrollIntent}
@@ -3539,7 +3558,7 @@ function App() {
         </>}
       </div>
     </main>
-    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndo} onClick={undoLastChange}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
+    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !termDraft.trim()} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data' })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>

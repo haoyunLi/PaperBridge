@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, renameSync, rmSync
 import path from 'node:path';
 import os from 'node:os';
 import { createStore } from '../../electron/storage.cjs';
+import { applyUndoEntry, createUndoEntry, recordUndoEntry } from '../../src/paperUndo.mjs';
 import { libraryLabel } from '../../electron/library-metadata.mjs';
 import { writeBundle } from '../../electron/bundle.cjs';
 import { claimsMarkdown, parseSummaryClaims, summarySourceBlocks, summarySourceBatches, referenceBlockIds, sectionRanges, overviewSectionIds, qualityIssues, mergeBlocks, reflowBlock } from '../../src/paper.mjs';
@@ -161,6 +162,31 @@ for (const [index, { name, paragraphs }] of fixtures.connectedBatches.entries())
   assert.deepEqual(connectedSources(text), reference.connectedBatches[index], name);
 }
 const published = reference.publishedPaper;
+{
+  const blocks = published.paragraphs.map((text, index) => ({ id: index + 1, text, notes: [] }));
+  const note = { id: 'note', kind: 'source', text: blocks[0].text.slice(0, 12), offset: 0, body: 'Check this passage' };
+  const before = { id: published.sha256, blocks: [{ ...blocks[0], notes: [note] }, ...blocks.slice(1)] };
+  const deleted = { ...before, blocks };
+  const bookmarked = { ...deleted, blocks: blocks.map((block, i) => i === 1 ? { ...block, bookmark: true } : block) };
+  const history = [createUndoEntry(before, deleted), createUndoEntry(deleted, bookmarked)];
+  const restored = applyUndoEntry(bookmarked, history.findLast(entry => entry.type === 'annotations'));
+  const index = blocks.findIndex((block, i) => i >= 2 && [...block.text].length > 150 && block.text.includes('. '));
+  assert.ok(index >= 2);
+  const edited = restored.blocks[index];
+  const cut = edited.text.indexOf('. ') + 1;
+  const pieces = [edited.text.slice(0, cut), edited.text.slice(cut).trim()].map(text => ({ ...edited, text }));
+  const split = { ...restored, blocks: restored.blocks.toSpliced(index, 1, ...pieces).map((block, i) => ({ ...block, id: i + 1 })) };
+  const structure = createUndoEntry(restored, split);
+  const afterSplit = recordUndoEntry(history, structure);
+  const laterDeletion = { ...split, blocks: [{ ...split.blocks[0], notes: [] }, ...split.blocks.slice(1)] };
+  const result = applyUndoEntry(laterDeletion, structure);
+  assert.deepEqual({
+    noteRestored: restored.blocks[0].notes[0]?.body === note.body, bookmarkKept: restored.blocks[1].bookmark,
+    splitCount: split.blocks.length, annotationUndoAfterSplit: afterSplit.some(entry => entry.type === 'annotations'),
+    restoredSources: result.blocks.every((block, i) => block.text === published.paragraphs[i]) && result.blocks.length === published.paragraphs.length,
+    laterDeletionKept: !result.blocks[0].notes.length, reopenedBookmark: result.blocks[1].bookmark
+  }, published.annotationUndo);
+}
 const publishedBytes = readFileSync(new URL('./emcee-v3.pdf', import.meta.url));
 assert.equal(createHash('sha256').update(publishedBytes).digest('hex'), published.sha256);
 assert.ok(published.paragraphs.join(' ').includes('emcee') && published.paragraphs.length > 5);

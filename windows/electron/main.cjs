@@ -484,11 +484,13 @@ function buildMenu() {
       { type: 'separator' },
       action('Show Overview', 'summary', 'CmdOrCtrl+1'),
       action('Find in Paper', 'find', 'CmdOrCtrl+F'),
+      action('Undo Paragraph Edit', 'undoParagraph'),
       action('Run Current Workspace Task', 'primaryTask', 'CmdOrCtrl+Return'),
       action('Generate Summary', 'generateSummary'),
       action('Generate Full Translation', 'generateFullTranslation')
     ] },
     { label: 'Selection', submenu: [
+      action('Undo Highlight or Note Change', 'undoAnnotation'),
       action('Undo Last Workspace Change', 'undo'),
       { type: 'separator' },
       action('Translate Selection', 'translateSelection', 'CmdOrCtrl+Shift+T'),
