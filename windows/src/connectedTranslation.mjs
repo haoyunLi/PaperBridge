@@ -1,5 +1,5 @@
 import { referenceBlockIds } from './paper.mjs';
-import { protectMarkdown, restoreMarkdown } from './prompts.mjs';
+import { isLikelyOverexpandedSelection, protectMarkdown, restoreMarkdown } from './prompts.mjs';
 
 const maxExcerptChars = 4800;
 export const connectedBatchVersion = 1;
@@ -117,13 +117,24 @@ export async function translateAroundMarkup(excerpt, translate) {
   for (let i = 0; i < spans.length; i += 2) {
     const selection = spans[i].trim();
     if (!/\p{L}/u.test(selection)) continue;
-    const translated = (await translate(selection)).trim();
+    const heading = selection.match(/^(#{1,6}[ \t]+)([^\n]+)$/);
+    const translated = (await translate(heading ? heading[2] : selection)).trim();
     if (!translated || protectMarkdown(translated).tokens.length) throw new Error('The local model could not translate the text surrounding the protected markup.');
-    spans[i] = spans[i].replace(selection, () => translated);
+    spans[i] = spans[i].replace(selection, () => (heading?.[1] || '') + translated);
   }
   return spans.join('');
 }
 
-export function restoreConnectedExcerpt(answer, tokens) {
+export function restoreConnectedExcerpt(answer, tokens, source = '') {
+  if (/^#{1,6}[ \t]+[^\n]+$/.test(source) && isLikelyOverexpandedSelection(answer, source)) {
+    throw Object.assign(new Error('The model expanded a section heading into prose. Retry this batch.'),
+      { code: 'PROTECTED_MARKDOWN_CHANGED' });
+  }
+  // All protected source markup reached the model as a placeholder. A new
+  // literal equation, code fence, or link in its answer has no source anchor.
+  if (protectMarkdown(answer).tokens.some(([, value]) => !/^__PAPERBRIDGE_TOKEN_\d+__$/.test(value))) {
+    throw Object.assign(new Error('The model added markup that was absent from this excerpt. Retry this batch.'),
+      { code: 'PROTECTED_MARKDOWN_CHANGED' });
+  }
   return restoreMarkdown(answer, tokens, 'batch');
 }

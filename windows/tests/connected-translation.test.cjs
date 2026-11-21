@@ -56,6 +56,16 @@ test('last-resort local translation takes protected bytes and split technical wo
   });
   assert.deepEqual(seen, ['Learn', 'with', 'Compare', 'and']);
   assert.equal(translated, '学习 pre-so<u>ftmax</u> 使用 $x_1$.\r\n\r\n比较 `$&` 与 $$y = 2$$.');
+  const { restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
+  const heading = '## 3.4 Embeddings and Softmax';
+  assert.throws(() => restoreConnectedExcerpt('An unrequested explanation of softmax. '.repeat(4), [], heading),
+    { code: 'PROTECTED_MARKDOWN_CHANGED' });
+  assert.throws(() => restoreConnectedExcerpt('## 嵌入\n\n```\nP(i) = exp(x_i)\n```', []),
+    { code: 'PROTECTED_MARKDOWN_CHANGED' });
+  assert.equal(await translateAroundMarkup(protectMarkdown(heading), async title => {
+    assert.equal(title, '3.4 Embeddings and Softmax');
+    return '3.4 嵌入与 Softmax';
+  }), '## 3.4 嵌入与 Softmax');
   for (const answer of ['', '__PAPERBRIDGE_TOKEN_1__', '<img src=x>']) {
     await assert.rejects(translateAroundMarkup(protectMarkdown('Compare $x$.'), async () => answer), /could not translate/);
   }

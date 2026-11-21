@@ -2505,9 +2505,9 @@ function App() {
             const answer = await generate(translationModel, prompt, instructions, token);
             let translated;
             try {
-              translated = restoreConnectedExcerpt(answer, excerpt.tokens);
+              translated = restoreConnectedExcerpt(answer, excerpt.tokens, part.source);
             } catch (error) {
-              if (!localRetry || error.code !== 'PROTECTED_MARKDOWN_CHANGED' || !excerpt.tokens.length) throw error;
+              if (!localRetry || error.code !== 'PROTECTED_MARKDOWN_CHANGED') throw error;
               translated = await translateAroundMarkup(excerpt, async selection => {
                 const prompt = strictSelectionTranslationPrompt(selection, config.sourceLanguage, config.targetLanguage,
                   matchingTerms(selection, config.sourceLanguage, config.targetLanguage));
