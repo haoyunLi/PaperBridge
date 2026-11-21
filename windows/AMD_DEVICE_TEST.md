@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 0.2.56 表后正文与跨单元格笔记（2026-11-21）
+
+在 RX 7800 XT 上用 0.2.56 的公开便携版导入未修改的四页 *Tabbed* 论文。MinerU 4.1.7 在 274 字符的临时路径配置下返回 54 个块，表格和两张图可见。在 Reader 和 Paper 双语预览中，分别保存 pandas 行两个不同列上的「+」，再保存 frictionless 行横跨三个单元格的笔记。重启后六次回跳均选中原行列。[期刊原文](https://joss.theoj.org/papers/10.21105/joss.08964)
+
+另用这篇论文的 Markdown 制作表格格式变体。本机 TranslateGemma 对新增表后句子的输出为「两位读者在比较后都成功恢复了校准。」原文、译文与双语 Markdown 均保留了表格源码。对未修改论文的第 35 块，译文保留了函数名，默认设置仍会把包名 `comma` 译成「逗号」。[公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44923536313/job/136907722399)
+
 ## 0.2.55 在 RX 7800 XT 上读取图表和翻译函数名（2026-11-21）
 
 两次从 GitHub 的未签名便携版导入 *Tabbed* 原始 PDF，使用 MinerU 4.1.7 的 DirectML 和本机 Ollama 的 `translategemma:4b`。在一次测试中把临时目录设为 274 个字符。结构化 Reader 显示了比较表、514 × 401 和 530 × 418 像素的两张图。搜索 `read_csv` 命中第 35 和 38 块。翻译第 35 块后，重启仍能看到图表和保留该函数名的译文，原始 PDF 校验值相同。[测试用论文](https://joss.theoj.org/papers/10.21105/joss.08964)
