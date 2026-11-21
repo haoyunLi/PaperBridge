@@ -17,6 +17,7 @@ on:
       - 'PaperBridge/Services/PaperReadingAnalysis.swift'
       - 'PaperBridge/Services/ReadingGuideBuilder.swift'
       - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
+      - 'PaperBridge/Services/MarkdownBundleExporter.swift'
   pull_request:
     paths:
       - 'windows/**'
@@ -27,6 +28,7 @@ on:
       - 'PaperBridge/Services/PaperReadingAnalysis.swift'
       - 'PaperBridge/Services/ReadingGuideBuilder.swift'
       - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
+      - 'PaperBridge/Services/MarkdownBundleExporter.swift'
       - 'PaperBridge/Services/PDFTextExtractor.swift'
 
 jobs:
@@ -41,7 +43,8 @@ jobs:
           xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift \
             PaperBridge/Services/PaperReadingAnalysis.swift PaperBridge/Services/ReadingGuideBuilder.swift \
             PaperBridge/Services/AcademicMarkdownProcessor.swift PaperBridge/Services/SummaryEvidence.swift \
-            PaperBridge/Services/PDFTextExtractor.swift windows/tests/mac-parity/Reference.swift \
+            PaperBridge/Services/PDFTextExtractor.swift PaperBridge/Services/MarkdownBundleExporter.swift \
+            windows/tests/mac-parity/BundleReference.swift windows/tests/mac-parity/Reference.swift \
             -o "$RUNNER_TEMP/paperbridge-reference"
           "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
       - uses: actions/upload-artifact@v4
