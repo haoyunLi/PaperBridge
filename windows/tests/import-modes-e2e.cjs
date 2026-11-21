@@ -35,7 +35,22 @@ async function runScenario(dir, mode, failure) {
     await openWorkspaceView(page, 'Reader');
     await page.locator('#block-1 button[title^="Bookmark"]').click();
     const previous = await page.locator('.main-scroll').getAttribute('data-reading-paper-id');
-    await savedPaper(page, previous, paper => paper.blocks[0].bookmark);
+    const source = page.locator('#block-1 .source-text');
+    await source.evaluate(block => {
+      const text = document.createTreeWalker(block, NodeFilter.SHOW_TEXT).nextNode();
+      const range = document.createRange();
+      range.setStart(text, 0);
+      range.setEnd(text, Math.min(8, text.length));
+      getSelection().removeAllRanges();
+      getSelection().addRange(range);
+      block.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    const more = page.getByRole('button', { name: 'Notes & More', exact: true });
+    if (await more.isVisible()) await more.click();
+    await page.locator('.inspector textarea').fill('Keep this passage during import.');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    const before = await savedPaper(page, previous, paper => paper.blocks[0].bookmark &&
+      paper.blocks[0].notes.some(item => item.body === 'Keep this passage during import.'));
     await app.evaluate(({ ipcMain }, failure) => {
       globalThis.parserCalls = 0;
       ipcMain.removeHandler('mineru:status');
@@ -64,6 +79,8 @@ async function runScenario(dir, mode, failure) {
       paper: await window.paperBridge.loadPaper(displayed),
       keptBookmark: (await window.paperBridge.loadPaper(previous)).blocks[0].bookmark
     }), { displayed, previous });
+    const after = await page.evaluate(id => window.paperBridge.loadPaper(id), previous);
+    assert.deepEqual(after.blocks, before.blocks, 'Original paper, note anchors and bookmark survive the import');
     const keptPrevious = displayed === previous;
     const error = await page.locator('.notice.error').allTextContents();
     const originalAvailable = !keptPrevious && pdf.equals(Buffer.from(await page.evaluate(async id =>

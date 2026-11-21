@@ -37,6 +37,12 @@ func nativeImportModes(pdf: URL) throws -> [String: [String: Bool]] {
         let model = PaperReaderViewModel(workspaceStore: store, minerUService: MinerUService(workspaceRoot: dir.appendingPathComponent("output")))
         model.loadSamplePaper()
         guard let previous = model.loadedPaper else { throw CocoaError(.fileReadCorruptFile) }
+        let title = previous.paragraphs[0]
+        let quote = String(title.prefix(8))
+        model.captureTextSelection(ReaderTextSelection(paragraphID: 1, side: .original, text: quote, context: title,
+                                                       rangeLocation: 0, rangeLength: (quote as NSString).length))
+        model.saveSelectionNote("Keep this passage during import.")
+        guard let note = model.annotations.first else { throw CocoaError(.fileReadCorruptFile) }
         model.toggleBookmark(for: 1)
         model.settings.pdfExtractionMode = mode
         model.settings.minerUExecutablePath = command.path
@@ -45,11 +51,15 @@ func nativeImportModes(pdf: URL) throws -> [String: [String: Bool]] {
         while model.isBusy && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         guard !model.isBusy, let paper = model.loadedPaper else { throw CocoaError(.fileReadUnknown) }
         store.flush()
+        let saved = store.loadWorkspace(checksum: previous.checksum)
+        guard saved?.annotations.contains(where: { $0.id == note.id && $0.quote == note.quote && $0.note == note.note }) == true else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
         let kept = paper.checksum == previous.checksum
         let archived = try paper.originalPDFURL.map { try Data(contentsOf: $0) }
         outcomes[name] = [
             "parserCalled": files.fileExists(atPath: dir.appendingPathComponent("invoked").path),
-            "keptPrevious": kept, "keptBookmark": store.loadWorkspace(checksum: previous.checksum)?.bookmarkedParagraphIDs.contains(1) == true,
+            "keptPrevious": kept, "keptBookmark": saved?.bookmarkedParagraphIDs.contains(1) == true,
             "structured": paper.extractionEngine == .minerU,
             "readPdfText": !kept && paper.extractionEngine == .pdfKit && !paper.paragraphs.isEmpty,
             "reportedError": model.errorMessage?.isEmpty == false,
