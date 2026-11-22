@@ -1047,11 +1047,15 @@ function App() {
   const [appVersion, setAppVersion] = useState('');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateFile, setUpdateFile] = useState(null);
+  const [openingInstaller, setOpeningInstaller] = useState(false);
+  const [openedInstallerTag, setOpenedInstallerTag] = useState('');
   const filePhase = updateInfo && updateInfo.tag === updateFile?.tag ? updateFile.phase : 'idle';
   const fileMessage = filePhase === 'downloading' ? `Downloading Windows update · ${updateFile.percent}%`
+    : filePhase === 'ready' && openedInstallerTag === updateInfo?.tag ? 'Installer opened. Follow the Windows setup wizard to finish the update.'
     : filePhase === 'ready' ? 'Download complete. SHA-256 verified.'
     : filePhase === 'failed' ? updateFile.message
     : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
+  const installAvailable = filePhase === 'ready' && updateInfo?.canOpenInstaller;
   const updateButtonLabel = filePhase === 'ready' ? 'Show downloaded update' : updateInfo?.downloadLabel;
   const [deferredUpdateTag, setDeferredUpdateTag] = useState('');
   const showUpdateBanner = updateInfo?.status === 'available' && updateInfo.tag !== deferredUpdateTag;
@@ -1552,6 +1556,17 @@ function App() {
       else await api.downloadUpdate(updateInfo.tag);
     }
     catch (cause) { setError(cause.message); }
+  }
+  async function openUpdateInstaller() {
+    if (!installAvailable || busy || openingInstaller) return;
+    setOpeningInstaller(true);
+    try {
+      await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
+      if (!await finishNoteEditing()) throw new Error('Save the latest paper changes before opening the installer.');
+      await api.openUpdateInstaller(updateInfo.tag);
+      setOpenedInstallerTag(updateInfo.tag);
+    } catch (cause) { setError(cause.message); }
+    finally { setOpeningInstaller(false); }
   }
   async function openUpdateRelease() {
     if (!updateInfo?.tag) return;
@@ -3567,7 +3582,8 @@ function App() {
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {showUpdateBanner && <div className="update-banner" role="status">
           <div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong>{fileMessage && <div role="status">{fileMessage}</div>}</div>
-          {updateButtonLabel && filePhase !== 'downloading' && <button className="button blue" onClick={downloadUpdate}>{updateButtonLabel}</button>}
+          {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={openUpdateInstaller}>Open installer</button>}
+          {updateButtonLabel && filePhase !== 'downloading' && <button className={installAvailable ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
           <button className="button outline" onClick={openUpdateRelease}>View release</button>
           <button className="button ghost" onClick={() => setDeferredUpdateTag(updateInfo.tag)}>Later</button>
         </div>}
@@ -3693,7 +3709,7 @@ function App() {
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
-        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, filePhase, fileMessage, onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, filePhase, fileMessage, onOpenInstaller: installAvailable ? openUpdateInstaller : null, installerBusy: Boolean(busy || openingInstaller), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}

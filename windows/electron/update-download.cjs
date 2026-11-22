@@ -84,16 +84,24 @@ class UpdateDownload {
     this.controller = null;
     this.active = null;
     this.download = null;
+    this.manual = false;
     this.publish({ phase: 'idle' });
   }
 
-  prepare(download) {
+  matches(download) {
     const previous = this.download;
-    if (previous?.url === download.url && previous.file?.sha256 === download.file?.sha256 && previous.file?.size === download.file?.size) {
+    return Boolean(previous && download && previous.url === download.url &&
+      previous.file?.sha256 === download.file?.sha256 && previous.file?.size === download.file?.size);
+  }
+
+  prepare(download, { manual = false } = {}) {
+    if (this.matches(download)) {
+      if (manual) this.manual = true;
       if (this.active) return this.active;
       if (this.state.phase === 'ready') return Promise.resolve();
     }
     this.cancel();
+    this.manual = manual;
     this.download = download;
     if (!download.file) {
       this.publish({ tag: download.tag, phase: 'unverified' });
@@ -136,7 +144,7 @@ class UpdateDownload {
     }
   }
 
-  async show(tag) {
+  async verifiedFile(tag) {
     const download = this.download;
     if (this.state.phase !== 'ready' || download?.tag !== tag) throw new Error('No verified download is ready for this release.');
     const filename = path.join(this.directory, download.file.name);
@@ -145,7 +153,22 @@ class UpdateDownload {
       throw new Error('The saved update no longer matches the release.');
     }
     if (this.download !== download) throw new Error('The available update changed.');
-    this.reveal(filename);
+    return filename;
+  }
+
+  async show(tag) {
+    this.reveal(await this.verifiedFile(tag));
+  }
+
+  async openInstaller(tag, openPath) {
+    const version = /^windows-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1];
+    if (!version || this.download?.file?.name !== `PaperBridge-Windows-${version}-x64-Setup.exe`) throw new Error('A verified Setup update is required.');
+    if (this.openingInstaller) return this.openingInstaller;
+    this.openingInstaller = this.verifiedFile(tag).then(async filename => {
+      const message = await openPath(filename);
+      if (message) throw new Error(message);
+    }).finally(() => { this.openingInstaller = null; });
+    return this.openingInstaller;
   }
 
   async clean(currentVersion, runningPortable) {

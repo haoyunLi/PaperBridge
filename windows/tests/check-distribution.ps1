@@ -40,6 +40,8 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Installed reader failed the Markdown heading navigation and position restore checks' }
             node "$PSScriptRoot/translation-range-actions-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the translation range comparison' }
+            node "$PSScriptRoot/update-restart-e2e.cjs"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed update controls did not hand the verified Setup edition to Windows correctly' }
             node "$PSScriptRoot/structured-draft-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed reader did not restore structured translation formatting' }
             node "$PSScriptRoot/connected-translation-e2e.cjs"

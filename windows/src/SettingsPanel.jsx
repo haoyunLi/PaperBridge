@@ -141,7 +141,8 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <label className="settings-checkbox"><input type="checkbox" disabled={settings.autoCheckUpdates === false} checked={settings.autoDownloadUpdates === true} onChange={event => onSettings({ autoDownloadUpdates: event.target.checked })} />Download new Windows releases in the background</label>
         <div className="row">
           <button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
-          {updates.downloadLabel && <button className="button blue" onClick={updates.onDownload}>{updates.downloadLabel}</button>}
+          {updates.onOpenInstaller && <button className="button blue" disabled={updates.installerBusy} onClick={updates.onOpenInstaller}>Open installer</button>}
+          {updates.downloadLabel && updates.filePhase !== 'downloading' && <button className={updates.onOpenInstaller ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
           {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
         </div>
         {updates.status && <p role="status">{updates.status}</p>}

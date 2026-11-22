@@ -7,16 +7,15 @@ const { defaults } = require('../electron/storage.cjs');
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
-  const workspace = path.join(artifacts, 'update-restart-workspace');
-  if (!workspace.startsWith(artifacts + path.sep)) throw new Error('Unexpected update restart test workspace');
   fs.mkdirSync(artifacts, { recursive: true });
-  fs.rmSync(workspace, { recursive: true, force: true });
-  fs.mkdirSync(workspace, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'update-restart-'));
   const settingsFile = path.join(workspace, 'settings.json');
   const cacheFile = path.join(workspace, 'updates.json');
   fs.writeFileSync(settingsFile, JSON.stringify({ ...defaults, autoCheckUpdates: false,
     onboardingCompletedVersion: 1, ollamaBaseURL: 'http://127.0.0.1:9' }));
-  const launch = (portable = false) => electron.launch({ args: ['.'], cwd: root,
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const launch = (portable = false) => electron.launch({ ...(executablePath && { executablePath }),
+    args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root,
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace,
       PORTABLE_EXECUTABLE_FILE: portable ? path.join(workspace, 'PaperBridge Portable.exe') : '' }, timeout: 30000 });
   let app;
@@ -103,7 +102,7 @@ async function run() {
     // performs the actual edition selection, file verification and persistence.
     const bytes = 'Portable release fixture for ' + nextVersion;
     const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
-    await app.evaluate(({ session, shell }, { identity, bytes, hash }) => {
+    const provideDownload = instance => instance.evaluate(({ session, shell }, { identity, bytes, hash }) => {
       const asset = { size: Buffer.byteLength(bytes), sha256: hash };
       const feed = { version: identity.tag.slice('windows-v'.length), files: { Setup: asset, Portable: asset } };
       const originalFetch = global.fetch;
@@ -129,6 +128,7 @@ async function run() {
       };
       shell.showItemInFolder = filename => { global.__revealed = filename; };
     }, { identity, bytes, hash });
+    await provideDownload(app);
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
     await page.getByRole('tab', { name: 'Updates', exact: true }).click();
     const background = page.getByLabel('Download new Windows releases in the background');
@@ -157,7 +157,35 @@ async function run() {
     fs.writeFileSync(savedFile, 'x'.repeat(bytes.length));
     await assert.rejects(page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag), /no longer matches/);
     await page.locator('.update-banner').getByRole('button', { name: 'Download portable update' }).waitFor();
-    console.log('Official browser links, opt-in download handoff, verified edition, offline restart and changed-file rejection passed.');
+    await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /installed reader/);
+    await app.close(); app = null;
+    fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')), autoCheckUpdates: false, autoDownloadUpdates: false }));
+    app = await launch();
+    page = await app.firstWindow();
+    await provideDownload(app);
+    await app.evaluate(({ app, shell }) => {
+      if (!app.isPackaged) Object.defineProperty(app, 'isPackaged', { get: () => true });
+      global.__installerRequests = [];
+      shell.openPath = async filename => { global.__installerRequests.push(filename); return ''; };
+    });
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Check now', exact: true }).click();
+    const settings = page.getByRole('dialog');
+    await settings.getByRole('button', { name: 'Download installer', exact: true }).click();
+    const install = settings.getByRole('button', { name: 'Open installer', exact: true });
+    await install.waitFor();
+    assert.deepEqual(await app.evaluate(() => global.__installerRequests), [], 'Downloading must never open the installer automatically');
+    assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, false);
+    await install.click();
+    await settings.getByText('Installer opened. Follow the Windows setup wizard to finish the update.').waitFor();
+    const installer = path.join(workspace, 'update-downloads', identity.installerName);
+    assert.deepEqual(await app.evaluate(() => global.__installerRequests), [installer]);
+    await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), 'windows-v99.0.0'), /current verified Setup/);
+    fs.writeFileSync(installer, 'x'.repeat(bytes.length));
+    await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /no longer matches/);
+    assert.equal(await app.evaluate(() => global.__installerRequests.length), 1);
+    console.log('Verified update downloads, explicit installer handoff, portable isolation, offline restart and changed-file rejection passed.');
   } finally { await app?.close(); }
 }
 

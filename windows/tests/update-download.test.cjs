@@ -97,6 +97,32 @@ test('missing metadata, a bad hash or length, and cancellation never publish an 
   assert.deepEqual(await fs.readdir(directory), []);
 });
 
+test('an explicit Setup action rechecks the file and shares one Windows handoff while it is opening', async t => {
+  const { directory, create } = await fixture(t, async (_download, filename) => fs.writeFile(filename, payload));
+  const files = create(), installer = updateDownload(select(setup, portable), false);
+  await files.prepare(installer, { manual: true });
+  assert.equal(files.manual, true);
+  await files.prepare(installer);
+  assert.equal(files.manual, true);
+  let release, started;
+  const waiting = new Promise(resolve => { started = resolve; });
+  const result = new Promise(resolve => { release = resolve; });
+  const paths = [];
+  const open = filename => { paths.push(filename); started(); return result; };
+  const first = files.openInstaller(tag, open), repeated = files.openInstaller(tag, open);
+  await waiting;
+  assert.deepEqual(paths, [path.join(directory, setup.name)]);
+  release('');
+  await Promise.all([first, repeated]);
+  await assert.rejects(files.openInstaller(tag, async () => 'Windows did not open the installer'), /Windows did not open/);
+  await fs.writeFile(paths[0], Buffer.alloc(payload.length));
+  await assert.rejects(files.openInstaller(tag, open), /no longer matches/);
+  await files.prepare(next);
+  assert.equal(files.manual, false);
+  await assert.rejects(files.openInstaller(tag, open), /Setup update is required/);
+  assert.equal(paths.length, 1);
+});
+
 test('startup cleanup preserves current and running releases as well as unrelated files', async t => {
   const { directory, create } = await fixture(t, () => {});
   const names = ['PaperBridge-Windows-0.2.1-x64-Portable.exe', 'PaperBridge-Windows-0.2.5-x64-Setup.exe', 'PaperBridge-Windows-0.2.29-x64-Portable.exe', 'personal.exe'];

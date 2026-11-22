@@ -174,12 +174,21 @@ function registerHandlers() {
     }
     availableDownload = candidate;
     if (candidate && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
-    else if (!candidate || candidate.tag !== updateFiles.state.tag) updateFiles.cancel();
-    return { ...result, downloadLabel: candidate?.label, updateFile: updateFiles.state };
+    else if (!updateFiles.matches(candidate)) updateFiles.cancel();
+    return { ...result, downloadLabel: candidate?.label,
+      canOpenInstaller: Boolean(app.isPackaged && !portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Setup.exe`),
+      updateFile: updateFiles.state };
   });
   ipcMain.handle('updates:reveal', (_event, tag) => updateFiles.show(tag));
+  ipcMain.handle('updates:install', (event, tag) => {
+    if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE || event.sender !== window?.webContents ||
+        event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url.split('#')[0] !== readerURL ||
+        availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The installed reader needs a current verified Setup update.');
+    return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
+  });
   ipcMain.handle('updates:download', (_event, tag) => {
     if (!availableDownload || availableDownload.tag !== tag) throw new Error('Check for updates to find the current download.');
+    if (availableDownload.file) return updateFiles.prepare(availableDownload, { manual: true });
     return shell.openExternal(availableDownload.url);
   });
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
@@ -211,7 +220,7 @@ function registerHandlers() {
   });
   ipcMain.handle('settings:save', (_event, settings) => {
     store.saveSettings(settings);
-    if ((settings.autoCheckUpdates === false || settings.autoDownloadUpdates !== true) && updateFiles.state.phase === 'downloading') updateFiles.cancel();
+    if ((settings.autoCheckUpdates === false || settings.autoDownloadUpdates !== true) && updateFiles.state.phase === 'downloading' && !updateFiles.manual) updateFiles.cancel();
   });
   ipcMain.handle('openai:key-status', () => ({ hasKey: openAICredentials.status() }));
   ipcMain.handle('openai:key-save', (_event, key) => {
