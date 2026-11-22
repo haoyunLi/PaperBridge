@@ -10,9 +10,10 @@ export function storePaperViewport(position, source, mode, scrollTop, anchor) {
 }
 
 const passageSelector = '[data-paper-block-id] [data-paper-kind]';
+const translationBlocks = 'p,h1,h2,h3,h4,h5,h6,blockquote,li,pre,figcaption,table';
 
 function visibleTableCell(passage, viewport) {
-  const tables = passage.querySelectorAll('table');
+  const tables = passage.matches('table') ? [passage] : passage.querySelectorAll('table');
   for (const [index, table] of tables.entries()) {
     const bounds = table.getBoundingClientRect();
     if (bounds.top > viewport.top + 1 || bounds.bottom <= viewport.top + 1) continue;
@@ -31,38 +32,52 @@ function visibleTableCell(passage, viewport) {
   return null;
 }
 
-export function capturePaperAnchor(host) {
-  const article = host?.querySelector('[data-view-scope="paperArticle"]');
+export function capturePreviewAnchor(host) {
+  const article = host?.querySelector('.document-preview[data-view-scope]');
   if (!article || host.scrollTop <= 0) return null;
+  const full = article.dataset.viewScope === 'fullTranslation';
   const viewport = host.getBoundingClientRect();
-  for (const passage of article.querySelectorAll(passageSelector)) {
+  for (const [index, passage] of article.querySelectorAll(full ? translationBlocks : passageSelector).entries()) {
     const bounds = passage.getBoundingClientRect();
     if (bounds.bottom <= viewport.top + 1) continue;
     if (bounds.top >= viewport.bottom || !passage.textContent) return null;
     const cell = visibleTableCell(passage, viewport);
-    return { ...(cell && { cell }), blockId: passage.closest('[data-paper-block-id]').dataset.paperBlockId,
-      side: passage.dataset.paperKind, text: passage.textContent, offset: bounds.top - viewport.top,
-      source: article.dataset.sourceMode, display: article.dataset.displayMode, scrollTop: host.scrollTop };
+    const location = { text: passage.textContent, offset: bounds.top - viewport.top, scrollTop: host.scrollTop, ...(cell && { cell }) };
+    if (full) return { ...location, scope: 'fullTranslation', index, tag: passage.tagName };
+    return { ...location, blockId: passage.closest('[data-paper-block-id]').dataset.paperBlockId,
+      side: passage.dataset.paperKind, source: article.dataset.sourceMode, display: article.dataset.displayMode };
   }
   return null;
 }
 
-export function restorePaperAnchor(host, anchor, saved) {
-  if (!host || !anchor || !Number.isFinite(anchor.offset) || anchor.scrollTop !== saved) return false;
-  const article = host.querySelector('[data-view-scope="paperArticle"]');
-  if (!article || article.dataset.sourceMode !== anchor.source || article.dataset.displayMode !== anchor.display) return false;
-  const sameSide = [...article.querySelectorAll(passageSelector)].filter(node => node.dataset.paperKind === anchor.side);
-  let passage = sameSide.find(node => node.closest('[data-paper-block-id]').dataset.paperBlockId === anchor.blockId);
-  if (!passage || passage.textContent !== anchor.text) {
-    const matching = sameSide.filter(node => node.textContent === anchor.text);
-    passage = matching.length === 1 ? matching[0] : null;
+function findPreviewPassage(article, anchor) {
+  let candidates, indexed;
+  if (anchor.scope === 'fullTranslation') {
+    if (article.dataset.viewScope !== 'fullTranslation') return null;
+    const blocks = [...article.querySelectorAll(translationBlocks)];
+    indexed = blocks[anchor.index];
+    if (indexed?.tagName === anchor.tag && indexed.textContent === anchor.text) return indexed;
+    candidates = blocks.filter(node => node.tagName === anchor.tag);
+  } else {
+    if (article.dataset.viewScope !== 'paperArticle' || article.dataset.sourceMode !== anchor.source || article.dataset.displayMode !== anchor.display) return null;
+    candidates = [...article.querySelectorAll(passageSelector)].filter(node => node.dataset.paperKind === anchor.side);
+    indexed = candidates.find(node => node.closest('[data-paper-block-id]').dataset.paperBlockId === anchor.blockId);
+    if (indexed?.textContent === anchor.text) return indexed;
   }
+  const matching = candidates.filter(node => node.textContent === anchor.text);
+  return matching.length === 1 ? matching[0] : null;
+}
+
+export function restorePreviewAnchor(host, anchor, saved) {
+  if (!host || !anchor || !Number.isFinite(anchor.offset) || anchor.scrollTop !== saved) return false;
+  const article = host.querySelector('.document-preview[data-view-scope]');
+  const passage = article && findPreviewPassage(article, anchor);
   if (!passage) return false;
   let target = passage, savedOffset = anchor.offset;
   const cell = anchor.cell;
   if (cell && [cell.index, cell.row, cell.column].every(value => Number.isSafeInteger(value) && value >= 0) &&
       Number.isFinite(cell.top) && Number.isFinite(cell.left)) {
-    const table = passage.querySelectorAll('table')[cell.index];
+    const table = passage.matches('table') && cell.index === 0 ? passage : passage.querySelectorAll('table')[cell.index];
     const node = table?.rows[cell.row]?.cells[cell.column];
     if (node && node.textContent === cell.text) {
       target = node;

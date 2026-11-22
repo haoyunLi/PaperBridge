@@ -17,7 +17,8 @@ export function persistedReadingPosition(location, previous = {}) {
   const { selectedParagraphID: discardedSelection, ...viewport } = previous || {};
   const position = { ...viewport, block: location.block, page: location.page, tab: location.tab,
     displayMode: location.displayMode, scrollByTab: { ...location.scrollByTab },
-    ...(location.tab === 'Paper' && { paperAnchor: location.paperAnchor ?? null }) };
+    ...(location.tab === 'Paper' && { paperAnchor: location.paperAnchor ?? null }),
+    ...(location.tab === 'Full Translation' && { fullTranslationAnchor: location.fullTranslationAnchor ?? null }) };
   if (origin !== null) {
     position.scrollByTab.Reader = typeof origin === 'number' ? origin : origin.scrollTop;
     position.readerSearchOrigin = origin;
@@ -50,6 +51,7 @@ export function normalizeReadingLocation(value = {}) {
     search,
     ...(searchOrigin !== null && { searchOrigin }),
     ...(value.tab === 'Paper' && value.paperAnchor && { paperAnchor: value.paperAnchor }),
+    ...(value.tab === 'Full Translation' && value.fullTranslationAnchor && { fullTranslationAnchor: value.fullTranslationAnchor }),
     scrollByTab
   };
 }

@@ -4,6 +4,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -16,7 +17,7 @@ async function run() {
     ...block, translation: block.text, translationMarkdown: block.sourceMarkdown, status: 'ok'
   }));
   const id = createHash('sha256').update(markdown).digest('hex');
-  const paper = { id, type: 'text', name: 'Workshop notes', sourceMode: 'mineru', mineruMarkdown: markdown, mineruBlocks: blocks, blocks,
+  const paper = { id, type: 'text', name: 'Workshop notes', sourceMode: 'mineru', mineruMarkdown: markdown, mineruBlocks: blocks, blocks, connectedTranslation: markdown,
     position: { tab: 'Paper', block: 1, displayMode: 'bilingual' }, updatedAt: new Date().toISOString() };
   fs.mkdirSync(path.join(dir, 'papers'));
   fs.writeFileSync(path.join(dir, 'papers', id + '.json'), JSON.stringify(paper));
@@ -137,7 +138,34 @@ async function run() {
       assert.ok(Math.abs(await offset() - before) < 3, 'The same table cell must return to its saved height after reflow (offset ' + await offset() + ', expected ' + before + ')');
       assert.ok(Math.abs(await scroll() - oldY) > 10, 'The table fixture must change layout');
     }
-    console.log(JSON.stringify({ table: process.argv.includes('--table'), jumps: cases.length * 2, scrollRestored: true, modes: process.argv.includes('--modes'), reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    if (process.argv.includes('--full-table')) {
+      await openWorkspaceView(page, 'Full Translation');
+      const cell = () => page.locator('[data-view-scope="fullTranslation"]').getByRole('cell', { name: '69.3 Ω', exact: true });
+      const align = node => {
+        const host = document.querySelector('.main-scroll'), table = node.closest('table');
+        const cellBox = node.getBoundingClientRect(), tableBox = table.getBoundingClientRect();
+        host.scrollTop += cellBox.top - host.getBoundingClientRect().top + 5;
+        table.scrollLeft += cellBox.left - tableBox.left + 8;
+      };
+      const coordinates = node => {
+        const table = node.closest('table'), box = node.getBoundingClientRect();
+        return { y: box.top - document.querySelector('.main-scroll').getBoundingClientRect().top,
+          x: box.left - table.getBoundingClientRect().left, scrollLeft: table.scrollLeft, range: table.scrollWidth - table.clientWidth };
+      };
+      await cell().evaluate(align);
+      const before = await cell().evaluate(coordinates);
+      assert.ok(Math.abs(before.y + 5) < 2 && before.scrollLeft > 100 && Math.abs(before.x + 8) < 2, JSON.stringify(before));
+      await closeWindow(app); app = null;
+      const file = path.join(dir, 'settings.json'), settings = JSON.parse(fs.readFileSync(file, 'utf8'));
+      fs.writeFileSync(file, JSON.stringify({ ...settings, fontSize: settings.fontSize === 23 ? 17 : 23, readingWidth: 590 }));
+      app = await open(); page = await app.firstWindow();
+      await cell().waitFor();
+      await page.waitForFunction(() => document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false');
+      const after = await cell().evaluate(coordinates);
+      assert.ok(Math.abs(after.y - before.y) < 3 && Math.abs(after.x - before.x) < 3,
+        'Restoring the full translation must keep the same row and visible column: ' + JSON.stringify({ before, after }));
+    }
+    console.log(JSON.stringify({ fullTable: process.argv.includes('--full-table'), table: process.argv.includes('--table'), jumps: cases.length * 2, scrollRestored: true, modes: process.argv.includes('--modes'), reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

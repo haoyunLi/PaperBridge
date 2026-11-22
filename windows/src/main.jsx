@@ -2,7 +2,7 @@ import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { documentLinkTarget } from './markdownLinks.mjs';
-import { capturePaperAnchor, paperModeViewport, restorePaperAnchor, storePaperViewport } from './paperScroll.mjs';
+import { capturePreviewAnchor, paperModeViewport, restorePreviewAnchor, storePaperViewport } from './paperScroll.mjs';
 import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
@@ -1265,7 +1265,8 @@ function App() {
     return { paperId: current.id, sourceMode: paperArticleSource(current).mode, tab, displayMode, block,
       selectedParagraphID: resolveSelectedParagraphID(current),
       page: pageNumber, search, searchOrigin: searchOrigin.current, scrollByTab,
-      ...(tab === 'Paper' && { paperAnchor: capturePaperAnchor(mainScrollRef.current) }) };
+      ...(tab === 'Paper' && { paperAnchor: capturePreviewAnchor(mainScrollRef.current) }),
+      ...(tab === 'Full Translation' && { fullTranslationAnchor: capturePreviewAnchor(mainScrollRef.current) }) };
   }
   function recordReadingJump(isAlreadyAtDestination = () => false) {
     const location = currentReadingLocation();
@@ -1338,7 +1339,8 @@ function App() {
         const key = scrollKey(location.tab, location.page);
         const saved = location.scrollByTab?.[key];
         const host = mainScrollRef.current;
-        if (host && !(location.tab === 'Paper' && restorePaperAnchor(host, location.paperAnchor, saved))) host.scrollTop = Number(saved || 0);
+        const anchor = location.tab === 'Paper' ? location.paperAnchor : location.fullTranslationAnchor;
+        if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
         if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
       } finally { finishReadingRestore(owner); }
     });
@@ -1616,7 +1618,8 @@ function App() {
           restoreReaderSearchOrigin(origin);
           persistRestoredReaderPosition();
         } else {
-          if (host && !(view && restorePaperAnchor(host, view.anchor, saved))) host.scrollTop = Number(saved || 0);
+          const anchor = tab === 'Full Translation' ? position?.fullTranslationAnchor : view?.anchor;
+          if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
           if (saved == null && tab === 'Reader') document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
         }
       } finally { finishReadingRestore(owner); }
@@ -1640,8 +1643,9 @@ function App() {
       const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
       commitPaper(current => {
         const position = { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } };
+        if (tab === 'Full Translation') position.fullTranslationAnchor = capturePreviewAnchor(host);
         return { ...current, position: tab === 'Paper'
-          ? storePaperViewport(position, paperArticleSource(current).mode, displayMode, offset, capturePaperAnchor(host))
+          ? storePaperViewport(position, paperArticleSource(current).mode, displayMode, offset, capturePreviewAnchor(host))
           : position };
       });
     }, 350);
@@ -2014,7 +2018,8 @@ function App() {
       const location = currentReadingLocation();
       const position = persistedReadingPosition(location, paperRef.current.position);
       const previous = paperRef.current.position || {};
-      const anchorChanged = tab === 'Paper' && JSON.stringify(position.paperAnchor ?? null) !== JSON.stringify(previous.paperAnchor ?? null);
+      const anchorField = tab === 'Full Translation' ? 'fullTranslationAnchor' : 'paperAnchor';
+      const anchorChanged = JSON.stringify(position[anchorField] ?? null) !== JSON.stringify(previous[anchorField] ?? null);
       if (anchorChanged || Object.entries(position.scrollByTab).some(([key, value]) => value !== (previous.scrollByTab?.[key] ?? 0))) {
         commitPaper(current => ({ ...current, position }), { deferUndo: true });
       }
