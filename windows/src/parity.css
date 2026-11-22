@@ -70,6 +70,9 @@
 .heading-block:has(> .edit-area) > .block-header { grid-column: 1 / -1; }
 .document-preview{width:min(100%,var(--reader-width,920px));margin-left:auto;margin-right:auto;font-size:var(--reader-font,17px);line-height:var(--reader-line,1.6)}
 .document-preview table{border-collapse:collapse;display:block;max-width:100%;overflow:auto;font:0.88em "Segoe UI",sans-serif;margin:1.5em 0}
+.document-preview figure,.source-text figure,.translation-text figure{margin:1em 0}
+.document-preview figcaption,.source-text figcaption,.translation-text figcaption{font-size:.94em;line-height:1.45;margin-top:.5em}
+.document-preview caption,.source-text caption,.translation-text caption{text-align:start;font-weight:600;padding-bottom:.4em}
 .document-preview td,.document-preview th{border:1px solid #cfc6b8;padding:6px 9px}
 .failed-stat,.failed-stat b{color:#ffaaa3}
 ::highlight(paperbridge-amber){background:#ffe6a9;color:#563d0c}

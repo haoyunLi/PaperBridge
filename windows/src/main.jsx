@@ -1,7 +1,7 @@
 import { trimLibraryText } from '../electron/library-metadata.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { documentLinkTarget } from './markdownLinks.mjs';
+import { documentLinkTarget, revealMarkdownTarget } from './markdownLinks.mjs';
 import { capturePreviewAnchor, paperModeViewport, restorePreviewAnchor, storePaperViewport } from './paperScroll.mjs';
 import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
@@ -195,6 +195,7 @@ function openPaperLink(event) {
   if (fragment) {
     const target = documentLinkTarget(link, href);
     if (target) {
+      revealMarkdownTarget(target);
       if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
       target.focus({ preventScroll: true });
       target.scrollIntoView({ block: 'start', behavior: 'instant' });
@@ -1957,6 +1958,8 @@ function App() {
     const offset = markdownAnnotationOffset(rendered, viewNavigation, source);
     const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, text.length, true);
     if (!range) { markViewAnchorForReview(viewNavigation.records); setViewNavigation(null); return; }
+    revealMarkdownTarget(range.startContainer);
+    revealMarkdownTarget(range.endContainer);
     const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
     const generation = readingRestoration.current;
     afterReadingLayout(host, () => {
@@ -2091,6 +2094,8 @@ function App() {
         setBlockNavigation(null);
         return;
       }
+      revealMarkdownTarget(range.startContainer);
+      revealMarkdownTarget(range.endContainer);
       const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
       const host = mainScrollRef.current;
       if (host && request.recordType === 'evidence') {

@@ -1,3 +1,5 @@
+import { revealMarkdownTarget } from './markdownLinks.mjs';
+
 export function paperModeViewport(position, source, mode) {
   const viewports = position?.paperViewports;
   if (viewports && Object.keys(viewports).length) return viewports[source + ':' + mode] || { scrollTop: 0, anchor: null };
@@ -81,11 +83,13 @@ export function restorePreviewAnchor(host, anchor, saved) {
     const node = table?.rows[cell.row]?.cells[cell.column];
     if (node && node.textContent === cell.text) {
       target = node;
+      revealMarkdownTarget(target);
       savedOffset = cell.top;
       if (cell.scrolled) table.scrollLeft += node.getBoundingClientRect().left - table.getBoundingClientRect().left - cell.left;
       else table.scrollLeft = 0;
     }
   }
+  if (target === passage) revealMarkdownTarget(target);
   const bounds = target.getBoundingClientRect();
   const offset = Math.max(savedOffset, 1 - bounds.height);
   host.scrollTop += bounds.top - host.getBoundingClientRect().top - offset;

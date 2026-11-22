@@ -10,13 +10,14 @@ import rehypeKatex from 'rehype-katex';
 export const markdownPlugins = [remarkGfm, remarkMath];
 const markdownSchema = {
   ...defaultSchema,
+  tagNames: [...defaultSchema.tagNames, 'caption', 'colgroup', 'col', 'figure', 'figcaption'],
   protocols: { ...defaultSchema.protocols, src: [...(defaultSchema.protocols?.src || []), 'data'] }
 };
 export const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeKatex];
 
 const processor = unified().use(remarkParse).use(markdownPlugins)
   .use(remarkRehype, { allowDangerousHtml: true }).use(rehypePlugins);
-const tableParents = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr']);
+const tableParents = new Set(['table', 'thead', 'tbody', 'tfoot', 'tr', 'colgroup']);
 const generatedViews = new Map();
 
 function collectText(node, parentTag, parts) {

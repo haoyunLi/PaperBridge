@@ -2,14 +2,19 @@ import AppKit
 import WebKit
 
 @MainActor
-func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: String]], tableCell: String) {
+func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: String]], tableCell: String, resource: [String: Any]) {
     _ = NSApplication.shared
-    let input = try String(contentsOf: fixtures.appendingPathComponent("markdown-navigation.md"), encoding: .utf8)
+    let navigation = try String(contentsOf: fixtures.appendingPathComponent("markdown-navigation.md"), encoding: .utf8)
+    let nested = try String(contentsOf: fixtures.appendingPathComponent("nested-resource.md"), encoding: .utf8)
+    let observe = try String(contentsOf: fixtures.appendingPathComponent("observe-resource.cjs"), encoding: .utf8)
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
     let document = root.appendingPathComponent("preview.html")
-    try MarkdownPreviewHTMLRenderer.render(markdown: input, title: "Workshop notes").write(to: document, atomically: true, encoding: .utf8)
+    let images = root.appendingPathComponent("images", isDirectory: true)
+    try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: fixtures.appendingPathComponent("tabbed/images/page_2_chart_5.jpg"), to: images.appendingPathComponent("panel.jpg"))
+    try MarkdownPreviewHTMLRenderer.render(markdown: navigation + "\n\n" + nested, title: "Workshop notes").write(to: document, atomically: true, encoding: .utf8)
     let configuration = WKWebViewConfiguration()
     configuration.userContentController.addUserScript(WKUserScript(source: MarkdownPreviewView.Coordinator.selectionBridgeScript,
         injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -62,16 +67,20 @@ func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: Stri
         if (originalCell.blockText !== cell.textContent || restoredCell.blockIndex !== originalCell.blockIndex ||
             restoredCell.blockText !== originalCell.blockText || Math.abs(restoredCell.offset - originalCell.offset) > 3 ||
             Math.abs(restoredCell.y - originalCell.y) < 10) throw Error('The Mac preview did not restore the table cell');
-        return { jumps, tableCell: restoredCell.blockText };
+        \(observe)
+        const resource = await observeResource(article);
+        if (!resource.sameFigure || !resource.tableCaption || !resource.figureCaption || resource.columns !== 3 || !resource.collapsed)
+            throw Error('The native preview did not preserve the nested calibration panel');
+        return { jumps, tableCell: restoredCell.blockText, resource };
         """
     var result: Result<Any, Error>?
     view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result = $0 }
     while result == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     guard let result, let data = try result.get() as? [String: Any],
           let jumps = data["jumps"] as? [[String: String]], jumps.count == 3,
-          let cell = data["tableCell"] as? String else {
+          let cell = data["tableCell"] as? String, let resource = data["resource"] as? [String: Any] else {
         throw NSError(domain: "MarkdownNavigationReference", code: 1,
                       userInfo: [NSLocalizedDescriptionKey: "The Mac preview did not complete the three document links."])
     }
-    return (jumps, cell)
+    return (jumps, cell, resource)
 }

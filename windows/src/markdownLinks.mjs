@@ -12,6 +12,13 @@ export function headingWithFragment(headings, fragment) {
   return null;
 }
 
+export function revealMarkdownTarget(node) {
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  for (let details = element?.closest('details:not([open])'); details; details = details.parentElement?.closest('details:not([open])')) {
+    if (!details.querySelector(':scope > summary')?.contains(element)) details.open = true;
+  }
+}
+
 export function documentLinkTarget(link, hash) {
   const scope = link.closest('[data-view-scope], [data-reading-list]') || link.closest('[data-markdown-host]');
   if (!scope) return null;
