@@ -2,7 +2,7 @@ import AppKit
 import WebKit
 
 @MainActor
-func nativeMarkdownNavigation(fixtures: URL) throws -> [[String: String]] {
+func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: String]], tableCell: String) {
     _ = NSApplication.shared
     let input = try String(contentsOf: fixtures.appendingPathComponent("markdown-navigation.md"), encoding: .utf8)
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -47,14 +47,31 @@ func nativeMarkdownNavigation(fixtures: URL) throws -> [[String: String]] {
             after.blockText !== before.blockText || Math.abs(after.offset - before.offset) > 3 || Math.abs(after.y - before.y) < 10)
             throw Error('The Mac preview did not restore the same passage after reflow');
         jumps[0].restoredAfterReflow = after.blockText;
-        return jumps;
+        const article = document.querySelector('article');
+        article.style.width = '';
+        document.body.style.fontSize = '';
+        const cell = [...article.querySelectorAll('td')].find(node => node.textContent === 'Cooling trace');
+        cell.scrollIntoView();
+        window.scrollBy(0, 4);
+        const originalCell = window.paperBridge.snapshot();
+        article.style.width = '210px';
+        document.body.style.fontSize = '25px';
+        window.scrollTo(0, 0);
+        window.paperBridge.restore(originalCell);
+        const restoredCell = window.paperBridge.snapshot();
+        if (originalCell.blockText !== cell.textContent || restoredCell.blockIndex !== originalCell.blockIndex ||
+            restoredCell.blockText !== originalCell.blockText || Math.abs(restoredCell.offset - originalCell.offset) > 3 ||
+            Math.abs(restoredCell.y - originalCell.y) < 10) throw Error('The Mac preview did not restore the table cell');
+        return { jumps, tableCell: restoredCell.blockText };
         """
     var result: Result<Any, Error>?
     view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result = $0 }
     while result == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
-    guard let result, let jumps = try result.get() as? [[String: String]], jumps.count == 3 else {
+    guard let result, let data = try result.get() as? [String: Any],
+          let jumps = data["jumps"] as? [[String: String]], jumps.count == 3,
+          let cell = data["tableCell"] as? String else {
         throw NSError(domain: "MarkdownNavigationReference", code: 1,
                       userInfo: [NSLocalizedDescriptionKey: "The Mac preview did not complete the three document links."])
     }
-    return jumps
+    return (jumps, cell)
 }

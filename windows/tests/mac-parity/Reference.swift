@@ -233,7 +233,8 @@ struct Reference {
         let scan = try nativeScannedNotebook(pdf: fixtureURL.deletingLastPathComponent().appendingPathComponent("scanned-notebook.pdf"))
         let ranges = try nativeTranslationRanges(fixtures: fixtureURL.deletingLastPathComponent())
         let journalDraft = try nativeJournalDraft(fixtures: fixtureURL.deletingLastPathComponent())
-        let output: [String: Any] = ["markdownNavigation": try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent()),
+        let navigation = try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent())
+        let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell,
                                      "pdfJournal": try nativePDFJournal(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "journalAnalysis": try nativeJournalAnalysis(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "journalDraft": journalDraft, "translationRangeActions": ranges.actions, "savedPreviewHeadings": ranges.previewHeadings, "scannedNotebook": scan, "importModes": importModes, "tableSelectionQuote": try nativeTableSelectionQuote(), "library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,

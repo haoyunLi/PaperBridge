@@ -113,7 +113,31 @@ async function run() {
         assert.ok(Math.abs(await scroll() - y) < 4, mode + ' must recover its position after restart');
       }
     }
-    console.log(JSON.stringify({ jumps: cases.length * 2, scrollRestored: true, modes: process.argv.includes('--modes'), reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    if (process.argv.includes('--table')) {
+      const reference = process.env.PAPERBRIDGE_MAC_REFERENCE && JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
+      const cellText = reference ? reference.markdownTableCell : 'Cooling trace';
+      assert.equal(cellText, 'Cooling trace');
+      const cell = () => page.getByRole('cell', { name: cellText, exact: true }).first();
+      const offset = () => cell().evaluate(node => node.getBoundingClientRect().top - document.querySelector('.main-scroll').getBoundingClientRect().top);
+      await cell().evaluate(node => {
+        node.scrollIntoView({ block: 'start', behavior: 'instant' });
+        document.querySelector('.main-scroll').scrollTop += 4;
+      });
+      const before = await offset();
+      assert.ok(Math.abs(before + 4) < 2);
+      const oldY = await scroll();
+      await closeWindow(app); app = null;
+      const settingsFile = path.join(dir, 'settings.json');
+      const old = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+      const enlarge = old.fontSize !== 27;
+      fs.writeFileSync(settingsFile, JSON.stringify({ ...old, fontSize: enlarge ? 27 : 15, readingWidth: enlarge ? 560 : 900 }));
+      app = await open(); page = await app.firstWindow();
+      await cell().waitFor();
+      await page.waitForFunction(() => document.querySelector('.main-scroll')?.getAttribute('aria-busy') === 'false');
+      assert.ok(Math.abs(await offset() - before) < 3, 'The same table cell must return to its saved height after reflow (offset ' + await offset() + ', expected ' + before + ')');
+      assert.ok(Math.abs(await scroll() - oldY) > 10, 'The table fixture must change layout');
+    }
+    console.log(JSON.stringify({ table: process.argv.includes('--table'), jumps: cases.length * 2, scrollRestored: true, modes: process.argv.includes('--modes'), reflow: process.argv.includes('--reflow'), native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
