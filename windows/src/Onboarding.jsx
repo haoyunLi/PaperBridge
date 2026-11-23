@@ -212,7 +212,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
       <button className="button ghost onboarding-advanced" disabled={busy} onClick={onOpenSetup}><Settings2 size={14} />Advanced setup</button>
       <span />
       {page > 0 && <button className="button outline" disabled={busy} onClick={() => changePage(page - 1)}>Back</button>}
-      <button className="button blue" disabled={busy} onClick={() => page === 5 ? onFinish('openPdf') : changePage(page + 1)}>{page === 5 ? 'Finish & Open PDF' : 'Continue'}<ArrowRight size={15} /></button>
+      <button className="button blue" aria-keyshortcuts="Enter" disabled={busy} onClick={() => page === 5 ? onFinish('openPdf') : changePage(page + 1)}>{page === 5 ? 'Finish & Open PDF' : 'Continue'}<ArrowRight size={15} /></button>
     </footer></div>
   </section>;
 }

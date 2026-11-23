@@ -191,6 +191,17 @@ async function run() {
     assert.equal(await app.evaluate(() => global.__onboardingMock.requests.length), 0, 'First launch must not install tools');
     await assertFooter(1320, 820, 'onboarding-welcome-1320x820.png');
     await assertFooter(980, 620, 'onboarding-welcome-980x620.png');
+    await page.locator('.modal').focus();
+    await page.keyboard.press('Control+Enter');
+    await assertPage(0);
+    await page.keyboard.down('Enter');
+    await assertPage(1);
+    await page.keyboard.down('Enter');
+    await page.keyboard.up('Enter');
+    await assertPage(1);
+    await onboarding().getByRole('button', { name: 'Back', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await assertPage(0);
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('Emulation.clearDeviceMetricsOverride');
     await app.evaluate(({ BrowserWindow }) => {

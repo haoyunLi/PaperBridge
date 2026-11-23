@@ -1947,6 +1947,14 @@ function App() {
     const focusable = () => [...dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')]
       .filter(element => !element.disabled && element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[inert]'));
     const trap = event => {
+      if (event.key === 'Enter' && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        const primary = dialog.querySelector('button[aria-keyshortcuts="Enter"]');
+        if (primary && (event.target === dialog || event.target === primary && event.repeat)) {
+          event.preventDefault();
+          if (!event.repeat && !primary.disabled && !primary.closest('[inert]')) primary.click();
+          return;
+        }
+      }
       if (event.key !== 'Tab') return;
       const items = focusable(), first = items[0], last = items.at(-1), active = document.activeElement;
       if (!first) { event.preventDefault(); dialog.focus(); }
