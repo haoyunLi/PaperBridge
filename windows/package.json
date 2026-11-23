@@ -53,7 +53,7 @@
     "test:official-links-e2e": "node tests/official-links-e2e.cjs",
     "test:markdown": "node tests/markdown-parity.cjs",
     "test:paper-attachments-e2e": "node tests/paper-attachments-e2e.cjs && node tests/literal-asset-e2e.cjs",
-    "test:nested-resource-e2e": "node tests/nested-resource-e2e.cjs --deep",
+    "test:nested-resource-e2e": "node tests/nested-resource-e2e.cjs --deep --equations",
     "test:markdown-navigation-e2e": "node tests/markdown-navigation-e2e.cjs --reflow --modes --table --full-table",
     "test:connected-translation-e2e": "node tests/connected-translation-e2e.cjs",
     "test:summary-e2e": "node tests/summary-e2e.cjs",

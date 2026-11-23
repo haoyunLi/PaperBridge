@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
+import { rehypeHTMLEquations } from './htmlEquations.mjs';
 
 export const markdownPlugins = [remarkGfm, remarkMath];
 const markdownSchema = {
@@ -13,7 +14,7 @@ const markdownSchema = {
   tagNames: [...defaultSchema.tagNames, 'caption', 'colgroup', 'col', 'figure', 'figcaption'],
   protocols: { ...defaultSchema.protocols, src: [...(defaultSchema.protocols?.src || []), 'data'] }
 };
-export const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeKatex];
+export const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeHTMLEquations, rehypeKatex];
 
 const processor = unified().use(remarkParse).use(markdownPlugins)
   .use(remarkRehype, { allowDangerousHtml: true }).use(rehypePlugins);
@@ -46,6 +47,6 @@ export function parseMarkdown(markdown) {
 
 export function renderedMarkdownText(markdown) {
   const parts = [];
-  collectText(processor.runSync(parseMarkdown(markdown)), undefined, parts);
+  collectText(processor.runSync(parseMarkdown(markdown), markdown), undefined, parts);
   return parts.join('');
 }
