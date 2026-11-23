@@ -386,11 +386,15 @@ export function editedBlock(block, newText) {
   const listing = isPdfListing(block);
   const text = listing ? String(newText) : String(newText).trim();
   const retained = uniqueOffset(text, block.text);
+  const slice = retained === null ? uniqueOffset(block.text, text) : null;
   function relocate(item) {
     const original = matchesQuote(block.text, item.text, item.offset) ? item.offset : uniqueOffset(block.text, item.text);
     if (original === null) return forReview(item);
-    const offset = retained === null ? uniqueOffset(text, item.text) : retained + original;
-    return moveSourceAnnotation(item, text, offset);
+    if (retained !== null) return moveSourceAnnotation(item, text, retained + original);
+    if (slice !== null && original >= slice && original + item.text.length <= slice + text.length) {
+      return moveSourceAnnotation(item, text, original - slice);
+    }
+    return moveSourceAnnotation(item, text, uniqueOffset(text, item.text));
   }
   return { ...block, text, heading: !listing && isHeading(text), ...(listing && { sourceMarkdown: pdfListingMarkdown(text) }),
     translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending',

@@ -20,7 +20,7 @@
     "test:short-workspace-e2e": "node tests/short-workspace-e2e.cjs",
     "test:paste-text-e2e": "node tests/paste-text-e2e.cjs",
     "test:reader-actions-e2e": "node tests/reader-actions-e2e.cjs",
-    "test:paragraph-editor-e2e": "node tests/paragraph-editor-e2e.cjs",
+    "test:paragraph-editor-e2e": "node tests/paragraph-editor-e2e.cjs && node tests/retained-slice-e2e.cjs",
     "test:outline-e2e": "node tests/outline-e2e.cjs",
     "test:sidebar-settings-e2e": "node tests/sidebar-settings-e2e.cjs",
     "test:reading-history-e2e": "node tests/reading-history-e2e.cjs",
