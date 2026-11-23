@@ -808,6 +808,51 @@
       "name": "empty",
       "text": "",
       "target": 20
+    },
+    {
+      "name": "PLOS figure reference",
+      "text": "We measured each sample twice (Fig. 2). The interval in Fig. 3 was narrower. The full data set is available in the archive.",
+      "target": 42
+    },
+    {
+      "name": "parenthesized citation and abbreviation",
+      "text": "The earlier results (Smith et al., 2020; Fig. 3) agree with our measurements. See also Sec. 2.4. An independent team repeated the analysis.",
+      "target": 60
+    },
+    {
+      "name": "French quotation and numbered figure",
+      "text": "La figure 2 montre les mesures. « Les valeurs restent stables. » Les auteurs ont répété la mesure.",
+      "target": 40
+    },
+    {
+      "name": "Spanish academic abbreviation",
+      "text": "¿Son estables los datos? Sí. Los resultados se muestran en la Fig. 2. La tabla incluye el intervalo.",
+      "target": 37
+    },
+    {
+      "name": "German graph with decimal comma",
+      "text": "Die Temperatur betrug 3,5 °C. Die Messung ist in Abb. 2 dargestellt. Danach folgte die Kontrolle.",
+      "target": 38
+    },
+    {
+      "name": "Arabic question mark",
+      "text": "هل تم قياس درجة الحرارة؟ نعم، تم القياس مرتين. وأعيد الاختبار في المساء.",
+      "target": 26
+    },
+    {
+      "name": "Hindi sentence endings",
+      "text": "पहला वाक्य पूरा हुआ। दूसरे चरण में नमूने मापे गए। तीसरा वाक्य निष्कर्ष देता है।",
+      "target": 21
+    },
+    {
+      "name": "Japanese quote and citation",
+      "text": "「この差は有意か？」と研究者は尋ねた。図2に結果を示す。試験を二度繰り返した。",
+      "target": 19
+    },
+    {
+      "name": "numbered citation after a sentence",
+      "text": "The two measurements agree [3, 4]. The control data vary. Agreement was previously reported [12–14].",
+      "target": 42
     }
   ]
 }
