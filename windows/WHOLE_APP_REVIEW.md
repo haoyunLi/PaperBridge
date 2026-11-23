@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 0.2.91 的下载、首次翻译与论文恢复
+
+公开安装版和便携版均在独立 Windows 上通过下载、SHA-256、构建证明和主窗口启动验收。本机再用上一正式版 0.2.89 实际检查更新并覆盖安装，重开后保留论文、外观、高亮和笔记。两种 EXE 目前均显示未知发布者。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45141418668/job/137584823547) · [下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.91)
+
+全新 Windows 在首次引导中安装官方 Ollama、取消模型传输并后台续传，再用 4B 模型在 CPU 上完成英译中。翻译相同两句话时，本机 RX 7800 XT 与该机器的 4B 结果逐字相同。另一台机器对 12B 重复完成了取消、续传、翻译与重启恢复。[4B 首次使用](https://github.com/haoyunLi/PaperBridge/actions/runs/45140574505) · [12B 首次使用](https://github.com/haoyunLi/PaperBridge/actions/runs/45141422747)
+
+真实论文覆盖了选区、跨页和旧数据。JOSS 论文的六处引文与 Mac 原生选区一致，十四处重复词在重启或缩放后仍可区分。BERT 论文保留了跨栏正文及行内上下标；在旧稿已有译文和书签时，重新导入可以生成独立副本。双页扫描件在文库索引写入失败后，重开仍保留 29 段、六份资源和原页码。[Mac 选区对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45130714882) · [BERT 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45137884416) · [逐项映射](FEATURE_MAPPING.md)
+
 ## 0.2.89 的论文图表、选区和更新
 
 在《Attention Is All You Need》的同一份 PDF 上核对了 Windows 与 macOS PDFKit。Windows 跳过印刷区域以外的五个标题，保留十行坐标轴标签及三处图注。第 14–15 页的八处同词笔记均能在重启、缩放后回到对应印刷位置。旧版保存的可见标注可以恢复，指向隐藏图题的旧标注仍可在列表中查看。RX 7800 XT 实测也验证了按用户保存的术语重译图注，正确表达“六层中的第五层”。[Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45124348109) · [Windows 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45124989187/job/137530614117)
