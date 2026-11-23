@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.84 旧笔记、AMD 本地环境与覆盖升级（2026-11-22）
+
+emcee 期刊论文里的笔记在原段合并或重排后仍能跳到唯一的原句。旧偏移上的重复词保留待复核。把作者姓氏 Bazán 的重音从单字符改成组合字符后，重开仍可选中完整姓名，导出保留保存时的引文。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45111249591/job/137483860845)
+
+Edge 从 GitHub 首页下载的便携版和安装版均通过 SHA-256 校验并保留互联网来源标记。0.2.83 的两个版本都收到了 0.2.84 的更新提示并下载对应文件。覆盖安装后，论文、阅读外观、笔记和高亮均能恢复。RX 7800 XT 在 Python install manager 的默认位置以及含中文的自定义目录中找到 MinerU，两次均识别并翻译了五段扫描文字。独立版 Ollama 在指定本机端口启动，4B 模型完成了磁场句子的英译中。[独立 Windows 公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45111249591/job/137488098754) · [Windows 0.2.84 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.84)
+
 ## 0.2.83 公开下载、代码排版与重叠标注（2026-11-22）
 
 PLOS 论文的八行命令在 Paper、Reader 和段落编辑器中均保留缩进及通配符。修改文件名、拆分、合并及撤销后，预览和保存的 Markdown 都反映同一份文本。原文、译文和双语摘要的笔记保留选中的全部空格。重叠高亮可逐个换色和清除，旧高亮露出的部分与 Mac 文本控件一致。缩短 emcee 论文中的段落后，两个相同单词上的笔记仍分别指向各自的位置。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45107907788/job/137473307864) · [公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45107907788/job/137476924995)
