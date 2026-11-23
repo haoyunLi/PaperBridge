@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.80 PDF 代码、译文地址与解析器回退（2026-11-22）
+
+在 20 页的 PLOS 论文中，Windows 恢复了八行命令的换行、缩进和 `*.dat` 通配符。下一页正文与目录树最后一个文件名已分开。AMD 真机验证了纯文本 Reader 和全文译稿中的地址、真实扫描件的 DirectML OCR，以及首个 MinerU 环境损坏时自动选到第二个可用环境。已有的全文翻译任务可继续使用原先的分批方式。
+
+独立 Windows 机器从 GitHub 下载并启动了两种发行包。本机从 0.2.79 升级后，论文、高亮、笔记和阅读外观均可恢复。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.80) · [Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45100192113/job/137449006571) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45100192113/job/137452622595)
+
 ## 0.2.79 本地模型建议、解析环境与译文链接（2026-11-22）
 
 同一台 RX 7800 XT 此前只按 63 GiB 系统内存推荐了 27B。公开版在引导与设置页都读取到 16 GiB 独立显存，建议 12B 并保留当前 4B。标准 Python 的全局 pip 安装也会检查所属的解释器。首选 MinerU 模式遇到已确认损坏的解析环境后使用 PDF 文字层，要求 MinerU 的模式会保留当前论文和书签。
