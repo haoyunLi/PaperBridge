@@ -13,6 +13,7 @@ async function run() {
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'live-structured-'));
   const formula = '$F = m a$';
+  const tex = process.argv.includes('--tex') ? ['\\(C_{50}\\)', '\\[R(t)=\\frac{A}{1+t}\\]'] : [];
   const code = '``printf(`sample`, "$&")``';
   const html = '<span title="signal > threshold">';
   const figure = '[![Calibration](images/panel(2).png)](supplement/figure(2).pdf)';
@@ -22,8 +23,8 @@ async function run() {
     'calibration+data@example.org'
   ] : [];
   const markdown = [
-    'The control group measured acceleration with ' + formula + '. The instrument recorded each sample using ' + code + '.',
-    'The report marked ' + html + 'the strongest response</span>. The calibration figure ' + figure + ' shows the response at low temperature.',
+    'The control group measured acceleration with ' + formula + (tex.length ? ' and the dose response ' + tex[0] : '') + '. The instrument recorded each sample using ' + code + '.',
+    'The report marked ' + html + 'the strongest response</span>. The calibration figure ' + figure + ' shows the response at low temperature.' + (tex.length ? ' The curve follows ' + tex[1] + '.' : ''),
     ...(autolinks.length ? ['The primary record is at ' + autolinks[0] + '. Independent readings are available at ' + autolinks[1] + '. Contact ' + autolinks[2] + ' for the raw measurements.'] : [])
   ].join('\n\n');
   const { parsedMarkdownBlocks } = await import('../src/academicMarkdown.mjs');
@@ -51,9 +52,13 @@ async function run() {
     await app.evaluate(() => {
       const fetchLocal = global.fetch;
       global.structuredInputs = [];
-      global.fetch = (url, options) => {
+      global.structuredOutputs = [];
+      global.fetch = async (url, options) => {
         if (new URL(url).pathname === '/api/generate' && typeof options?.body === 'string') {
           global.structuredInputs.push(JSON.parse(options.body).prompt);
+          const response = await fetchLocal(url, options);
+          if (response.ok) global.structuredOutputs.push((await response.clone().json()).response);
+          return response;
         }
         return fetchLocal(url, options);
       };
@@ -64,19 +69,39 @@ async function run() {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline && !JSON.parse(fs.readFileSync(paperPath, 'utf8')).blocks.every(block =>
       ['ok', 'failed'].includes(block.status))) await new Promise(resolve => setTimeout(resolve, 100));
+    if (tex.length) {
+      const firstPass = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
+      const failed = firstPass.blocks.filter(block => block.status === 'failed');
+      report.retried = failed.map(block => block.id);
+      if (failed.length) {
+        await openWorkspaceView(page, 'Reader');
+        for (const block of failed) {
+          assert.match(block.error, /changed a protected formula/);
+          await page.locator('#block-' + block.id + ' .failure').getByRole('button', { name: 'Retry', exact: true }).click();
+          await page.locator('#block-' + block.id + ' .translation-text .katex annotation').first()
+            .waitFor({ state: 'attached', timeout: 35000 });
+          const until = Date.now() + 5000;
+          while (Date.now() < until && JSON.parse(fs.readFileSync(paperPath, 'utf8')).blocks.find(item => item.id === block.id)?.status !== 'ok') {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        }
+        await openWorkspaceView(page, 'Full Translation');
+      }
+    }
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
     report.version = await page.evaluate(async () => (await window.paperBridge.bootstrap()).version);
     report.inputs = await app.evaluate(() => global.structuredInputs);
+    report.outputs = await app.evaluate(() => global.structuredOutputs);
     report.blocks = saved.blocks.map(({ status, translationMarkdown, error }) => ({ status, translationMarkdown, error }));
     const active = (await (await fetch(base + '/api/ps')).json()).models.find(item => item.name === model || item.model === model);
     report.modelVramBytes = active?.size_vram;
     assert.ok(report.modelVramBytes > 0, 'Expected model inference on the GPU');
     assert.ok(report.inputs.length >= 2, 'Expected requests for both paragraphs');
-    for (const input of report.inputs) for (const literal of ['printf(', 'signal > threshold', 'panel(2).png', 'figure(2).pdf', 'F = m a', ...(autolinks.length ? ['calibration#plot', 'archive_(reference)', autolinks[2]] : [])]) {
+    for (const input of report.inputs) for (const literal of ['printf(', 'signal > threshold', 'panel(2).png', 'figure(2).pdf', 'F = m a', ...tex.map(item => item.slice(2, -2)), ...(autolinks.length ? ['calibration#plot', 'archive_(reference)', autolinks[2]] : [])]) {
       assert.ok(!input.includes(literal), 'Protected content reached the model: ' + literal);
     }
     assert.ok(report.blocks.every(block => block.status === 'ok' && /[\u3400-\u9fff]/u.test(block.translationMarkdown)), JSON.stringify(report.blocks));
-    for (const literal of [formula, code, html, '</span>', figure, ...autolinks]) assert.ok(saved.connectedTranslation.includes(literal), literal);
+    for (const literal of [formula, code, html, '</span>', figure, ...autolinks, ...tex]) assert.ok(saved.connectedTranslation.includes(literal), literal);
     const destination = path.join(workspace, 'full-translation.md');
     await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, destination);
     await page.getByRole('button', { name: 'More ···', exact: true }).click();
@@ -91,6 +116,14 @@ async function run() {
     await page.locator('#block-1 .translation-text code').waitFor();
     assert.equal(await page.locator('#block-1 .translation-text code').textContent(), 'printf(`sample`, "$&")');
     assert.equal(await page.locator('#block-2 .translation-text a').getAttribute('href'), 'supplement/figure(2).pdf');
+    if (tex.length) {
+      const annotations = await page.locator('.translation-text .katex annotation').evaluateAll(nodes =>
+        nodes.map(node => ({ tex: node.textContent, display: Boolean(node.closest('.katex-display')) })));
+      for (const [index, source] of tex.entries()) {
+        assert.ok(annotations.some(item => item.tex === source.slice(2, -2) && item.display === (index === 1)));
+      }
+      report.readerEquations = annotations;
+    }
     if (autolinks.length) {
       const links = await page.locator('#block-3 .translation-text a').evaluateAll(elements => elements.map(element => element.getAttribute('href')));
       report.readerLinks = links;

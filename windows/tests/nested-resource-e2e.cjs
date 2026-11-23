@@ -6,6 +6,7 @@ const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
 const { readMineruMarkdown } = require('../electron/mineru-output.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
+const { observeDeepResource } = require('./mac-parity/observe-deep-resource.cjs');
 const { observeResource } = require('./mac-parity/observe-resource.cjs');
 
 async function checkEquations(page, expected, tab) {
@@ -25,15 +26,29 @@ async function checkEquations(page, expected, tab) {
   assert.equal(observed.printed, '$x_1$', 'Printed source stays literal inside code');
 }
 
+async function checkTextEquations(page, expected, tab) {
+  const host = page.locator('.main-scroll');
+  await host.getByText('Dose response', { exact: true }).first().waitFor();
+  const observed = await host.evaluate(root => {
+    const start = [...root.querySelectorAll('h1')].find(heading => heading.textContent === 'Dose response');
+    return [...root.querySelectorAll('.katex')].filter(math => start?.compareDocumentPosition(math) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .map(math => ({ tex: math.querySelector('annotation').textContent.trim(), display: Boolean(math.closest('.katex-display')), in: '' }));
+  });
+  assert.deepEqual(observed, expected, tab + ' must typeset TeX in ordinary Markdown');
+  assert.equal(await host.locator('code').filter({ hasText: '\\(literal\\)' }).first().textContent(), '\\(literal\\)');
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..'), fixtures = path.join(__dirname, 'mac-parity');
   const artifacts = path.join(root, 'test-artifacts');
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'nested-resource-'));
   const deep = process.argv.includes('--deep'), equations = process.argv.includes('--equations');
+  const tex = process.argv.includes('--tex');
   const source = fs.readFileSync(path.join(fixtures, 'nested-resource.md'), 'utf8')
     + (deep ? '\n' + fs.readFileSync(path.join(fixtures, 'deep-resource.md'), 'utf8') : '')
-    + (equations ? '\n' + fs.readFileSync(path.join(fixtures, 'html-equations.md'), 'utf8') : '');
+    + (equations ? '\n' + fs.readFileSync(path.join(fixtures, 'html-equations.md'), 'utf8') : '')
+    + (tex ? '\n' + fs.readFileSync(path.join(fixtures, 'tex-delimiters.md'), 'utf8') : '');
   const id = createHash('sha256').update(source).digest('hex');
   const bundle = path.join(workspace, 'mineru', id, 'paper', 'auto');
   fs.mkdirSync(path.join(bundle, 'images'), { recursive: true });
@@ -44,7 +59,7 @@ async function run() {
   const { parsedMarkdownBlocks } = await import('../src/academicMarkdown.mjs');
   const blocks = parsedMarkdownBlocks(markdown);
   assert.deepEqual(blocks.map(item => item.markdownKind), ['heading', 'paragraph', 'html', 'paragraph', ...(deep ? ['html', 'paragraph'] : []),
-    ...(equations ? ['heading', 'table', 'html'] : [])]);
+    ...(equations ? ['heading', 'table', 'html'] : []), ...(tex ? ['heading', 'paragraph', 'formula', 'paragraph'] : [])]);
   const paper = { id, name: 'Calibration record', type: 'text', sourceMode: 'mineru', blocks, mineruBlocks: blocks, mineruMarkdown: markdown,
     connectedTranslation: markdown, inspectorOpen: true, position: { tab: 'Paper', displayMode: 'bilingual', block: 1 }, updatedAt: new Date().toISOString() };
   fs.mkdirSync(path.join(workspace, 'papers'));
@@ -63,8 +78,12 @@ async function run() {
   if (equations && native) {
     // The Mac preview escapes the inline <code> tag in this caption and typesets
     // the printed example as a sixth formula. Windows keeps that example literal.
-    assert.deepEqual(native.htmlEquations, [...formulas, { tex: 'x_1', display: false, in: 'figcaption' }]);
+    const nativeMath = native.htmlEquations.filter(item => !(item.in === 'figcaption' && item.tex === 'x_1' && !item.display));
+    assert.deepEqual(nativeMath, formulas);
   }
+  const typeset = [{ tex: 'C_{50}', display: false, in: '' }, { tex: 'x_1*x_2', display: false, in: '' },
+    { tex: 'R(t)=\\frac{A}{1+t}', display: true, in: '' }];
+  if (tex && native) assert.deepEqual(native.texDelimiters.map(item => ({ ...item, tex: item.tex.trim() })), typeset);
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ cwd: root, ...(exe && { executablePath: exe }),
     args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
@@ -75,11 +94,20 @@ async function run() {
     for (const tab of ['Paper', 'Reader', 'Full Translation']) {
       await openWorkspaceView(page, tab);
       if (equations) await checkEquations(page, formulas, tab);
+      if (tex) await checkTextEquations(page, typeset, tab);
       const host = page.locator('[data-markdown-host]').filter({ has: page.locator('details > summary', { hasText: 'Calibration measurements' }) }).first();
       const result = await host.evaluate(observeResource);
       assert.deepEqual(result, expected, tab + ' must retain the complete calibration panel');
       assert.equal(await host.getByRole('img', { name: 'Tabbed comparison panel' }).isVisible(), false);
       if (deep) {
+        if (native?.deepResource) {
+          const actual = await page.locator('.main-scroll').evaluate(observeDeepResource);
+          assert.deepEqual(actual, { outer: true, inner: true, nested: true, reading: '24 °C', explanation: true, outside: true });
+          // WebKit preserves the outer panel and its explanation. The literal closing
+          // tag in this sample's HTML comment ends the Mac structural segment early.
+          assert.equal(native.deepResource.outer, actual.outer);
+          assert.equal(native.deepResource.explanation, actual.explanation);
+        }
         const toggle = page.locator('.main-scroll summary').filter({ hasText: /^Detailed measurements$/ }).first();
         const panel = toggle.locator('..');
         await toggle.click();
@@ -107,6 +135,7 @@ async function run() {
     assert.deepEqual(await saved.evaluate(observeResource), expected, 'Restored translation must open its figure offline');
     await saved.locator('summary').filter({ hasText: /^Calibration measurements$/ }).click();
     if (equations) await checkEquations(page, formulas, 'Reopened translation');
+    if (tex) await checkTextEquations(page, typeset, 'Reopened translation');
     await saved.locator('details figcaption').evaluate(caption => {
       const range = document.createRange();
       range.selectNodeContents(caption);
@@ -125,7 +154,7 @@ async function run() {
     await page.waitForFunction(() => document.querySelector('[data-view-scope="fullTranslation"] details')?.open === true, { }, { timeout: 4000 });
     assert.equal(await page.evaluate(() => window.getSelection().toString()), expected.figureCaption);
     assert.equal(await page.locator('.inspector textarea').inputValue(), note);
-    console.log(JSON.stringify({ views: 3, reopened: true, noteRestored: true, image: expected.image, deep, equations, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    console.log(JSON.stringify({ views: 3, reopened: true, noteRestored: true, image: expected.image, deep, equations, tex, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

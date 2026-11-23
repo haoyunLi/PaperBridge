@@ -139,6 +139,11 @@ test('Markdown recovery preserves verified coordinates and rejects ambiguous dis
   assert.equal(markdownAnnotationOffset(moved, saved), moved.indexOf(saved.text));
   assert.equal(renderedAnchorOffset(moved, saved), null, 'a pending edit still requires current exact coordinates');
   assert.equal(markdownAnnotationOffset(moved + ' Another N=6.', saved), null);
+  const contextual = 'New. A N=6 layers. Another N=6.';
+  assert.equal(markdownAnnotationOffset(contextual, saved), contextual.indexOf(saved.text));
+  assert.equal(markdownAnnotationOffset(contextual + ' A N=6 layers.', saved), null);
+  assert.equal(markdownAnnotationOffset(contextual, { ...saved, needsReview: true }), null);
+  assert.equal(renderedAnchorOffset(contextual, saved), null, 'new selections must still match their original coordinates');
   assert.equal(markdownAnnotationOffset(moved, { ...saved, needsReview: true }), null);
   assert.equal(markdownAnnotationOffset('A N=8 layers.', saved), null);
 

@@ -25,6 +25,24 @@ test('printed prices and escaped dollars leave subsequent HTML caption math avai
   assert.ok(result.text.includes('Price $4, range $5–$10.'));
 });
 
+test('Markdown TeX preserves emphasis characters, quoted line breaks and code literals', async () => {
+  const source = '> \\[\r\n> A=\\frac{1}{2}\r\n> \\]\r\n\r\n' +
+    'See [\\(x_1*x_2\\)](https://example.org) and `\\(sample\\)`.';
+  const result = await rendered(source);
+  assert.deepEqual(result.formulas, ['A=\\frac{1}{2}', 'x_1*x_2']);
+  assert.ok(result.text.includes('\\(sample\\)'));
+  const { parseMarkdown } = await import('../src/markdownRendering.mjs');
+  const link = parseMarkdown(source).children.at(-1).children.find(item => item.type === 'link');
+  assert.equal(link.url, 'https://example.org');
+  assert.equal(source.slice(link.children[0].position.start.offset, link.children[0].position.end.offset), '\\(x_1*x_2\\)');
+});
+
+test('unmatched and double-escaped openers do not consume a later valid equation', async () => {
+  const result = await rendered('Print \\\\(plain\\\\) and \\(unpaired, then \\(x^2\\).');
+  assert.deepEqual(result.formulas, ['x^2']);
+  assert.ok(result.text.includes('\\(plain\\) and (unpaired'));
+});
+
 test('raw tables support nested formatting and TeX groups while preserving code examples', async () => {
   const result = await rendered('<table><tr><td><b>$$\\text{cost \\$5}$$</b></td><td><code>\\(y\\)</code></td></tr></table>');
   assert.deepEqual(result.formulas, ['\\text{cost \\$5}']);

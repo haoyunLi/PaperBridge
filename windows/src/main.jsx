@@ -2453,16 +2453,24 @@ function App() {
               }
               const prompt = promptForPart(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
               const answer = await generate(translationModel, prompt, instructions, token);
-              translated.push(tokens.length || block.sourceMarkdown ? restoreMarkdown(answer, tokens) : answer);
+              try {
+                translated.push(tokens.length || block.sourceMarkdown ? restoreMarkdown(answer, tokens) : answer);
+              } catch (error) {
+                const previouslyRejected = block.status === 'failed' && (block.errorCode === 'PROTECTED_MARKDOWN_CHANGED'
+                  || block.error === 'The model changed a protected formula, figure, or link. Retry this block.');
+                if (config.aiProvider !== 'ollama' || !previouslyRejected || error.code !== 'PROTECTED_MARKDOWN_CHANGED') throw error;
+                requireActiveTask(token);
+                translated.push(await translateMarkupSpans({ text: part, tokens }, config, translationModel, instructions, token));
+              }
             }
             output = (marker ? marker + ' ' : '') + translated.join(block.sourceMarkdown ? '\n' : ' ');
           }
           if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: block.sourceMarkdown ? output : null,
-            translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '' });
+            translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '', errorCode: null });
         } catch (err) {
           if (token.cancelled) break;
           if (config.aiProvider === 'openai' && isGlobalOpenAIError(err.message)) throw err;
-          recordTranslation(block.id, { status: 'failed', error: err.message });
+          recordTranslation(block.id, { status: 'failed', error: err.message, errorCode: err.code || null });
           failed++;
         }
         setProgress({ done: index + 1, total, failed });

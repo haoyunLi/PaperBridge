@@ -150,7 +150,18 @@ export function markdownAnnotationOffset(rendered, item, source = rendered) {
     : matchingTextOffset(source, rendered, item.text, item.offset);
   if (stored !== null) return stored;
   const first = rendered.indexOf(item.text);
-  return first >= 0 && first === rendered.lastIndexOf(item.text) ? first : null;
+  if (first < 0) return null;
+  if (first === rendered.lastIndexOf(item.text)) return first;
+  // Rendered tables flatten adjacent cells. Repeated punctuation such as "+"/"−"
+  // needs an exact saved offset to identify the cell that the reader marked.
+  if (!item.renderedAnchor || !/[\p{L}\p{N}]/u.test(item.text)) return null;
+  // Reformatting an earlier equation can shift both occurrences equally. Only
+  // recover a repeated quotation when its complete saved surroundings identify it.
+  const { before, after } = item.renderedAnchor;
+  if (!before && !after) return null;
+  const passage = before + item.text + after;
+  const at = rendered.indexOf(passage);
+  return at >= 0 && at === rendered.lastIndexOf(passage) ? at + before.length : null;
 }
 
 // Use the live range for grouping while keeping the original saved record for edits and undo.

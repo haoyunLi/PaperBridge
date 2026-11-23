@@ -6,12 +6,14 @@ import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
+import { remarkTeXDelimiters } from './texDelimiters.mjs';
 import { rehypeHTMLEquations } from './htmlEquations.mjs';
 
-export const markdownPlugins = [remarkGfm, remarkMath];
+export const markdownPlugins = [remarkGfm, remarkMath, remarkTeXDelimiters];
 const markdownSchema = {
   ...defaultSchema,
   tagNames: [...defaultSchema.tagNames, 'caption', 'colgroup', 'col', 'figure', 'figcaption'],
+  attributes: { ...defaultSchema.attributes, code: [['className', /^language-./, 'math-inline', 'math-display']] },
   protocols: { ...defaultSchema.protocols, src: [...(defaultSchema.protocols?.src || []), 'data'] }
 };
 export const rehypePlugins = [rehypeRaw, [rehypeSanitize, markdownSchema], rehypeHTMLEquations, rehypeKatex];
