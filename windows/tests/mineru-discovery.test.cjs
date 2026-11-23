@@ -55,6 +55,35 @@ test('auto-detect prefers a compatible private managed MinerU and respects an ex
   assert.equal(configured.source, 'configured');
 });
 
+test('standard Python script directories are discoverable even when pip did not add them to PATH', async t => {
+  const { root, toolsRoot } = fixture(t);
+  const local = path.join(root, 'Local with spaces');
+  const roaming = path.join(root, 'Roaming');
+  const pythonPrefix = path.join(local, 'Programs', 'Python', 'Python312');
+  const userPrefix = path.join(roaming, 'Python', 'Python312');
+  const python = path.join(pythonPrefix, 'python.exe');
+  const userCommand = path.join(userPrefix, 'Scripts', 'mineru.exe');
+  const module = path.join(userPrefix, 'site-packages', 'mineru', '__init__.py');
+  for (const file of [python, userCommand, module]) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '');
+  }
+  const environment = { LOCALAPPDATA: local, APPDATA: roaming, PATH: '' };
+  const launcher = executable => Buffer.from('#!"' + executable + '"\r\nPK\x03\x04');
+  fs.writeFileSync(userCommand, launcher(python));
+  assert.equal(mineruPython(userCommand, environment), python);
+  assert.deepEqual(candidates('', toolsRoot, environment).filter(c => c.source === 'python').map(c => c.executable),
+    [userCommand, path.join(pythonPrefix, 'Scripts', 'mineru.exe')]);
+  const found = await detectMineruExecutable('', toolsRoot, { environment, probeVersion: async cmd =>
+    cmd === userCommand ? 'MinerU 3.4.5' : 'Unavailable' });
+  assert.equal(found.executable, userCommand);
+  fs.writeFileSync(userCommand, launcher(path.join(root, 'other', 'python.exe')));
+  assert.equal(mineruPython(userCommand, environment), '');
+  fs.writeFileSync(userCommand, launcher(python));
+  assert.equal(mineruPython(userCommand, { ...environment, PYTHONUSERBASE: path.join(root, 'different base') }), '');
+  assert.deepEqual(candidates(userCommand, toolsRoot, environment), [{ executable: userCommand, source: 'configured' }]);
+});
+
 test('auto-detect skips a broken managed command and chooses compatible PATH MinerU', async t => {
   const paths = fixture(t);
   const result = await detectMineruExecutable('', paths.toolsRoot, {
@@ -161,8 +190,8 @@ test('incompatible or absent tools produce explicit, non-installing diagnostics'
   fs.rmSync(paths.onPath);
   const absent = await detectMineruExecutable('', paths.toolsRoot, options);
   assert.equal(absent.installed, false);
-  assert.match(absent.reason, /managed tools or on PATH/);
-  assert.match((await detectMineruExecutable('mineru', paths.toolsRoot, options)).reason, /managed tools or on PATH/);
+  assert.match(absent.reason, /standard per-user Python directories/);
+  assert.match((await detectMineruExecutable('mineru', paths.toolsRoot, options)).reason, /managed tools, on PATH/);
 });
 
 test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with an explicit CPU option', async t => {

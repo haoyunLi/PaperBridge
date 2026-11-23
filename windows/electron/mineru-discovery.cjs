@@ -7,7 +7,23 @@ const { mineruPaths, managedMineruAvailable } = require('./mineru-installation.c
 
 const exec = promisify(execFile);
 
-function candidates(configured, toolsRoot, environment = process.env) {
+const pythonVersionDir = /^Python3\d{1,2}t?(?:-(?:32|64|arm64))?$/i;
+
+function userPythonBase(environment) {
+  return environment.PYTHONUSERBASE || (environment.APPDATA && path.join(environment.APPDATA, 'Python'));
+}
+
+function pythonScriptDirectories(root, fileSystem) {
+  if (!root || !path.isAbsolute(root)) return [];
+  try {
+    return fileSystem.readdirSync(root, { withFileTypes: true })
+      .filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && pythonVersionDir.test(entry.name))
+      .map(entry => entry.name).sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))
+      .map(name => path.join(root, name, 'Scripts'));
+  } catch { return []; }
+}
+
+function candidates(configured, toolsRoot, environment = process.env, fileSystem = fs) {
   const selected = String(configured || '').trim();
   if (selected && !/^(?:mineru|mineru\.exe)$/i.test(selected)) return [{ executable: path.resolve(selected), source: 'configured' }];
   const result = [];
@@ -15,6 +31,12 @@ function candidates(configured, toolsRoot, environment = process.env) {
   for (const directory of String(environment.PATH || environment.Path || '').split(path.delimiter)) {
     const cleaned = directory.trim().replace(/^"|"$/g, '');
     if (cleaned) result.push({ executable: path.join(cleaned, 'mineru.exe'), source: 'path' });
+  }
+  const localPython = environment.LOCALAPPDATA && path.join(environment.LOCALAPPDATA, 'Programs', 'Python');
+  for (const root of [userPythonBase(environment), localPython]) {
+    for (const directory of pythonScriptDirectories(root, fileSystem)) {
+      result.push({ executable: path.join(directory, 'mineru.exe'), source: 'python' });
+    }
   }
   const seen = new Set();
   return result.filter(candidate => {
@@ -97,7 +119,7 @@ function isFile(file, fileSystem = fs) {
   try { return fileSystem.statSync(file).isFile(); } catch { return false; }
 }
 
-function mineruPython(executable) {
+function mineruPython(executable, environment = process.env) {
   const directory = path.dirname(executable);
   const adjacent = path.join(directory, 'python.exe');
   if (isFile(adjacent)) return adjacent;
@@ -106,7 +128,28 @@ function mineruPython(executable) {
   // interpreter in the parent prefix. Confirm that prefix owns the package.
   const prefix = path.dirname(directory);
   const python = path.join(prefix, 'python.exe');
-  return isFile(python) && isFile(path.join(prefix, 'Lib', 'site-packages', 'mineru', '__init__.py')) ? python : '';
+  if (isFile(python) && isFile(path.join(prefix, 'Lib', 'site-packages', 'mineru', '__init__.py'))) return python;
+
+  // pip --user keeps the entry point and package under the user base. Its
+  // distlib launcher records the interpreter immediately before the ZIP entry.
+  const base = userPythonBase(environment);
+  if (!base || !environment.LOCALAPPDATA || !pythonVersionDir.test(path.basename(prefix)) ||
+      path.resolve(path.dirname(prefix)).toLowerCase() !== path.resolve(base).toLowerCase() ||
+      !isFile(path.join(prefix, 'site-packages', 'mineru', '__init__.py'))) return '';
+  try {
+    if (fs.statSync(executable).size > 1024 * 1024) return '';
+    const launcher = fs.readFileSync(executable);
+    const header = /#!(?:"([^"\x00-\x1f]+)"|([^"\x00-\x1f]+))\r?\nPK\x03\x04/.exec(launcher.subarray(-65536).toString('utf8'));
+    const recorded = header?.[1] || header?.[2];
+    if (!recorded || !path.isAbsolute(recorded)) return '';
+    const local = path.join(environment.LOCALAPPDATA, 'Programs', 'Python');
+    const version = path.basename(prefix).replace(/-(?:32|64|arm64)$/i, '');
+    for (const suffix of ['', '-32', '-64', '-arm64']) {
+      const expected = path.join(local, version + suffix, 'python.exe');
+      if (path.resolve(recorded).toLowerCase() === path.resolve(expected).toLowerCase() && isFile(expected)) return expected;
+    }
+  } catch { /* Unknown launchers retain their normal import path. */ }
+  return '';
 }
 
 async function detectMineruExecutable(configured, toolsRoot, options = {}) {
@@ -117,7 +160,7 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
   let firstIncompatible = null;
   let managedUnavailable = '';
   const managed = toolsRoot && path.join(mineruPaths(toolsRoot).final, 'Scripts', 'mineru.exe').toLowerCase();
-  for (const candidate of candidates(configured, toolsRoot, options.environment)) {
+  for (const candidate of candidates(configured, toolsRoot, options.environment, fileSystem)) {
     if (managed && path.resolve(candidate.executable).toLowerCase() === managed && !options.repairOwner) {
       try {
         if (!managedMineruAvailable(toolsRoot)) managedUnavailable = 'MinerU setup is running in another operation. Wait for it to finish.';
@@ -155,7 +198,7 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
   const explicit = String(configured || '').trim();
   return { installed: false, compatible: false, executable: '', version: '', source: '',
     reason: managedUnavailable || (explicit && !/^(?:mineru|mineru\.exe)$/i.test(explicit) ? `Configured MinerU executable was not found: ${explicit}`
-      : 'MinerU was not found in PaperBridge managed tools or on PATH. Install it in Local AI setup or enter its full path.') };
+      : 'MinerU was not found in PaperBridge managed tools, on PATH or in the standard per-user Python directories. Install it in Local AI setup or enter its full path.') };
 }
 
 module.exports = { candidates, createMineruStaging, detectMineruExecutable, mineru4Environment, mineruInvocation, mineruPython };
