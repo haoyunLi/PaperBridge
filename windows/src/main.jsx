@@ -240,16 +240,19 @@ function domRangeIn(root, range, { visibleOnly = false, trimEdges = false } = {}
   before.setEnd(range.startContainer, range.startOffset);
   const offset = domText(before.cloneContents(), visibleOnly).length + (trimEdges ? raw.length - raw.trimStart().length : 0);
   const rect = range.getBoundingClientRect();
-  return { text, offset, quote: visibleOnly ? tableSelectionQuote(range, text) : undefined, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
+  return { text, offset, quote: visibleOnly ? renderedSelectionQuote(range, text) : undefined, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
 }
-// Browsers copy tables with tabs between cells and line breaks between rows.
-// Keep DOM offsets for navigation and store the visible quote for readers and exports.
-function tableSelectionQuote(range, text) {
-  const cellAt = node => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('td, th');
-  const first = cellAt(range.startContainer);
-  const last = cellAt(range.endContainer);
-  if (!first || !last || first === last || first.closest('table') !== last.closest('table')) return undefined;
-  const quote = window.getSelection()?.toString();
+// The visible selection carries paragraph breaks, code lines and table separators.
+// Keep textContent-based offsets for exact annotation navigation.
+function renderedSelectionQuote(range, text) {
+  const inMarkdown = node => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('[data-markdown-host]');
+  if (!inMarkdown(range.startContainer) || !inMarkdown(range.endContainer)) return undefined;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return undefined;
+  const current = selection.getRangeAt(0);
+  if (current.compareBoundaryPoints(Range.START_TO_START, range) !== 0 ||
+      current.compareBoundaryPoints(Range.END_TO_END, range) !== 0) return undefined;
+  const quote = selection.toString();
   if (!quote || quote === text || quote.replace(/\s/g, '') !== text.replace(/\s/g, '')) return undefined;
   return quote;
 }
@@ -1993,7 +1996,7 @@ function App() {
         range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
       }
     });
-    const quote = restoreTableQuote(range, text, viewNavigation.records);
+    const quote = restoreRenderedQuote(range, text, viewNavigation.records);
     const captured = { text, offset, context: rendered };
     const position = article ? {
       ...selectionOffsets(captured, null, paperArticleSource(paper)), displayMode: viewNavigation.displayMode, sourceMode: viewNavigation.sourceMode
@@ -2130,7 +2133,7 @@ function App() {
         const top = root.closest('.block')?.getBoundingClientRect().top ?? quote.top;
         host.scrollTop += Math.max(top, quote.top - Math.max(0, (host.clientHeight - quote.height) / 2)) - viewport.top;
       } else range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
-      const quote = restoreTableQuote(range, request.text, request.records);
+      const quote = restoreRenderedQuote(range, request.text, request.records);
       const captured = { text: request.text, offset: at, context: rendered };
       applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, quote, ...textSelectionOffsets(captured, source, markdown),
         scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
@@ -3153,8 +3156,8 @@ function App() {
     commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
       position: { ...current.position, tab: 'Reader', block: id, displayMode: mode, readerSearchOrigin: undefined } }));
   }
-  function restoreTableQuote(range, text, records) {
-    const quote = tableSelectionQuote(range, text);
+  function restoreRenderedQuote(range, text, records) {
+    const quote = renderedSelectionQuote(range, text);
     if (quote && records?.some(ref => !ref.item.quote && !ref.item.needsReview)) {
       commitPaper(current => restoreSavedAnnotationQuote(current, records, quote));
     }

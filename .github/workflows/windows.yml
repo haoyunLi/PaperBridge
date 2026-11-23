@@ -117,6 +117,8 @@ jobs:
           npm run test:edit-menu-e2e
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/journal-reflow-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/journal-preview-quotes-e2e.cjs
       - name: Keep equation-adjacent prose readable in the packaged app
         shell: pwsh
         run: |
