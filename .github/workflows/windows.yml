@@ -115,6 +115,8 @@ jobs:
           $env:PAPERBRIDGE_MAC_REFERENCE = "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
           $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
           npm run test:edit-menu-e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/journal-reflow-e2e.cjs
       - name: Keep equation-adjacent prose readable in the packaged app
         shell: pwsh
         run: |
@@ -168,6 +170,7 @@ jobs:
 
             - **Setup** installs PaperBridge for the current Windows user.
             - **Portable** runs directly after download.
+            - The project's [GitHub build attestations](${{ github.server_url }}/${{ github.repository }}/attestations) identify the tagged workflow that built each executable.
             - Each executable has a SHA-256 checksum. ${{ steps.release-assets.outputs.signature_note }}
 
             You can open and annotate PDFs immediately. Use **Local AI setup** to install Ollama and the translation model when you first need local AI. MinerU is optional for scanned PDFs and structured extraction.
@@ -179,19 +182,41 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  attest-windows-release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: PaperBridge-Windows
+          path: built
+      - name: Sign the build provenance of both Windows executables
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: 'built/PaperBridge-Windows-*-x64-*.exe'
+          create-storage-record: false
+
   verify-public-download:
     outputs:
       release_feed: ${{ steps.public-download.outputs.release_feed }}
-    needs: build
+    needs: [build, attest-windows-release]
     if: startsWith(github.ref, 'refs/tags/windows-v')
     runs-on: windows-latest
     timeout-minutes: 12
     permissions:
+      attestations: read
       contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Download and verify both public Windows executables
         id: public-download
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: pwsh
         working-directory: windows
         run: |
@@ -219,6 +244,8 @@ jobs:
             if ($asset[0].digest -cne "sha256:$hash" -or (Get-Content "$file.sha256" -Raw).Trim() -cne "$hash  $name") {
               throw "Public checksum mismatch for $name"
             }
+            gh attestation verify $file --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/windows.yml" --source-ref $env:GITHUB_REF --source-digest $env:GITHUB_SHA --deny-self-hosted-runners
+            if ($LASTEXITCODE -ne 0) { throw "GitHub build provenance verification failed for $name" }
             $feed.files[$kind] = [ordered]@{ size = $download.Length; sha256 = $hash }
           }
           "portable=$(Join-Path $dir.FullName "PaperBridge-Windows-$version-x64-Portable.exe")" >> $env:GITHUB_OUTPUT

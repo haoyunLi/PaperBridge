@@ -298,6 +298,14 @@ for (const [index, { name, left, right, windowsText, marks = [] }] of fixtures.m
     }
   } else assert.equal(actual, reference.merges[index], name);
 }
+const journal = JSON.parse(readFileSync(new URL('./good-enough/reader.json', import.meta.url), 'utf8'));
+const expectedReflows = [900, 500].flatMap(target => journal.blocks.slice(0, -1)
+  .filter(block => Array.from(block.text).length > target).map(block => [block.id, target]));
+assert.deepEqual(reference.journalReflows.map(({ id, target }) => [id, target]), expectedReflows);
+for (const { id, target, parts } of reference.journalReflows) {
+  const block = journal.blocks.find(item => item.id === id);
+  assert.deepEqual(reflowBlock(block, target).map(part => part.text), parts, 'PLOS paragraph ' + id + ' at ' + target);
+}
 assert.equal(reference.reflows.length, fixtures.reflows.length);
 for (const [index, { name, text, target, windowsParagraphs }] of fixtures.reflows.entries()) {
   const actual = reflowBlock({ text }, target).map(block => block.text);

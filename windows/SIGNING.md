@@ -33,6 +33,18 @@ $expected = ((Get-Content -LiteralPath "$file.sha256" -Raw).Trim() -split '\s+')
 - 美国个人开发者可以从微软的个人开发者注册入口免费开通 Microsoft Store 账户。本人需要使用证件和自拍完成身份核验。将 MSIX 提交至商店，认证通过后由微软为商店包签名，用户从商店安装。GitHub 下载的 EXE 有独立的签名状态。[个人免费注册与核验步骤](https://learn.microsoft.com/en-us/windows/apps/publish/whats-new-individual-developer) · [微软的分发与签名选项](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/code-signing-options)
 - SignPath Foundation 为符合条件的开源项目提供免费签名。申请要求包括 OSI 认可的许可证、满足组件来源要求和逐次人工批准签名。当前仓库根目录没有声明项目许可证，是否采用开源许可由著作权人决定。[基金会申请条件](https://signpath.org/terms)
 
+## GitHub 构建来源证明
+
+从 0.2.88 起，发布流程为安装版和便携版各自的 SHA-256 生成 GitHub 构建来源证明。公开下载验收会检查文件、仓库、打包工作流、版本标签及提交号，再把这一版送入更新清单。项目通过 GitHub 的临时签名凭据完成这一步，个人开发者可以免费为公开仓库使用。Windows「数字签名」页显示的发布者身份仍取决于 EXE 自身的 Authenticode 签名。[GitHub 构建来源证明](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+
+如果已经安装 GitHub CLI，可以在下载目录核对一份文件。以下命令以 0.2.88 便携版为例。
+
+```powershell
+gh attestation verify .\PaperBridge-Windows-0.2.88-x64-Portable.exe --repo haoyunLi/PaperBridge --signer-workflow haoyunLi/PaperBridge/.github/workflows/windows.yml --source-ref refs/tags/windows-v0.2.88 --deny-self-hosted-runners
+```
+
+安装版使用同一条命令，将文件名里的 Portable 改为 Setup 即可。直接下载和使用 PaperBridge 的用户可以省略这一步。[GitHub CLI 命令说明](https://cli.github.com/manual/gh_attestation_verify)
+
 ## 美国个人开发者申请
 
 1. 在 Azure 门户创建 **Artifact Signing** 账户，选择 Basic 计划并先确认当前报价。微软列出的起价约为每月 9.99 美元。个人 Public Trust 目前面向美国和加拿大。Azure 订阅关联的计费账户类型需要为 Individual，法定姓名及地址须与身份证明匹配。[申请条件与操作步骤](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart) · [当前定价](https://azure.microsoft.com/en-us/pricing/details/artifact-signing/)
