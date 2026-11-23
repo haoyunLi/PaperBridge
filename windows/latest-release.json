@@ -1,13 +1,13 @@
 {
-  "version": "0.2.73",
+  "version": "0.2.74",
   "files": {
     "Portable": {
-      "size": 132599856,
-      "sha256": "faa4419b2e239d1cf10d2de4a296cee6e1e4a787c8b6843ed01785bc93aaaa05"
+      "size": 132600661,
+      "sha256": "57a8107bf2ef1afebd18bb80750ecdbbb69e065f4b43d50d29e53c66700bf79e"
     },
     "Setup": {
-      "size": 132811045,
-      "sha256": "a9ffdb4ee6158c5d026f47e0a5e9619e605a25162d0b8fd124f92a1c60807263"
+      "size": 132811787,
+      "sha256": "a1e67724eff9ed557eb5b8adc9f2fabdc2da7dba26b76d0f684a2a11731da28a"
     }
   }
 }
