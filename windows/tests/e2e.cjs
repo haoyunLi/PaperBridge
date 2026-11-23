@@ -477,6 +477,9 @@ async function run() {
     await page.screenshot({ path: path.join(artifacts, 'original-pdf-annotated.png') });
     const pdfRecord = fs.readdirSync(path.join(workspace, 'papers')).map(file => JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'))).find(item => item.type === 'pdf' && item.pdfNotes?.length);
     assert.ok(pdfRecord, 'The PDF note should persist with its paper');
+    for (const note of pdfRecord.pdfNotes) {
+      assert.deepEqual(note.anchors, [{ page: note.page, offset: note.offset, text: note.text }], 'New single-page notes keep an exact page anchor');
+    }
     assert.deepEqual(pdfRecord.pdfHighlights.map(item => ({ scope: item.scope, page: item.page, offset: item.offset, text: item.text })), [
       { scope: 'paperPdf', page: 1, offset: 0, text: 'Abstract' }, { scope: 'pdf', page: 1, offset: 0, text: 'Abstract' }
     ]);

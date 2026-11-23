@@ -9,7 +9,7 @@ import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, HardDrive, ZoomIn, ZoomOut } from 'lucide-react';
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
-import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
+import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
@@ -430,11 +430,10 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
     const root = layer.current;
     if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights || !annotations?.length) return;
     const text = root.textContent;
-    const valid = annotations.flatMap(item => item.needsReview ? [] : pdfAnchors(item).flatMap(anchor =>
-      anchor.page === number && text.slice(anchor.offset, anchor.offset + anchor.text.length) === anchor.text
-        ? [{ ...anchor, color: item.color, body: item.body }]
-        : []
-    ));
+    const valid = annotations.flatMap(item => pdfAnchors(item).flatMap(anchor => {
+      const offset = anchor.page === number ? resolvedPdfOffset(item, anchor, text) : null;
+      return offset === null ? [] : [{ ...anchor, offset, color: item.color, body: item.body }];
+    }));
     if (!valid.length) return;
     const key = highlightKey.current;
     richHighlights.set(key, annotationRanges(root, valid));
@@ -489,7 +488,7 @@ function capturePdfRange(host, range) {
   if (!parts.length || parts.reduce((length, item) => length + (item.quote ?? item.text).length + 1, -1) > 3000) return null;
   const rect = range.getBoundingClientRect();
   const position = { x: rect.left, y: rect.top };
-  if (parts.length === 1) return { ...parts[0], rect: position };
+  if (parts.length === 1) return { ...parts[0], anchors: parts, rect: position };
   const quote = parts.map(part => part.quote ?? part.text).join(' ');
   return { page: parts[0].page, offset: parts[0].offset, text: parts.map(part => part.text).join('\n'), quote, context: quote,
     anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
@@ -588,6 +587,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     if (!navigation || !pdf) return;
     const host = scroller.current;
     const anchors = pdfAnchors(navigation);
+    const verifiedAnchors = [];
     const ranges = [];
     for (const anchor of anchors) {
       if (!Number.isInteger(anchor.page) || anchor.page < 1 || typeof anchor.text !== 'string') { onNavigationFailure(); return; }
@@ -596,8 +596,10 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
         if (anchor.page > pdf.numPages || typeof statuses[anchor.page] === 'string') onNavigationFailure();
         return;
       }
-      const range = textRangeAt(root, anchor.offset, anchor.text.length);
+      const offset = resolvedPdfOffset(navigation, anchor, root.textContent);
+      const range = textRangeAt(root, offset, anchor.text.length);
       if (!range || range.toString() !== anchor.text) { onNavigationFailure(); return; }
+      verifiedAnchors.push({ ...anchor, offset });
       ranges.push(range);
     }
     if (!ranges.length) { onNavigationFailure(); return; }
@@ -607,7 +609,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     range.setStart(first.startContainer, first.startOffset);
     range.setEnd(last.endContainer, last.endOffset);
     const captured = capturePdfRange(host, range);
-    if (!captured || !samePdfSelection({ ...captured, scope }, navigation)) { onNavigationFailure(); return; }
+    if (!captured || !samePdfSelection({ ...captured, scope }, { ...navigation, anchors: verifiedAnchors })) { onNavigationFailure(); return; }
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
@@ -3177,23 +3179,28 @@ function App() {
     const scope = pdfAnnotationScope(pdfNavigation);
     const next = { ...anchor, id: null, kind: 'source', scope, rect: null };
     const current = paperRef.current;
-    if (anchor.quote) {
-      const needsQuote = item => !item.quote && !item.needsReview && highlightMatchesSelection(item, next);
-      if (current.pdfNotes?.some(needsQuote) || current.pdfHighlights?.some(needsQuote)) {
-        const update = items => items?.map(item => needsQuote(item) ? { ...item, quote: anchor.quote } : item);
-        commitPaper(paper => ({ ...paper, pdfNotes: update(paper.pdfNotes), pdfHighlights: update(paper.pdfHighlights) }));
-      }
+    const recovered = item => item.anchors == null && item.offset !== next.offset && samePdfSelection(item, pdfNavigation);
+    const needsUpdate = item => !item.needsReview && (
+      recovered(item) ||
+      (!item.quote && anchor.quote && highlightMatchesSelection(item, next)));
+    if (current.pdfNotes?.some(needsUpdate) || current.pdfHighlights?.some(needsUpdate)) {
+      const update = items => items?.map(item => needsUpdate(item) ? {
+        ...item, ...(recovered(item) && { offset: next.offset, anchors: storedPdfAnchors(next) }),
+        ...(!item.quote && anchor.quote && { quote: anchor.quote })
+      } : item);
+      commitPaper(paper => ({ ...paper, pdfNotes: update(paper.pdfNotes), pdfHighlights: update(paper.pdfHighlights) }));
     }
     setSelection(next);
-    setNoteDraft(findSelectionNote(current, next)?.body || '');
+    setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
     setPdfNavigation(null);
   }
   function pdfNavigationFailed() {
     const requested = pdfNavigation;
-    if (requested) commitPaper(current => ({ ...current,
-      pdfNotes: (current.pdfNotes || []).map(item => samePdfSelection(item, requested) ? { ...item, needsReview: true } : item),
-      pdfHighlights: (current.pdfHighlights || []).map(item => samePdfSelection(item, requested) ? { ...item, needsReview: true } : item)
-    }));
+    if (requested) {
+      const mark = item => (item.anchors == null) === (requested.anchors == null) && samePdfSelection(item, requested)
+        ? { ...item, needsReview: true } : item;
+      commitPaper(current => ({ ...current, pdfNotes: (current.pdfNotes || []).map(mark), pdfHighlights: (current.pdfHighlights || []).map(mark) }));
+    }
     setPdfNavigation(null);
     setError('The saved PDF text no longer matches its page ranges. The annotation was kept for review.');
   }

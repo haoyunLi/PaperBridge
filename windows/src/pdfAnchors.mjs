@@ -6,6 +6,16 @@ export function pdfAnchors(item) {
   return item ? [{ page: item.page, offset: item.offset, text: item.text, pageText: item.pageText }] : [];
 }
 
+export function resolvedPdfOffset(item, anchor, pageText) {
+  if (item.needsReview || typeof anchor.text !== 'string' || !anchor.text) return null;
+  const { offset, text } = anchor;
+  if (Number.isSafeInteger(offset) && offset >= 0 && pageText.startsWith(text, offset)) return offset;
+  if (item.anchors != null) return null;
+  // Older notes stored a single page and quote. Only that same page can recover a unique match.
+  const first = pageText.indexOf(text);
+  return first >= 0 && first === pageText.lastIndexOf(text) ? first : null;
+}
+
 export function pdfAnchorKey(item) {
   return pdfAnchors(item).map(({ page, offset, text }) => [page, offset, text]);
 }

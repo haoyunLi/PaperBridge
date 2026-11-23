@@ -16,8 +16,13 @@ func nativePDFNoteRecovery(pdf: Data, fixtures: URL) throws -> [String: Bool] {
         let index = item.page - 1
         guard let text = document.page(at: index)?.string as NSString? else { throw CocoaError(.fileReadCorruptFile) }
         let length = item.quote.utf16.count
-        let location = item.stored == "explicitLast" ? text.range(of: item.quote, options: .backwards).location
-            : item.stored == "missing" ? NSNotFound : 0
+        let location: Int
+        switch item.stored {
+        case "explicitLast": location = text.range(of: item.quote, options: .backwards).location
+        case "missing": location = NSNotFound
+        case "explicitWrong": location = 1
+        default: location = 0
+        }
         let ranges = item.stored.hasPrefix("explicit")
             ? [PDFTextAnchor(pageIndex: index, location: location, length: length, quote: item.quote)] : nil
         let note = PaperAnnotation(paragraphID: 0, side: .original, quote: item.quote, rangeLocation: location,
