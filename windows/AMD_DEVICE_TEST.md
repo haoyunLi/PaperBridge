@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 结构化论文中可运行的 Python 代码
+
+在同一篇 *Tabbed* 论文上，两端用相同的 TranslateGemma 4B 权重处理许可证、正文、Python 导入语句和小标题。Mac 与 RX 7800 XT 的许可证译文及链接、小标题逐字一致。类型转换段落均为中文，具体措辞有所不同。Mac 和 Windows 0.2.89 都把 Python 的 `from`、`import` 译成了中文。Windows 修复后保留紧接 Python 代码块之前的合法导入语句。这行可在模型服务离线时重新生成，其余已保存译文不受影响。[Mac 真实模型对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45132517461) · [论文及材料来源](tests/mac-parity/tabbed/LICENSE.md)
+
 ## 同一模型在 Mac 与 RX 7800 XT 上的逐段翻译（2026-11-22）
 
 用 Mac 1.10.0 的原生阅读器代码和 Windows 阅读器翻译 PLOS 论文 *Good enough practices in scientific computing* 的第 54–56 段。两端均使用 Ollama 0.40.16、相同摘要指纹的 TranslateGemma 4B 及 500 字符段落上限。前两段分别请求一次，第三段分两次翻译并保存为一段。两端的全文翻译各完成一个批次。Mac 使用 Intel CPU；Windows 使用 RX 7800 XT，Ollama 报告占用 2,881,948,220 字节显存。[原生 Mac 翻译及结果文件](https://github.com/haoyunLi/PaperBridge/actions/runs/45118307078)
