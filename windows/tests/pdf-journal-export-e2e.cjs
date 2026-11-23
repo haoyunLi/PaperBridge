@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
   const { savedPDFJournal, comparePDFJournalEditions } = await import('./mac-parity/pdf-journal.mjs');
@@ -32,6 +33,17 @@ async function run() {
     await page.getByRole('button', { name: 'Open PDF', exact: true }).first().click();
     await page.getByRole('heading', { name: 'article.pdf', exact: true }).waitFor({ timeout: 60000 });
     await page.waitForFunction(() => !document.querySelector('.task-progress'));
+    await openWorkspaceView(page, 'Reader');
+    const script = page.locator('.source-text pre code').filter({ hasText: 'make-zip-files.py' });
+    await script.waitFor({ timeout: 10000 });
+    const code = (await script.textContent()).trimEnd().split('\n');
+    assert.equal(code.length, 8);
+    assert.equal(code[3], './src/make-zip-files.py $(TEMP_DIR) *.dat');
+    const tree = page.locator('.source-text pre code').filter({ hasText: 'birds_count_table.csv' });
+    assert.match(await tree.textContent(), /\n\| {2,}\|/);
+    assert.doesNotMatch(await tree.textContent(), /machine-readable metadata/);
+    assert.match(await page.locator('.source-text pre code').filter({ hasText: 'Switched to cubic interpolation' }).textContent(),
+      /\* Switched to cubic interpolation as default\.\n/);
     await app.close(); app = null;
     const imported = read();
     assert.equal(imported.sourceMode, 'pdf');

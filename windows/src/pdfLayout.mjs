@@ -1,6 +1,39 @@
 import { joinPdfText, normalizeExtractedLine } from './text.mjs';
 
-function textRows(items, left, bottom, width) {
+// Some journals draw the ASCII asterisk in code using a raised TeX math
+// glyph with no Unicode mapping. Use its font and neighboring code baseline
+// to distinguish it from an arbitrary control byte or a mathematical operator.
+export async function recoverCodeAsterisks(page, content) {
+  const { items, styles } = content;
+  const candidates = [];
+  for (let i = 0; i < items.length; i++) {
+    const glyph = items[i];
+    if (glyph.str !== '\u0003') continue;
+    const nextIndex = items[i + 1]?.str === ' ' ? i + 2 : i + 1;
+    const next = items[nextIndex];
+    if (!next?.str || styles[next.fontName]?.fontFamily !== 'monospace') continue;
+    const lift = glyph.transform[5] - next.transform[5];
+    const gap = next.transform[4] - (glyph.transform[4] + glyph.width);
+    if (glyph.height < next.height && lift > 0 && lift <= next.height * 0.6 &&
+        gap >= -1 && gap <= next.height) candidates.push({ i, nextIndex, baseline: next.transform[5] });
+  }
+  if (!candidates.length) return content;
+  // PDF.js loads the embedded font name with the drawing operators. Text
+  // extraction alone supplies only the generated font ID and generic family.
+  try { await page.getOperatorList(); } catch { return content; }
+  const corrected = items.slice();
+  for (const { i, nextIndex, baseline } of candidates) {
+    const id = items[i].fontName;
+    if (!page.commonObjs.has(id) || !/^(?:[A-Z]{6}\+)?TeX_CM_Maths_Symbols$/.test(page.commonObjs.get(id)?.name)) continue;
+    for (let j = i; j < nextIndex; j++) {
+      const item = items[j];
+      corrected[j] = { ...item, str: j === i ? '*' : item.str, transform: [...item.transform.slice(0, 5), baseline] };
+    }
+  }
+  return { ...content, items: corrected };
+}
+
+function textRows(items, left, bottom, width, styles) {
   const rows = [];
   let previousText;
   for (const [index, item] of items.entries()) {
@@ -27,7 +60,8 @@ function textRows(items, left, bottom, width) {
     }
     const previous = items[index - 1];
     const spaceBefore = previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
-    const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore };
+    const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore,
+      monospace: styles?.[item.fontName]?.fontFamily === 'monospace' };
     row.items.push(placed);
     previousText = { ...placed, vertical, row, raisedSuffix };
   }
@@ -44,6 +78,20 @@ function lineFromItems(items, y, vertical, pageHeight) {
     end = Math.max(end, item.end);
   }
   const line = { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  const fixed = items.filter(item => item.monospace);
+  if (!vertical && fixed.length && items.every(item => item.monospace || !/[\p{L}\p{N}]/u.test(item.text))) {
+    // A few publishers draw punctuation from a separate mathematical font.
+    // Estimate a character cell only from glyphs actually set in fixed pitch.
+    const cells = fixed.reduce((count, item) => count + Array.from(item.text).length, 0);
+    line.codeCellWidth = fixed.reduce((size, item) => size + item.end - item.x, 0) / cells;
+    let previousEnd = x;
+    line.codeText = items.map(item => {
+      const gap = Math.round((item.x - previousEnd) / line.codeCellWidth);
+      const spaces = Math.max(Number(item.spaceBefore), Math.min(80, gap));
+      previousEnd = item.end;
+      return ' '.repeat(spaces) + item.text;
+    }).join('').trim();
+  }
   const [marker, body] = items;
   if (!vertical && body && y < pageHeight * 0.18 && /^(?:\p{Nd}{1,3}|[*†‡])$/u.test(marker.text.trim()) &&
       /^\s*\p{L}/u.test(body.text) && marker.height < body.height * 0.9 &&
@@ -139,7 +187,7 @@ export function pageLines(content, [left, bottom, right, top]) {
     if (line.x >= mid - tolerance) return 'right';
     return 'spanning';
   };
-  const physicalRows = textRows(content.items, left, bottom, width);
+  const physicalRows = textRows(content.items, left, bottom, width, content.styles);
   for (const row of physicalRows) row.items.sort((a, b) => a.x - b.x);
   const sidebar = journalSidebarBoundary(physicalRows, width);
   if (sidebar !== null) {

@@ -13,7 +13,7 @@ import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
-import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
+import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, onlyProtectedMarkup, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
@@ -2441,7 +2441,7 @@ function App() {
             const instructions = translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage));
             for (const part of parts) {
               const tokens = protectedBlock.tokens.filter(([marker]) => part.includes(marker));
-              if (tokens.length && !/\p{L}/u.test(part.replace(/__PAPERBRIDGE_TOKEN_\d+__/g, ''))) {
+              if (onlyProtectedMarkup(part, tokens)) {
                 translated.push(restoreMarkdown(part, tokens));
                 continue;
               }
@@ -2709,6 +2709,10 @@ function App() {
             }
             if (parts.length > 1) setBusy({ label: `${localRetry ? 'Retrying' : 'Translating'} batch ${done + 1} · part ${partIndex + 1} of ${parts.length}` });
             const excerpt = protectStructuredMarkdown(part.source);
+            if (onlyProtectedMarkup(excerpt.text, excerpt.tokens)) {
+              output += part.separator + restoreMarkdown(excerpt.text, excerpt.tokens);
+              continue;
+            }
             const prompt = connectedTranslationPrompt(excerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(excerpt.text, config.sourceLanguage, config.targetLanguage));
             const answer = await generate(translationModel, prompt, instructions, token);
             let translated;

@@ -111,6 +111,32 @@ export function pdfFootnoteMarker(block) {
   return block.text?.startsWith(marker) && /^\s*\p{L}/u.test(block.text.slice(marker.length)) ? marker : '';
 }
 
+function groupPdfListings(lines) {
+  const output = [];
+  for (let start = 0; start < lines.length;) {
+    const first = lines[start++];
+    if (!first.codeText || !(first.codeCellWidth > 0)) { output.push(first); continue; }
+    let end = start;
+    while (end < lines.length) {
+      const line = lines[end], previous = lines[end - 1];
+      const gap = previous.y - line.y;
+      if (!line.codeText || !(line.codeCellWidth > 0) || gap <= 0 || gap > 1.8 * Math.max(previous.height, line.height)) break;
+      end++;
+    }
+    const run = lines.slice(start - 1, end);
+    if (run.some(line => /^(?:[A-Za-z_]\w*\s*=\s*\S|\.{1,2}\/\S|\w[\w.-]*\s+--?\w|#{1,6}\s+\S|[|│].*[-─├└]|(?:def|import|function)\s+\w)/u.test(line.codeText))) {
+      const left = Math.min(...run.map(line => line.x));
+      const listing = run.map(line => {
+        const indent = Math.max(0, Math.round((line.x - left) / line.codeCellWidth));
+        return ' '.repeat(Math.min(80, indent)) + line.codeText;
+      }).join('\n');
+      output.push({ ...first, listing, independent: true });
+    } else output.push(...run);
+    start = end;
+  }
+  return output;
+}
+
 export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = false) {
   const sorted = lines.map(line => ({ ...line, text: normalizeExtractedLine(line.text) })).filter(line => line.text);
   if (!preserveOrder) sorted.sort((a, b) => b.y - a.y || a.x - b.x);
@@ -118,10 +144,16 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   let group = [];
   let bulletIndent = null;
   const flush = () => {
-    const text = joinLines(group);
+    const listing = group[0]?.listing;
+    const text = listing || joinLines(group);
     const raw = group.map(line => cleanLine(line.text || line)).filter(Boolean).join('\n');
     if (text) {
       const block = { id: startId + blocks.length, text, page: pageNumber, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] };
+      if (listing) {
+        const fence = '`'.repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), match => match[0].length + 1)));
+        block.sourceMarkdown = fence + '\n' + text + '\n' + fence;
+        block.heading = false;
+      }
       if (group[0].raisedNoteMarker) block.pdfFootnoteMarker = group[0].raisedNoteMarker;
       blocks.push(block);
     }
@@ -130,7 +162,8 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
   };
   const widths = sorted.map(line => line.height || 12).sort((a, b) => a - b);
   const typicalHeight = widths[Math.floor(widths.length / 2)] || 12;
-  for (const [index, line] of sorted.entries()) {
+  const readingLines = groupPdfListings(sorted);
+  for (const [index, line] of readingLines.entries()) {
     const previous = group[group.length - 1];
     const gap = previous ? previous.y - line.y : 0;
     const heading = isHeading(line.text);
@@ -149,7 +182,7 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     group.push(line);
     // A short title-cased fragment such as "The English-" can be the first
     // physical line of body prose. Keep a close lowercase continuation with it.
-    const next = sorted[index + 1];
+    const next = readingLines[index + 1];
     const wrapsHeading = heading && next && !next.independent && /[-‐]$/u.test(line.text)
       && /^\p{Ll}/u.test(next.text) && line.y > next.y && line.y - next.y <= typicalHeight * 1.8
       && Math.abs(line.x - next.x) <= typicalHeight * 2;

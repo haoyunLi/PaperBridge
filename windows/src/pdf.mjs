@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
-import { pageLines, pdfReadingGroups } from './pdfLayout.mjs';
+import { pageLines, pdfReadingGroups, recoverCodeAsterisks } from './pdfLayout.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -50,7 +50,7 @@ export async function extractPdf(pdf, onPage, checkActive) {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     checkActive?.();
     const page = await pdf.getPage(pageNumber);
-    const content = await page.getTextContent();
+    const content = await recoverCodeAsterisks(page, await page.getTextContent());
     checkActive?.();
     const [, bottom, , top] = page.view;
     pages.push({ pageNumber, height: top - bottom, lines: pageLines(content, page.view) });
@@ -67,7 +67,7 @@ export async function extractPdf(pdf, onPage, checkActive) {
   // passes after page stitching. Each pass is non-overlapping, not a fixed point.
   // Only newly extracted text is normalized; saved blocks/annotation offsets
   // and the original PDF bytes are never sent through this import pipeline.
-  return stitchPageBlocks(blocks).map(block => ({
+  return stitchPageBlocks(blocks).map(block => block.sourceMarkdown ? block : {
     ...block, text: finishExtractedPdfText(block.text)
-  }));
+  });
 }

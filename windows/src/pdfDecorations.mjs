@@ -53,6 +53,7 @@ export function stitchPageBlocks(blocks) {
     const right = block.text?.trim() || '';
     const adjacent = (previous?.endPage ?? previous?.page) === block.page - 1;
     const prose = previous && !previous.heading && !block.heading && !previous.resource && !block.resource &&
+      !previous.sourceMarkdown && !block.sourceMarkdown &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
       !/^(?:(?:figure|table|references|bibliography)\b|fig\.\s*\d|[图表]\s*\d|\[\d+\]|\d+[.)]\s)/iu.test(right);
     const proseContinuation = /[\p{Ll}‐-]$/u.test(left) && /^[\p{Ll},;:)]/u.test(right);

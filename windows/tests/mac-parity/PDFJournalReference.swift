@@ -19,7 +19,10 @@ func nativePDFJournal(fixtures: URL) throws -> [String: Any] {
     let input = fixtures.appendingPathComponent("good-enough")
     let saved = try JSONDecoder().decode(SavedPDFJournal.self, from: Data(contentsOf: input.appendingPathComponent("reader.json")))
     let firstPage = try JSONDecoder().decode([String].self, from: Data(contentsOf: input.appendingPathComponent("first-page-paragraphs.json")))
-    let activeWindowsText = firstPage + saved.blocks.filter { $0.page > 1 && $0.translation != nil }.map(\.text)
+    let currentListings = try JSONDecoder().decode([String: [String]].self, from: Data(contentsOf: input.appendingPathComponent("current-code-paragraphs.json")))
+    let activeWindowsText = firstPage + saved.blocks.filter { $0.page > 1 && $0.translation != nil }.flatMap { block in
+        currentListings[String(block.id)] ?? [block.text]
+    }
     let pdf = input.appendingPathComponent("article.pdf")
     let bytes = try Data(contentsOf: pdf)
     let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)

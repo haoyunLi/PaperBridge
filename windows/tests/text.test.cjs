@@ -195,6 +195,37 @@ test('raised numbers follow their attached word or formula on the same PDF line'
   assert.ok(lines.includes('4'), 'An unconnected number is not appended to a distant word');
 });
 
+test('a raised TeX code star follows its monospace row without changing other fonts or the original layer', async () => {
+  const { recoverCodeAsterisks, pageLines } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, y, height, width, fontName) => ({ str, transform: [height, 0, 0, height, x, y], height, width, fontName });
+  const content = { styles: { code: { fontFamily: 'monospace' } }, items: [
+    item('scan', 24, 100, 10, 24, 'code'), item(' ', 48, 100, 0, 1, 'code'),
+    item('\x03', 51, 104, 7, 3, 'math'), item('.dat', 54, 100, 10, 24, 'code')
+  ] };
+  const page = { getOperatorList: async () => {}, commonObjs: new Map([['math', { name: 'AABBCC+TeX_CM_Maths_Symbols' }]]) };
+  const fixed = await recoverCodeAsterisks(page, content);
+  assert.equal(pageLines(fixed, [0, 0, 300, 300])[0].text, 'scan *.dat');
+  assert.equal(content.items[2].str, '\x03');
+  assert.equal(content.items[2].transform[5], 104);
+  page.commonObjs.get('math').name = 'Unknown symbols';
+  assert.deepEqual(await recoverCodeAsterisks(page, content), content);
+  const unreadable = { ...page, getOperatorList() { throw new Error('unavailable'); } };
+  assert.equal(await recoverCodeAsterisks(unreadable, content), content);
+});
+
+test('PDF code listings retain physical lines and indentation without treating all fixed-pitch prose as code', async () => {
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const line = (text, x, y) => ({ x, y, width: text.length * 6, height: 10, text, codeText: text, codeCellWidth: 6 });
+  const blocks = blocksFromLines([line('def read():', 24, 100), line('return "~~~"', 48, 88), line('See the legend.', 24, 54)], 1);
+  assert.equal(blocks[0].text, 'def read():\n    return "~~~"');
+  assert.equal(blocks[0].heading, false);
+  assert.ok(blocks[0].sourceMarkdown.includes(blocks[0].text));
+  assert.equal(blocks[1].sourceMarkdown, undefined);
+  const ordinary = blocksFromLines([line('The observations continued', 24, 100), line('through the evening.', 24, 88)], 1);
+  assert.equal(ordinary[0].text, 'The observations continued through the evening.');
+  assert.equal(ordinary[0].sourceMarkdown, undefined);
+});
+
 test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
   const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
   const item = (str, x, y, width, vertical = false) => ({

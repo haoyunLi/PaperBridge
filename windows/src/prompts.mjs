@@ -83,6 +83,10 @@ export function protectMarkdown(markdown, literalRanges = []) {
   return { text, tokens };
 }
 
+export function onlyProtectedMarkup(text, tokens) {
+  return tokens.length > 0 && !/\p{L}/u.test(text.replace(/__PAPERBRIDGE_TOKEN_\d+__/g, ''));
+}
+
 export function restoreMarkdown(translated, tokens, retryTarget = 'block') {
   const invalidMarkers = () => Object.assign(new Error(`The model changed a protected formula, figure, or link. Retry this ${retryTarget}.`),
     { code: 'PROTECTED_MARKDOWN_CHANGED' });
