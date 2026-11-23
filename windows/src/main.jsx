@@ -224,7 +224,7 @@ function domRangeIn(root, range, visibleOnly = false) {
   if (visibleOnly && (hiddenSelectionText(range.startContainer) || hiddenSelectionText(range.endContainer))) return null;
   const raw = domText(range.cloneContents(), visibleOnly);
   const text = raw.trim();
-  if (!text || text.length > 3000) return null;
+  if (!text) return null;
   const before = document.createRange();
   before.selectNodeContents(root);
   before.setEnd(range.startContainer, range.startOffset);
@@ -485,7 +485,7 @@ function capturePdfRange(host, range) {
     if (!captured || captured.context.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return null;
     parts.push({ ...pdfSelectionContent(root, fragment, captured.text, captured.offset, captured.context), page });
   }
-  if (!parts.length || parts.reduce((length, item) => length + (item.quote ?? item.text).length + 1, -1) > 3000) return null;
+  if (!parts.length) return null;
   const rect = range.getBoundingClientRect();
   const position = { x: rect.left, y: rect.top };
   if (parts.length === 1) return { ...parts[0], anchors: parts, rect: position };

@@ -10,36 +10,12 @@ on:
     paths:
       - 'windows/**'
       - '.github/workflows/windows.yml'
-      - 'PaperBridge/Models.swift'
-      - 'PaperBridge/PaperReaderViewModel*.swift'
-      - 'PaperBridge/Services/TextProcessing.swift'
-      - 'PaperBridge/Services/SummaryEvidence.swift'
-      - 'PaperBridge/Services/PDFTextExtractor.swift'
-      - 'PaperBridge/Services/PaperReadingAnalysis.swift'
-      - 'PaperBridge/Services/ReadingGuideBuilder.swift'
-      - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
-      - 'PaperBridge/Services/MarkdownBundleExporter.swift'
-      - 'PaperBridge/Services/WorkspaceStore.swift'
-      - 'PaperBridge/Utilities/Hashing.swift'
-      - 'PaperBridge/Utilities/MarkdownPreviewHTMLRenderer.swift'
-      - 'PaperBridge/Views/MarkdownPreviewView.swift'
+      - 'PaperBridge/**/*.swift'
   pull_request:
     paths:
       - 'windows/**'
       - '.github/workflows/windows.yml'
-      - 'PaperBridge/Models.swift'
-      - 'PaperBridge/PaperReaderViewModel*.swift'
-      - 'PaperBridge/Services/TextProcessing.swift'
-      - 'PaperBridge/Services/SummaryEvidence.swift'
-      - 'PaperBridge/Services/PaperReadingAnalysis.swift'
-      - 'PaperBridge/Services/ReadingGuideBuilder.swift'
-      - 'PaperBridge/Services/AcademicMarkdownProcessor.swift'
-      - 'PaperBridge/Services/MarkdownBundleExporter.swift'
-      - 'PaperBridge/Services/WorkspaceStore.swift'
-      - 'PaperBridge/Utilities/Hashing.swift'
-      - 'PaperBridge/Utilities/MarkdownPreviewHTMLRenderer.swift'
-      - 'PaperBridge/Views/MarkdownPreviewView.swift'
-      - 'PaperBridge/Services/PDFTextExtractor.swift'
+      - 'PaperBridge/**/*.swift'
 
 jobs:
   mac-reference:

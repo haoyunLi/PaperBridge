@@ -41,6 +41,7 @@
     "test:translation-range-actions-e2e": "node tests/translation-range-actions-e2e.cjs",
     "test:structured-draft-e2e": "node tests/structured-draft-e2e.cjs",
     "test:pdf-legacy-notes-e2e": "node tests/pdf-legacy-notes-e2e.cjs",
+    "test:long-pdf-selection-e2e": "node tests/long-pdf-selection-e2e.cjs",
     "test:pdf-journal-export-e2e": "node tests/pdf-journal-export-e2e.cjs",
     "test:scanned-original-e2e": "node tests/scanned-original-e2e.cjs",
     "test:import-modes-e2e": "node tests/import-modes-e2e.cjs",

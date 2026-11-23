@@ -50,7 +50,7 @@ async function run() {
     onboardingCompletedVersion: 1, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' };
   const id = 'e'.repeat(64), at = day => `2026-01-${String(day).padStart(2, '0')}T12:00:00Z`;
   const source = 'Alpha saved phrase is evidence. Beta saved phrase remains separate.';
-  const longQuote = 'Long preserved quotation. ' + '完整引用🙂 keeps its context and precise source. '.repeat(7) + 'UNIQUE_QUOTE_END';
+  const longQuote = 'Long preserved quotation. ' + '完整引用🙂 keeps its context and precise source. '.repeat(76) + 'UNIQUE_QUOTE_END';
   const longBody = 'Historical note begins. ' + 'Multiline evidence must remain accessible.\n'.repeat(7) + 'UNIQUE_NOTE_END';
   const reader = { id: 'reader-current', kind: 'source', scope: 'reader', text: 'Alpha saved phrase', offset: 0, body: 'Reader current note.', createdAt: at(2) };
   const beta = { id: 'reader-other', kind: 'source', scope: 'reader', text: 'Beta saved phrase', offset: source.indexOf('Beta'), body: 'Other Reader note.', createdAt: at(3) };
@@ -215,6 +215,16 @@ async function run() {
       assert.equal(await page.locator('.header-tools .tabs .active').textContent(), tab);
       assert.match(await page.locator('.selection-meta').textContent(), new RegExp(side));
     }
+    await open(beta);
+    await page.locator('#block-2 [data-kind="source"]').evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.waitForFunction(quote => document.querySelector('.inspector-quote-text')?.textContent === quote, longQuote);
     assert.equal(await editor().inputValue(), longBody);
     await row(review.body).locator('.annotation-navigate').click();
     await page.getByText('The saved Reader text no longer matches this block. The annotation was kept for review.', { exact: true }).waitFor();

@@ -32,6 +32,8 @@ try {
             $env:PAPERBRIDGE_MAC_REFERENCE = (Resolve-Path -LiteralPath $MacReference).Path
             node "$PSScriptRoot/pdf-legacy-notes-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed reader disagreed with PDFKit on saved PDF note locations' }
+            node "$PSScriptRoot/long-pdf-selection-e2e.cjs"
+            if ($LASTEXITCODE -ne 0) { throw 'Installed reader failed to save and reopen long original PDF passages' }
             node "$PSScriptRoot/import-modes-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the native PDF import comparison' }
             node "$PSScriptRoot/scanned-original-e2e.cjs"
