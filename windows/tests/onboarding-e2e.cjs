@@ -361,7 +361,15 @@ async function run() {
     await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
     const customParser = path.join(workspace, 'custom', 'mineru.exe');
     await page.getByLabel('MinerU executable', { exact: true }).fill(customParser);
-    await waitFor(() => savedSettings().mineruExecutable === customParser, 'manual parser choice saved before completing background repair');
+    try {
+      await waitFor(() => savedSettings().mineruExecutable === customParser, 'manual parser choice saved before completing background repair');
+    } catch (error) {
+      const details = { expected: customParser, stored: savedSettings().mineruExecutable,
+        input: await page.getByLabel('MinerU executable', { exact: true }).inputValue(),
+        status: await page.locator('.workspace-status-rail').innerText(), settings: await page.locator('.modal-body').innerText() };
+      fs.writeFileSync(path.join(workspace, 'failure-diagnostics.json'), JSON.stringify(details, null, 2));
+      throw error;
+    }
     await completeSetup(false);
     await waitFor(() => savedSettings().mineruExecutable === customParser, 'preserve later parser choice after background repair');
     assert.equal(await page.getByLabel('MinerU executable', { exact: true }).inputValue(), customParser);
