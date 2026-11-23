@@ -72,7 +72,8 @@ async function run() {
     onboardingCompletedVersion: 1, autoCheckUpdates: false, summaryModel, translationModel,
     ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
-  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const launch = () => electron.launch({ ...(executablePath && { executablePath }), args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app;
   try {
     app = await launch();
@@ -231,6 +232,27 @@ async function run() {
     await page.getByText('Summary saved. Only exact-match source quotations are linked.', { exact: true }).waitFor();
     await readSource(1, headingQuote);
     await page.locator('#block-1.heading-block.current').waitFor();
+    // An older Markdown summary can still have validated citations while using damaged scientific notation.
+    await app.close(); app = null;
+    const legacyId = 'd'.repeat(64);
+    const scientific = 'We compare `model_A` and `modelA` using C# and **paired** A* search.';
+    const legacyBlock = { id: 1, text: 'We compare modelA and modelA using C and paired A search.', sourceMarkdown: scientific,
+      status: 'pending', highlights: [], notes: [] };
+    const legacySummary = { source: 'Older comparison.', target: '较早的比较。', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
+      claims: [claim('Previous comparison', 1, 'We compare modelA and modelA')] };
+    const legacyPaper = { ...saved, id: legacyId, name: 'Legacy notation', sourceMode: 'mineru', mineruMarkdown: scientific,
+      blocks: [legacyBlock], mineruBlocks: [legacyBlock], summary: legacySummary, position: { tab: 'Reader', block: 1, displayMode: 'bilingual' } };
+    fs.writeFileSync(path.join(paperDir, legacyId + '.json'), JSON.stringify(legacyPaper));
+    fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id: legacyId }));
+    app = await launch(); page = await app.firstWindow();
+    await page.getByRole('heading', { name: legacyPaper.name, exact: true }).waitFor();
+    regenerate = 'cutoff';
+    const beforeLegacy = requests.length;
+    await openSummaryFromMenu();
+    await page.getByText(/The summary response was cut off/).waitFor({ timeout: 5000 });
+    const replacement = requests.slice(beforeLegacy).find(request => request.kind === 'excerpt');
+    assert.ok(replacement.payload.includes('model_A and modelA using C# and paired A* search.'));
+    assert.equal((await page.evaluate(id => window.paperBridge.loadPaper(id), legacyId)).summary.source, legacySummary.source);
     console.log('Summary verified: responsive language panels, keyboard disclosures, batch-specific citations, cancelled regeneration, and exact source navigation after split, undo, and restart.');
   } finally {
     held?.destroy();

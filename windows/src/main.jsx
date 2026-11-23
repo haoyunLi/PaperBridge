@@ -3482,8 +3482,9 @@ function App() {
     if (!canSummarize || busy || taskRef.current) return;
     if (modal === 'more') setModal('');
     setTab('Summary');
-    const saved = paperRef.current?.summary;
-    if (!saved?.stale && Array.isArray(saved?.claims) && saved.claims.length > 0) {
+    const current = paperRef.current;
+    const saved = current?.summary;
+    if (Array.isArray(saved?.claims) && saved.claims.length > 0 && !saved.stale && !summaryNeedsTextRefresh(current)) {
       setError('');
       setStatus('Opened the saved summary.');
       return;
