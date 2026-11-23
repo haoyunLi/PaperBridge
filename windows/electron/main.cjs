@@ -493,8 +493,9 @@ function buildMenu() {
     { label: 'File', submenu: [
       action('Open PDF…', 'openPdf', 'CmdOrCtrl+O'),
       action('Export Markdown or Bundle…', 'export', 'CmdOrCtrl+Shift+E'),
-      { type: 'separator' }, { role: 'quit' }
+      { type: 'separator' }, { role: 'close', label: 'Close Window', accelerator: 'CmdOrCtrl+W' }, { role: 'quit' }
     ] },
+    { role: 'editMenu' },
     { label: 'Paper', submenu: [
       action('Back to Previous Reading Location', 'readingBack', 'CmdOrCtrl+['),
       action('Forward in Reading History', 'readingForward', 'CmdOrCtrl+]'),
@@ -521,12 +522,15 @@ function buildMenu() {
       action('Focus Reading', 'focusReading', 'CmdOrCtrl+Alt+F'),
       action('Toggle Document Sidebar', 'toggleSidebar', 'CmdOrCtrl+Alt+S'),
       action('Show Research Inspector', 'inspector', 'CmdOrCtrl+Shift+I'),
-      action('Settings', 'settings')
+      { role: 'togglefullscreen', label: 'Full Screen', accelerator: 'F11' },
+      { type: 'separator' },
+      action('Settings', 'settings', 'CmdOrCtrl+,')
     ] },
     { label: 'Help', submenu: [
       action('PaperBridge Getting Started…', 'onboarding'),
       action('Local AI Setup…', 'setup'),
-      action('Check for Updates…', 'checkUpdates')
+      action('Check for Updates…', 'checkUpdates'),
+      { type: 'separator' }, { role: 'about', label: 'About PaperBridge' }
     ] }
   ]);
 }
@@ -626,6 +630,7 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
 
 async function startApp() {
   app.setName(developmentBuild ? 'PaperBridge Dev' : 'PaperBridge');
+  app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() });
   if (developmentBuild && !process.env.PAPERBRIDGE_WORKSPACE) app.setPath('userData', path.join(app.getPath('appData'), 'PaperBridge Dev'));
   store = createStore(process.env.PAPERBRIDGE_WORKSPACE || path.join(app.getPath('userData'), 'workspace'));
   const updateRoot = process.env.PAPERBRIDGE_WORKSPACE || path.join(process.env.LOCALAPPDATA || app.getPath('userData'), app.getName());

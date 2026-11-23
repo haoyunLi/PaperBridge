@@ -2026,7 +2026,7 @@ function App() {
       const letter = event.key.toLowerCase();
       const name = event.shiftKey && !event.altKey ? ({ l: 'library', e: 'export', i: 'inspector', t: 'translateSelection', h: 'highlightSelection' })[letter]
         : event.altKey && !event.shiftKey ? ({ e: 'explainSelection', f: 'focusReading', s: 'toggleSidebar' })[letter]
-        : !event.shiftKey && !event.altKey ? ({ o: 'openPdf', l: 'library', f: 'find', '1': 'summary', enter: 'primaryTask', '[': 'readingBack', ']': 'readingForward' })[letter] : null;
+        : !event.shiftKey && !event.altKey ? ({ o: 'openPdf', l: 'library', f: 'find', ',': 'settings', '1': 'summary', enter: 'primaryTask', '[': 'readingBack', ']': 'readingForward' })[letter] : null;
       if (name) { event.preventDefault(); commandRef.current?.(name); }
     };
     window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
