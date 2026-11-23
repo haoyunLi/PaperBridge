@@ -171,7 +171,15 @@ function textRows(items, left, bottom, width, pageHeight, styles) {
       row = { y, items: [], vertical };
       rows.push(row);
     }
-    if (raisedPrefix) row.y = y;
+    if (raisedPrefix) {
+      // Another column or a hyperlink may already have created this baseline.
+      const existing = rows.find(other => other !== row && !other.vertical && Math.abs(other.y - y) < height * 0.12);
+      if (existing) {
+        existing.items.push(...row.items);
+        rows.splice(rows.indexOf(row), 1);
+        row = existing;
+      } else row.y = y;
+    }
     const previous = items[index - 1];
     const spaceBefore = axisLabels.has(item) || previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
     const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore,
@@ -369,7 +377,42 @@ function publicationFrontMatter(lines) {
   return groups;
 }
 
-export function pdfReadingGroups(lines) {
+// Proceedings often print their venue and copyright below both columns on page one.
+// Keep that notice with the byline so a sentence can continue onto the next page.
+function proceedingsOpening(lines, height) {
+  const noticeAt = lines.findIndex(line => line.lane === 'spanning' && line.y < height * 0.10 &&
+    /^Proceedings of\b/iu.test(line.text) && /\b(?:pages?|pp\.)\s*\d+\s*[–—-]\s*\d+/iu.test(line.text));
+  if (noticeAt < 0) return null;
+  const notice = lines.slice(noticeAt);
+  if (notice.length > 4 || !notice.every(line => line.lane === 'spanning') ||
+      !notice.some(line => /©|\bcopyright\b/iu.test(line.text))) return null;
+  const abstract = lines.find(line => line.lane === 'left' && /^(?:abstract|summary)$/iu.test(line.text.trim()));
+  if (!abstract || lines[0]?.lane !== 'spanning') return null;
+  const bodyAt = lines.findIndex(line => line.y <= abstract.y + abstract.height);
+  if (bodyAt < 1 || bodyAt >= noticeAt) return null;
+
+  const front = [];
+  const title = lines[0];
+  const center = line => line.x + line.width / 2;
+  let previous;
+  for (const line of lines.slice(0, bodyAt)) {
+    const wrapsTitle = front.length === 1 && line.lane === 'spanning' &&
+      Math.abs(line.height - title.height) < title.height * 0.08 && Math.abs(center(line) - center(title)) < title.height &&
+      previous.y > line.y && previous.y - line.y < title.height * 1.5;
+    const sharesByline = previous?.lane === 'left' && line.lane === 'right' && previous.y === line.y;
+    if (wrapsTitle || sharesByline) front.at(-1).text = joinPdfText(front.at(-1).text, line.text);
+    else front.push({ ...line });
+    previous = line;
+  }
+  const imprint = { ...notice[0], text: notice.map(line => line.text).reduce(joinPdfText) };
+  return [...front.map(line => [line]), [imprint], ...pdfReadingGroups(lines.slice(bodyAt, noticeAt))];
+}
+
+export function pdfReadingGroups(lines, page = {}) {
+  if (page.pageNumber === 1) {
+    const opening = proceedingsOpening(lines, page.height);
+    if (opening) return opening;
+  }
   if (lines.some(line => line.journalMetadata)) {
     const metadata = lines.filter(line => line.journalMetadata).map(line => /^\s*•/u.test(line.text) ? { ...line, independent: true } : line);
     const article = lines.filter(line => !line.journalMetadata);

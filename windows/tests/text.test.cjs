@@ -263,6 +263,25 @@ test('PDF code listings retain physical lines and indentation without treating a
   assert.equal(ordinary[0].sourceMarkdown, undefined);
 });
 
+test('a first-page proceedings imprint stays with the byline and out of a continued body paragraph', async () => {
+  const { pdfReadingGroups } = await import('../src/pdfLayout.mjs');
+  const line = (text, lane, x, width, y, height = 10) => ({ text, lane, x, width, y, height });
+  const lines = [
+    line('A multiline article', 'spanning', 100, 400, 750, 14),
+    line('title', 'spanning', 250, 100, 734, 14),
+    line('A. Reyes', 'left', 130, 55, 701), line('B. Kim', 'right', 304, 45, 701),
+    line('Abstract', 'left', 150, 45, 620), line('Second column', 'right', 304, 175, 618),
+    line('First column', 'left', 72, 200, 606),
+    line('Proceedings of the conference, pages 101–110', 'spanning', 120, 360, 40),
+    line('© 2020 Publisher', 'spanning', 225, 150, 28)
+  ];
+  const text = (rows, pageNumber = 1) => pdfReadingGroups(rows, { pageNumber, height: 800 }).map(g => g.map(l => l.text).join(' '));
+  assert.deepEqual(text(lines), ['A multiline article title', 'A. Reyes B. Kim',
+    'Proceedings of the conference, pages 101–110 © 2020 Publisher', 'Abstract First column', 'Second column']);
+  assert.ok(text(lines, 2).at(-1).startsWith('Proceedings of'));
+  assert.ok(text(lines.slice(0, -1)).at(-1).startsWith('Proceedings of'));
+});
+
 test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
   const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
   const item = (str, x, y, width, vertical = false) => ({

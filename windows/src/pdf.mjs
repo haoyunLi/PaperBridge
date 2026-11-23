@@ -61,8 +61,9 @@ export async function extractPdf(pdf, onPage, checkActive) {
   }
   const cleaned = filterRepeatedPageDecorations(pages);
   const blocks = [];
-  for (const { pageNumber, lines } of cleaned) {
-    for (const group of pdfReadingGroups(lines)) {
+  for (const page of cleaned) {
+    const { pageNumber, lines } = page;
+    for (const group of pdfReadingGroups(lines, page)) {
       blocks.push(...blocksFromLines(group, pageNumber, blocks.length + 1, true));
     }
   }
