@@ -63,14 +63,14 @@ async function run() {
       const row = page.locator('.annotation-row').filter({ hasText: body });
       assert.doesNotMatch(await row.locator('.annotation-label').innerText(), /review needed/);
       await row.locator('.annotation-navigate').click();
-      await page.waitForFunction(() => window.getSelection()?.toString() === 'data section');
-      const occurrence = await page.evaluate(() => {
+      await page.waitForFunction(({ index, body }) => {
+        const selected = window.getSelection();
         const host = document.querySelector('[data-view-scope="fullTranslation"]');
-        const end = window.getSelection().getRangeAt(0).endContainer;
-        return [...host.querySelectorAll('strong')].findIndex(word => word.contains(end));
-      });
-      assert.equal(occurrence, index);
-      assert.equal(await page.locator('.inspector textarea').inputValue(), body);
+        if (!host || !selected.rangeCount || selected.toString() !== 'data section') return false;
+        const end = selected.getRangeAt(0).endContainer;
+        const occurrence = [...host.querySelectorAll('strong')].findIndex(word => word.contains(end));
+        return occurrence === index && document.querySelector('.inspector textarea')?.value === body;
+      }, { index, body }, { timeout: 10000 });
     }
     console.log(JSON.stringify({ workspace, originalOffsets, oldExecutable: Boolean(previous), recoveredOccurrences: [1, 2] }));
   } finally { if (app) await app.close(); }
