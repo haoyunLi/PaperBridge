@@ -1,5 +1,5 @@
 const path = require('node:path');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const run = promisify(execFile);
 
@@ -47,8 +47,13 @@ async function launchRestartingInstaller(filename) {
     if ($null -eq $process) { throw 'Windows did not start the installer.' }
     $process.Dispose()`;
   try {
-    await run(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', script], {
-      windowsHide: true, env: { ...process.env, PAPERBRIDGE_VERIFIED_INSTALLER: filename }
+    await new Promise((resolve, reject) => {
+      // Descendant installer handles must not hold the reader open while NSIS waits for it to exit.
+      const child = spawn(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', script], {
+        windowsHide: true, stdio: 'ignore', env: { ...process.env, PAPERBRIDGE_VERIFIED_INSTALLER: filename }
+      });
+      child.once('error', reject);
+      child.once('exit', code => code === 0 ? resolve() : reject(new Error('Windows declined the launch.')));
     });
   } catch { throw new Error('Windows did not open the verified installer. Your paper is saved. You can try Open installer.'); }
 }

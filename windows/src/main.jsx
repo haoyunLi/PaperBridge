@@ -1595,12 +1595,14 @@ function App() {
   async function openUpdateInstaller(restart = false) {
     if (!installAvailable || busy || openingInstaller || (restart && !updateInfo.canRestartAfterUpdate)) return;
     setOpeningInstaller(true);
+    setUpdateStatus('Opening the verified installer. Respond to any Windows confirmation to continue.');
     try {
       await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
       if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before opening the installer.');
       await api.openUpdateInstaller(updateInfo.tag, restart);
       setOpenedInstallerTag(updateInfo.tag);
-    } catch (cause) { setError(cause.message); }
+      setUpdateStatus('Windows opened the verified installer.');
+    } catch (cause) { setUpdateStatus(cause.message); setError(cause.message); }
     finally { setOpeningInstaller(false); }
   }
   async function openUpdateRelease() {

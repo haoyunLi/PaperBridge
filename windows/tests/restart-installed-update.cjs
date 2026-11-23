@@ -82,8 +82,21 @@ async function run() {
     await settings.getByRole('button', { name: 'Download installer', exact: true }).click();
     await settings.getByText('Download complete. SHA-256 and GitHub build proof verified.').waitFor({ timeout: 90000 });
     checkpoint('verified the public Setup inside the earlier reader');
-    await Promise.all([app.waitForEvent('close', { timeout: 60000 }),
-      settings.getByRole('button', { name: 'Install and restart', exact: true }).click()]);
+    const closed = app.waitForEvent('close', { timeout: 60000 });
+    await settings.getByRole('button', { name: 'Install and restart', exact: true }).click();
+    checkpoint('requested installation and restart');
+    try {
+      await closed;
+    } catch (error) {
+      report.messages = await page.locator('[role="alert"], [role="status"]').allTextContents().catch(() => []);
+      // Record visible Windows prompts so an enforced policy can be distinguished from an app error.
+      const { stdout } = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -or $_.ProcessName -match 'PaperBridge|smartscreen' } | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress"], { windowsHide: true, timeout: 8000 });
+      report.windows = JSON.parse(stdout || '[]');
+      checkpoint('the installed reader stayed open');
+      console.log(JSON.stringify({ messages: report.messages, windows: report.windows }));
+      throw error;
+    }
     app = null;
     report.relaunched = await observeRestart(executablePath, actual.pid, feed.version);
     assert.notEqual(report.relaunched.pid, actual.pid);
