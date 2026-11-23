@@ -54,10 +54,12 @@ async function runScenario(dir, mode, failure) {
     await app.evaluate(({ ipcMain }, failure) => {
       globalThis.parserCalls = 0;
       ipcMain.removeHandler('mineru:status');
-      ipcMain.handle('mineru:status', () => ({ compatible: true, executable: 'fixture-mineru', version: 'fixture' }));
+      ipcMain.handle('mineru:status', () => ({ compatible: true, executable: 'fixture-mineru', version: 'fixture',
+        runtime: { checked: true, cuda: false, cpuFallback: !failure } }));
       ipcMain.removeHandler('mineru:extract');
-      ipcMain.handle('mineru:extract', () => {
+      ipcMain.handle('mineru:extract', (_event, request) => {
         globalThis.parserCalls++;
+        if (request.cpuFallback !== !failure) throw new Error('Import did not use the detected parser device');
         if (failure) throw new Error('Calibration parser unavailable');
         return { markdown: '# Calibration\n\nThe ceramic sample was measured at two field strengths.', pageHints: [] };
       });

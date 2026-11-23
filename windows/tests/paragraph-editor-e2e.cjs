@@ -75,6 +75,8 @@ async function run() {
   ];
   const paper = { id, name: 'Paragraph editor fixture', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), inspectorOpen: false,
+    summary: { source: 'A summary of the two sentences.', target: '这两句话的摘要。', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese',
+      claims: [{ text: 'The second sentence supplies context.', sources: [{ paragraphID: 2, quote: 'Second sentence.' }] }] },
     taskSettings: settings, blocks, connectedTranslation: '保存的全文译稿。', connectedStale: false,
     position: { tab: 'Reader', block: 2, displayMode: 'bilingual' } };
   const other = { ...paper, id: otherId, name: 'Other untouched paper', blocks: [{ ...defaults, id: 1,
@@ -94,7 +96,9 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
   let app, page;
   const launch = async () => {
-    app = await electron.launch({ args: ['.'], cwd: root,
+    const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ ...(exe && { executablePath: exe }), cwd: root,
+      args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
@@ -110,6 +114,15 @@ async function run() {
     await dialog().waitFor();
     await waitFor(() => source().evaluate(node => node === document.activeElement), 'editor focus');
   };
+  async function exportAnalysis(edition) {
+    const destination = path.join(workspace, edition + '-notes.md');
+    await app.evaluate(({ dialog }, file) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: file }); }, destination);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Options…', exact: true }).click();
+    await page.getByRole('button', { name: 'Summary, sources and notes', exact: true }).click();
+    await waitFor(() => fs.existsSync(destination), 'exported analysis with the current source');
+    return fs.readFileSync(destination, 'utf8');
+  }
   const frames = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   try {
     await launch();
@@ -267,6 +280,10 @@ async function run() {
     await dialog().waitFor({ state: 'hidden' });
     await waitFor(() => readPaper().blocks.length === 4, 'split saved');
     assert.equal(readPaper().connectedStale, true);
+    const editedNotes = await exportAnalysis('edited');
+    assert.ok(editedNotes.includes('The source text changed after this summary was generated.'));
+    assert.ok(editedNotes.includes('Original paragraph 3:\n> Second sentence.'));
+    assert.ok(editedNotes.includes(paper.summary.target));
     const split = readPaper().blocks;
     assert.deepEqual(split.map(item => item.text), [blocks[0].text, 'First sentence.', 'Second sentence.', blocks[2].text]);
     assert.equal(split[0].translation, blocks[0].translation);
@@ -296,6 +313,9 @@ async function run() {
     assert.equal(readPaper().blocks[0].bookmark, true);
     assert.equal(readPaper().connectedStale, false);
     assert.equal(readPaper().connectedTranslation, paper.connectedTranslation);
+    const restoredNotes = await exportAnalysis('restored');
+    assert.ok(!restoredNotes.includes('The source text changed after this summary was generated.'));
+    assert.ok(restoredNotes.includes('Original paragraph 2:\n> Second sentence.'));
     const restored = readPaper().blocks;
     assert.equal(restored[1].text, blocks[1].text);
     assert.equal(restored[1].translation, blocks[1].translation);

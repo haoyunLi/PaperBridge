@@ -42,6 +42,7 @@ export function qualityIssues(blocks, excluded = new Set()) {
 }
 
 export const markdownSummaryTextVersion = 1;
+export const staleSummaryNotice = 'The source text changed after this summary was generated. Regenerate before relying on it.';
 export const legacySummaryTextNotice = 'An earlier version omitted characters from this paper’s Markdown. Regenerate the summary to use the original notation.';
 
 export function summaryNeedsTextRefresh(paper) {

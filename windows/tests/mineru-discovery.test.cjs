@@ -142,7 +142,14 @@ test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with a
   assert.equal(automatic.env.MINERU_CONFIG, undefined);
   assert.equal(mineruInvocation(modern, pdf, output, 'pipeline', paths.toolsRoot).env.MINERU_MODEL_ONNX_DEVICE, 'cpu');
   const legacy = await detectMineruExecutable(paths.onPath, paths.toolsRoot, options);
-  assert.deepEqual(mineruInvocation(legacy, pdf, output, 'pipeline', paths.toolsRoot).args, ['-p', pdf, '-o', output, '-b', 'pipeline']);
+  const pipeline = mineruInvocation(legacy, pdf, output, 'pipeline', paths.toolsRoot);
+  assert.deepEqual(pipeline.args, ['-p', pdf, '-o', output, '-b', 'pipeline']);
+  assert.equal(pipeline.env, process.env, 'A functioning legacy pipeline keeps its device selection');
+  const fallback = mineruInvocation(legacy, pdf, output, 'auto', paths.toolsRoot, true);
+  assert.deepEqual(fallback.args, pipeline.args);
+  assert.equal(fallback.env.MINERU_DEVICE_MODE, 'cpu', 'An unusable CUDA runtime must not choose CUDA again during parsing');
+  assert.notEqual(fallback.env, process.env);
+  assert.equal(mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot, true).env.MINERU_MODEL_ONNX_DEVICE, 'auto');
 });
 
 test('MinerU 4 stages chart images in ordinary paths, including when TEMP is deeply nested', { skip: process.platform !== 'win32' }, t => {

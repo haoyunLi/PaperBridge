@@ -414,7 +414,7 @@ function registerHandlers() {
   });
   ipcMain.handle('ollama:pull', (_event, payload) => modelPullManager.pull(payload));
   ipcMain.handle('ollama:cancel-pull', () => modelPullManager.cancel());
-  ipcMain.handle('mineru:extract', async (event, { id, executable, backend, requestId }) => {
+  ipcMain.handle('mineru:extract', async (event, { id, executable, backend, requestId, cpuFallback }) => {
     if (setupChangesMineru) throw new Error('Finish or cancel the current MinerU setup before extracting a PDF.');
     const pdf = store.pdfPath(safeId(id));
     if (!fs.existsSync(pdf)) throw new Error('Original PDF is missing.');
@@ -432,7 +432,7 @@ function registerHandlers() {
       const stagedPdf = path.join(staging.directory, 'paper.pdf');
       const output = path.join(staging.directory, 'output');
       fs.copyFileSync(pdf, stagedPdf);
-      const invocation = mineruInvocation(detected, stagedPdf, output, backend, setupManager.toolsRoot);
+      const invocation = mineruInvocation(detected, stagedPdf, output, backend, setupManager.toolsRoot, cpuFallback === true);
       await new Promise((resolve, reject) => {
         const child = spawn(invocation.command, invocation.args, { shell: false, windowsHide: true, env: invocation.env });
         mineruJobs.attach(job, child);

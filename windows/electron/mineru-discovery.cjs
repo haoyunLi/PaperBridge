@@ -76,7 +76,7 @@ function createMineruStaging(detected, temporary, localAppData) {
   return { root, directory: fs.mkdtempSync(path.join(root, prefix)) };
 }
 
-function mineruInvocation(detected, pdf, output, backend, toolsRoot) {
+function mineruInvocation(detected, pdf, output, backend, toolsRoot, cpuFallback = false) {
   if (detected.kitExecutable) {
     const archive = path.join(output, 'paper.zip');
     return {
@@ -86,8 +86,10 @@ function mineruInvocation(detected, pdf, output, backend, toolsRoot) {
     };
   }
   const args = ['-p', pdf, '-o', output];
-  if (backend === 'pipeline') args.push('-b', 'pipeline');
-  return { command: detected.executable, args, env: process.env };
+  if (backend === 'pipeline' || cpuFallback) args.push('-b', 'pipeline');
+  // The legacy pipeline independently auto-selects CUDA unless its process is told to use CPU.
+  const env = cpuFallback ? { ...process.env, MINERU_DEVICE_MODE: 'cpu' } : process.env;
+  return { command: detected.executable, args, env };
 }
 
 async function detectMineruExecutable(configured, toolsRoot, options = {}) {

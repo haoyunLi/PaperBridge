@@ -143,6 +143,20 @@ test('legacy, mismatched or unsupported batch metadata never injects failure lab
     'The legacy current-language argument cannot relabel a saved artifact or suppress its valid failure markers.');
 });
 
+test('single-file and bundled analysis flag a stale bilingual summary before its text', async () => {
+  const [{ markdownDocuments }] = await modules;
+  const paper = await fixture();
+  paper.summary = { source: 'The original summary.', target: 'Le résumé enregistré.', stale: true };
+  const notice = 'The source text changed after this summary was generated.';
+  for (const kind of ['analysis', undefined]) {
+    const analysis = markdownDocuments(paper, 'French', kind).find(doc => doc.kind === 'analysis').content;
+    assert.ok(analysis.includes(notice) && analysis.indexOf(notice) < analysis.indexOf(paper.summary.source));
+    assert.ok(analysis.includes(paper.summary.target));
+  }
+  const restored = { ...paper, summary: { ...paper.summary, stale: false } };
+  assert.ok(!markdownDocuments(restored, 'French', 'analysis')[0].content.includes(notice));
+});
+
 test('stale saved drafts retain their original contents and carry the source-change notice in all full exports', async () => {
   const [{ markdownDocuments }] = await modules;
   const paper = { ...await fixture(), connectedStale: true };

@@ -1,7 +1,7 @@
 import { usesSharedMarkdown, completedBlockTranslation, restoreStructuredTranslations } from './academicMarkdown.mjs';
 import { parseMarkdown } from './markdownRendering.mjs';
 import { analysisAnnotations, annotationsMarkdown } from './annotationsMarkdown.mjs';
-import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, legacySummaryTextNotice } from './paper.mjs';
+import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, legacySummaryTextNotice, staleSummaryNotice } from './paper.mjs';
 import { connectedTranslationMarkdown } from './connectedTranslationExport.mjs';
 import { commonOutputLanguage, migrateOutputLanguages, normalizeOutputLanguage, readerOutputLanguage } from './outputLanguages.mjs';
 
@@ -39,7 +39,8 @@ function analysisSummary(paper) {
     `## ${heading(summary.sourceLanguage, 'Source summary')}\n\n${summary.source || ''}`,
     `## ${heading(summary.targetLanguage, 'Target summary')}\n\n${summary.target || ''}`
   ];
-  if (summaryNeedsTextRefresh(paper)) sections.push('> ' + legacySummaryTextNotice);
+  if (summary.stale) sections.unshift('> ' + staleSummaryNotice);
+  else if (summaryNeedsTextRefresh(paper)) sections.push('> ' + legacySummaryTextNotice);
   const claims = revalidateSummaryClaims(summary.claims, paper.blocks);
   if (claims) {
     sections.push('### Summary source passages\n> AI interpretation is unverified. Matching a quotation confirms its location, not whether it supports the claim.');

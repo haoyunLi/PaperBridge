@@ -134,7 +134,11 @@ async function mineruRuntime(executable, toolsRoot, { found, signal, backend = '
       'print(json.dumps({"torch":torch.__version__,"cuda":ready,"devices":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],"reason":reason}))'
     ].join('\n');
     const { stdout } = await run(python, ['-c', script], { timeout: 30000, windowsHide: true, signal });
-    return { checked: true, ...JSON.parse(stdout.trim().split(/\r?\n/).at(-1)) };
+    const runtime = JSON.parse(stdout.trim().split(/\r?\n/).at(-1));
+    // Some drivers enumerate a CUDA device that cannot execute kernels from this PyTorch build.
+    if (!runtime.cuda && runtime.reason) return { ...runtime, checked: true, cpuFallback: true,
+      description: 'CUDA could not execute the test operation. PDFs will use the CPU pipeline' };
+    return { checked: true, ...runtime };
   } catch (error) { return { checked: false, reason: `Cannot verify MinerU PyTorch CUDA: ${error.message.slice(0, 140)}` }; }
 }
 

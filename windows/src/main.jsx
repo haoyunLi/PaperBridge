@@ -13,7 +13,7 @@ import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnc
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
-import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { reviewSavedReferenceCoverage } from './references.mjs';
@@ -805,7 +805,7 @@ function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect,
   return <div className="summary-view">
     <div className="section-heading"><h2>Whole-paper Summary</h2><button className="button blue" disabled={!!busy || !canSummarize} onClick={setupSummary || summarize}><Sparkles size={16} /> {setupSummary ? 'Set up summary' : paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
     {paper.summary ? <>
-      {paper.summary.stale ? <Notice tone="error">The source text changed after this summary was generated. Regenerate before relying on it.</Notice>
+      {paper.summary.stale ? <Notice tone="error">{staleSummaryNotice}</Notice>
         : summaryNeedsTextRefresh(paper) && <Notice>{legacySummaryTextNotice}</Notice>}
       <p className="summary-evidence-note">AI-generated summary. Source links show where quotations appear. Verify research findings and the model’s interpretation against the original paper.</p>
       <div className="summary-panels">
@@ -2156,11 +2156,12 @@ function App() {
     setPendingImport({ name, startedAt: Date.now(), stage });
     return token;
   }
-  async function extractMineruForTask(id, executable, backend, token) {
+  async function extractMineruForTask(id, parser, backend, token) {
     const requestId = crypto.randomUUID();
     token.mineruRequest = requestId;
     try {
-      const extracted = await api.extractMineru({ id, executable, backend, requestId });
+      const extracted = await api.extractMineru({ id, executable: parser.executable, backend, requestId,
+        cpuFallback: parser.runtime?.cpuFallback === true });
       const result = typeof extracted === 'string' ? { markdown: extracted, pageHints: [] } : extracted;
       if (result.resourceId) token.mineruResource = { id, resourceId: result.resourceId };
       requireActiveTask(token);
@@ -2227,7 +2228,7 @@ function App() {
         if (!mineru.compatible) throw new Error(mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
         setBusy({ label: 'MinerU is reconstructing the paper…' });
         setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
-        const result = await extractMineruForTask(imported.id, mineru.executable, config.mineruBackend, token);
+        const result = await extractMineruForTask(imported.id, mineru, config.mineruBackend, token);
         ({ markdown: mineruMarkdown, blocks: mineruBlocks, pageHints, resourceId: mineruResourceId = null } = result);
         if (result.resourceWarning) warnings.push(result.resourceWarning);
       } catch (cause) {
@@ -2747,7 +2748,7 @@ function App() {
     if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); openSetup(); return; }
     const token = startTask('MinerU is extracting structure…');
     try {
-      const { markdown, pageHints, blocks: parsed, resourceId = null, resourceWarning = '' } = await extractMineruForTask(paper.id, runtime.executable, settings.mineruBackend, token);
+      const { markdown, pageHints, blocks: parsed, resourceId = null, resourceWarning = '' } = await extractMineruForTask(paper.id, runtime, settings.mineruBackend, token);
       requireActiveTask(token);
       resetReadingHistory();
       const previousBlocks = paperRef.current.blocks;

@@ -53,7 +53,25 @@ func nativeJournalAnalysis(fixtures: URL) throws -> [String: Any] {
                         SummarySource(paragraphID: 1, quote: quote), SummarySource(paragraphID: 2, quote: otherQuote)]),
                   SummaryClaim(text: "A reader interpretation to verify.", sources: [])]
     model.summaries?.claims = claims
-    return ["withoutSummary": without, "legacy": legacy, "populated": export(),
+    let populated = export()
+    let draft = ConnectedTranslationResult(sourceLanguage: .english, targetLanguage: .simplifiedChinese,
+        text: translation, batchCount: 1, failedBatchCount: 0)
+    model.connectedTranslation = draft
+    model.beginEditingParagraph(1)
+    model.paragraphEditorText = original.replacingOccurrences(of: ".\nFor example,", with: ".\n\nFor example,")
+    model.saveParagraphEdit()
+    let edited = model.paragraphResults.map(\.original)
+    let editedBookmarks = model.bookmarkedParagraphIDs.sorted()
+    let summaryCurrentAfterEdit = model.summaries != nil
+    let draftCurrentAfterEdit = model.connectedTranslation != nil
+    model.undoParagraphEdit()
+    let edit: [String: Any] = [
+        "paragraphs": edited, "bookmarks": editedBookmarks, "summaryCurrentAfterEdit": summaryCurrentAfterEdit,
+        "draftCurrentAfterEdit": draftCurrentAfterEdit, "restoredParagraphs": model.paragraphResults.map(\.original),
+        "restoredSummary": model.summaries?.sourceSummary == sourceSummary && model.summaries?.claims == claims,
+        "restoredDraft": model.connectedTranslation == draft, "restoredTranslation": model.paragraphResults.first?.translation ?? ""
+    ]
+    return ["withoutSummary": without, "legacy": legacy, "populated": populated, "edit": edit,
             "originals": paragraphs, "translation": translation, "sourceSummary": sourceSummary,
             "targetSummary": targetSummary, "claims": claims.map { claim -> [String: Any] in
                 ["text": claim.text, "sources": claim.sources.map { ["paragraphID": $0.paragraphID, "quote": $0.quote] as [String: Any] }]
