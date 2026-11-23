@@ -116,13 +116,41 @@ function startsFootnote(marker, body, pageHeight) {
     Math.abs(body.x - marker.end) <= body.height * 0.6;
 }
 
+// Right-aligned, quarter-turned plot labels have different starting baselines.
+// Their far edges line up across the axis. Preserve that left-to-right order.
+function alignedAxisLabels(items) {
+  const anchors = new Map();
+  let run = [], end = 0;
+  function finish() {
+    if (run.length >= 3 && run.some(item => Math.abs(item.transform[5] - run[0].transform[5]) > item.height * 0.4)) {
+      for (const item of run) anchors.set(item, end);
+    }
+    run = [];
+  }
+  for (const item of items) {
+    if (!item.str?.trim()) continue;
+    const t = item.transform;
+    if (t[0] !== 0 || t[3] !== 0 || !t[1] || !t[2] || !(item.width > 0 && item.height > 0)) { finish(); continue; }
+    const edge = t[5] + Math.sign(t[1]) * item.width;
+    const prior = run.at(-1);
+    if (prior && (prior.fontName !== item.fontName || prior.transform[1] !== t[1] ||
+        Math.abs(edge - end) > item.height * 0.12 || t[4] - prior.transform[4] < item.height * 0.65 ||
+        t[4] - prior.transform[4] > item.height * 8)) finish();
+    if (!run.length) end = edge;
+    run.push(item);
+  }
+  finish();
+  return anchors;
+}
+
 function textRows(items, left, bottom, width, pageHeight, styles) {
+  const axisLabels = alignedAxisLabels(items);
   const rows = [];
   let previousText;
   for (const [index, item] of items.entries()) {
     if (!item.str?.trim()) continue;
     const x = item.transform[4] - left;
-    const y = item.transform[5] - bottom;
+    const y = (axisLabels.get(item) ?? item.transform[5]) - bottom;
     const vertical = Math.abs(item.transform[1]) > Math.abs(item.transform[0]);
     if (vertical && /^arxiv:/i.test(item.str.trim()) && (x < width * 0.08 || x > width * 0.92)) continue;
     const height = item.height || 12;
@@ -145,7 +173,7 @@ function textRows(items, left, bottom, width, pageHeight, styles) {
     }
     if (raisedPrefix) row.y = y;
     const previous = items[index - 1];
-    const spaceBefore = previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
+    const spaceBefore = axisLabels.has(item) || previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
     const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore,
       monospace: styles?.[item.fontName]?.fontFamily === 'monospace' };
     row.items.push(placed);
@@ -164,6 +192,7 @@ function lineFromItems(items, y, vertical, pageHeight) {
     end = Math.max(end, item.end);
   }
   const line = { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  if (vertical && items.length >= 3) line.figureAxis = true;
   const fixed = items.filter(item => item.monospace);
   if (!vertical && fixed.length && items.every(item => item.monospace || !/[\p{L}\p{N}]/u.test(item.text))) {
     // A few publishers draw punctuation from a separate mathematical font.

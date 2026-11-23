@@ -19,11 +19,23 @@ struct ObservePrintedPaper {
               let before = paragraph(tail), let after = paragraph(next), let footnote = paragraph(note) else {
             throw NSError(domain: "PrintedPaper", code: 1, userInfo: [NSLocalizedDescriptionKey: "A reference point was absent from the native PDF extraction."])
         }
+        let figurePages: [[String: Any]] = (12...14).compactMap { index in
+            guard let page = document.page(at: index) else { return nil }
+            let raw = page.string ?? ""
+            let number = index - 9
+            return [
+                "page": index + 1, "figure": number,
+                "containsPrintedCaption": raw.contains("Figure " + String(number)),
+                "clippedTitlesInTextLayer": raw.components(separatedBy: "Input-Input Layer5").count - 1,
+                "captionParagraph": paragraph("Figure " + String(number) + ":") ?? 0
+            ]
+        }
         let record: [String: Any] = [
             "pageCount": document.pageCount, "startPage": 4, "continuationPage": 5, "footnotePage": 4,
             "startParagraph": before, "continuationParagraph": after, "noteParagraph": footnote,
             "bodyJoined": before == after, "noteSeparate": footnote != after && footnote != before,
             "sumSymbolInFootnote": paragraphs[footnote - 1].contains("∑"),
+            "figurePages": figurePages, "separateAppendixHeading": paragraphs.contains("Attention Visualizations"),
             "article": "1706.03762v7"
         ]
         try JSONSerialization.data(withJSONObject: record, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: arguments[2]))

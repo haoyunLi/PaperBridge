@@ -49,6 +49,30 @@ async function run() {
     assert.ok((await row.locator('.source-text').innerText()).includes(formula));
     await row.getByRole('button', { name: /Bookmark/ }).click();
     const report = { pages: [main.page, main.endPage], footnote: note.id, formula, workspace: dir };
+    if (process.argv.includes('--figures')) {
+      assert.ok(paper.blocks.some(b => b.page === 13 && b.text === 'Attention Visualizations'));
+      assert.ok(paper.blocks.every(b => !b.text.includes('Input-Input Layer5')));
+      const axes = paper.blocks.filter(b => b.page >= 13 && b.text.includes('<EOS>'));
+      assert.deepEqual([13, 14, 15].map(n => axes.filter(b => b.page === n).length), [2, 4, 4]);
+      for (const axis of axes) {
+        const phrase = axis.page === 13 ? 'It is in this spirit that a majority' : 'The Law will never be perfect';
+        assert.ok(axis.text.startsWith(phrase) && axis.text.endsWith('<pad>'));
+        assert.ok(axis.text.includes(axis.page === 13 ? 'registration or voting process more difficult' : 'what we are missing'));
+      }
+      const captions = [13, 14, 15].map(n => paper.blocks.find(b => b.page === n && b.text.startsWith('Figure ' + (n - 10) + ':')));
+      assert.ok(captions.every(Boolean));
+      assert.ok(captions[1].text.includes('Top: Full attentions for head 5. Bottom:') && captions[1].text.endsWith('sharp for this word.'));
+      const caption = page.locator('#block-' + captions[1].id);
+      if (process.argv.includes('--live')) {
+        await caption.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+        const translated = caption.locator('.translation-text.done');
+        await translated.waitFor({ timeout: 120000 });
+        report.captionTranslation = await translated.innerText();
+        assert.match(report.captionTranslation, /\p{Script=Han}/u);
+      }
+      report.figureAxes = axes.length;
+      report.captions = captions.map(b => b.id);
+    }
     if (process.argv.includes('--live')) {
       await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
       const translated = row.locator('.translation-text.done');
@@ -65,6 +89,7 @@ async function run() {
     const persisted = saved.blocks.find(b => b.id === note.id);
     assert.ok(persisted.bookmark && persisted.text === note.text);
     if (report.translation) assert.ok(persisted.translation.includes(formula));
+    if (report.captionTranslation) assert.equal(saved.blocks.find(b => b.id === report.captions[1]).translation, report.captionTranslation);
     assert.equal(saved.blocks.find(b => b.id === main.id).endPage, 5);
     const original = Buffer.from(await page.evaluate(id => window.paperBridge.readPdf(id), id));
     assert.ok(bytes.equals(original));

@@ -1,11 +1,15 @@
-import { joinPdfText } from './text.mjs';
+import { joinPdfText, pdfCaption } from './text.mjs';
 
 // Keep the first occurrence of a running header; discard repeated headers and footers.
 // Original PDF pages are never changed.
 export function filterRepeatedPageDecorations(pages) {
   const signatures = new Map();
   const signature = text => text.toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
-  const position = (line, height) => line.y >= height * 0.82 ? 'header' : line.y + line.height <= height * 0.12 ? 'footer' : '';
+  function position(line, height) {
+    if (line.figureAxis || pdfCaption.test(line.text)) return '';
+    if (line.y >= height * 0.82) return 'header';
+    return line.y + line.height <= height * 0.12 ? 'footer' : '';
+  }
   for (const [index, page] of pages.entries()) {
     const seen = new Set();
     for (const line of page.lines) {

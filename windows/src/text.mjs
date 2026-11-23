@@ -22,7 +22,7 @@ export const practiceParagraphs = [
 
 const headingNames = /^(?:\d+(?:\.\d+)*[.)]?\s*)?(abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|results?|experiments?|evaluation|discussion|limitations?|conclusions?|references|bibliography|appendix|acknowledg(?:e)?ments|摘要|引言|方法|结果|讨论|结论)\s*$/i;
 const leadingNamedSection = /^(?:(?:\d+(?:\.\d+)*)\s+)?(?:abstract|introduction|background|related work|methods?|methodology|materials and methods|experimental setup|experiments?|evaluation|results?|discussion|conclusions?|appendix|acknowledg(?:e)?ments)(?:[.:])?\s+/i;
-const pdfCaption = /^(?:figure|fig\.|table)\s+\d+[.:]/i;
+export const pdfCaption = /^(?:figure|fig\.|table)\s+\d+[.:]/i;
 
 export function isHeading(text, sourceMarkdown = null) {
   const value = String(text || '').trim();
@@ -179,12 +179,15 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     const startsFootnote = line.raisedNoteMarker && line.height <= Math.max(typicalHeight, previous?.height || 0) * 0.9;
     const continuesFootnote = group[0]?.raisedNoteMarker && previous && Math.abs(line.height - previous.height) <= line.height * 0.1
       && gap >= 0 && gap <= line.height * 1.45;
+    const continuesCaptionLabel = previous && pdfCaption.test(group[0].text) && /[:：]$/u.test(previous.text) &&
+      gap >= 0 && gap <= line.height * 1.45 && Math.abs(previous.height - line.height) <= line.height * 0.1 &&
+      Math.abs(line.x - previous.x) <= line.height;
     const startsBullet = /^[•‣◦]\s/u.test(line.text);
     // A return to the body margin after a hanging list can start with a lowercase name.
     const afterList = bulletIndent !== null && /^[\p{L}\p{N}]/u.test(line.text) &&
       /[.!?。！？][”’"')\]]*$/u.test(previous?.text || '') &&
       line.x < bulletIndent - typicalHeight * 0.6 && gap > typicalHeight * 1.3;
-    if (previous && (afterList || startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && !continuesFootnote && gap > typicalHeight * 1.1))) flush();
+    if (previous && (afterList || startsFootnote || line.independent || heading || pdfCaption.test(line.text) || gap > typicalHeight * 1.8 || gap < -typicalHeight * 3 || (previousEnds && nextStarts && !continuesFootnote && !continuesCaptionLabel && gap > typicalHeight * 1.1))) flush();
     if (startsBullet) bulletIndent = line.x;
     group.push(line);
     // A short title-cased fragment such as "The English-" can be the first
