@@ -3,15 +3,13 @@ permissions:
   contents: read
 
 on:
-  pull_request:
-    paths:
-      - '.github/workflows/mac-local-translation.yml'
-      - 'windows/tests/mac-local-translation/**'
+  push:
+    tags: ['mac-translation-check-*']
   workflow_dispatch:
 
 jobs:
   translate:
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +55,15 @@ jobs:
           "$RUNNER_TEMP/compare-local" windows/tests/mac-parity/good-enough/reader.json "$out/translation.json"
           curl -fsS "http://$OLLAMA_HOST/api/ps" > "$out/model-runtime.json"
           sysctl -n machdep.cpu.brand_string > "$out/processor.txt"
+          tail -n 100 "$RUNNER_TEMP/ollama-serve.log" > "$out/ollama-runtime.log"
+          python3 - "$out/translation.json" <<'PY'
+          import json, pathlib, sys
+          result = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert all(p['status'] == 'ok' and p['translation'].strip() for p in result['paragraphs']), result['paragraphs']
+          assert result['failedBatches'] == 0 and result['connected'].strip()
+          PY
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: mac-local-translation
           path: ${{ runner.temp }}/mac-local-result
