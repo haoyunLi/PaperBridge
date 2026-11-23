@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 0.2.87 公开下载、更新和原生菜单（2026-11-23）
+
+Edge 从 GitHub 首页下载 0.2.87 的安装版和便携版，两份 EXE 的 SHA-256 都与发布页一致，互联网来源标记得到保留。0.2.85 的两个版本均检测到新版并下载了各自对应的文件。覆盖安装后重开原论文，阅读外观、高亮和笔记均保留。[独立 Windows 公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137511128787) · [Windows 0.2.87 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.87)
+
+对照公开的 Mac 1.10.0 程序核对 File、Edit、Paper、Selection 及应用菜单。Windows 实际完成了复制、剪切、粘贴、撤销、重做、全屏切换及关闭窗口。切换到德语与波兰语输入布局后，AltGr 能在笔记里分别输入 € 与 ś。旧版在两个相同短语上保存的笔记，重排后仍能分别定位到原来的位置。[Mac 原生菜单](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137507946104) · [Windows 菜单和输入验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137508476622)
+
+在 RX 7800 XT 上，TranslateGemma 4B 跳过 PLOS 论文的 20 条参考文献，翻译了正文和附录；导出仍保留全部引文。源码中缺少结束符的一条公式按字面保留，两条完整公式正常排版，其后的三句正文都完成中译。公开便携版还用 TranslateGemma 4B、Qwen3 4B 分别验证了 TeX、代码和链接的保护及重开。按这次实测，历史 111 项中有 90 项对齐、21 项部分对齐。
+
 ## 0.2.85 离线公式、资源导出与真实模型重试（2026-11-22）
 
 用同一份校准记录核对了表题、表头、表格数据和图注里的五个公式。Windows 便携版在 Paper、Reader 和全文翻译里使用自带字体，并保留图注代码里的字面示例。公开程序还能把两份真实附件打包到新目录，代码块中的四行示例文件名、缩进与 Mac 导出一致。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45113226495/job/137490080057)
