@@ -61,6 +61,21 @@ function archive(entries) {
   return Buffer.concat([...locals, central, end]);
 }
 
+test('Older saved Markdown locates its original resource folder after linked image support changes', t => {
+  const file = fixture(t);
+  const id = 'f'.repeat(64);
+  const dir = 'mineru/' + id + '/legacy/auto/';
+  file(dir + 'panel.png', 'ordinary image');
+  file(dir + 'panel(2).png', 'second panel');
+  const ordinary = '![First](panel.png)';
+  const source = '# Measurements\n\n' + ordinary + '\n\n[![Second](panel(2).png)](appendix.pdf)';
+  const markdownFile = file(dir + 'paper.md', source);
+  const earlier = source.replace(ordinary, '![First](data:image/png;base64,' + Buffer.from('ordinary image').toString('base64') + ')');
+  assert.notEqual(earlier, readMineruMarkdown(markdownFile));
+  assert.equal(findPaperMineruMarkdown(file('.'), { id, mineruMarkdown: earlier }), markdownFile);
+  assert.equal(findPaperMineruMarkdown(file('.'), { id, mineruMarkdown: earlier.replace('Measurements', 'Different measurement') }), null);
+});
+
 test('Folded HTML and nested Markdown links retain their supplements after moving an export', async t => {
   const file = fixture(t);
   const markdown = [

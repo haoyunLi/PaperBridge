@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomBytes } = require('node:crypto');
 const { assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
-const { mineruMarkdownFiles, readMineruMarkdown } = require('./mineru-output.cjs');
+const { mineruMarkdownFiles, readMineruMarkdown, embedMineruImages } = require('./mineru-output.cjs');
 
 const resultsDirectory = 'mineru-results';
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -82,8 +82,12 @@ function findPaperMineruMarkdown(root, paper) {
     let match = null;
     for (const file of mineruMarkdownFiles(legacy)) {
       if (!assetFile(legacy, path.relative(legacy, file))) continue;
-      try { if (readMineruMarkdown(file) !== paper.mineruMarkdown) continue; }
-      catch { continue; }
+      try {
+        const current = readMineruMarkdown(file);
+        // An older importer could leave some linked figures as relative paths.
+        // Resolve the stored version in the same folder before comparing its content.
+        if (current !== paper.mineruMarkdown && current !== embedMineruImages(paper.mineruMarkdown, file)) continue;
+      } catch { continue; }
       if (match) return null;
       match = file;
     }
