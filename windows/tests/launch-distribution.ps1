@@ -32,8 +32,9 @@ try {
     }
     $launchDirectory = [IO.Path]::GetTempPath()
     $desktop = [System.Windows.Automation.AutomationElement]::RootElement
-    $launchTime = [Diagnostics.Stopwatch]::StartNew()
     $launcher = Start-Process -FilePath $binary -WorkingDirectory $launchDirectory -PassThru
+    # Shell launch may wait for a person to answer Windows before creating the process.
+    $launchTime = [Diagnostics.Stopwatch]::StartNew()
     if ($CheckExtractionWindow) {
         $owner = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $launcher.Id)
         $observed = @{}
