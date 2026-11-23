@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.96 的启动反馈与模型下载
+
+全新 Windows 打开 GitHub 上的便携版时，1.5 秒后看到原生解压提示，约 11.5 秒后显示首次引导。安装版也完成了启动与导入。旧客户端从同一发布页下载新版，核对构建证明、保存当前笔记，并请求 Windows 打开安装包。本机用 Edge 下载的两个文件与发布页及应用内更新清单中的大小和 SHA-256 一致。[发布与冷启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) · [更新与笔记验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199)
+
+中文版译文通过了全新 Windows 上的实际 4B 安装与续传测试。27B 在另一台 16 GiB 机器上超时后，原论文仍可用先前安装的 4B 翻译。本机 RX 7800 XT 的型号、显存及模型盘空间均可从首次引导和设置读取。[4B 首次使用](https://github.com/haoyunLi/PaperBridge/actions/runs/45171471770) · [27B 故障恢复](https://github.com/haoyunLi/PaperBridge/actions/runs/45172171617)
+
 ## 0.2.95 的公开下载与更新
 
 全新 Windows 从 GitHub Release 下载并验证了安装版和便携版，打开阅读器后完成了论文导入及 Mac 阅读结果对照。另一台 Windows 用已安装的旧客户端实际下载新版，核对互联网来源标记、SHA-256 和 GitHub 签发的构建证明，保存当前论文的书签和笔记，再将同一份安装包交给 Windows。在 RX 7800 XT 电脑上又用 Edge 从首页取得两份 EXE。从 0.2.93 实际覆盖安装后，论文、高亮、笔记和阅读外观仍在。安装向导由用户确认。[下载与阅读器验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45168290715/job/137677374786) · [更新及笔记验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45168290715/job/137679404037)
