@@ -3,8 +3,26 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { candidates, createMineruStaging, detectMineruExecutable, mineruInvocation } = require('../electron/mineru-discovery.cjs');
+const { candidates, createMineruStaging, detectMineruExecutable, mineruInvocation, mineruPython } = require('../electron/mineru-discovery.cjs');
 const { mineruPaths, claimMineruSetup, beginMineruActivation, commitMineruActivation } = require('../electron/mineru-installation.cjs');
+
+test('legacy probes use the interpreter belonging to the launcher installation', t => {
+  const { root } = fixture(t);
+  const scripts = path.join(root, 'Python with spaces', 'Scripts');
+  const executable = path.join(scripts, 'mineru.exe');
+  const prefix = path.dirname(scripts);
+  const globalPython = path.join(prefix, 'python.exe'), venvPython = path.join(scripts, 'python.exe');
+  fs.mkdirSync(scripts, { recursive: true });
+  fs.writeFileSync(globalPython, '');
+  assert.equal(mineruPython(executable), '', 'A parent Python without the MinerU package is ambiguous');
+  const pkg = path.join(prefix, 'Lib', 'site-packages', 'mineru');
+  fs.mkdirSync(pkg, { recursive: true });
+  fs.writeFileSync(path.join(pkg, '__init__.py'), '');
+  assert.equal(mineruPython(executable), globalPython);
+  assert.equal(mineruPython(path.join(prefix, 'other', 'mineru.exe')), '');
+  fs.writeFileSync(venvPython, '');
+  assert.equal(mineruPython(executable), venvPython);
+});
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-mineru-detect-'));

@@ -6,6 +6,7 @@ const { promisify } = require('node:util');
 const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { setTimeout: delay } = require('node:timers/promises');
+const { isMineruReady } = require('./mineru-readiness.mjs');
 const { missingOllamaModels } = require('./ollama-models.mjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
@@ -49,10 +50,13 @@ function setupPlan(status, requiredModels = [], config = {}) {
   const components = selectedComponents(config.components);
   const models = components.models ? missingOllamaModels(requiredModels, status.ollama.models) : [];
   const gpu = cudaPlan(status.hardware);
-  const keepCpuPipeline = config.mineruBackend === 'pipeline' && status.mineru.compatible &&
+  const parserReady = isMineruReady(status.mineru);
+  const keepCpuPipeline = config.mineruBackend === 'pipeline' && parserReady &&
     !status.mineru.kitExecutable && status.mineru.runtime?.checked === true && status.mineru.runtime.cuda === false;
   if (status.mineru.kitExecutable) {
-    gpu.reason = 'Setup keeps the installed MinerU ONNX parser. Ollama selects acceleration independently.';
+    gpu.reason = parserReady && !config.repairMineru
+      ? 'Setup keeps the installed MinerU ONNX parser. Ollama selects acceleration independently.'
+      : 'Setup will repair the managed MinerU ONNX environment. Ollama selects acceleration independently.';
   } else if (gpu.index && keepCpuPipeline && !config.repairMineru) {
     gpu.reason = 'MinerU is ready with its CPU pipeline. Choose Repair / update MinerU to retry CUDA.';
   }
@@ -60,8 +64,7 @@ function setupPlan(status, requiredModels = [], config = {}) {
   return {
     ollama: !status.ollama.running && (components.ollama || components.models),
     models,
-    mineru: components.mineru && (Boolean(config.repairMineru) || !status.mineru.compatible
-      || Boolean(status.mineru.kitExecutable && status.mineru.runtime?.checked === false)
+    mineru: components.mineru && (Boolean(config.repairMineru) || !parserReady
       || Boolean(gpu.index && !status.mineru.kitExecutable && !status.mineru.runtime?.cuda && !keepCpuPipeline)),
     gpu,
     components,

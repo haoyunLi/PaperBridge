@@ -1,4 +1,4 @@
-import { isMineruReady } from './hardwareDisplay.mjs';
+import { isMineruReady } from '../electron/mineru-readiness.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, Download, FileText, HardDrive, Languages, LockKeyhole, RefreshCw, Settings2, Sparkles, Square } from 'lucide-react';
 import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, modelSettingsPatch, isCatalogModelSelected } from './modelCatalog.mjs';

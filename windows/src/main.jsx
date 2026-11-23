@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo
 import { createRoot } from 'react-dom/client';
 import { documentLinkTarget, revealMarkdownTarget } from './markdownLinks.mjs';
 import { capturePreviewAnchor, paperModeViewport, restorePreviewAnchor, storePaperViewport } from './paperScroll.mjs';
+import { isMineruReady } from '../electron/mineru-readiness.mjs';
 import { externalPaperURL } from '../electron/paper-link.mjs';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
@@ -2227,7 +2228,7 @@ function App() {
         setPendingImport(current => current ? { ...current, stage: 'Checking MinerU availability' } : current);
         const mineru = await api.mineruStatus(config.mineruExecutable, config.mineruBackend);
         requireActiveTask(token);
-        if (!mineru.compatible) throw new Error(mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
+        if (!isMineruReady(mineru)) throw new Error(mineru.runtime?.reason || mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
         setBusy({ label: 'MinerU is reconstructing the paper…' });
         setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
         const result = await extractMineruForTask(imported.id, mineru, config.mineruBackend, token);
@@ -2747,7 +2748,10 @@ function App() {
     catch (cause) { setError(`MinerU detection failed: ${cause.message}`); return; }
     finally { mineruPreflight.current = false; }
     if (paperRef.current?.id !== paper.id || taskRef.current || editRef.current) return;
-    if (!runtime.compatible) { setStatus('MinerU OCR is not ready. Install it in Local AI setup, then parse this PDF again.'); openSetup(); return; }
+    if (!isMineruReady(runtime)) {
+      setStatus(runtime.runtime?.reason || runtime.reason || 'MinerU OCR is not ready. Open Local AI setup to repair it.');
+      openSetup(); return;
+    }
     const token = startTask('MinerU is extracting structure…');
     try {
       const { markdown, pageHints, blocks: parsed, resourceId = null, resourceWarning = '' } = await extractMineruForTask(paper.id, runtime, settings.mineruBackend, token);

@@ -92,12 +92,25 @@ function mineruInvocation(detected, pdf, output, backend, toolsRoot, cpuFallback
   return { command: detected.executable, args, env };
 }
 
+function isFile(file, fileSystem = fs) {
+  try { return fileSystem.statSync(file).isFile(); } catch { return false; }
+}
+
+function mineruPython(executable) {
+  const directory = path.dirname(executable);
+  const adjacent = path.join(directory, 'python.exe');
+  if (isFile(adjacent)) return adjacent;
+  if (path.basename(directory).toLowerCase() !== 'scripts') return '';
+  // A system-wide pip install writes its launcher under Scripts and uses the
+  // interpreter in the parent prefix. Confirm that prefix owns the package.
+  const prefix = path.dirname(directory);
+  const python = path.join(prefix, 'python.exe');
+  return isFile(python) && isFile(path.join(prefix, 'Lib', 'site-packages', 'mineru', '__init__.py')) ? python : '';
+}
+
 async function detectMineruExecutable(configured, toolsRoot, options = {}) {
   const fileSystem = options.fileSystem || fs;
   const checkVersion = options.probeVersion || probeVersion;
-  function isFile(file) {
-    try { return fileSystem.statSync(file).isFile(); } catch { return false; }
-  }
   let firstIncompatible = null;
   let managedUnavailable = '';
   const managed = toolsRoot && path.join(mineruPaths(toolsRoot).final, 'Scripts', 'mineru.exe').toLowerCase();
@@ -108,14 +121,14 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
       } catch (error) { managedUnavailable = `Could not recover the previous MinerU installation: ${error.message}`; }
       if (managedUnavailable) continue;
     }
-    if (!isFile(candidate.executable)) continue;
+    if (!isFile(candidate.executable, fileSystem)) continue;
     let version;
     try { version = String(await checkVersion(candidate.executable, toolsRoot)).trim().slice(0, 200); }
     catch { version = 'The command did not start'; }
     const legacy = /(?:^|[\s,])3\.\d+(?:\.\d+)?$/.test(version);
     const modern = /(?:^|[\s,])4\.(?:[1-9]\d*)\.\d+(?:\.post\d+)?$/.test(version);
     const kit = path.join(path.dirname(candidate.executable), 'mineru-kit.exe');
-    const kitExecutable = modern && isFile(kit) ? kit : '';
+    const kitExecutable = modern && isFile(kit, fileSystem) ? kit : '';
     const compatible = legacy || Boolean(kitExecutable);
     const reason = modern ? `MinerU at ${candidate.executable} is missing mineru-kit.exe beside it.`
       : `MinerU at ${candidate.executable} does not report a compatible 3.x or 4.1+ version.`;
@@ -131,4 +144,4 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
       : 'MinerU was not found in PaperBridge managed tools or on PATH. Install it in Local AI setup or enter its full path.') };
 }
 
-module.exports = { candidates, createMineruStaging, detectMineruExecutable, mineru4Environment, mineruInvocation };
+module.exports = { candidates, createMineruStaging, detectMineruExecutable, mineru4Environment, mineruInvocation, mineruPython };

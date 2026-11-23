@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ArrowRightLeft, Cloud, Cpu, FileText, Languages, RefreshCw, Settings2 } from 'lucide-react';
-import { isMineruReady } from './hardwareDisplay.mjs';
+import { isMineruReady } from '../electron/mineru-readiness.mjs';
 import './sidebar-controls.css';
 
 export function SidebarLanguage({ settings, languages, disabled, onChange }) {

@@ -4,7 +4,8 @@ import SettingsModels from './SettingsModels.jsx';
 import OllamaMemory from './OllamaMemory.jsx';
 import OpenAISettings from './OpenAISettings.jsx';
 import { ReadingAppearanceControls } from './ReadingAppearance.jsx';
-import { describeAdapter, isMineruReady } from './hardwareDisplay.mjs';
+import { describeAdapter } from './hardwareDisplay.mjs';
+import { isMineruReady } from '../electron/mineru-readiness.mjs';
 import './settings.css';
 
 const api = window.paperBridge;
@@ -56,7 +57,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
       const result = await api.detectMineru(settingsRef.current.mineruBackend);
       if (!mounted.current || settingsRef.current.mineruExecutable !== previousPath) return;
       if (lockedRef.current) { setParserError('Another task started during detection. Finish that task, then use Auto-Detect again.'); return; }
-      if (!result.compatible || !result.executable) throw new Error(result.reason || 'No compatible MinerU installation was found. Use Local AI setup to install it.');
+      if (!isMineruReady(result) || !result.executable) throw new Error(result.runtime?.reason || result.reason || 'No compatible MinerU installation was found. Use Local AI setup to install it.');
       onSettings({ mineruExecutable: result.executable }); setParser(result);
     } catch (cause) { if (mounted.current) setParserError(cause.message); }
     finally { if (mounted.current) setDetecting(false); }

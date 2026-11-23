@@ -116,6 +116,10 @@ test('NVIDIA setup chooses supported wheel index and repairs CPU-only MinerU', (
   assert.equal(setupPlan(fallback, [], { mineruBackend: 'pipeline' }).mineru, false, 'a verified CPU fallback survives the next setup');
   assert.equal(setupPlan(fallback, [], { mineruBackend: 'pipeline', repairMineru: true }).mineru, true);
   assert.equal(setupPlan(fallback, [], { mineruBackend: 'auto' }).mineru, true);
+  const amd = { ...status, hardware: { adapters: [{ vendor: 'AMD' }] } };
+  const legacy = runtime => ({ ...amd, mineru: { compatible: true, runtime } });
+  assert.equal(setupPlan(legacy({ checked: false, unusable: true })).mineru, true, 'a broken local PyTorch environment needs repair');
+  assert.equal(setupPlan(legacy({ checked: false })).mineru, false, 'an external wrapper can run without an identifiable Python');
   const onnx = { ...status, mineru: { compatible: true, kitExecutable: 'mineru-kit.exe', runtime: { directml: true } } };
   const onnxPlan = setupPlan(onnx);
   assert.equal(onnxPlan.mineru, false, 'A working ONNX parser does not require a CUDA reinstall');

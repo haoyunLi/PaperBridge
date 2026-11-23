@@ -19,7 +19,7 @@ async function savedPaper(page, id, predicate) {
   throw new Error('Timed out waiting for paper ' + id);
 }
 
-async function runScenario(dir, mode, failure) {
+async function runScenario(dir, mode, failure, parserOverride = {}) {
   fs.mkdirSync(dir);
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({
     onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: mode, ollamaBaseURL: 'http://127.0.0.1:9'
@@ -51,11 +51,11 @@ async function runScenario(dir, mode, failure) {
     await page.getByRole('button', { name: 'Save note', exact: true }).click();
     const before = await savedPaper(page, previous, paper => paper.blocks[0].bookmark &&
       paper.blocks[0].notes.some(item => item.body === 'Keep this passage during import.'));
-    await app.evaluate(({ ipcMain }, failure) => {
+    await app.evaluate(({ ipcMain }, { failure, parserOverride }) => {
       globalThis.parserCalls = 0;
       ipcMain.removeHandler('mineru:status');
       ipcMain.handle('mineru:status', () => ({ compatible: true, executable: 'fixture-mineru', version: 'fixture',
-        runtime: { checked: true, cuda: false, cpuFallback: !failure } }));
+        runtime: { checked: true, cuda: false, cpuFallback: !failure }, ...parserOverride }));
       ipcMain.removeHandler('mineru:extract');
       ipcMain.handle('mineru:extract', (_event, request) => {
         globalThis.parserCalls++;
@@ -63,7 +63,7 @@ async function runScenario(dir, mode, failure) {
         if (failure) throw new Error('Calibration parser unavailable');
         return { markdown: '# Calibration\n\nThe ceramic sample was measured at two field strengths.', pageHints: [] };
       });
-    }, failure);
+    }, { failure, parserOverride });
     await page.evaluate(encoded => {
       const files = new DataTransfer();
       files.items.add(new File([Uint8Array.from(atob(encoded), c => c.charCodeAt(0))], 'emcee-v3.pdf', {type: 'application/pdf'}));
@@ -119,7 +119,14 @@ async function run() {
     const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
     assert.deepEqual(outcomes, native.importModes, 'Five normal PDF imports match the native Mac view model');
   }
-  console.log(JSON.stringify({dir, outcomes}));
+  const reason = 'Calibration parser unavailable: runtime preflight failed';
+  const brokenLegacy = await runScenario(path.join(dir, 'legacy-runtime'), 'mineruPreferred', true,
+    { runtime: { checked: false, unusable: true, reason } });
+  assert.deepEqual(brokenLegacy, { ...outcomes.preferredFailure, parserCalled: false });
+  const brokenOnnx = await runScenario(path.join(dir, 'onnx-runtime'), 'mineruOnly', true,
+    { kitExecutable: 'mineru-kit.exe', runtime: { checked: false, reason } });
+  assert.deepEqual(brokenOnnx, { ...outcomes.strictFailure, parserCalled: false });
+  console.log(JSON.stringify({dir, outcomes, brokenLegacy, brokenOnnx}));
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });

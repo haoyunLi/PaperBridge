@@ -111,6 +111,8 @@ async function run() {
         global.__mineruDetectCalls++;
         if (global.__mineruDetectMode === 'failure') return { installed: false, compatible: false, executable: '',
           version: '', runtime: null, reason: 'Mock MinerU discovery found no compatible installation.' };
+        if (global.__mineruDetectMode === 'brokenTorch') return { installed: true, compatible: true, executable: fixture.detected,
+          runtime: { checked: false, unusable: true, reason: "Cannot load MinerU PyTorch: No module named 'torch'" } };
         if (global.__mineruDetectMode === 'pending') return new Promise(resolve => { global.__mineruDetectPending = resolve; });
         return { installed: true, compatible: true, executable: fixture.detected, version: 'MinerU 3.4.5',
           source: 'managed', runtime: { checked: true, cuda: false }, reason: '' };
@@ -136,6 +138,11 @@ async function run() {
     assert.equal(await executable.inputValue(), edited);
     assert.equal(await backend.inputValue(), 'pipeline');
     await waitFor(() => paperFile(paperAId).taskSettings?.mineruExecutable === edited, 'manual path retained after failed discovery');
+    await app.evaluate(() => { global.__mineruDetectMode = 'brokenTorch'; });
+    await page.getByRole('button', { name: 'Use Auto-Detect', exact: true }).click();
+    await page.getByText("Cannot load MinerU PyTorch: No module named 'torch'", { exact: true }).waitFor();
+    assert.equal(await executable.inputValue(), edited);
+    assert.equal(paperFile(paperAId).taskSettings.mineruExecutable, edited);
 
     await page.getByLabel('PDF extraction mode').selectOption('pdfOnly');
     assert.equal(await executable.isDisabled(), true);

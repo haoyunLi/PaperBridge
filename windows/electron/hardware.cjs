@@ -1,9 +1,8 @@
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
-const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
+const { detectMineruExecutable, mineru4Environment, mineruPython } = require('./mineru-discovery.cjs');
 const run = promisify(execFile);
 
 function vendorOf(name, pciVendor) {
@@ -117,24 +116,44 @@ async function mineruRuntime(executable, toolsRoot, { found, signal, backend = '
       return { checked: true, engine: 'onnx', directml, devices: directml && adapter ? [adapter] : [], description };
     } catch (error) { return { checked: false, engine: 'onnx', reason: `Cannot check MinerU ONNX: ${error.message.slice(0, 140)}` }; }
   }
-  const python = path.join(path.dirname(detected.executable), 'python.exe');
-  if (!fs.existsSync(python)) return { checked: false, reason: 'Could not identify the Python interpreter beside MinerU. Check CUDA in the same environment manually.' };
+  const python = mineruPython(detected.executable);
+  if (!python) return { checked: false, reason: 'Could not identify the Python environment that owns this MinerU command. Check acceleration in that environment manually.' };
   try {
-    const script = [
-      'import json, torch',
-      'ready = torch.cuda.is_available()',
-      'reason = ""',
-      'if ready:',
-      '    try:',
-      '        torch.ones(1, device="cuda").add_(1)',
-      '        torch.cuda.synchronize()',
-      '    except Exception as error:',
-      '        ready = False',
-      '        reason = str(error)[:180]',
-      'print(json.dumps({"torch":torch.__version__,"cuda":ready,"devices":[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())],"reason":reason}))'
-    ].join('\n');
+    const script = `
+import importlib.util, json, sys
+def report_failure(message):
+    owns_package = importlib.util.find_spec("mineru") is not None
+    print(json.dumps({"checked": False, "unusable": owns_package, "reason": message[:240]}))
+    sys.exit(0)
+try:
+    import torch
+except Exception as error:
+    report_failure("Cannot load MinerU PyTorch: " + str(error))
+ready = False
+reason = ""
+devices = []
+try:
+    if torch.cuda.is_available():
+        torch.ones(1, device="cuda").add_(1)
+        torch.cuda.synchronize()
+        ready = True
+except Exception as error:
+    reason = str(error)[:180] or type(error).__name__
+if ready:
+    try:
+        devices = [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]
+    except Exception:
+        pass  # Optional device names do not invalidate a completed CUDA operation.
+else:
+    try:
+        torch.ones(1, device="cpu").add_(1)
+    except Exception as error:
+        report_failure("MinerU PyTorch could not run its CPU operation: " + str(error))
+print(json.dumps({"torch": torch.__version__, "cuda": ready, "devices": devices, "reason": reason}))
+`;
     const { stdout } = await run(python, ['-c', script], { timeout: 30000, windowsHide: true, signal });
     const runtime = JSON.parse(stdout.trim().split(/\r?\n/).at(-1));
+    if (runtime.checked === false) return runtime;
     // Some drivers enumerate a CUDA device that cannot execute kernels from this PyTorch build.
     if (!runtime.cuda && runtime.reason) return { ...runtime, checked: true, cpuFallback: true,
       description: 'CUDA could not execute the test operation. PDFs will use the CPU pipeline' };
