@@ -236,6 +236,7 @@ struct Reference {
         let navigation = try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent())
         let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource,
                                      "retainedSlice": try nativeRetainedSlice(paragraphs: body, checksum: checksum),
+                                     "legacyParagraphAnchors": try nativeLegacyParagraphAnchors(paragraphs: body, checksum: checksum),
                                      "overlappingHighlights": try nativeOverlappingHighlights(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "selectionEdges": try nativeSelectionEdges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "richAnnotationRanges": try nativeRichAnnotationRanges(fixtures: fixtureURL.deletingLastPathComponent()),

@@ -223,6 +223,11 @@ function uniqueOffset(text, quote) {
   return offset >= 0 && offset === text.lastIndexOf(quote) ? offset : null;
 }
 
+function sourceAnnotationOffset(item, source) {
+  if (item.needsReview) return null;
+  return matchesQuote(source, item.text, item.offset) ? item.offset : uniqueOffset(source, item.text);
+}
+
 function moveSourceAnnotation(item, text, offset) {
   if (item.needsReview || !matchesQuote(text, item.text, offset)) return forReview(item);
   const { renderedAnchor, displayOffset, ...saved } = item;
@@ -237,9 +242,10 @@ export function splitBlockAt(block, cut, separatorLength = 0) {
   function divide(items) {
     const left = []; const right = [];
     for (const item of items || []) {
-      if (!item.needsReview && Number.isInteger(item.offset) && item.offset >= rightStart) {
-        right.push(moveSourceAnnotation(item, rightText, item.offset - rightStart));
-      } else left.push(moveSourceAnnotation(item, leftText, item.offset));
+      const offset = sourceAnnotationOffset(item, block.text);
+      if (offset !== null && offset >= rightStart) {
+        right.push(moveSourceAnnotation(item, rightText, offset - rightStart));
+      } else left.push(moveSourceAnnotation(item, leftText, offset));
     }
     return [left, right];
   }
@@ -303,11 +309,12 @@ function rewriteParagraphSpacing(block, edits) {
   }
   const text = pieces.join('') + block.text.slice(cursor);
   function relocate(item) {
-    if (!matchesQuote(block.text, item.text, item.offset)) return forReview(item);
-    let offset = item.offset;
+    const original = sourceAnnotationOffset(item, block.text);
+    if (original === null) return forReview(item);
+    let offset = original;
     for (const edit of edits) {
-      if (edit.end <= item.offset) offset += edit.space.length - (edit.end - edit.start);
-      else if (edit.start < item.offset + item.text.length) return forReview(item);
+      if (edit.end <= original) offset += edit.space.length - (edit.end - edit.start);
+      else if (edit.start < original + item.text.length) return forReview(item);
       else break;
     }
     return moveSourceAnnotation(item, text, offset);
@@ -372,7 +379,10 @@ export function mergeBlocks(first, second) {
   const text = listing ? left.text + '\n' + right.text : joinPdfText(left.text, right.text);
   const endPage = Math.max(left.endPage || left.page || 0, right.endPage || right.page || 0);
   const rightStart = text.length - right.text.length;
-  const move = (item, source, start) => matchesQuote(source, item.text, item.offset) ? moveSourceAnnotation(item, text, start + item.offset) : forReview(item);
+  function move(item, source, start) {
+    const offset = sourceAnnotationOffset(item, source);
+    return offset === null ? forReview(item) : moveSourceAnnotation(item, text, start + offset);
+  }
   const moveNote = (item, source, start) => item.kind === 'translation' ? forReview(item) : move(item, source, start);
   return { ...left, text, heading: !listing && isHeading(text), ...(listing && { sourceMarkdown: pdfListingMarkdown(text) }),
     ...(left.page && endPage > left.page && { endPage }), translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
@@ -388,7 +398,7 @@ export function editedBlock(block, newText) {
   const retained = uniqueOffset(text, block.text);
   const slice = retained === null ? uniqueOffset(block.text, text) : null;
   function relocate(item) {
-    const original = matchesQuote(block.text, item.text, item.offset) ? item.offset : uniqueOffset(block.text, item.text);
+    const original = sourceAnnotationOffset(item, block.text);
     if (original === null) return forReview(item);
     if (retained !== null) return moveSourceAnnotation(item, text, retained + original);
     if (slice !== null && original >= slice && original + item.text.length <= slice + text.length) {
