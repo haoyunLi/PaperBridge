@@ -50,7 +50,7 @@ async function checkLiveTranslation(observation, page, quote, model, baseURL, di
   assert.ok(active?.size_vram > 0);
   await translate.click();
   await inspector.getByText('Using cached quick lookup.', { exact: true }).waitFor();
-  assert.equal(await app.evaluate(() => global.longSelectionRequests.length), 1);
+  assert.equal(observation.calls.length, 1);
   fs.writeFileSync(path.join(dir, 'translation.json'), JSON.stringify({ model, vram: active.size_vram,
     seconds: (Date.now() - started) / 1000, source: quote, translation }, null, 2));
 }

@@ -46,6 +46,8 @@ async function run() {
   let app = await launch();
   try {
     let page = await app.firstWindow();
+    page.setDefaultTimeout(20000);
+    checkpoint('opened the installed reader');
     const actual = await app.evaluate(({ app }) => ({ version: app.getVersion(), pid: process.pid }));
     assert.equal(actual.version, report.from);
     report.oldPID = actual.pid;
@@ -87,6 +89,7 @@ async function run() {
     assert.notEqual(report.relaunched.pid, actual.pid);
     checkpoint('observed the new version reopening its own visible window');
     app = await launch(); page = await app.firstWindow();
+    page.setDefaultTimeout(20000);
     assert.equal(await app.evaluate(({ app }) => app.getVersion()), feed.version);
     await openWorkspaceView(page, 'Reader');
     await page.locator('.block-notes').getByText(note, { exact: false }).waitFor();
