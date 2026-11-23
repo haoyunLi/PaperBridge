@@ -264,7 +264,7 @@ async function run() {
     await page.locator('.inspector blockquote').waitFor({ state: 'detached' });
     await clickTextOffset(page, readerPassage, 0);
     for (let index = 0; index < 10; index++) await page.keyboard.press('Shift+ArrowRight');
-    const keyboardQuote = (await readerPassage.textContent()).slice(0, 10).trim();
+    const keyboardQuote = (await readerPassage.textContent()).slice(0, 10);
     assert.equal(await page.locator('.inspector blockquote').textContent(), keyboardQuote);
     await page.locator('.selection-meta').getByText('ORIGINAL', { exact: true }).waitFor();
     generateDelayMs = 500;

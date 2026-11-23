@@ -235,6 +235,7 @@ struct Reference {
         let journalDraft = try nativeJournalDraft(fixtures: fixtureURL.deletingLastPathComponent())
         let navigation = try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent())
         let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource,
+                                     "overlappingHighlights": try nativeOverlappingHighlights(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "selectionEdges": try nativeSelectionEdges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "richAnnotationRanges": try nativeRichAnnotationRanges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "attachmentLinks": try nativeAttachmentLinks(fixtures: fixtureURL.deletingLastPathComponent()),

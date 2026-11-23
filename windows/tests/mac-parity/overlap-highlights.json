@@ -1,0 +1,17 @@
+{
+  "text": "A Python ensemble sampling toolkit for affine-invariant MCMC",
+  "marks": [
+    {
+      "quote": "ensemble sampling toolkit",
+      "color": "amber"
+    },
+    {
+      "quote": "sampling toolkit for affine-invariant",
+      "color": "coral"
+    },
+    {
+      "quote": "toolkit for",
+      "color": "teal"
+    }
+  ]
+}

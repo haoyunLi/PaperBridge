@@ -11,6 +11,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
+import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, isPdfListing, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, onlyProtectedMarkup, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
@@ -150,7 +151,7 @@ function domText(root, visibleOnly) {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node.textContent;
   return text;
 }
-function annotationRanges(root, annotations, source) {
+function annotationRanges(root, annotations, source, { pdf = false } = {}) {
   const walker = textWalker(root, true);
   const nodes = [];
   let node;
@@ -160,18 +161,25 @@ function annotationRanges(root, annotations, source) {
   }
   const text = nodes.map(item => item.node.textContent).join('');
   const result = Object.fromEntries(annotationStyles.map(style => [style, []]));
+  const highlights = [], notes = [];
   for (const item of annotations) {
-    const style = item.color || (typeof item.body === 'string' && item.body.trim() ? 'note' : null);
-    if (!Object.hasOwn(result, style)) continue;
-    const at = markdownAnnotationOffset(text, item, source);
-    if (at === null) continue;
-    const start = nodes.find(item => item.end > at);
-    const end = nodes.find(node => node.end >= at + item.text.length);
+    const color = item.color || (typeof item.body === 'string' && item.body.trim() ? 'note' : null);
+    if (!Object.hasOwn(result, color)) continue;
+    const start = markdownAnnotationOffset(text, item, source);
+    if (start === null) continue;
+    const span = { start, end: start + item.text.length, color };
+    (color === 'note' ? notes : highlights).push(span);
+  }
+  // PDFKit draws each highlight annotation independently on the printed page.
+  const painted = pdf ? highlights : visibleHighlightSpans(highlights);
+  for (const span of [...painted, ...notes]) {
+    const start = nodes.find(node => node.end > span.start);
+    const end = nodes.find(node => node.end >= span.end);
     if (!start || !end) continue;
     const range = document.createRange();
-    range.setStart(start.node, at - start.start);
-    range.setEnd(end.node, at + item.text.length - end.start);
-    result[style].push(range);
+    range.setStart(start.node, span.start - start.start);
+    range.setEnd(end.node, span.end - end.start);
+    result[span.color].push(range);
   }
   return result;
 }
@@ -314,19 +322,15 @@ function selectionHighlights(paper, selection) {
   return (items || []).filter(item => highlightMatchesSelection(item, selection));
 }
 function withHighlight(text, highlights = []) {
-  if (!highlights.length) return text;
+  if (!highlights.length || typeof text !== 'string') return text;
   const spans = [];
   for (const highlight of highlights) {
-    if (highlight.needsReview || highlight.renderedAnchor) continue;
-    const stored = Number.isInteger(highlight.offset) && text.slice(highlight.offset, highlight.offset + highlight.text.length) === highlight.text ? highlight.offset : -1;
-    const first = text.indexOf(highlight.text);
-    const at = stored >= 0 ? stored : first >= 0 && first === text.lastIndexOf(highlight.text) ? first : -1;
-    if (at >= 0) spans.push({ start: at, end: at + highlight.text.length, color: highlight.color });
+    if (highlight?.renderedAnchor) continue;
+    const at = markdownAnnotationOffset(text, highlight);
+    if (at !== null) spans.push({ start: at, end: at + highlight.text.length, color: highlight.color });
   }
-  spans.sort((a, b) => a.start - b.start);
   const nodes = []; let cursor = 0;
-  for (const span of spans) {
-    if (span.start < cursor) continue;
+  for (const span of visibleHighlightSpans(spans)) {
     nodes.push(text.slice(cursor, span.start));
     nodes.push(<mark key={`${span.start}-${span.end}`} className={`mark-${span.color}`}>{text.slice(span.start, span.end)}</mark>);
     cursor = span.end;
@@ -437,7 +441,7 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
     }));
     if (!valid.length) return;
     const key = highlightKey.current;
-    richHighlights.set(key, annotationRanges(root, valid));
+    richHighlights.set(key, annotationRanges(root, valid, undefined, { pdf: true }));
     refreshRichHighlights();
     return () => { richHighlights.delete(key); refreshRichHighlights(); };
   }, [annotations, number, rendered]);
@@ -2979,7 +2983,7 @@ function App() {
       const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
         page: selection.page, offset: selection.offset, text: selection.text, quote: selection.quote,
         ...(selection.anchors && { anchors: storedPdfAnchors(selection) }), color };
-      commitPaper(current => ({ ...current, pdfHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
+      commitPaper(current => ({ ...current, pdfHighlights: replaceHighlight(saved, matching, item) }));
       const action = !matching.length ? 'saved' : matching[0].color === color ? 'updated' : 'color updated';
       setStatus(`PDF highlight ${action} in ${selection.scope === 'paperPdf' ? 'Paper' : 'Original'}.`);
       return;
@@ -2994,7 +2998,7 @@ function App() {
         ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
         ...(selection.quote && { quote: selection.quote }),
         ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind }), color };
-      commitPaper(current => ({ ...current, viewHighlights: [...saved.filter(entry => !highlightMatchesSelection(entry, selection)), item] }));
+      commitPaper(current => ({ ...current, viewHighlights: replaceHighlight(saved, matching, item) }));
       setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved in the annotation list.');
       return;
     }
@@ -3008,7 +3012,7 @@ function App() {
     rememberUndo();
     const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
       ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), ...(selection.quote && { quote: selection.quote }), color };
-    updateBlock(block.id, { [key]: [...highlights.filter(entry => !highlightMatchesSelection(entry, selection)), item] });
+    updateBlock(block.id, { [key]: replaceHighlight(highlights, matching, item) });
     setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
   }
   function removeSelectionHighlight() {
