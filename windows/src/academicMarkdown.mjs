@@ -8,7 +8,7 @@ export function usesSharedMarkdown(paper) {
   return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
 }
 
-export function protectStructuredMarkdown(markdown) {
+export function protectStructuredMarkdown(markdown, { boundLinks = true } = {}) {
   if (!markdown.includes('](') && !/[`<@]|~{3}|\]:|https?:\/\/|\bwww\./i.test(markdown)) return protectMarkdown(markdown);
   const ranges = [];
   const boundedLinks = new Map();
@@ -27,7 +27,7 @@ export function protectStructuredMarkdown(markdown) {
       // including balanced parentheses and excluding the following punctuation.
       if (markdown[start] !== '[') {
         ranges.push([start, end]);
-        if (markdown[start] !== '<') {
+        if (boundLinks && markdown[start] !== '<') {
           const literal = markdown.slice(start, end);
           // Translated punctuation can touch either end of a formerly bare address.
           // Bound it in Markdown so the Reader and exported documents keep its target.
@@ -41,7 +41,12 @@ export function protectStructuredMarkdown(markdown) {
       const labelEnd = node.children.at(-1)?.position.end.offset ?? start + 1;
       if (markdown.startsWith('](', labelEnd)) {
         // Translate the label while preserving the punctuation that makes it a link.
-        if (labelEnd === start + 1) ranges.push([start, end]);
+        const label = markdown.slice(start + 1, labelEnd);
+        // A visible address can point at a tracking URL or mailto target. Keep
+        // both halves of that link; ordinary labels still go to the translator.
+        const address = /^(?:https?:\/\/|www\.)\S+$|^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(label)
+          && node.children.length === 1 && node.children[0].type === 'text';
+        if (!label || address) ranges.push([start, end]);
         else {
           ranges.push([start, start + 1], [labelEnd, end]);
           standaloneLabel = node.children.length === 1 && node.children[0].type === 'text'
@@ -55,7 +60,7 @@ export function protectStructuredMarkdown(markdown) {
   visit(parseMarkdown(markdown));
   ranges.sort((left, right) => left[0] - right[0]);
   const payload = protectMarkdown(markdown, ranges);
-  const tokens = payload.tokens.map(([marker, original]) => [marker, boundedLinks.get(original) ?? original]);
+  const tokens = boundedLinks.size ? payload.tokens.map(([marker, original]) => [marker, boundedLinks.get(original) ?? original]) : payload.tokens;
   return { ...payload, tokens, standaloneLabel: standaloneLabel && ranges.length === 2 && tokens.length === 2 };
 }
 

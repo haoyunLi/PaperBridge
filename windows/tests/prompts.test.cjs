@@ -48,6 +48,11 @@ test('visible web and email addresses stay whole while their surrounding prose c
     const item = protectStructuredMarkdown(original);
     assert.deepEqual(links(restoreMarkdown('见' + item.tokens[0][0] + '。', item.tokens)), links(original));
   }
+  const plain = protectStructuredMarkdown(source, { boundLinks: false });
+  assert.equal(restoreMarkdown(plain.text, plain.tokens), source);
+  const visibleAddress = '[www.example.org/readings_(v2)](https://example.org/redirect?n=1)';
+  const explicit = protectStructuredMarkdown('See ' + visibleAddress + ' for measurements.');
+  assert.deepEqual(explicit.tokens.map(([, value]) => value), [visibleAddress]);
   const angle = '<https://example.org/measurements_(v2)>';
   assert.deepEqual(protectStructuredMarkdown('See ' + angle + '!').tokens.map(([, value]) => value), [angle]);
 });

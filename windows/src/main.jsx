@@ -13,7 +13,7 @@ import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
-import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, protectMarkdown, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
+import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
@@ -2430,28 +2430,32 @@ function App() {
         setBusy({ label: `Translating block ${block.id} · ${index + 1} of ${total}` });
         setProgress({ done: index, total, failed });
         try {
-          const protectedBlock = block.sourceMarkdown ? protectStructuredMarkdown(block.sourceMarkdown) : null;
+          const marker = pdfFootnoteMarker(block);
+          const source = block.sourceMarkdown || block.text.slice(marker.length);
+          const protectedBlock = protectStructuredMarkdown(source, { boundLinks: Boolean(block.sourceMarkdown) });
           let output = block.sourceMarkdown || block.text;
           if (config.sourceLanguage !== config.targetLanguage && block.id !== authorByline?.id) {
-            const marker = pdfFootnoteMarker(block);
-            const parts = chunkText(protectedBlock?.text || block.text.slice(marker.length), Number(config.maxParagraphChars) || 1800);
+            const parts = chunkText(protectedBlock.text, Number(config.maxParagraphChars) || 1800);
             const translated = [];
-            const promptForPart = protectedBlock ? markdownTranslationPrompt : translationPrompt;
+            const promptForPart = block.sourceMarkdown || protectedBlock.tokens.length ? markdownTranslationPrompt : translationPrompt;
             const instructions = translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage));
             for (const part of parts) {
-              if (protectedBlock?.standaloneLabel && parts.length === 1) {
+              const tokens = protectedBlock.tokens.filter(([marker]) => part.includes(marker));
+              if (tokens.length && !/\p{L}/u.test(part.replace(/__PAPERBRIDGE_TOKEN_\d+__/g, ''))) {
+                translated.push(restoreMarkdown(part, tokens));
+                continue;
+              }
+              if (protectedBlock.standaloneLabel && parts.length === 1) {
                 translated.push(await translateMarkupSpans(protectedBlock, config, translationModel, instructions, token));
                 continue;
               }
               const prompt = promptForPart(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
               const answer = await generate(translationModel, prompt, instructions, token);
-              translated.push(protectedBlock
-                ? restoreMarkdown(answer, protectedBlock.tokens.filter(([marker]) => part.includes(marker)))
-                : answer);
+              translated.push(tokens.length || block.sourceMarkdown ? restoreMarkdown(answer, tokens) : answer);
             }
-            output = (marker ? marker + ' ' : '') + translated.join(protectedBlock ? '\n' : ' ');
+            output = (marker ? marker + ' ' : '') + translated.join(block.sourceMarkdown ? '\n' : ' ');
           }
-          if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: protectedBlock ? output : null,
+          if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: block.sourceMarkdown ? output : null,
             translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '' });
         } catch (err) {
           if (token.cancelled) break;
@@ -2623,7 +2627,7 @@ function App() {
         const translations = [];
         for (const [index, claim] of claims.entries()) {
           setBusy({ label: `Translating summary claim ${index + 1} of ${claims.length}` });
-          const { text, tokens } = protectMarkdown(claim.text);
+          const { text, tokens } = protectStructuredMarkdown(claim.text);
           const prompt = translationPrompt(text, config.sourceLanguage, config.targetLanguage, matchingTerms(text, config.sourceLanguage, config.targetLanguage));
           const answer = await generate(translationModel, prompt, instructions, token);
           if (!answer.trim()) throw new Error('The summary translation was empty; the saved summary was not replaced.');
@@ -2704,7 +2708,7 @@ function App() {
               continue;
             }
             if (parts.length > 1) setBusy({ label: `${localRetry ? 'Retrying' : 'Translating'} batch ${done + 1} · part ${partIndex + 1} of ${parts.length}` });
-            const excerpt = protectMarkdown(part.source);
+            const excerpt = protectStructuredMarkdown(part.source);
             const prompt = connectedTranslationPrompt(excerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(excerpt.text, config.sourceLanguage, config.targetLanguage));
             const answer = await generate(translationModel, prompt, instructions, token);
             let translated;

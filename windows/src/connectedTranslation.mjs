@@ -1,11 +1,15 @@
-import { referenceBlockIds } from './paper.mjs';
+import { referenceBlockIds } from './references.mjs';
+import { protectStructuredMarkdown } from './academicMarkdown.mjs';
 import { pdfFootnoteMarker, sourceExcerpts } from './text.mjs';
 import { countCharacters } from './sectionHeadings.mjs';
 import { isLikelyOverexpandedSelection, protectMarkdown, restoreMarkdown } from './prompts.mjs';
 
 const maxExcerptChars = 4800;
-export const connectedBatchVersion = 2;
-export const supportsConnectedBatchVersion = version => version === 1 || version === connectedBatchVersion;
+export const connectedBatchVersion = 3;
+export const supportsConnectedBatchVersion = version => version === 1 || version === 2 || version === connectedBatchVersion;
+
+// Partition the original bytes. Only the translated Markdown needs explicit link delimiters.
+const protectSource = source => protectStructuredMarkdown(source, { boundLinks: false });
 
 // Keep the original partition when resuming or exporting a saved version 1 draft.
 function splitLegacyExcerpt(source) {
@@ -35,14 +39,15 @@ function splitLegacyExcerpt(source) {
   return pieces;
 }
 
-function splitSourceExcerpt(source) {
-  const { text, tokens } = protectMarkdown(source);
+function splitSourceExcerpt(source, protect) {
+  const { text, tokens } = protect(source);
   if (text.length <= maxExcerptChars) return [source];
   return sourceExcerpts(text, maxExcerptChars).map(piece => restoreMarkdown(piece, tokens.filter(([marker]) => piece.includes(marker))));
 }
 
 export function planConnectedBatches(blocks, version = connectedBatchVersion) {
-  const splitExcerpt = version === 1 ? splitLegacyExcerpt : splitSourceExcerpt;
+  const protect = version < 3 ? protectMarkdown : protectSource;
+  const splitExcerpt = version === 1 ? splitLegacyExcerpt : source => splitSourceExcerpt(source, protect);
   const references = referenceBlockIds(blocks);
   const batches = [];
   let excerpt = '';
@@ -69,7 +74,7 @@ export function planConnectedBatches(blocks, version = connectedBatchVersion) {
     for (const piece of splitExcerpt(source)) {
       const candidate = excerpt ? `${excerpt}\n\n${piece}` : piece;
       if (excerpt) {
-        const masked = protectMarkdown(candidate).text;
+        const masked = protect(candidate).text;
         if (masked.length > maxExcerptChars && (version === 1 || countCharacters(masked, maxExcerptChars + 1) > maxExcerptChars)) flush();
       }
       excerpt = excerpt ? candidate : piece;
@@ -98,7 +103,7 @@ export function connectedRetryExcerpts(batch, localRetry, authorSource = '') {
   const containsByline = Boolean(authorSource && source.includes(authorSource));
   if (!localRetry && !containsByline) return pieces;
 
-  const { text, tokens } = protectMarkdown(source);
+  const { text, tokens } = protectSource(source);
   const retryMarkup = localRetry && tokens.length > 0;
   if (!retryMarkup && !containsByline) return pieces;
   // Mask code and equations before looking for paragraph boundaries inside a batch.
@@ -149,7 +154,7 @@ export async function translateAroundMarkup(excerpt, translate) {
     if (!/\p{L}/u.test(selection)) continue;
     const heading = selection.match(/^(#{1,6}[ \t]+)([^\n]+)$/);
     const translated = (await translate(heading ? heading[2] : selection)).trim();
-    if (!translated || protectMarkdown(translated).tokens.length) throw new Error('The local model could not translate the text surrounding the protected markup.');
+    if (!translated || protectSource(translated).tokens.length) throw new Error('The local model could not translate the text surrounding the protected markup.');
     spans[i] = spans[i].replace(selection, () => (heading?.[1] || '') + translated);
   }
   return spans.join('');
@@ -162,7 +167,7 @@ export function restoreConnectedExcerpt(answer, tokens, source = '') {
   }
   // All protected source markup reached the model as a placeholder. A new
   // literal equation, code fence, or link in its answer has no source anchor.
-  if (protectMarkdown(answer).tokens.some(([, value]) => !/^__PAPERBRIDGE_TOKEN_\d+__$/.test(value))) {
+  if (protectSource(answer).tokens.some(([, value]) => !/^__PAPERBRIDGE_TOKEN_\d+__$/.test(value))) {
     throw Object.assign(new Error('The model added markup that was absent from this excerpt. Retry this batch.'),
       { code: 'PROTECTED_MARKDOWN_CHANGED' });
   }

@@ -76,6 +76,20 @@ test('connected translation groups adjacent paragraphs and leaves resources and 
   ]);
 });
 
+test('current drafts keep long web addresses intact and restore their exact raw source', async () => {
+  const { planConnectedBatches, supportsConnectedBatchVersion } = await import('../src/connectedTranslation.mjs');
+  const address = 'www.example.org/archive_(study)/' + 'measurements/'.repeat(440) + 'data';
+  const text = 'Before the trial. ' + address + ' Follow the protocol.';
+  const blocks = [{ id: 1, text }];
+  assert.deepEqual(planConnectedBatches(blocks), [{ kind: 'translation', source: text }]);
+  for (const version of [1, 2]) {
+    assert.equal(supportsConnectedBatchVersion(version), true);
+    const legacy = planConnectedBatches(blocks, version);
+    assert.ok(legacy.length > 1);
+    assert.equal(legacy.some(batch => batch.source.includes(address)), false);
+  }
+});
+
 test('explicit local formula retries preserve paragraph separators and whole protected Markdown', async () => {
   const { connectedRetryExcerpts, isLocalMarkupRetry, restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
   const { protectMarkdown } = await import('../src/prompts.mjs');
@@ -115,6 +129,9 @@ test('last-resort local translation takes protected bytes and split technical wo
     { code: 'PROTECTED_MARKDOWN_CHANGED' });
   assert.throws(() => restoreConnectedExcerpt('## 嵌入\n\n```\nP(i) = exp(x_i)\n```', []),
     { code: 'PROTECTED_MARKDOWN_CHANGED' });
+  for (const injected of ['Visit www.example.org/data', 'Write to authors@example.org']) {
+    assert.throws(() => restoreConnectedExcerpt(injected, [], heading), { code: 'PROTECTED_MARKDOWN_CHANGED' });
+  }
   assert.equal(await translateAroundMarkup(protectMarkdown(heading), async title => {
     assert.equal(title, '3.4 Embeddings and Softmax');
     return '3.4 嵌入与 Softmax';

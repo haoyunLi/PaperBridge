@@ -11,6 +11,7 @@ async function run() {
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'connected-translation-'));
   const model = 'translategemma:4b';
+  const legacyVersion = process.argv.includes('--previous-v2') ? 2 : 1;
   const citations = [
     '[1] Ng, A. (2021). Results for the previous sensor. Journal of Testing.',
     'A catalogue of winter observations. (2021). https://doi.org/10.1234/winter.',
@@ -37,6 +38,10 @@ async function run() {
     const prompt = JSON.parse(body).prompt;
     const excerpt = prompt.split('Paper excerpt:\n').at(-1);
     excerpts.push(excerpt);
+    if (prompt.includes('Address fixture')) {
+      const markers = excerpt.match(/__PAPERBRIDGE_TOKEN_\d+__/g) || [];
+      return response.end(JSON.stringify({ response: '地址为' + markers.join('。其次是') + '。', done: true }));
+    }
     if (prompt.includes('<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>') && prompt.includes('Formula fixture B')) {
       if (omitRetryMarker) { response.statusCode = 503; return response.end('{}'); }
       return response.end(JSON.stringify({ response: '续译', done: true }));
@@ -125,9 +130,9 @@ async function run() {
     await app.close(); app = null;
 
     const interrupted = readPaper();
-    assert.equal(interrupted.connectedBatchVersion, 2);
-    // The ASCII fixture has the same partition under both versions. Resume it as a pre-upgrade draft.
-    interrupted.connectedBatchVersion = 1;
+    assert.equal(interrupted.connectedBatchVersion, 3);
+    // This ASCII fixture has the same partition in all three formats.
+    interrupted.connectedBatchVersion = legacyVersion;
     assert.deepEqual(interrupted.connectedLanguage, chinese, 'New successful, failed and pending batches share their explicit task direction');
     for (const batch of interrupted.connectedBlocks.filter(batch => batch.kind === 'translation')) assert.deepEqual(batch.translationLanguage, chinese);
     // Recreate a migrated successful legacy batch whose historical direction is
@@ -159,7 +164,7 @@ async function run() {
       return paper?.connectedBlocks?.every(batch => batch.status === 'ok');
     }, path.basename(file, '.json'));
     const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', file), 'utf8'));
-    assert.equal(saved.connectedBatchVersion, 1, 'Resume keeps the previous draft partition');
+    assert.equal(saved.connectedBatchVersion, legacyVersion, 'Resume keeps the previous draft partition');
     assert.ok(saved.blocks.every(block => block.status === 'pending'), 'Plain connected translation should leave Reader output independent');
     assert.equal(saved.connectedBlocks[0].translationLanguage, null, 'Resume must retain the unknown language of its reused successful batch');
     for (const batch of saved.connectedBlocks.filter(batch => batch.kind === 'translation').slice(1)) assert.deepEqual(batch.translationLanguage, chinese);
@@ -179,7 +184,7 @@ async function run() {
     }, paperId);
     assert.equal(excerpts.length, 8, 'Force regeneration must replace every translated batch before assigning a known whole-draft language');
     const regenerated = readPaper();
-    assert.equal(regenerated.connectedBatchVersion, 2, 'Explicit regeneration adopts current character boundaries');
+    assert.equal(regenerated.connectedBatchVersion, 3, 'Explicit regeneration adopts the current protected link boundaries');
     assert.deepEqual(regenerated.connectedLanguage, chinese);
     for (const batch of regenerated.connectedBlocks.filter(batch => batch.kind === 'translation')) assert.deepEqual(batch.translationLanguage, chinese);
     assert.equal(await exportFullTranslation('full-translation-regenerated.md'), regenerated.connectedTranslation);
@@ -343,6 +348,27 @@ async function run() {
     assert.equal(formulaDraft().output, '保留公式 $x_1$\n\n续译 $$y = 2$$.');
     assert.equal(excerpts.length - offset, 7);
     assert.deepEqual(excerpts.slice(-3), excerpts.slice(-6, -3));
+    const addresses = ['https://example.org/archive/(study)/data', 'www.example.org/controls_(v2)/readings', 'author+data@example.org'];
+    const input = 'Address fixture points to ' + addresses.join(' and ') + ' for the source measurements.';
+    await (await openPasteText(page)).fill(input);
+    const addressId = await loadPastedText(page, { view: 'Reader' });
+    const addressOffset = excerpts.length;
+    await page.locator('#block-1').getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+    const plain = page.locator('#block-1 .translation-text.done');
+    await plain.waitFor();
+    assert.equal(await plain.textContent(), '地址为' + addresses.join('。其次是') + '。');
+    await openWorkspaceView(page, 'Full Translation');
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'ok', addressId);
+    const addressesInDraft = await page.locator('[data-view-scope="fullTranslation"] a[href]').evaluateAll(links =>
+      links.map(link => link.getAttribute('href')));
+    assert.deepEqual(addressesInDraft, [addresses[0], 'http://' + addresses[1], 'mailto:' + addresses[2]]);
+    const addressRequests = excerpts.slice(addressOffset);
+    assert.equal(addressRequests.length, 2);
+    for (const request of addressRequests) {
+      assert.match(request, /__PAPERBRIDGE_TOKEN_2__/);
+      assert.doesNotMatch(request, /example\.org|\/data\b|\/readings\b/);
+    }
     console.log('Connected translation verified: excerpt batching, references, unknown legacy resume, failed-batch original fallback, language variants, contradictory metadata surviving Resume/restart and clearing only after full regeneration.');
   } finally {
     heldResponse?.destroy();
