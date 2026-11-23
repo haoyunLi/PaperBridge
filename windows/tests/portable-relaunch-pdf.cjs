@@ -16,7 +16,14 @@ async function run() {
   await fs.mkdir(artifacts, { recursive: true });
   const workspace = await fs.mkdtemp(path.join(artifacts, 'portable-relaunch-'));
   const profile = path.join(workspace, 'profile');
-  const env = { ...process.env, PAPERBRIDGE_WORKSPACE: workspace, PAPERBRIDGE_TOOLS_ROOT: path.join(workspace, 'tools') };
+  const temporaryDirectory = path.join(workspace, 'Portable extraction');
+  await fs.mkdir(temporaryDirectory);
+  const shortDirectory = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    '(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:PAPERBRIDGE_TEST_TEMP).ShortPath'], {
+    env: { ...process.env, PAPERBRIDGE_TEST_TEMP: temporaryDirectory }, windowsHide: true, encoding: 'utf8'
+  }).trim();
+  assert.equal(await fs.realpath(shortDirectory), await fs.realpath(temporaryDirectory));
+  const env = { ...process.env, TEMP: shortDirectory, TMP: shortDirectory, PAPERBRIDGE_WORKSPACE: workspace, PAPERBRIDGE_TOOLS_ROOT: path.join(workspace, 'tools') };
   await fs.writeFile(path.join(workspace, 'settings.json'), JSON.stringify({
     pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false, ollamaBaseURL: 'http://127.0.0.1:9'
   }));

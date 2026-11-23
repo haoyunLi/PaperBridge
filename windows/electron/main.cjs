@@ -24,7 +24,7 @@ const { createOfficialLinkHandler } = require('./official-links.cjs');
 const { createOpenAICredentialStore, createOpenAIClient } = require('./openai.cjs');
 const developmentBuild = !app.isPackaged && process.env.NODE_ENV !== 'production';
 const readerURL = developmentBuild ? new URL(process.env.VITE_DEV_SERVER_URL || 'http://127.0.0.1:5173').href
-  : pathToFileURL(path.join(__dirname, '..', 'dist', 'index.html')).href;
+  : pathToFileURL(path.join(app.getAppPath(), 'dist', 'index.html')).href;
 
 let window;
 let store;
@@ -555,16 +555,16 @@ function createWindow() {
   });
   const contents = window.webContents;
   // A browser destination should never replace the reading workspace.
-  contents.on('will-navigate', (event, url) => {
-    if (url.split('#')[0] !== readerURL) event.preventDefault();
+  contents.on('will-navigate', event => {
+    if (event.url.split('#')[0] !== readerURL) event.preventDefault();
   });
   const owner = window;
   let processLosses = 0;
   function loadReader() {
     const generation = processLosses;
-    const navigation = developmentBuild
-      ? owner.loadURL(readerURL)
-      : owner.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    // The portable extraction path can use a Windows short name. Load the exact
+    // URL used by the navigation and IPC checks, including when the reader retries.
+    const navigation = owner.loadURL(readerURL);
     return navigation.catch(error => {
       // A reload, closed window or renderer recovery can supersede the first navigation.
       if (generation === processLosses && error.code !== 'ERR_ABORTED' && error.errno !== -3) throw error;
