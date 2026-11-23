@@ -11,7 +11,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
-import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
+import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, onlyProtectedMarkup, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
@@ -880,18 +880,15 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
   [paper.viewHighlights, paper.viewNotes, displayMode, sourceMode]);
   useRichAnnotations(host, blocks, articleAnnotations);
   const passages = useMemo(() => blocks.map(block => {
-    const sourceOnly = block.resource || referenceIDs.has(block.id);
-    const translated = block.status === 'ok' && Boolean(block.translation || block.translationMarkdown);
-    const unavailable = displayMode === 'translation' && !translated && !sourceOnly;
+    const visible = paperPassageVisibility(block, displayMode, referenceIDs);
     return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
-      {(displayMode !== 'translation' || sourceOnly || unavailable) && <>
+      {visible.source && <>
         <BlockPassage block={block} kind="source" scope="paper" structured={structured}
-          className={unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
+          className={visible.unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
       </>}
-      {displayMode !== 'source' && !sourceOnly && (translated
-        ? <><BlockPassage block={block} kind="translation" scope="paper" structured={structured}
-          className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>
-        : displayMode === 'bilingual' && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>)}
+      {visible.translation && <><BlockPassage block={block} kind="translation" scope="paper" structured={structured}
+          className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>}
+      {visible.showMissing && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>}
     </section>;
   }), [blocks, displayMode, referenceIDs, structured]);
   return <article ref={host} data-view-scope="paperArticle" data-source-mode={sourceMode} data-display-mode={displayMode} className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"

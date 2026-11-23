@@ -130,7 +130,8 @@ test('rendered Markdown and article anchors group only complete identical ranges
   assert.equal(entries[0].records.length, 2);
   assert.equal(entries[1].records.length, 2);
   assert.equal(entries[1].label, 'Paper · document preview · Original');
-  assert.ok(entries.every(entry => !entry.review));
+  assert.deepEqual(entries.filter(entry => entry.review).map(entry => entry.records[0].item.sourceMode), ['pdf'],
+    'The inactive PDF copy only contains ambiguous matches outside the original range.');
   assert.equal(entries[1].notes[0].item, input.viewNotes[0]);
 });
 

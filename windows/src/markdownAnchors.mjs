@@ -1,3 +1,4 @@
+import { referenceBlockIds } from './references.mjs';
 import { generatedViewText, renderedMarkdownText } from './markdownRendering.mjs';
 
 const generatedScopes = new Set(['fullTranslation', 'summarySource', 'summaryTarget']);
@@ -17,13 +18,54 @@ export function paperArticleSource(paper) {
   };
 }
 
+export function paperPassageVisibility(block, displayMode, references) {
+  const sourceOnly = Boolean(block.resource || references.has(block.id));
+  const translated = block.status === 'ok' && Boolean(block.translation || block.translationMarkdown);
+  const unavailable = displayMode === 'translation' && !translated && !sourceOnly;
+  return {
+    source: displayMode !== 'translation' || sourceOnly || unavailable,
+    translation: displayMode !== 'source' && !sourceOnly && translated,
+    showMissing: displayMode === 'bilingual' && !sourceOnly && !translated,
+    unavailable
+  };
+}
+
+const articleViews = new WeakMap();
+
+function paperArticleText(blocks, structured, displayMode) {
+  const key = displayMode + (structured ? '-markdown' : '-plain');
+  const cached = articleViews.get(blocks) || new Map();
+  if (cached.has(key)) return cached.get(key);
+  const references = referenceBlockIds(blocks);
+  const parts = [];
+  for (const block of blocks) {
+    const visible = paperPassageVisibility(block, displayMode, references);
+    for (const kind of ['source', 'translation']) {
+      if (!visible[kind]) continue;
+      const markdown = structured && blockMarkdown(block, kind);
+      parts.push(markdown ? renderedBlockText(block, markdown) : (kind === 'translation' ? block.translation : block.text) || '', '\n');
+    }
+  }
+  const text = parts.join('');
+  cached.set(key, text);
+  articleViews.set(blocks, cached);
+  return text;
+}
+
 export function paperArticleAnchorAvailable(paper, item) {
   if (!paper || !paperDisplayModes.has(item.displayMode) ||
       (item.displayMode === 'source' && paper.type === 'pdf') || !hasRenderedAnchor(item)) return false;
   const current = paperArticleSource(paper);
-  if (item.sourceMode === current.mode) return Boolean(current.blocks?.length);
-  return paper.type === 'pdf' && (item.sourceMode === 'mineru' ? Boolean(paper.mineruBlocks?.length)
-    : item.sourceMode === 'pdf' && Boolean(paper.pdfBlocks?.length));
+  let blocks = current.blocks;
+  if (item.sourceMode !== current.mode) {
+    if (paper.type !== 'pdf') return false;
+    if (item.sourceMode === 'mineru') blocks = paper.mineruBlocks;
+    else if (item.sourceMode === 'pdf') blocks = paper.pdfBlocks;
+    else return false;
+  }
+  if (!blocks?.length) return false;
+  const structured = item.sourceMode === 'mineru' && Boolean(paper.mineruMarkdown);
+  return markdownAnnotationOffset(paperArticleText(blocks, structured, item.displayMode), item) !== null;
 }
 
 export function validPaperArticleSelection(paper, item) {
