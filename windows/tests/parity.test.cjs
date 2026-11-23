@@ -640,6 +640,20 @@ test('MinerU paragraph pages follow unique source text without changing saved wo
   assert.equal(locateMineruPages(located, hints, pdf, 5), located);
 });
 
+test('spanning OCR metadata restores the first and last pages without misplacing a repeated fragment', async () => {
+  const { locateMineruPages } = await import('../src/academicMarkdown.mjs');
+  const text = 'The observations include a continuation of the same measurement on the next page.';
+  const tail = 'the same measurement on the next page.';
+  const work = { text, translation: 'saved translation', bookmark: true, notes: [{ text: 'measurement' }] };
+  const hints = [{ page: 2, endPage: 3, text }, { page: 3, text: tail }];
+  const old = [{ ...work, page: 2 }, { text: tail }, { ...work, page: 1 }, { text }];
+  const located = locateMineruPages(old, hints, [], 3);
+  assert.deepEqual(located, [{ ...work, page: 2, endPage: 3 }, { text: tail, page: 3 }, old[2], { text, page: 2, endPage: 3 }]);
+  assert.equal(locateMineruPages(located, hints, [], 3), located);
+  assert.equal(locateMineruPages(old, [hints[0]], [], 2), old);
+  assert.equal(locateMineruPages(old, [hints[0], { page: 4, endPage: 5, text }], [], 5), old);
+});
+
 test('manual merge maps duplicate quotes through trimmed and collapsed whitespace on each side', async () => {
   const { mergeBlocks } = await import('../src/paper.mjs');
   const left = '  repeat   repeat  ';

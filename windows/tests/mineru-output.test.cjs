@@ -361,7 +361,7 @@ test('page hints accept the companion 4.x structure or 3.x content list and keep
     { page_idx: '5', blocks: [{ content: 'Invalid type' }] }
   ] }));
   assert.deepEqual(readMineruPageHints(markdown), [{ page: 5, text: 'Title' }, { page: 5, text: 'Figure caption' },
-    { page: 5, text: 'A passage' }, { page: 6, text: 'continues here.' }, { page: 5, text: 'A passage continues here.' }]);
+    { page: 5, text: 'A passage' }, { page: 6, text: 'continues here.' }, { page: 5, endPage: 6, text: 'A passage continues here.' }]);
   file('structured_content.json', '{invalid');
   file('other_content_list.json', JSON.stringify([{ page_idx: 1, text: 'A different extraction.' }]));
   assert.deepEqual(readMineruPageHints(markdown), []);

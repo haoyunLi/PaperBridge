@@ -1456,9 +1456,9 @@ function App() {
       if (token) requireActiveTask(token);
       if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
       const pdfBlocks = loaded.pdfBlocks || (loaded.sourceMode === 'pdf' ? loaded.blocks : []);
-      const mineruBlocks = locateMineruPages(loaded.mineruBlocks, pageHints, pdfBlocks);
-      const blocks = loaded.sourceMode === 'mineru' ? locateMineruPages(loaded.blocks, pageHints, pdfBlocks) : loaded.blocks;
-      pagesMigrated = mineruBlocks !== loaded.mineruBlocks || blocks !== loaded.blocks;
+      const mineruBlocks = locateMineruPages(loaded.mineruBlocks, pageHints, pdfBlocks, loaded.pageCount);
+      const blocks = loaded.sourceMode === 'mineru' ? locateMineruPages(loaded.blocks, pageHints, pdfBlocks, loaded.pageCount) : loaded.blocks;
+      pagesMigrated = pageHints.length > 0 || mineruBlocks !== loaded.mineruBlocks || blocks !== loaded.blocks;
       if (pagesMigrated) loaded = { ...loaded, mineruBlocks, blocks, mineruPageMapVersion };
     }
     const previous = settingsRef.current;
@@ -2857,7 +2857,8 @@ function App() {
     if (sourceChanged && !canSwitchReadingSource(current, 'mineru')) return;
 
     const blocks = sourceChanged ? current.mineruBlocks : current.blocks;
-    const target = blocks.find(block => block.page === page && !block.resource && block.text?.trim());
+    const target = blocks.find(block => block.page === page && !block.resource && block.text?.trim()) ||
+      blocks.find(block => block.page > 0 && block.page < page && block.endPage >= page && !block.resource && block.text?.trim());
     const scrollByTab = { ...origin.scrollByTab };
     if (target || sourceChanged) delete scrollByTab.Reader;
     const block = target?.id ?? (sourceChanged ? blocks[0]?.id : origin.block);

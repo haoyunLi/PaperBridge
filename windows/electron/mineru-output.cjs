@@ -144,9 +144,11 @@ function readMineruPageHints(markdownFile) {
     try {
       const data = JSON.parse(fs.readFileSync(asset.file, 'utf8'));
       const hints = [];
-      const add = (index, values) => {
+      const add = (index, values, lastIndex = index) => {
         if (!validIndex(index)) return;
-        for (const text of values) if (typeof text === 'string' && text.trim()) hints.push({ page: index + 1, text });
+        for (const text of values) if (typeof text === 'string' && text.trim()) {
+          hints.push({ page: index + 1, ...(lastIndex > index && { endPage: lastIndex + 1 }), text });
+        }
       };
       const list = value => Array.isArray(value) ? value : [];
       if (Array.isArray(data)) {
@@ -157,7 +159,13 @@ function readMineruPageHints(markdownFile) {
       } else {
         let continued = null;
         const addContinued = () => {
-          if (continued?.parts.length > 1) add(continued.index, [continued.parts.join(' ')]);
+          if (!continued || continued.parts.length < 2) return;
+          const spaced = continued.parts.join(' ');
+          // The exported Markdown may remove a printed hyphen at an explicit
+          // continuation. Match both spellings without editing the saved text.
+          const joined = continued.parts.reduce((left, right) => /\p{L}[-‐]$/u.test(left.trimEnd()) && /^\p{Ll}/u.test(right.trimStart()) ?
+            left.trimEnd().slice(0, -1) + right.trimStart() : left + ' ' + right);
+          add(continued.index, joined === spaced ? [spaced] : [spaced, joined], continued.lastIndex);
         };
         for (const page of list(data?.pages)) {
           if (!validIndex(page?.page_idx)) continue;
@@ -165,10 +173,13 @@ function readMineruPageHints(markdownFile) {
             if (!block) continue;
             add(page.page_idx, [block.content, ...list(block.captions).map(caption => caption?.content), ...list(block.footnotes).map(note => note?.content)]);
             if (block.type === 'text' && typeof block.content === 'string') {
-              if (continued && block.continues_prev === true && !block.anchor) continued.parts.push(block.content);
-              else {
+              if (continued && block.continues_prev === true && !block.anchor &&
+                  page.page_idx >= continued.lastIndex && page.page_idx <= continued.lastIndex + 1) {
+                continued.parts.push(block.content);
+                continued.lastIndex = page.page_idx;
+              } else {
                 addContinued();
-                continued = { index: page.page_idx, parts: [block.content] };
+                continued = { index: page.page_idx, lastIndex: page.page_idx, parts: [block.content] };
               }
             } else if (block.type === 'list') {
               addContinued();
