@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.74 折叠图表和安装版更新（2026-11-22）
+
+公开程序在 Paper、Reader 与全文译稿都能离线显示折叠图表的图注、表题、三列定义、上下标和跨行跨列的表头。图像来自期刊 *Tabbed*，解码为 530 × 418 像素。关闭后重开，从标注列表选择图注笔记可以展开相应图表，并选中原文。[Mac 原生图表对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45085949742/job/137404482141) · [公开安装版和便携版验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45085949742/job/137407737343)
+
+关闭自动检查和后台下载后，仍可在设置中手动检查并下载。用两个 0.2.74 客户端临时报告较低版本，验证手动下载的是对应版本的真实 GitHub 文件，SHA-256 一致且保留互联网来源标记。安装版的 **Open installer** 在交接前重新核验文件；测试替身记录了交给 Windows 的实际路径。便携版提供 **Show downloaded update**。另外用两份真实 0.2.73 客户端验证更新提示，并在隔离目录实际完成 0.2.73 → 0.2.74 安装升级，原论文、笔记、高亮及阅读设置均保留。SmartScreen 的交互提示取决于设备策略和文件信誉。[更新清单发布任务](https://github.com/haoyunLi/PaperBridge/actions/runs/45085949742/job/137408550962)
+
 ## 0.2.73 长表格与全文译稿的阅读位置（2026-11-22）
 
 在旧版中放大字号并重开，长表格的目标行会从距读栏顶端约 4 像素处移至约 685 像素处。0.2.73 在三个论文显示模式及全文译稿保留所在行与列。用公开便携版重开真实期刊 *Tabbed* 的 `frictionless` 比较行，位置只变了 1 个 CSS 像素。另用 14 列宽表验证全文译稿的横向定位，并与原生 Mac 的同一份文档对照。B09 计为对齐，111 项基线中有 74 项对齐、37 项部分对齐。[Mac 原生验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45084352499/job/137399425954) · [公开 EXE 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45084352499/job/137402460834)
