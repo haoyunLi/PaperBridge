@@ -1884,10 +1884,10 @@ function App() {
     update(); const timer = setInterval(update, 1000); return () => clearInterval(timer);
   }, [pendingImport?.startedAt]);
   useEffect(() => { if (ready && settings) settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(settings)).catch(err => setError(err.message)); }, [settings, ready]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const dialog = modalRef.current;
     if (!modal || !dialog) return;
-    const previous = document.activeElement;
+    const previous = modal === 'attachment' ? attachment.trigger.current : document.activeElement;
     const focusable = () => [...dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')]
       .filter(element => !element.disabled && element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[inert]'));
     const trap = event => {

@@ -94,8 +94,28 @@ async function run() {
     await page.getByRole('dialog').getByRole('heading', { name: 'Measurements', exact: true }).waitFor();
     await page.keyboard.press('Escape');
     await page.getByRole('dialog').waitFor({state:'hidden'});
+    assert.equal(await readerLink('Calibration protocol').evaluate(link => link === document.activeElement), true, 'Closing the supplement must return keyboard focus to its link');
     assert.equal(page.url(), readerUrl);
-    console.log(JSON.stringify({ views: 3, reopened: true, pdfHandoffs: 6, text: '温度.csv', image: [530, 418], nativeCompared: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    const destination = path.join(workspace, 'exports');
+    fs.mkdirSync(destination);
+    await app.evaluate(({ dialog, shell }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      shell.showItemInFolder = path => { global.exportedFolder = path; };
+    }, destination);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
+    await page.getByText(/Exported .*Markdown files/).first().waitFor();
+    const exported = await app.evaluate(() => global.exportedFolder);
+    assert.equal(path.dirname(exported), destination);
+    const moved = path.join(workspace, 'Moved paper');
+    fs.renameSync(exported, moved);
+    const original = fs.readFileSync(path.join(moved, 'paper_original.md'), 'utf8');
+    assert.match(original, /assets\/source\/supplement\/protocol\.md#measurements/);
+    assert.match(original, /assets\/source\/supplement\/Reference%20pages\.pdf/);
+    for (const name of ['supplement/protocol.md', 'supplement/Reference pages.pdf', 'supplement/温度.csv', 'images/panel.jpg', 'supplement/panel.jpg']) {
+      assert.deepEqual(fs.readFileSync(path.join(moved, 'assets', 'source', name)), fs.readFileSync(path.join(source, name)), name);
+    }
+    console.log(JSON.stringify({ views: 3, reopened: true, movedBundleFiles: 5, pdfHandoffs: 6, text: '温度.csv', image: [530, 418], nativeCompared: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -61,6 +61,38 @@ function archive(entries) {
   return Buffer.concat([...locals, central, end]);
 }
 
+test('Folded HTML and nested Markdown links retain their supplements after moving an export', async t => {
+  const file = fixture(t);
+  const markdown = [
+    '# Calibration records', '',
+    '<details><summary>Supplementary measurements</summary>',
+    '<a title="Data sheet" href="data/heat&amp;time.csv?run=2&amp;view=raw">Measurements</a>',
+    '<code><a href="data/example.csv">Example only</a></code>', '</details>', '',
+    '[![Reference panel](images/panel(2).jpg)](supplement/revision(2).pdf)', '',
+    '[Original protocol][protocol]', '', '[protocol]: supplement/protocol.md'
+  ].join('\n');
+  const protocol = '<a href="../data/heat&amp;time.csv">Archived measurements</a>';
+  const entries = { 'data/heat&time.csv': 'heat,time\n0.8,1.2\n', 'supplement/revision(2).pdf': '%PDF-1.4\n',
+    'images/panel(2).jpg': 'panel bytes', 'supplement/protocol.md': protocol };
+  const zip = file('input.zip', archive([{ name: 'markdown.md', content: markdown }, ...Object.entries(entries).map(([name, content]) => ({ name, content })),
+    { name: 'data/example.csv', content: 'example only' }]));
+  const source = await unpackMineruArchive(zip, file('parsed'), () => {});
+  for (const [name, expected] of Object.entries(entries)) assert.equal(fs.readFileSync(path.join(path.dirname(source), name), 'utf8'), expected, name);
+  assert.equal(fs.existsSync(path.join(path.dirname(source), 'data/example.csv')), false);
+  const saved = readMineruMarkdown(source);
+  assert.match(saved, /!\[Reference panel\]\(data:image\/jpeg;base64,/);
+  const result = writeBundle(file('.'), { name: 'Calibration', type: 'text', sourceMode: 'mineru' },
+    [{ kind: 'original', filename: 'original.md', content: markdown }], null, path.dirname(source));
+  assert.deepEqual(result.missingAssetPaths, []);
+  const moved = file('relocated');
+  fs.renameSync(result.folder, moved);
+  const exported = fs.readFileSync(path.join(moved, 'original.md'), 'utf8');
+  assert.match(exported, /href="assets\/source\/data\/heat%26time\.csv\?run=2&amp;view=raw"/);
+  assert.match(exported, /\[!\[Reference panel\]\(assets\/source\/images\/panel%282%29\.jpg\)\]\(assets\/source\/supplement\/revision%282%29\.pdf\)/);
+  assert.match(exported, /<code><a href="data\/example\.csv">Example only<\/a><\/code>/);
+  for (const [name, expected] of Object.entries(entries)) assert.equal(fs.readFileSync(path.join(moved, 'assets', 'source', name), 'utf8'), expected);
+});
+
 test('MinerU 4.x ZIP keeps referenced attachments through saved resources and portable export', async t => {
   const file = fixture(t);
   const id = 'd'.repeat(64);

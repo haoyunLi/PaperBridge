@@ -4,6 +4,7 @@ import { documentLinkTarget, revealMarkdownTarget } from './markdownLinks.mjs';
 export function usePaperAttachment(paperRef, modal, setModal, setError) {
   const [entry, setEntry] = useState(null);
   const [error, setAttachmentError] = useState('');
+  const trigger = useRef(null);
   const history = useRef([]);
   const request = useRef(0);
   const owner = paperRef.current?.id;
@@ -28,6 +29,7 @@ export function usePaperAttachment(paperRef, modal, setModal, setError) {
       const next = await window.paperBridge.openPaperAttachment(owner, href, from);
       if (request.current !== token || paperRef.current?.id !== owner || !link.isConnected || link.closest('[inert]')) return;
       if (next.kind === 'pdf') return;
+      if (!from && !previous) trigger.current = link;
       if (previous) history.current.pop();
       else if (from && entry) history.current.push({ path: entry.path, y: link.closest('.modal-body')?.scrollTop || 0, link: href });
       setEntry({ ...next, previous, owner });
@@ -59,7 +61,7 @@ export function usePaperAttachment(paperRef, modal, setModal, setError) {
     if (previous) void visit(event.currentTarget, previous.path.split('/').map(encodeURIComponent).join('/'), '', previous);
   }
 
-  return { entry, error, click, back, canGoBack: history.current.length > 0 };
+  return { entry, error, click, back, trigger, canGoBack: history.current.length > 0 };
 }
 
 export function PaperAttachment({ attachment, Markdown }) {
