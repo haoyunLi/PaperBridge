@@ -12,7 +12,7 @@ func nativeRichAnnotationRanges(fixtures: URL) throws -> [Bool] {
     let changed = table.replacingOccurrences(of: "Software |", with: "Software package name |")
         .replacingOccurrences(of: "Columns Only", with: "[Selected columns](data.md \"Columns Only\")")
     let markup = table + "\n\n## Revised table\n\n" + changed + "\n\n**新的译文**"
-    let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+    let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 800, height: 600), configuration: WKWebViewConfiguration())
     let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentView = view
     view.loadHTMLString(MarkdownPreviewHTMLRenderer.render(markdown: markup, title: "Table revision"), baseURL: nil)
