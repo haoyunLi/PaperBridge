@@ -123,6 +123,9 @@ export async function recoverMathScripts(page, content) {
     const script = items[i + 1];
     if (script?.height > 0) {
       if (text === 'R' && previous.endsWith('∈')) candidates.push({ i, kind: 'dimension' });
+      else if (/(?:^|[^\p{L}\p{N}])[A-Z][A-Z0-9]{1,15}$/u.test(item.str) && /^[A-Z]{2,12}$/u.test(script.str) &&
+          item.fontName === script.fontName && item.transform[1] === 0 && item.transform[2] === 0 &&
+          script.transform[1] === 0 && script.transform[2] === 0) candidates.push({ i, kind: 'name' });
       else if (/^[a-z]$/u.test(text) && script.str === 'th') candidates.push({ i, kind: 'ordinal' });
       else if (/^[A-Z]$/u.test(text) && /^[a-z]$/u.test(script.str) &&
           (items[i + 2]?.str?.trim() || items[i + 3]?.str?.trim()) === '∈') candidates.push({ i, kind: 'indexedVector' });
@@ -137,6 +140,14 @@ export async function recoverMathScripts(page, content) {
     const base = items[i], first = items[i + 1], h = base.height;
     const lift = first.transform[5] - base.transform[5], gap = first.transform[4] - base.transform[4] - base.width;
     if (first.height < h * 0.5 || first.height >= h * 0.86 || gap < -h * 0.13 || gap > h * 0.25) continue;
+    if (kind === 'name') {
+      // A smaller, lowered word can qualify a name at the end of a prose run.
+      // Require physical contact so neighboring table cells remain independent.
+      if (gap < -h * 0.06 || gap > h * 0.10 || lift > -h * 0.09 || lift < -h * 0.32) continue;
+      corrected[i] = { ...base, str: base.str + '_{' + first.str + '}', width: first.transform[4] + first.width - base.transform[4] };
+      corrected[i + 1] = { ...first, str: '' };
+      continue;
+    }
     if (kind === 'indexedVector' ? lift > -h * 0.06 || lift < -h * 0.5 : lift < h * 0.18 || lift > h * 0.7) continue;
     if (kind !== 'dimension') {
       const scriptFont = kind === 'ordinal' ? /^(?:[A-Z]{6}\+)?CMR\d+$/u : /^(?:[A-Z]{6}\+)?CMMI\d+$/u;

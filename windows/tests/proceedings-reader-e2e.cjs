@@ -76,6 +76,16 @@ async function run() {
       assert.ok(flatten(weights.text).includes('W ∈ ' + native.weightsDimension));
       report.weightDefinitions = weights.id;
     }
+    let modelSizes;
+    if (native.baseModel && native.largeModel) {
+      modelSizes = blocks.find(b => b.page === 3 && b.text.includes('L=12, H=768') && b.text.includes('L=24, H=1024'));
+      assert.ok(modelSizes);
+      const flattened = modelSizes.text.replace(/_\{([A-Z]+)\}/g, '$1');
+      for (const name of [native.baseModel, native.largeModel]) assert.ok(flattened.includes(name));
+      assert.ok(modelSizes.text.includes('BERT_{BASE}') && modelSizes.text.includes('BERT_{LARGE}'));
+      assert.ok(modelSizes.text.includes('Total Parameters=110M') && modelSizes.text.includes('Total Parameters=340M'));
+      report.modelSizes = modelSizes.id;
+    }
     let stacked;
     if (native.beforeTables && native.afterTables) {
       const seam = native.beforeTables + native.afterTables.replace(/-$/, '');
@@ -120,6 +130,14 @@ async function run() {
         assert.match(report.weightsTranslation, /标签/);
         assert.ok(report.weightsTranslation.includes('C ∈ ℝ^{H}') && report.weightsTranslation.includes('W ∈ ℝ^{K×H}'));
       }
+      if (modelSizes) {
+        const row = page.locator('#block-' + modelSizes.id);
+        await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+        const result = row.locator('.translation-text.done');
+        await result.waitFor({ timeout: 150000 });
+        report.modelTranslation = await result.innerText();
+        for (const value of ['BERT_{BASE}', 'BERT_{LARGE}', '768', '1024', '110M', '340M']) assert.ok(report.modelTranslation.includes(value), report.modelTranslation);
+      }
       if (stacked) {
         const row = page.locator('#block-' + stacked.id);
         await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
@@ -141,6 +159,7 @@ async function run() {
       if (columns) assert.equal(await page.locator('#block-' + columns.id + ' .translation-text.done').innerText(), report.columnTranslation);
       if (weights) assert.equal(await page.locator('#block-' + weights.id + ' .translation-text.done').innerText(), report.weightsTranslation);
       if (stacked) assert.equal(await page.locator('#block-' + stacked.id + ' .translation-text.done').innerText(), report.stackedTranslation);
+      if (modelSizes) assert.equal(await page.locator('#block-' + modelSizes.id + ' .translation-text.done').innerText(), report.modelTranslation);
     }
     console.log(JSON.stringify(report));
   } finally { await app.close(); }

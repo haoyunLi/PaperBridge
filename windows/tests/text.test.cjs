@@ -307,6 +307,20 @@ test('TeX vector dimensions, indexed variables and ordinals stay attached only a
   assert.deepEqual((await recoverMathScripts(page, { items: gap })).items, gap);
 });
 
+test('an acronym keeps an attached, lowered name qualifier while separate capitalized words stay independent', async () => {
+  const { recoverMathScripts } = await import('../src/pdfLayout.mjs');
+  const glyph = (str, x, y, height, fontName = 'roman') => ({ str, width: 20, height, fontName, transform: [height, 0, 0, height, x, y] });
+  const name = glyph('Of the two XYZ', 10, 50, 10);
+  const qualified = glyph('SMALL', 30.2, 48.5, 7);
+  const page = { getOperatorList: async () => {}, commonObjs: new Map() };
+  assert.equal((await recoverMathScripts(page, { items: [name, qualified] })).items[0].str, 'Of the two XYZ_{SMALL}');
+  for (const pair of [[name, glyph('SMALL', 35, 48.5, 7)], [name, glyph('SMALL', 30, 50, 7)],
+    [name, glyph('SMALL', 30, 48.5, 10)], [name, glyph('SMALL', 30, 48.5, 7, 'bold')],
+    [glyph('prose text', 10, 50, 10), qualified], [name, glyph('ABC', 30, 41, 7)]]) {
+    assert.deepEqual((await recoverMathScripts(page, { items: pair })).items, pair);
+  }
+});
+
 test('only an isolated full-width opening figure lets a body paragraph resume past its caption', async () => {
   const { openingFigure } = await import('../src/pdfLayout.mjs');
   const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
