@@ -25,6 +25,7 @@ async function run() {
     }
     res.setHeader('Content-Type', 'application/x-ndjson');
     res.write('{"status":"pulling manifest"}\n');
+    res.write('{"completed":32,"total":64}\n');
     res.end(scenario === 'success' ? '{"status":"Success"}' : '{"status":"writing manifest"}');
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
@@ -39,13 +40,20 @@ async function run() {
       const inventory = async scenario => readOllamaModelList(await ollamaRequest(base + '/' + scenario, 'api/tags', { signal }));
       result = { models: await inventory('inventory') };
       for (const scenario of ['success', 'installed', 'missing']) {
-        try { result[scenario] = await pullOllamaModel(base + '/' + scenario, 'reader:4b', signal, () => {}); }
+        try {
+          const samples = [];
+          result[scenario] = await pullOllamaModel(base + '/' + scenario, 'reader:4b', signal, event => {
+            if (event.total != null && event.completed != null) samples.push([event.status, event.completed, event.total]);
+          });
+          if (scenario === 'success') result.byteProgress = samples;
+        }
         catch (error) { assert.match(error.message, /before Ollama confirmed/); result[scenario] = false; }
       }
       await assert.rejects(inventory('invalid'), /did not return an Ollama model list/);
       result.invalidRejected = true;
     }
-    assert.deepEqual(result, { models: ['reader:4b', 'z:7b'], success: true, installed: true, missing: false, invalidRejected: true });
+    assert.deepEqual(result, { models: ['reader:4b', 'z:7b'], success: true, installed: true, missing: false, invalidRejected: true,
+      byteProgress: [['Downloading reader:4b...', 32, 64]] });
     assert.deepEqual(routes, ['GET inventory/tags', 'POST success/pull', 'POST installed/pull', 'GET installed/tags',
       'POST missing/pull', 'GET missing/tags', 'GET invalid/tags']);
     const reference = JSON.parse(fs.readFileSync(referenceFile, 'utf8'));

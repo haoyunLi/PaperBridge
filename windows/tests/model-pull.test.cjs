@@ -1,6 +1,30 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createModelPullManager } = require('../electron/model-pull.cjs');
+const http = require('node:http');
+const { createModelPullManager, pullOllamaModel } = require('../electron/model-pull.cjs');
+
+test('streamed model downloads reset the idle timer on data and recover after a stall or deadline', async t => {
+  const server = http.createServer((req, res) => {
+    if (req.url.startsWith('/headers/')) return;
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+    res.write('{"status":"pulling"}\n');
+    if (req.url.startsWith('/stalled/')) return;
+    let ticks = 0;
+    const heartbeat = setInterval(() => {
+      if (++ticks === 12 && req.url.startsWith('/active/')) res.end('{"status":"success"}\n');
+      else res.write('{"status":"pulling"}\n');
+    }, 50);
+    res.once('close', () => clearInterval(heartbeat));
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise(resolve => server.close(resolve)); });
+  const signal = new AbortController().signal, base = 'http://127.0.0.1:' + server.address().port;
+  const pull = (scenario, idleMs, totalMs) => pullOllamaModel(base + '/' + scenario, 'reader:4b', signal, () => {}, { idleMs, totalMs });
+  await assert.rejects(pull('headers', 250, 5000), /stopped responding.*Retry to resume/);
+  await assert.rejects(pull('stalled', 250, 5000), /stopped responding.*Retry to resume/);
+  await assert.rejects(pull('continuous', 1500, 450), /time limit.*Retry to resume/);
+  assert.equal(await pull('active', 400, 5000), true);
+});
 
 test('model download cancellation aborts its request, rejects duplicate pulls, and permits retry', async () => {
   const events = [];

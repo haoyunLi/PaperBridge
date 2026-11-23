@@ -1,4 +1,4 @@
-const { ollamaRequest } = require('./ollama-http.cjs');
+const { ollamaRequest, ollamaIdleMs, ollamaTotalMs } = require('./ollama-http.cjs');
 const { readOllamaModelList, hasOllamaModel } = require('./ollama-models.mjs');
 
 function downloadError(cause) {
@@ -8,19 +8,42 @@ function downloadError(cause) {
     ' is full. Free disk space and retry to resume the download, or choose an installed model.');
 }
 
-async function pullOllamaModel(baseURL, model, signal, update) {
+async function pullOllamaModel(baseURL, model, signal, update, { idleMs = ollamaIdleMs, totalMs = ollamaTotalMs } = {}) {
   if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
-  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal })
-    .catch(cause => { throw downloadError(cause); });
+  const idle = new AbortController();
+  const deadline = AbortSignal.timeout(totalMs);
+  const activity = setTimeout(() => idle.abort(), idleMs);
+  const combined = AbortSignal.any([signal, idle.signal, deadline]);
+  try {
+    return await readModelTransfer(baseURL, model, combined, update, activity);
+  } catch (cause) {
+    signal.throwIfAborted();
+    if (idle.signal.aborted) throw new Error('Ollama stopped responding during the model download. Retry to resume the download.');
+    if (deadline.aborted) throw new Error('The model download reached its time limit. Retry to resume the download.');
+    throw downloadError(cause);
+  } finally { clearTimeout(activity); }
+}
+
+async function readModelTransfer(baseURL, model, signal, update, activity) {
+  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, stream: true }), signal });
+  activity.refresh();
   let buffer = '', completed = false;
   function progressLine(line) {
     if (!line.trim()) return;
-    const event = JSON.parse(line);
-    if (event.error) throw downloadError(new Error(event.error));
-    if (event.status?.toLowerCase() === 'success') completed = true;
-    update(event);
+    let event;
+    try { event = JSON.parse(line); } catch { /* Incomplete proxy replies cannot confirm a model download. */ }
+    if (!event || typeof event !== 'object' || Array.isArray(event) ||
+        (event.status != null && typeof event.status !== 'string') || (event.error != null && typeof event.error !== 'string')) {
+      throw new Error('Ollama returned an unreadable download progress message. Retry to resume the download.');
+    }
+    if (event.error) throw new Error(event.error);
+    const status = event.status ?? `Downloading ${model}...`;
+    if (status.toLowerCase() === 'success') completed = true;
+    update({ ...event, status });
   }
   for await (const text of response.body.pipeThrough(new TextDecoderStream())) {
+    activity.refresh();
     const lines = (buffer + text).split('\n');
     buffer = lines.pop();
     for (const line of lines) progressLine(line);

@@ -1,9 +1,9 @@
-const { localRequest, localCertificateError } = require('./ollama-http.cjs');
+const { localRequest, localCertificateError, ollamaIdleMs, ollamaTotalMs } = require('./ollama-http.cjs');
 const { localOllamaURL } = require('./ollama-installation.cjs');
 
 // Ollama may send no headers until the whole non-streaming response is ready.
 // Match the Mac client's ten-minute idle limit and six-hour resource limit.
-async function requestGeneration(baseURL, payload, signal, { idleMs = 600000, totalMs = 21600000 } = {}) {
+async function requestGeneration(baseURL, payload, signal, { idleMs = ollamaIdleMs, totalMs = ollamaTotalMs } = {}) {
   const url = localOllamaURL(baseURL, 'api/generate');
   const deadline = AbortSignal.timeout(totalMs);
   const combined = AbortSignal.any([signal, deadline]);

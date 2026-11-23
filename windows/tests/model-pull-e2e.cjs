@@ -119,8 +119,13 @@ async function run() {
     await page.getByRole('alert').filter({ hasText: 'The Ollama model drive (C:) is full.' }).first().waitFor();
     await page.waitForFunction(() => window.__modelPullEvents.some(event => event.phase === 'error' && /retry to resume/.test(event.status)));
     await waitFor(() => download.isEnabled(), 'allow retry when space becomes available');
+    await download.click();
+    await waitFor(() => pulls.length === 6, 'retry after freeing disk space');
+    pulls[5].response.end('{"status":"pulling');
+    await page.getByRole('alert').filter({ hasText: 'unreadable download progress message' }).first().waitFor();
+    await waitFor(() => download.isEnabled(), 'retry after a partial progress record');
     const phases = await page.evaluate(() => window.__modelPullEvents.filter(event => ['done', 'cancelled', 'error'].includes(event.phase)).map(event => event.phase));
-    assert.deepEqual(phases, ['cancelled', 'done', 'error', 'done', 'error']);
+    assert.deepEqual(phases, ['cancelled', 'done', 'error', 'done', 'error', 'error']);
     assert.equal(await page.getByRole('button', { name: 'Cancel download', exact: true }).count(), 0);
     await page.screenshot({ path: path.join(artifacts, 'model-download-retried.png') });
     console.log('Model download UI cancellation closed the Ollama stream, rejected concurrent downloads/setup, ignored late completion, and successfully retried.');

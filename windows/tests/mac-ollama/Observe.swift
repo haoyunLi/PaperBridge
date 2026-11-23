@@ -9,11 +9,22 @@ struct ObserveOllama {
         var observations: [String: Any] = [:]
         observations["models"] = try await client.listModels(baseURL: root + "/inventory")
         for scenario in ["success", "installed", "missing"] {
+            let (events, emitter) = AsyncStream<OllamaPullProgress>.makeStream()
             do {
-                try await client.pullModel(baseURL: root + "/" + scenario, model: model, progress: { _ in })
+                try await client.pullModel(baseURL: root + "/" + scenario, model: model, progress: { _ = emitter.yield($0) })
                 observations[scenario] = true
             } catch OllamaClientError.modelUnavailable {
                 observations[scenario] = false
+            }
+            emitter.finish()
+            if scenario == "success" {
+                var samples: [[Any]] = []
+                for await event in events {
+                    if let received = event.completed, let total = event.total {
+                        samples.append([event.status, received, total])
+                    }
+                }
+                observations["byteProgress"] = samples
             }
         }
         do {

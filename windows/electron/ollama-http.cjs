@@ -50,4 +50,6 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
   return response;
 }
 
-module.exports = { localRequest, localCertificateError, ollamaRequest };
+const ollamaIdleMs = 10 * 60 * 1000;
+const ollamaTotalMs = 6 * 60 * 60 * 1000;
+module.exports = { localRequest, localCertificateError, ollamaRequest, ollamaIdleMs, ollamaTotalMs };
