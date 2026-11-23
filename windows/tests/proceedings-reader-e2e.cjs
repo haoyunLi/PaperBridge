@@ -76,6 +76,16 @@ async function run() {
       assert.ok(flatten(weights.text).includes('W ∈ ' + native.weightsDimension));
       report.weightDefinitions = weights.id;
     }
+    let stacked;
+    if (native.beforeTables && native.afterTables) {
+      const seam = native.beforeTables + native.afterTables.replace(/-$/, '');
+      stacked = blocks.find(b => b.text.includes(seam));
+      assert.ok(stacked && stacked.page === 6 && stacked.endPage === 7);
+      assert.doesNotMatch(stacked.text, /QANet is described|Human performance|Table 2:|Table 3:/);
+      assert.ok(blocks.some(b => b.page === 6 && b.pdfFootnoteMarker === '11' && b.text.includes('QANet')));
+      for (const label of ['Table 2:', 'Table 3:', 'Table 4:']) assert.ok(blocks.some(b => b.page === 7 && b.text.startsWith(label)));
+      report.stackedContinuation = stacked.id;
+    }
     if (process.argv.includes('--live')) {
       await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
       const translated = row.locator('.translation-text.done');
@@ -110,6 +120,17 @@ async function run() {
         assert.match(report.weightsTranslation, /标签/);
         assert.ok(report.weightsTranslation.includes('C ∈ ℝ^{H}') && report.weightsTranslation.includes('W ∈ ℝ^{K×H}'));
       }
+      if (stacked) {
+        const row = page.locator('#block-' + stacked.id);
+        await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+        const result = row.locator('.translation-text.done');
+        await result.waitFor({ timeout: 150000 });
+        report.stackedTranslation = await result.innerText();
+        assert.match(report.stackedTranslation, /TriviaQA/);
+        assert.match(report.stackedTranslation, /0\.1/);
+        assert.match(report.stackedTranslation, /0\.4/);
+        assert.doesNotMatch(report.stackedTranslation, /QANet|SWAG/);
+      }
       const running = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
       report.vram = running.models.find(m => m.name === 'translategemma:4b')?.size_vram;
       assert.ok(report.vram > 0);
@@ -119,6 +140,7 @@ async function run() {
       if (figureBody) assert.equal(await page.locator('#block-' + figureBody.id + ' .translation-text.done').innerText(), report.figureBodyTranslation);
       if (columns) assert.equal(await page.locator('#block-' + columns.id + ' .translation-text.done').innerText(), report.columnTranslation);
       if (weights) assert.equal(await page.locator('#block-' + weights.id + ' .translation-text.done').innerText(), report.weightsTranslation);
+      if (stacked) assert.equal(await page.locator('#block-' + stacked.id + ' .translation-text.done').innerText(), report.stackedTranslation);
     }
     console.log(JSON.stringify(report));
   } finally { await app.close(); }

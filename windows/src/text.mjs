@@ -74,7 +74,12 @@ export function joinPdfText(left, right) {
       && (/^\p{Lowercase}/u.test(right) || countCharacters(word, 6) <= 5);
     return (removeHyphen ? left.slice(0, -1) : left) + right;
   }
-  const needsSpace = left && right && !/[/(]$/u.test(left) && !/^\p{P}/u.test(right);
+  // A numbered citation can open the next printed line of a prose sentence.
+  // Keep the word and reference separate without changing array subscripts.
+  const citation = /\p{L}{2,}$/u.test(left) &&
+    /^\[\d{1,4}(?:\s*[,–-]\s*\d{1,4})*\](?:,\s+\p{L}|\s+\p{Ll}{2,})/u.test(right) &&
+    (/\p{L}{2,}\s+.+\p{L}$/u.test(left) || /^(?:following|see|from|in|by)$/iu.test(left));
+  const needsSpace = left && right && !/[/(]$/u.test(left) && (citation || !/^\p{P}/u.test(right));
   return left + (needsSpace ? ' ' : '') + right;
 }
 

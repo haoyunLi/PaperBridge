@@ -330,6 +330,14 @@ test('only an isolated full-width opening figure lets a body paragraph resume pa
   assert.equal(openingFigure([diagram, { ...caption, lane: 'left' }, tail, ...body], 800), null);
 });
 
+test('a wrapped numeric citation stays separated from the preceding prose word', async () => {
+  const { joinPdfText } = await import('../src/text.mjs');
+  assert.equal(joinPdfText('Table 13 compares results. Following', '[41], we first test'), 'Table 13 compares results. Following [41], we first test');
+  assert.equal(joinPdfText('The earlier measurements in', '[12, 14–16] show why'), 'The earlier measurements in [12, 14–16] show why');
+  assert.equal(joinPdfText('values', '[41]'), 'values[41]');
+  assert.equal(joinPdfText('table.cells', '[12].value'), 'table.cells[12].value');
+});
+
 test('a numeric table in the right column stays separate from a split word underneath it', async () => {
   const { bodyAfterColumnTable } = await import('../src/pdfLayout.mjs');
   const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
@@ -338,6 +346,11 @@ test('a numeric table in the right column stays separate from a split word under
     line('Model B 10.1 13.6', 325, 697), line('Table 14. Performance', 310, 680),
     line('on a held-out dataset.', 310, 669), line('ports the observed error across tasks.', 310, 645, 10)];
   assert.equal(bodyAfterColumnTable(rows), 5);
+  const secondTable = rows.map(row => ({ ...row, y: row.y - 100 }));
+  secondTable[0] = { ...secondTable[0], height: 8 };
+  assert.equal(bodyAfterColumnTable([...rows.slice(0, 5), ...secondTable]), 10);
+  const interveningProse = { ...rows.at(-1), text: 'A separate paragraph ends here.' };
+  assert.equal(bodyAfterColumnTable([...rows.slice(0, 5), interveningProse, ...secondTable]), 0);
   assert.equal(bodyAfterColumnTable([{ ...rows[0], text: 'Some ordinary paragraphs also mention tables.' }, ...rows.slice(1)]), 0);
   assert.equal(bodyAfterColumnTable([...rows.slice(0, -1), { ...rows.at(-1), y: 659 }]), 0);
   const blocks = [{ id: 1, page: 12, text: 'Table 13 compares the results. The publication re-' },

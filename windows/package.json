@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.91",
+  "version": "0.2.92",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",

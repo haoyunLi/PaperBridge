@@ -166,11 +166,11 @@ async function run() {
       await memory.getByText(label, { exact: true }).waitFor();
     }
     loadedModels = null;
-    await page.getByRole('button', { name: 'Check', exact: true }).click();
-    await memory.filter({ hasText: 'Could not read model memory' }).waitFor({ timeout: 10000 });
+    await memory.filter({ hasText: 'Could not read model memory' }).waitFor({ timeout: 20000 });
     loadedModels = [];
-    await page.getByRole('button', { name: 'Check', exact: true }).click();
-    await memory.filter({ hasText: 'No Ollama models are loaded' }).waitFor();
+    await memory.filter({ hasText: 'No Ollama models are loaded' }).waitFor({ timeout: 12000 });
+    loadedModels = [{ name: 'newly-loaded', size: 2 ** 30, size_vram: 2 ** 30 }];
+    await memory.getByText('newly-loaded · GPU · 1 GiB in GPU memory', { exact: true }).waitFor({ timeout: 12000 });
     await page.getByText('Downloading fixture translategemma:12b', { exact: false }).waitFor();
     await page.getByRole('button', { name: 'Cancel download', exact: true }).click();
     await waitFor(() => pulls[0].closed, 'cancelled recommendation download stream');

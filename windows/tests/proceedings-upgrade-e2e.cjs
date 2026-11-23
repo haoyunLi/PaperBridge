@@ -9,7 +9,8 @@ const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
-  const [pdf, previous] = process.argv.slice(2).map(file => path.resolve(file));
+  const [pdf, previous] = process.argv.slice(2, 4).map(file => path.resolve(file));
+  const stacked = process.argv.includes('--stacked');
   const name = path.basename(pdf), sha = bytes => createHash('sha256').update(bytes).digest('hex');
   const id = sha(fs.readFileSync(pdf));
   assert.equal(id, '987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4');
@@ -36,8 +37,9 @@ async function run() {
     await page.getByRole('button', { name: 'Open PDF', exact: true }).first().click();
     await page.getByText(/Extracted \d+ blocks from 16 pages/).first().waitFor({ timeout: 60000 });
     const original = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
-    const split = original.blocks.find(b => b.text.includes('There is mini-'));
-    assert.ok(split && split.text.endsWith('mini-'));
+    const ending = stacked ? 'Without TriviaQA fine-' : 'There is mini-';
+    const split = original.blocks.find(b => b.text.endsWith(ending));
+    assert.ok(split, 'Expected the older reader to retain the printed split word');
     await openWorkspaceView(page, 'Reader');
     const row = page.locator('#block-' + split.id);
     await row.locator('button[title^="Bookmark"]').click();
@@ -63,6 +65,12 @@ async function run() {
     const copy = await page.evaluate(id => window.paperBridge.loadPaper(id), copyID);
     assert.equal(copy.name, name + ' (new extraction)');
     assert.ok(copy.blocks.some(b => b.text.includes('There is minimal difference between the pre-trained architecture')));
+    if (stacked) {
+      const continuation = copy.blocks.find(b => b.text.includes('Without TriviaQA fine-tuning data, we only lose 0.1-0.4 F1'));
+      assert.equal(continuation?.page, 6);
+      assert.equal(continuation.endPage, 7);
+      assert.doesNotMatch(continuation.text, /QANet is described|Table 2:|Table 3:/);
+    }
     assert.ok(copy.blocks.some(b => b.text.includes('classification layer weights W ∈ ℝ^{K×H}')));
     assert.ok(copy.blocks.every(b => !b.translation && !b.bookmark));
     assert.deepEqual(work(read(id)), work(before));

@@ -446,17 +446,63 @@ export function openingFigure(lines, height) {
 // A numerical table can occupy the top of the right column while the last
 // word in the left column continues in the body printed below that table.
 export function bodyAfterColumnTable(lines) {
-  const captionAt = lines.findIndex(line => /^Table\s+\d+[.:]\s/iu.test(line.text));
-  if (captionAt < 3) return 0;
-  const caption = lines[captionAt], table = lines.slice(0, captionAt);
-  if (table.some(line => line.x < caption.x - caption.height || line.height > caption.height * 1.05 || hasProse(line.text)) ||
-      table.filter(line => /\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s*$/u.test(line.text)).length < 2) return 0;
-  let end = captionAt + 1;
-  while (end < lines.length && Math.abs(lines[end].height - caption.height) <= caption.height * 0.08 &&
-      Math.abs(lines[end].x - caption.x) <= caption.height && lines[end - 1].y - lines[end].y <= caption.height * 1.5) end++;
-  const body = lines[end];
-  return body && body.height >= caption.height * 1.05 && lines[end - 1].y - body.y >= body.height * 1.6 &&
-    /^\p{Ll}+[\s,.;:]/u.test(body.text) && hasProse(body.text) ? end : 0;
+  let start = 0;
+  while (start < lines.length) {
+    const captionAt = lines.findIndex((line, i) => i >= start && /^Table\s+\d+[.:]\s/iu.test(line.text));
+    if (captionAt - start < 3) return 0;
+    const caption = lines[captionAt], table = lines.slice(start, captionAt);
+    if (table.some(line => line.x < caption.x - caption.height || line.height > caption.height * 1.05 || hasProse(line.text)) ||
+        table.filter(line => /\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s*$/u.test(line.text)).length < 2) return 0;
+    let end = captionAt + 1;
+    while (end < lines.length && Math.abs(lines[end].height - caption.height) <= caption.height * 0.08 &&
+        Math.abs(lines[end].x - caption.x) <= caption.height && lines[end - 1].y - lines[end].y <= caption.height * 1.5) end++;
+    const next = lines[end];
+    if (!next || lines[end - 1].y - next.y < next.height * 1.6) return 0;
+    if (next.height >= caption.height * 1.05) return /^\p{Ll}+[\s,.;:]/u.test(next.text) && hasProse(next.text) ? end : 0;
+    // A smaller heading below the caption can begin a second table.
+    if (next.height >= caption.height * 0.96) return 0;
+    start = end;
+  }
+  return 0;
+}
+
+function bodyBelowParallelTables(lines, height, groups) {
+  if (!lines.some(line => line.lane === 'right' && line.y > height * 0.6 && /^Table\s+\d+[.:]\s/iu.test(line.text))) return null;
+  const left = lines.filter(line => line.lane === 'left');
+  const start = bodyAfterColumnTable(left);
+  if (!start) return null;
+  const target = left[start], ordered = groups.flat();
+  const prefix = ordered.slice(0, ordered.indexOf(target));
+  return prefix.some(line => line.height >= target.height * 0.96 && hasProse(line.text)) ? null : target;
+}
+
+export function pdfReadingSegments(lines, page, previousSplitWord) {
+  const segments = [];
+  const opening = page.pageNumber > 1 && openingFigure(lines, page.height);
+  if (opening) {
+    for (const group of pdfReadingGroups(opening.figure)) segments.push({ lines: group, floating: true });
+  }
+  const groups = pdfReadingGroups(opening ? opening.body : lines, page);
+  let target = !opening && previousSplitWord && bodyBelowParallelTables(lines, page.height, groups);
+  let previous;
+  for (const original of groups) {
+    let group = original;
+    if (target) {
+      const at = group.indexOf(target);
+      if (at < 0) { segments.push({ lines: group, floating: true }); continue; }
+      if (at) segments.push({ lines: group.slice(0, at), floating: true });
+      group = group.slice(at);
+      target = null;
+    }
+    const first = group[0], lastLeft = previous?.at(-1);
+    const turn = first?.lane === 'right' && lastLeft?.lane === 'left' &&
+      Math.abs(previous[0].y - first.y) <= first.height && first.y - lastLeft.y >= 2 * first.height;
+    const tableEnd = turn && /\p{Ll}[-‐]$/u.test(lastLeft.text) ? bodyAfterColumnTable(group) : 0;
+    if (tableEnd) segments.push({ lines: group.slice(0, tableEnd), floating: true });
+    segments.push({ lines: tableEnd ? group.slice(tableEnd) : group, columnStart: turn });
+    previous = group;
+  }
+  return segments;
 }
 
 function publicationFrontMatter(lines) {

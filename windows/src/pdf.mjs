@@ -3,7 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
 import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
-import { bodyAfterColumnTable, openingFigure, pageLines, pdfReadingGroups, recoverCodeAsterisks, recoverInlineSummations, recoverMathScripts } from './pdfLayout.mjs';
+import { pageLines, pdfReadingSegments, recoverCodeAsterisks, recoverInlineSummations, recoverMathScripts } from './pdfLayout.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -64,28 +64,14 @@ export async function extractPdf(pdf, onPage, checkActive) {
   const blocks = [];
   const floatingIDs = new Set();
   const columnStarts = new Set();
-  function appendFloating(group, pageNumber) {
-    const extracted = blocksFromLines(group, pageNumber, blocks.length + 1, true);
-    for (const block of extracted) floatingIDs.add(block.id);
-    blocks.push(...extracted);
-  }
   for (const page of cleaned) {
-    const { pageNumber, lines } = page;
-    const opening = pageNumber > 1 && openingFigure(lines, page.height);
-    if (opening) {
-      for (const group of pdfReadingGroups(opening.figure)) appendFloating(group, pageNumber);
-    }
-    let previousGroup;
-    for (const group of pdfReadingGroups(opening ? opening.body : lines, page)) {
-      const first = group[0], lastLeft = previousGroup?.at(-1);
-      const columnTurn = first?.lane === 'right' && lastLeft?.lane === 'left' &&
-        Math.abs(previousGroup[0].y - first.y) <= first.height && first.y - lastLeft.y >= 2 * first.height;
-      const tableEnd = columnTurn && /\p{Ll}[-‐]$/u.test(lastLeft.text) ? bodyAfterColumnTable(group) : 0;
-      if (tableEnd) appendFloating(group.slice(0, tableEnd), pageNumber);
-      const groupBlocks = blocksFromLines(tableEnd ? group.slice(tableEnd) : group, pageNumber, blocks.length + 1, true);
-      if (columnTurn && groupBlocks.length) columnStarts.add(groupBlocks[0].id);
-      blocks.push(...groupBlocks);
-      previousGroup = group;
+    const prior = blocks.findLast(block => !block.pdfFootnoteMarker && !floatingIDs.has(block.id));
+    const previousSplitWord = prior?.page === page.pageNumber - 1 && /\p{Ll}[-‐]$/u.test(prior.text);
+    for (const segment of pdfReadingSegments(page.lines, page, previousSplitWord)) {
+      const extracted = blocksFromLines(segment.lines, page.pageNumber, blocks.length + 1, true);
+      if (segment.floating) for (const block of extracted) floatingIDs.add(block.id);
+      if (segment.columnStart && extracted.length) columnStarts.add(extracted[0].id);
+      blocks.push(...extracted);
     }
   }
   // Match the final Mac postProcessParagraphs and buildPaper/cleanExtractedText
