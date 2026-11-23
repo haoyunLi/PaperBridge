@@ -1592,13 +1592,13 @@ function App() {
     }
     catch (cause) { setError(cause.message); }
   }
-  async function openUpdateInstaller() {
-    if (!installAvailable || busy || openingInstaller) return;
+  async function openUpdateInstaller(restart = false) {
+    if (!installAvailable || busy || openingInstaller || (restart && !updateInfo.canRestartAfterUpdate)) return;
     setOpeningInstaller(true);
     try {
       await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
-      if (!await finishNoteEditing()) throw new Error('Save the latest paper changes before opening the installer.');
-      await api.openUpdateInstaller(updateInfo.tag);
+      if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before opening the installer.');
+      await api.openUpdateInstaller(updateInfo.tag, restart);
       setOpenedInstallerTag(updateInfo.tag);
     } catch (cause) { setError(cause.message); }
     finally { setOpeningInstaller(false); }
@@ -2057,12 +2057,12 @@ function App() {
     };
     window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
   }, []);
-  useEffect(() => api.onPrepareClose(async () => {
+  async function saveReadingStateBeforeClose() {
     // Wait for an in-flight metadata write; a previously failed label draft can
     // still be discarded by closing its editor or the application.
     await libraryMetadataSaveChain.current.catch(() => {});
     try { await glossarySave.current; }
-    catch { api.closeCancelled(); return; }
+    catch { return false; }
     // The last scroll event or its debounced write may still be pending when the window closes.
     clearTimeout(scrollSaveTimer.current);
     const host = mainScrollRef.current;
@@ -2076,8 +2076,10 @@ function App() {
         commitPaper(current => ({ ...current, position }), { deferUndo: true });
       }
     }
-    const saved = await finishNoteEditing();
-    if (saved) api.closeReady();
+    return finishNoteEditing();
+  }
+  useEffect(() => api.onPrepareClose(async () => {
+    if (await saveReadingStateBeforeClose()) api.closeReady();
     else {
       setError('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
       api.closeCancelled();
@@ -3663,7 +3665,7 @@ function App() {
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {showUpdateBanner && <div className="update-banner" role="status">
           <div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong>{fileMessage && <div role="status">{fileMessage}</div>}</div>
-          {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={openUpdateInstaller}>Open installer</button>}
+          {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={() => openUpdateInstaller(updateInfo.canRestartAfterUpdate)}>{updateInfo.canRestartAfterUpdate ? 'Install and restart' : 'Open installer'}</button>}
           {updateButtonLabel && filePhase !== 'downloading' && <button className={installAvailable ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
           <button className="button outline" onClick={openUpdateRelease}>View release</button>
           <button className="button ghost" onClick={() => setDeferredUpdateTag(updateInfo.tag)}>Later</button>
@@ -3790,7 +3792,7 @@ function App() {
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
-        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, onOpenInstaller: installAvailable ? openUpdateInstaller : null, installerBusy: Boolean(busy || openingInstaller), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, onOpenInstaller: installAvailable ? () => openUpdateInstaller() : null, onInstallAndRestart: installAvailable && updateInfo.canRestartAfterUpdate ? () => openUpdateInstaller(true) : null, installerBusy: Boolean(busy || openingInstaller), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <><p>Approved terms guide future translations in the same language direction.</p><input placeholder="Search saved terms" value={glossarySearch} onChange={event => setGlossarySearch(event.target.value)} />{[...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, glossarySearch)).map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}><span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span><button className="icon-button" aria-label={`Remove ${term.source}`} disabled={glossarySaving} onClick={() => removeTerm(index)}><Trash2 size={16} /></button></div>)}{glossaryError && <p role="alert" className="selection-lookup-message error">{glossaryError}</p>}{!glossary.length && <p>No saved terms yet. Select a phrase in Reader to add one.</p>}</>}
       {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}

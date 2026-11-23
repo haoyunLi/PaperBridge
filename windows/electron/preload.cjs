@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   updateMenuState: state => ipcRenderer.invoke('menu:update-state', state),
   checkUpdates: automatic => ipcRenderer.invoke('updates:check', automatic),
   revealUpdate: tag => ipcRenderer.invoke('updates:reveal', tag),
-  openUpdateInstaller: tag => ipcRenderer.invoke('updates:install', tag),
+  openUpdateInstaller: (tag, restart = false) => ipcRenderer.invoke('updates:install', tag, restart),
   onUpdateFile: callback => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('updates:file-state', listener);

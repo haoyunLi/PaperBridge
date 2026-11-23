@@ -20,6 +20,7 @@ const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
 const { importPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
 const { createUpdateChecker, releaseUrl, updateDownload } = require('./updates.cjs');
 const { UpdateDownload, chromiumTransfer } = require('./update-download.cjs');
+const { isCurrentUserInstallation, launchRestartingInstaller } = require('./installed-update.cjs');
 const { createModelPullManager } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
 const { createOfficialLinkHandler } = require('./official-links.cjs');
@@ -157,6 +158,7 @@ function registerHandlers() {
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   let availableDownload = null;
+  let registeredInstallation;
   let refreshedLegacyTag = null;
   const backgroundUpdatesEnabled = () => {
     const prefs = store.settings();
@@ -176,16 +178,23 @@ function registerHandlers() {
     availableDownload = candidate;
     if (candidate && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
     else if (!updateFiles.matches(candidate)) updateFiles.cancel();
-    return { ...result, downloadLabel: candidate?.label, downloadInApp: Boolean(candidate?.file),
-      canOpenInstaller: Boolean(app.isPackaged && !portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Setup.exe`),
+    const canOpenInstaller = Boolean(app.isPackaged && !portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Setup.exe`);
+    if (canOpenInstaller) registeredInstallation ??= isCurrentUserInstallation();
+    return { ...result, downloadLabel: candidate?.label, downloadInApp: Boolean(candidate?.file), canOpenInstaller,
+      canRestartAfterUpdate: canOpenInstaller && await registeredInstallation,
       updateFile: updateFiles.state };
   });
   ipcMain.handle('updates:reveal', (_event, tag) => updateFiles.show(tag));
-  ipcMain.handle('updates:install', (event, tag) => {
+  ipcMain.handle('updates:install', (event, tag, restart = false) => {
     if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE || event.sender !== window?.webContents ||
         event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url.split('#')[0] !== readerURL ||
         availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The installed reader needs a current verified Setup update.');
-    return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
+    if (restart !== true) return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
+    return updateFiles.openInstaller(tag, async filename => {
+      await launchRestartingInstaller(filename);
+      app.quit();
+      return '';
+    });
   });
   ipcMain.handle('updates:download', (_event, tag) => {
     if (!availableDownload || availableDownload.tag !== tag) throw new Error('Check for updates to find the current download.');

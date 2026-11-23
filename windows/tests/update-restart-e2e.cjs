@@ -184,6 +184,7 @@ async function run() {
     await assert.rejects(page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag), /no longer matches/);
     await page.locator('.update-banner').getByRole('button', { name: 'Download portable update' }).waitFor();
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /installed reader/);
+    await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag, true), identity.tag), /installed reader/);
     await app.close(); app = null;
     fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')), autoCheckUpdates: false, autoDownloadUpdates: false }));
     app = await launch();
@@ -206,6 +207,7 @@ async function run() {
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, false);
     await install.click();
     await settings.getByText('Installer opened. Follow the Windows setup wizard to finish the update.').waitFor();
+    assert.ok(await page.isVisible('body'), 'Opening the standard wizard keeps the reader available');
     const installer = path.join(workspace, 'update-downloads', identity.installerName);
     assert.deepEqual(await app.evaluate(() => global.__installerRequests), [installer]);
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), 'windows-v99.0.0'), /current verified Setup/);
