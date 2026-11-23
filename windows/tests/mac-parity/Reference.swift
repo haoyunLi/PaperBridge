@@ -234,10 +234,11 @@ struct Reference {
         let ranges = try nativeTranslationRanges(fixtures: fixtureURL.deletingLastPathComponent())
         let journalDraft = try nativeJournalDraft(fixtures: fixtureURL.deletingLastPathComponent())
         let navigation = try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent())
-        let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource,
+        let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource, "deepResource": navigation.deep,
                                      "retainedSlice": try nativeRetainedSlice(paragraphs: body, checksum: checksum),
                                      "legacyParagraphAnchors": try nativeLegacyParagraphAnchors(paragraphs: body, checksum: checksum),
-                                     "htmlEquations": try nativeHTMLEquations(fixtures: fixtureURL.deletingLastPathComponent()),
+                                     "htmlEquations": try nativeEquations(fixtures: fixtureURL.deletingLastPathComponent(), document: "html-equations.md"),
+                                     "texDelimiters": try nativeEquations(fixtures: fixtureURL.deletingLastPathComponent(), document: "tex-delimiters.md"),
                                      "overlappingHighlights": try nativeOverlappingHighlights(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "selectionEdges": try nativeSelectionEdges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "richAnnotationRanges": try nativeRichAnnotationRanges(fixtures: fixtureURL.deletingLastPathComponent()),

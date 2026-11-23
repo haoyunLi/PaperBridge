@@ -2,8 +2,8 @@ import AppKit
 import WebKit
 
 @MainActor
-func nativeHTMLEquations(fixtures: URL) throws -> [[String: Any]] {
-    let source = try String(contentsOf: fixtures.appendingPathComponent("html-equations.md"), encoding: .utf8)
+func nativeEquations(fixtures: URL, document: String) throws -> [[String: Any]] {
+    let source = try String(contentsOf: fixtures.appendingPathComponent(document), encoding: .utf8)
     let repo = fixtures.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     let mathJax = try String(contentsOf: repo.appendingPathComponent("PaperBridge/Resources/tex-svg-full.js"), encoding: .utf8)
     let configuration = WKWebViewConfiguration()

@@ -2,10 +2,12 @@ import AppKit
 import WebKit
 
 @MainActor
-func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: String]], tableCell: String, resource: [String: Any]) {
+func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: String]], tableCell: String, resource: [String: Any], deep: [String: Any]) {
     _ = NSApplication.shared
     let navigation = try String(contentsOf: fixtures.appendingPathComponent("markdown-navigation.md"), encoding: .utf8)
     let nested = try String(contentsOf: fixtures.appendingPathComponent("nested-resource.md"), encoding: .utf8)
+    let deep = try String(contentsOf: fixtures.appendingPathComponent("deep-resource.md"), encoding: .utf8)
+    let observeDeep = try String(contentsOf: fixtures.appendingPathComponent("observe-deep-resource.cjs"), encoding: .utf8)
     let observe = try String(contentsOf: fixtures.appendingPathComponent("observe-resource.cjs"), encoding: .utf8)
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -14,7 +16,7 @@ func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: Stri
     let images = root.appendingPathComponent("images", isDirectory: true)
     try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
     try FileManager.default.copyItem(at: fixtures.appendingPathComponent("tabbed/images/page_2_chart_5.jpg"), to: images.appendingPathComponent("panel.jpg"))
-    try MarkdownPreviewHTMLRenderer.render(markdown: navigation + "\n\n" + nested, title: "Workshop notes").write(to: document, atomically: true, encoding: .utf8)
+    try MarkdownPreviewHTMLRenderer.render(markdown: navigation + "\n\n" + nested + "\n\n" + deep, title: "Workshop notes").write(to: document, atomically: true, encoding: .utf8)
     let configuration = WKWebViewConfiguration()
     configuration.userContentController.addUserScript(WKUserScript(source: MarkdownPreviewView.Coordinator.selectionBridgeScript,
         injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -71,16 +73,18 @@ func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: Stri
         const resource = await observeResource(article);
         if (!resource.sameFigure || !resource.tableCaption || !resource.figureCaption || resource.columns !== 3 || !resource.collapsed)
             throw Error('The native preview did not preserve the nested calibration panel');
-        return { jumps, tableCell: restoredCell.blockText, resource };
+        \(observeDeep)
+        return { jumps, tableCell: restoredCell.blockText, resource, deep: observeDeepResource(article) };
         """
     var result: Result<Any, Error>?
     view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result = $0 }
     while result == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
     guard let result, let data = try result.get() as? [String: Any],
           let jumps = data["jumps"] as? [[String: String]], jumps.count == 3,
-          let cell = data["tableCell"] as? String, let resource = data["resource"] as? [String: Any] else {
+          let cell = data["tableCell"] as? String, let resource = data["resource"] as? [String: Any],
+          let deepObservation = data["deep"] as? [String: Any] else {
         throw NSError(domain: "MarkdownNavigationReference", code: 1,
                       userInfo: [NSLocalizedDescriptionKey: "The Mac preview did not complete the three document links."])
     }
-    return (jumps, cell, resource)
+    return (jumps, cell, resource, deepObservation)
 }
