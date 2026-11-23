@@ -11,6 +11,7 @@ const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { requestGeneration } = require('./ollama-generation.cjs');
 const { ollamaRequest } = require('./ollama-http.cjs');
 const { localOllamaURL } = require('./ollama-installation.cjs');
+const { readOllamaModelList } = require('./ollama-models.mjs');
 const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { openPaperAttachment } = require('./paper-attachment.cjs');
@@ -21,7 +22,7 @@ const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
 const { importPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
 const { createUpdateChecker, releaseUrl, updateDownload } = require('./updates.cjs');
 const { UpdateDownload, chromiumTransfer } = require('./update-download.cjs');
-const { createModelPullManager } = require('./model-pull.cjs');
+const { createModelPullManager, pullOllamaModel } = require('./model-pull.cjs');
 const { normalizeMenuState, menuCommandState, applyMenuState } = require('./menu-state.cjs');
 const { createOfficialLinkHandler } = require('./official-links.cjs');
 const { createOpenAICredentialStore, createOpenAIClient } = require('./openai.cjs');
@@ -103,31 +104,6 @@ function progress(data) {
 function importPdfBytes(bytes, name) {
   const imported = importPdfAsset(bytes, name, store.pdfPath);
   return { ...imported, existing: store.paper(imported.id) };
-}
-
-async function pullOllamaModel(baseURL, model, signal, update) {
-  if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
-  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal });
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n'); buffer = lines.pop();
-    for (const line of lines) if (line.trim()) {
-      const event = JSON.parse(line);
-      if (event.error) throw new Error(event.error);
-      update(event);
-    }
-  }
-  if (buffer.trim()) {
-    const event = JSON.parse(buffer);
-    if (event.error) throw new Error(event.error);
-    update(event);
-  }
-  return true;
 }
 
 function registerHandlers() {
@@ -375,9 +351,8 @@ function registerHandlers() {
     if (completed === true && stopped !== true) revealBundle(bundle.folder);
   });
   ipcMain.handle('ollama:models', async (_event, baseURL) => {
-    const response = await ollamaRequest(baseURL, 'api/tags');
-    const data = await response.json();
-    return (data.models || []).map(model => model.model || model.name).filter(Boolean);
+    const response = await ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(10000) });
+    return readOllamaModelList(response);
   });
   ipcMain.handle('ollama:generate', async (_event, { baseURL, model, prompt, system, requestId, format }) => {
     if (typeof model !== 'string' || !model.trim() || typeof prompt !== 'string' || typeof requestId !== 'string') throw new Error('Invalid Ollama request.');

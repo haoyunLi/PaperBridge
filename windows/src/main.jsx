@@ -37,6 +37,7 @@ import { ReadingAppearancePopover } from './ReadingAppearance.jsx';
 import readingAppearanceDefaults from '../electron/reading-appearance.json';
 import { readerLineHeight } from '../electron/reading-appearance.mjs';
 import { modelSettingsPatch } from './modelCatalog.mjs';
+import { hasOllamaModel } from '../electron/ollama-models.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalAIError, isOllamaMemoryError, isOllamaGenerationConnectionError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
 import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
@@ -1862,9 +1863,13 @@ function App() {
     const paperId = paperRef.current?.id;
     try {
       await api.pullModel({ baseURL: config.ollamaBaseURL, model: requestedModel });
-      const { models: available } = await refreshModels(config);
+      const inventory = await refreshModels(config);
+      const available = inventory.models;
       let message = 'Model downloaded. Choose its task in Settings.';
       if (recommendation && !taskRef.current && settingsRef.current.ollamaBaseURL === config.ollamaBaseURL && paperRef.current?.id === paperId) {
+        if (inventory.ollamaStatus !== 'ready' || !hasOllamaModel(available, requestedModel)) {
+          throw new Error('Ollama finished the download, but the model is missing from the latest list. Refresh Models, then choose Use model when it appears.');
+        }
         updateSettings(modelSettingsPatch(settingsRef.current, recommendation, available));
         message = `${recommendation.title} downloaded and selected for ${recommendation.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`;
       }

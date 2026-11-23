@@ -7,7 +7,7 @@ const { Readable, Transform } = require('node:stream');
 const { pipeline } = require('node:stream/promises');
 const { setTimeout: delay } = require('node:timers/promises');
 const { isMineruReady } = require('./mineru-readiness.mjs');
-const { missingOllamaModels } = require('./ollama-models.mjs');
+const { missingOllamaModels, readOllamaModelList } = require('./ollama-models.mjs');
 const { ollamaPath, ollamaLaunch, localServerEndpoint } = require('./ollama-installation.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
@@ -147,7 +147,7 @@ class SetupManager {
   async status({ baseURL, mineruExecutable, mineruBackend, models = [], components, repairMineru = false }) {
     const [hardware, mineru, appPath, response] = await Promise.all([
       graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot, mineruBackend), ollamaPath(),
-      this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }).then(async value => ({ running: true, models: (await value.json()).models?.map(item => item.model || item.name).filter(Boolean) || [] })).catch(error => ({ running: false, models: [], error: error.message }))
+      this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }).then(async value => ({ running: true, models: await readOllamaModelList(value) })).catch(error => ({ running: false, models: [], error: error.message }))
     ]);
     const result = { hardware, mineru, ollama: { installed: Boolean(appPath), path: appPath, ...response } };
     result.plan = setupPlan(result, models, { components, repairMineru, mineruBackend });
@@ -227,8 +227,11 @@ class SetupManager {
 
   async startOrInstallOllama(baseURL) {
     const ready = async () => {
-      try { await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); return true; }
+      let response;
+      try { response = await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); }
       catch { return false; }
+      await readOllamaModelList(response);
+      return true;
     };
     if (await ready()) return;
     localServerEndpoint(baseURL);

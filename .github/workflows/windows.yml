@@ -35,6 +35,10 @@ jobs:
             "${services[@]}" windows/tests/mac-parity/*.swift \
             -o "$RUNNER_TEMP/paperbridge-reference"
           "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
+      - name: Observe local model discovery and download completion on macOS
+        run: |
+          xcrun swiftc PaperBridge/Services/OllamaClient.swift windows/tests/mac-ollama/Observe.swift -o "$RUNNER_TEMP/observe-ollama"
+          node windows/tests/mac-ollama/compare.cjs "$RUNNER_TEMP/mac-reference.json" "$RUNNER_TEMP/observe-ollama"
       - name: Inspect the menus in the published Mac application
         run: bash windows/tests/mac-menu/observe.sh "$RUNNER_TEMP/mac-reference.json"
       - uses: actions/upload-artifact@v4
@@ -63,6 +67,8 @@ jobs:
           path: ${{ runner.temp }}/mac-reference
       - name: Compare Windows results with native macOS results
         run: node tests/mac-parity/compare.mjs "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
+      - name: Compare local model discovery and download completion with macOS
+        run: node tests/mac-ollama/compare.cjs "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
       - name: Verify Windows release version
         if: startsWith(github.ref, 'refs/tags/windows-v')
         shell: pwsh

@@ -35,10 +35,12 @@ async function run() {
     { name: 'unknown', size: 2 ** 30 }
   ];
   const pulls = [];
+  let invalidInventory = false;
   const errors = [];
   const viewports = [];
   const ollama = http.createServer((request, response) => {
     response.setHeader('Content-Type', 'application/json');
+    if (request.url === '/api/tags' && invalidInventory) return response.end('<html>Local proxy is starting</html>');
     if (request.url === '/api/tags') return response.end(JSON.stringify({ models: [...installed].map(model => ({ model })) }));
     if (request.url === '/api/ps') {
       if (loadedModels === null) return; // Unresponsive endpoint, including retries.
@@ -181,7 +183,16 @@ async function run() {
     await clickTab('Local AI');
     await card('translategemma:12b').getByRole('button', { name: 'Download & use', exact: true }).click();
     await waitFor(() => pulls.length === 2, 'retry recommendation download');
+    invalidInventory = true;
     finishPull(1);
+    await page.locator('.settings-download-status[role="alert"]').filter({ hasText: 'Refresh Models, then choose Use model' }).waitFor({ timeout: 15000 });
+    assert.equal(saved().translationModel, 'translategemma:4b');
+    assert.deepEqual(assistants(saved()), [specialist, 'translategemma:4b', 'paperbridge-missing-model:1b']);
+    invalidInventory = false;
+    await clickTab('Models');
+    await page.getByRole('button', { name: 'Refresh models', exact: true }).click();
+    await clickTab('Local AI');
+    await card('translategemma:12b').getByRole('button', { name: 'Use model', exact: true }).click();
     await waitFor(() => saved().translationModel === 'translategemma:12b' && assistants(saved()).join('|') === [specialist, 'translategemma:12b', 'translategemma:12b'].join('|'), 'translation download applies only following/missing assistant roles');
     await card('translategemma:12b').getByRole('button', { name: 'Selected', exact: true }).waitFor();
     await card('translategemma:4b').getByRole('button', { name: 'Use model', exact: true }).click();

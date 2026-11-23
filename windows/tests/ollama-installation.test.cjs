@@ -43,10 +43,21 @@ test('custom loopback endpoints append the API below the configured prefix and p
   await assert.rejects(manager.startOrInstallOllama('https://papers.localhost/reader'), /Start the local proxy/);
 });
 
+test('the setup wizard distinguishes a real empty model list from an unrelated local service', async () => {
+  const { readOllamaModelList } = await import('../electron/ollama-models.mjs');
+  assert.deepEqual(await readOllamaModelList(Response.json({ models: [{ name: 'z:7b' }, { model: 'a:4b' },
+    { model: 'z:7b' }, { name: '' }, {}] })), ['a:4b', 'z:7b']);
+  for (const response of [new Response('<html>Proxy home</html>'), Response.json({ status: 'ok' })]) {
+    const manager = new SetupManager({ toolsRoot: '', emit: () => assert.fail('No install should start on an occupied endpoint'),
+      ollamaRequest: async () => response });
+    await assert.rejects(manager.startOrInstallOllama('http://127.0.0.1:11434'), /did not return an Ollama model list/);
+  }
+});
+
 test('if a local service became ready during setup, no installer or second server is needed', async () => {
   let checked = 0;
   const manager = new SetupManager({ toolsRoot: '', emit: () => assert.fail('Unexpected setup operation'),
-    ollamaRequest: async () => { checked++; return {}; } });
+    ollamaRequest: async () => { checked++; return Response.json({ models: [] }); } });
   await manager.startOrInstallOllama('http://127.0.0.1:11434');
   assert.equal(checked, 1);
 });

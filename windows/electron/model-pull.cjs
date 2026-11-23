@@ -1,3 +1,33 @@
+const { ollamaRequest } = require('./ollama-http.cjs');
+const { readOllamaModelList, hasOllamaModel } = require('./ollama-models.mjs');
+
+async function pullOllamaModel(baseURL, model, signal, update) {
+  if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
+  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal });
+  let buffer = '', completed = false;
+  function progressLine(line) {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.error) throw new Error(event.error);
+    if (event.status?.toLowerCase() === 'success') completed = true;
+    update(event);
+  }
+  for await (const text of response.body.pipeThrough(new TextDecoderStream())) {
+    const lines = (buffer + text).split('\n');
+    buffer = lines.pop();
+    for (const line of lines) progressLine(line);
+  }
+  progressLine(buffer);
+  if (!completed) {
+    // A proxy or Ollama may close the progress stream without its final success record.
+    const tags = await ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]) });
+    if (!hasOllamaModel(await readOllamaModelList(tags), model)) {
+      throw new Error('The model download ended before Ollama confirmed installation. Retry the download to resume it.');
+    }
+  }
+  return true;
+}
+
 function createModelPullManager({ pullModel, emit, isSetupBusy = () => false }) {
   let active = null;
 
@@ -37,4 +67,4 @@ function createModelPullManager({ pullModel, emit, isSetupBusy = () => false }) 
   };
 }
 
-module.exports = { createModelPullManager };
+module.exports = { createModelPullManager, pullOllamaModel };
