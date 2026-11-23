@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## Windows 0.2.91 的首次本地翻译
+
+两台全新 Windows 测试机分别从首次引导安装了签名通过校验的 Ollama 0.40.17。在收到真实模型数据后取消下载，从后台继续，分别完成了 TranslateGemma 4B（3,298,875,707 字节）和 12B（8,109,827,612 字节）的安装。两台都通过 CPU 生成译文。4B 和 RX 7800 XT 的实际结果一致，为「太阳能电池板为温度传感器供电。研究人员每小时记录一次温度。」12B 的第一句为「太阳能电池板为温度传感器提供电力。」每台都确认旧阅读器进程退出、新进程启动、原译文恢复。12B 在独立测试机下载。[4B 首装与重启](https://github.com/haoyunLi/PaperBridge/actions/runs/45140574505) · [12B 首装与重启](https://github.com/haoyunLi/PaperBridge/actions/runs/45141422747)
+
 ## BERT 双栏论文的正文与公式
 
 同一份 ACL 出版的 16 页 BERT 论文经过 Windows PDF 文字层导入。第三页的跨栏插图原先截断了第二页的 `language model-ing`，图注的最后一行也出现在正文里。修复后，读者能在一个段落内选中完整句子，两栏之间的 `mini-mal` 也合为一个词。RX 7800 XT 用 TranslateGemma 4B 译出了预训练架构与最终下游架构之间的差异。第五页的隐藏向量和分类层权重在实际译文里分别保留为 `C ∈ ℝ^{H}` 和 `W ∈ ℝ^{K×H}`，关闭再打开阅读器后译文一致。四篇既有回归论文合计 811 个文字块的逐块内容与本次修复前一致。[ACL 论文](https://aclanthology.org/N19-1423/) · [Mac 原生 PDFKit 的图注、栏边界和公式选区](https://github.com/haoyunLi/PaperBridge/actions/runs/45137884416)
