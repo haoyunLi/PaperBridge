@@ -19,6 +19,7 @@ jobs:
           curl -fLsS --retry 3 https://arxiv.org/pdf/1706.03762v7 -o "$RUNNER_TEMP/article.pdf"
           (cd "$RUNNER_TEMP" && echo "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697  article.pdf" | shasum -a 256 -c -)
           xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift PaperBridge/Services/PDFTextExtractor.swift \
+            PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/PDFDocumentView.swift \
             windows/tests/mac-paper-layout/Observe.swift -o "$RUNNER_TEMP/observe"
           "$RUNNER_TEMP/observe" "$RUNNER_TEMP/article.pdf" "$RUNNER_TEMP/reading.json"
           cat "$RUNNER_TEMP/reading.json"
