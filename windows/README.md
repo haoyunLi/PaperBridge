@@ -17,6 +17,8 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
+Version 0.2.84 can find an existing standalone Ollama server or a custom desktop installation. Local AI setup can start the standalone server on the configured local port. It also finds MinerU in Python install manager runtimes, including custom locations. Paragraph edits recover older notes with a unique quotation and keep names with composed or decomposed accents readable after editing and reopening.
+
 Version 0.2.83 preserves code listings in Paper and in the paragraph editor, including indentation after edits, splits and Undo. Reader and Overview notes keep the spaces at both ends of a selection. Overlapping highlights show the most recently applied color on their shared text. When a paragraph is shortened to a passage from the original, separate notes on repeated words stay with the occurrences you marked.
 
 Version 0.2.81 checks saved Reader and Paper quotations before showing their navigation and export status. Auto-detect can also locate MinerU in standard per-user Python directories.
