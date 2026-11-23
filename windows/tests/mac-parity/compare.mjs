@@ -63,7 +63,18 @@ try {
   const result = writeBundle(work, { name: 'Calibration', sourceMode: 'mineru' }, documents, null, extraction);
   const moved = path.join(work, 'Moved journal bundle');
   renameSync(result.folder, moved);
-  const { wrapped: wrappedHashes, ...expectedBundle } = reference.bundle;
+  const { wrapped: wrappedHashes, literalDocument, ...expectedBundle } = reference.bundle;
+  if (literalDocument) {
+    const authored = readFileSync(new URL('./literal-asset-examples.md', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+    assert.equal(literalDocument, authored, 'The native portable document kept the example source');
+    const examples = writeBundle(work, { name: 'Calibration code examples' }, [
+      { filename: 'examples.md', content: authored }
+    ], null, extraction);
+    const saved = readFileSync(path.join(examples.folder, 'examples.md'), 'utf8');
+    const printed = authored.slice(authored.indexOf('    ![Example'), authored.indexOf('![Measured response]'));
+    assert.ok(saved.includes(printed), 'The Windows portable document kept the same literal paths and spacing');
+    assert.equal(examples.assets, 2);
+  }
   assert.deepEqual(Object.keys(wrappedHashes).sort(), ['data/wrapped.csv', 'figures/wrapped.png']);
   const wrappedDocument = readFileSync(path.join(moved, 'paper_wrapped.md'), 'utf8');
   let expectedMarkdown = bundleFixture.documents['paper_wrapped.md'];
