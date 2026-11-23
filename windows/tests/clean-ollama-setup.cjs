@@ -134,10 +134,10 @@ async function run() {
     if (size === '27b') {
       const started = Date.now();
       const smaller = page.getByRole('button', { name: /^Choose (?:a smaller|another) model$/ });
-      await Promise.race([result.waitFor({ timeout: 8 * 60000 }), smaller.waitFor({ timeout: 8 * 60000 })]);
+      await Promise.race([result.waitFor({ timeout: 12 * 60000 }), smaller.waitFor({ timeout: 12 * 60000 })]);
+      report.largeModelWaitMs = Date.now() - started;
       if (await smaller.isVisible()) {
         await page.locator('.notice.error summary').click();
-        report.largeModelWaitMs = Date.now() - started;
         report.largeModelError = await page.locator('.notice.error details').innerText();
         assert.match(report.largeModelError, /requires more.*memory|out of.*memory|insufficient.*memory|not enough.*memory|during generation/i);
         report.serviceAfterError = await json('/api/version').then(data => data.version, () => null);

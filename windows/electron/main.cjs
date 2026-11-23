@@ -9,6 +9,7 @@ const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { localOllamaURL } = require('./ollama-installation.cjs');
+const { requestGeneration } = require('./ollama-generation.cjs');
 const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { openPaperAttachment } = require('./paper-attachment.cjs');
@@ -102,7 +103,6 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
     if (options.signal?.aborted && options.signal.reason?.name !== 'TimeoutError') {
       const error = new Error('Setup cancelled.'); error.name = 'AbortError'; throw error;
     }
-    if (endpoint === 'api/generate') throw generationConnectionError(cause);
     throw new Error('Cannot reach local Ollama. Start Ollama, then refresh models.');
   }
   if (!response.ok) {
@@ -110,13 +110,6 @@ async function ollamaRequest(baseURL, endpoint, options = {}) {
     throw new Error(`Ollama ${response.status}: ${message.slice(0, 300)}`);
   }
   return response;
-}
-
-function generationConnectionError(cause) {
-  const code = cause.cause?.code || cause.code;
-  if (code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_BODY_TIMEOUT') return new Error('Ollama timed out during generation.');
-  const detail = ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'UND_ERR_SOCKET'].includes(code) ? ' (' + code + ')' : '';
-  return new Error('Lost the connection to local Ollama during generation.' + detail);
 }
 
 function progress(data) {
@@ -395,18 +388,10 @@ function registerHandlers() {
     const controller = new AbortController();
     requests.set(requestId, controller);
     try {
-      const response = await ollamaRequest(baseURL, 'api/generate', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}),
-          options: { temperature: 0.1, ...(format === 'json' ? { num_predict: 2048 } : {}) }
-        }),
-        signal: controller.signal
-      });
-      const data = await response.json().catch(cause => {
-        if (controller.signal.aborted || cause instanceof SyntaxError) throw cause;
-        throw generationConnectionError(cause);
-      });
+      const data = await requestGeneration(baseURL, {
+        model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}),
+        options: { temperature: 0.1, ...(format === 'json' ? { num_predict: 2048 } : {}) }
+      }, controller.signal);
       if (data.done === false || data.done_reason === 'length') {
         throw new Error(format === 'json' ? 'The summary response was cut off. Choose a different summary model in Settings and try again.' : 'Model response was cut off. Try a smaller paragraph.');
       }
