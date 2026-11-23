@@ -69,7 +69,7 @@ export function stitchPageBlocks(blocks) {
     const right = block.text?.trim() || '';
     const adjacent = newPage && (previous?.endPage ?? previous?.page) === block.page - 1;
     const prose = previous && !block.pdfFootnoteMarker && !previous.pdfFootnoteMarker && !previous.heading && !block.heading && !previous.resource && !block.resource &&
-      !previous.sourceMarkdown && !block.sourceMarkdown &&
+      !previous.sourceMarkdown && !block.sourceMarkdown && previous.pdfAxisText !== previous.text && block.pdfAxisText !== block.text &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
       !/^(?:(?:figure|table|references|bibliography)\b|fig\.\s*\d|[图表]\s*\d|\[\d+\]|\d+[.)]\s)/iu.test(right);
     const incompletePhrase = /\b(?:such as|because of|due to|rather than|with respect to|compared with|the|and|or|of|to|for|with|from|into|via)$/iu.test(left)

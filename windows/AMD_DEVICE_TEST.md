@@ -387,6 +387,14 @@ Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报
 
 从 Paper 精确 PDF 第 2 页且当前采用 PDF 文字层的状态打开 OCR Reader。后退恢复原 PDF 第 2 页，前进回到 OCR Reader。第 2 页的段落经 TranslateGemma 4B 得到中文译文，Ollama 日志确认 ROCm，模型大小与显存占用均为 2,881,948,220 字节。退出并重开后仍可查看译文和书签。实际便携导出将三个图像写为 Markdown 引用的本地文件，导出的 `original.pdf` 与扫描输入逐字节一致。该样本验证双栏和轻微倾斜的英文扫描。
 
+## 图注翻译、术语与提取警告（2026-11-23 UTC）
+
+在 RX 7800 XT 上从原 PDF 导入 *Attention Is All You Need* 第 7 版。第 13–15 页的三幅图共包含十行旋转轴标签。Windows 读出十行完整标签，保留图 3–5 的说明，并把图 4 的 Top 与 Bottom 说明连在同一个段落中。原生 PDFKit 的文字层还包含五处被裁出图框的内部标题。Windows 已将这五处从阅读文字中剔除，原 PDF 的 SHA-256 保持一致。[原论文](https://arxiv.org/abs/1706.03762) · [macOS 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45122595860)
+
+这些轴标签原先触发了十条“句末缺标点”提醒。修正后，Overview 和 Reader 都保留了真正需要核对的段落。实测从 Overview 打开第 4 页警告，再点击 Compare Original，可到达原 PDF 第 4 页并返回该段。手动改写标签文字后，常规质量检查重新生效。
+
+TranslateGemma 4B 默认曾将图 4 的 `layer 5 of 6` 译为“第 5 层（也是第 6 层）”。在阅读器选区保存 `layer 5 of 6` 和 `attention heads` 两条术语，随后使用段落菜单重新翻译，得到了“两个注意力头，也位于六层中的第五层”。退出并重新打开后，修订译文与原文均保留。此例验证了术语修订的实际效果，普通模型输出仍需结合原文判断。
+
 ## 修复期间退出与预下载取消（2026-11-06 UTC）
 
 复制已一键安装的 MinerU 4.1.7、Python、uv 包缓存及模型到隔离目录。通过 **Repair / update MinerU** 实际离线重装。在新环境运行时验证期间正常退出，退出结束后旧环境标记恢复，暂存目录和备份目录已清理。再次启动后自动发现旧环境，仍可选择 RX 7800 XT 的 DirectML。

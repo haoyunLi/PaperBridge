@@ -161,6 +161,8 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
         block.sourceMarkdown = fencedCodeMarkdown(text);
         block.heading = false;
       }
+      // Keep the printed label text so editing it back into prose restores ordinary quality checks.
+      if (group.length === 1 && group[0].figureAxis) block.pdfAxisText = text;
       if (group[0].raisedNoteMarker) block.pdfFootnoteMarker = group[0].raisedNoteMarker;
       blocks.push(block);
     }

@@ -38,7 +38,7 @@ export function qualityIssues(blocks, excluded = new Set()) {
     if (block.heading || excluded.has(block.id)) return [];
     const layoutIssue = savedResourceLayoutIssue(block);
     if (layoutIssue) return [{ id: block.id, reason: layoutIssue, excerpt: qualityExcerpt(original), reextract: true }];
-    if (!value || block.resource || isPdfListing(block)) return [];
+    if (!value || block.resource || isPdfListing(block) || block.pdfAxisText === original) return [];
     const markdownKind = markdownBlockKind(block);
     if (markdownKind && markdownKind !== 'paragraph') return [];
     let reason = '';

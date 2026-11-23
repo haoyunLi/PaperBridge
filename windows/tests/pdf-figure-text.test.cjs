@@ -38,6 +38,14 @@ test('right-aligned rotated figure labels remain in physical order in both orien
   const labels = (y, d) => ['The', 'Law', 'will', 'never'].map((s, i) => rotated(s, 50 + i * 15, y, [18, 12, 14, 28][i], d));
   const lines = pageLines({ items: [...labels(700, 1), ...labels(62, -1)] }, [0, 0, 600, 800]);
   assert.deepEqual(lines.map(line => [line.text, line.figureAxis]), Array(2).fill(['The Law will never', true]));
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const { qualityIssues } = await import('../src/paper.mjs');
+  const text = 'Several visible tick labels together contain considerably more than a hundred printed characters ' +
+    'although they do not form a complete sentence';
+  const [axis] = blocksFromLines([{ ...lines[0], text }], 1);
+  assert.equal(axis.pdfAxisText, text);
+  assert.deepEqual(qualityIssues([axis]), []);
+  assert.equal(qualityIssues([{ ...axis, text: text + ' after a manual edit' }]).length, 1);
   const page = n => ({ height: 800, lines: [...lines, { text: 'Figure ' + n + ': Layer weights', x: 20, y: 48, height: 10 },
     { text: 'Publisher footer', x: 20, y: 12, height: 10 }] });
   for (const result of filterRepeatedPageDecorations([page(1), page(2)])) {

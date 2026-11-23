@@ -59,16 +59,58 @@ async function run() {
         assert.ok(axis.text.startsWith(phrase) && axis.text.endsWith('<pad>'));
         assert.ok(axis.text.includes(axis.page === 13 ? 'registration or voting process more difficult' : 'what we are missing'));
       }
+      for (const axis of axes) assert.equal(await page.locator('#block-' + axis.id + ' .quality-warning').count(), 0);
+      const warned = paper.blocks.find(b => b.page === 4 && b.text.includes('pushing the softmax'));
+      const warningRow = page.locator('#block-' + warned.id + ' .quality-warning');
+      await openWorkspaceView(page, 'Overview');
+      await page.locator('.quality-list summary').click();
+      const quality = page.locator('.quality-list[open]');
+      for (const axis of axes) assert.equal(await quality.getByRole('button', { name: 'Review block ' + axis.id, exact: true }).count(), 0);
+      await quality.getByRole('button', { name: 'Review block ' + warned.id, exact: true }).click();
+      await warningRow.getByRole('button', { name: 'Compare Original', exact: true }).click();
+      await page.locator('.pdf-toolbar').getByText(/page 4 of 15/).waitFor();
+      await page.locator('.textLayer[data-page="4"]').waitFor();
+      await page.getByRole('button', { name: 'Back to previous reading location', exact: true }).click();
+      await warningRow.waitFor();
       const captions = [13, 14, 15].map(n => paper.blocks.find(b => b.page === n && b.text.startsWith('Figure ' + (n - 10) + ':')));
       assert.ok(captions.every(Boolean));
       assert.ok(captions[1].text.includes('Top: Full attentions for head 5. Bottom:') && captions[1].text.endsWith('sharp for this word.'));
       const caption = page.locator('#block-' + captions[1].id);
       if (process.argv.includes('--live')) {
-        await caption.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
         const translated = caption.locator('.translation-text.done');
+        await caption.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
         await translated.waitFor({ timeout: 120000 });
+        if (process.argv.includes('--terms')) {
+          report.beforeTerminology = await translated.innerText();
+          for (const [source, target] of [['layer 5 of 6', '六层中的第五层'], ['attention heads', '注意力头']]) {
+            await caption.locator('.source-text').evaluate((element, text) => {
+              const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+              for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                const at = node.data.indexOf(text);
+                if (at < 0) continue;
+                const range = new Range();
+                range.setStart(node, at); range.setEnd(node, at + text.length);
+                getSelection().removeAllRanges(); getSelection().addRange(range);
+                element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true })); return;
+              }
+              throw Error('Term missing from the printed caption: ' + text);
+            }, source);
+            await page.getByPlaceholder('Approved translation').fill(target);
+            await page.getByRole('button', { name: 'Save term', exact: true }).click();
+            await page.waitForFunction(() => !document.querySelector('input[placeholder="Approved translation"]')?.value);
+          }
+          const terms = JSON.parse(fs.readFileSync(path.join(dir, 'glossary.json'), 'utf8'));
+          assert.deepEqual(terms.map(t => t.target), ['六层中的第五层', '注意力头']);
+          await caption.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+          await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
+          await translated.filter({ hasText: '六层中的第五层' }).waitFor({ timeout: 120000 });
+        }
         report.captionTranslation = await translated.innerText();
         assert.match(report.captionTranslation, /\p{Script=Han}/u);
+        if (process.argv.includes('--terms')) {
+          assert.match(report.captionTranslation, /六层中的第五层/);
+          assert.match(report.captionTranslation, /注意力头/);
+        }
       }
       report.figureAxes = axes.length;
       report.captions = captions.map(b => b.id);
