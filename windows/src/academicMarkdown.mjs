@@ -1,3 +1,4 @@
+import { parseFragment } from 'parse5';
 import { parseMarkdown, renderedMarkdownText } from './markdownRendering.mjs';
 import { protectMarkdown } from './prompts.mjs';
 import { referenceBlockIds } from './references.mjs';
@@ -8,10 +9,16 @@ export function usesSharedMarkdown(paper) {
 }
 
 export function protectStructuredMarkdown(markdown) {
-  if (!markdown.includes('](')) return protectMarkdown(markdown);
+  if (!markdown.includes('](') && !/[`<]|~{3}|\]:/.test(markdown)) return protectMarkdown(markdown);
   const ranges = [];
   let standaloneLabel = false;
   function visit(node) {
+    // The Markdown parser knows where longer code delimiters and nested image destinations end.
+    const tag = node.type === 'html' && /^<\/?[a-z][a-z0-9:-]*(?:\s+(?:[^<>"']|"[^"]*"|'[^']*')*)?\/?>$/i.test(node.value);
+    if (['code', 'inlineCode', 'image', 'definition'].includes(node.type) || tag) {
+      ranges.push([node.position.start.offset, node.position.end.offset]);
+      return;
+    }
     if (node.type === 'link') {
       const start = node.position.start.offset;
       const end = node.position.end.offset;
@@ -26,11 +33,11 @@ export function protectStructuredMarkdown(markdown) {
             && !/[\p{L}\p{N}]/u.test(markdown.slice(0, start) + markdown.slice(end));
         }
       }
-      return;
     }
     node.children?.forEach(visit);
   }
   visit(parseMarkdown(markdown));
+  ranges.sort((left, right) => left[0] - right[0]);
   const payload = protectMarkdown(markdown, ranges);
   return { ...payload, standaloneLabel: standaloneLabel && ranges.length === 2 && payload.tokens.length === 2 };
 }
@@ -204,6 +211,33 @@ function afterClosingLine(lines, index, closes) {
   return index;
 }
 
+function takeHtmlResource(lines, start, tag) {
+  const close = new RegExp('</' + tag + '\\s*>', 'i');
+  let end = afterClosingLine(lines, start, line => close.test(line));
+  // Start near the first apparent closing tag. Nested elements, quoted attributes and
+  // comments can require more input before the browser would actually close the root.
+  for (;;) {
+    const source = lines.slice(start, end).join('\n');
+    const element = parseFragment(source, { sourceCodeLocationInfo: true }).childNodes.find(node => node.tagName === tag);
+    const location = element?.sourceCodeLocation;
+    const boundary = location?.endTag || (location?.endOffset < source.length ? location : null);
+    if (boundary) {
+      const last = start + boundary.endLine - 1;
+      const tail = lines[last].slice(boundary.endCol - 1);
+      const hasTail = Boolean(tail.trim());
+      if (hasTail) lines[last] = tail;
+      return { sourceMarkdown: source.slice(0, boundary.endOffset).trim(), next: hasTail ? last : last + 1, closed: true };
+    }
+    if (end === lines.length) {
+      // A malformed HTML block should not absorb the rest of the article after a paragraph break.
+      let next = start + 1;
+      while (next < end && lines[next].trim()) next++;
+      return { sourceMarkdown: lines.slice(start, next).join('\n').trim(), next, closed: false };
+    }
+    end = Math.min(lines.length, start + 2 * (end - start));
+  }
+}
+
 function parsedMarkdownSegments(markdown) {
   const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
   const segments = [];
@@ -221,9 +255,11 @@ function parsedMarkdownSegments(markdown) {
       index = trimmed.slice(2).includes(endFormula) ? index + 1
         : afterClosingLine(lines, index + 1, line => line.includes(endFormula));
     } else if (kind === 'html' || (kind === 'table' && /^<table\b/i.test(trimmed))) {
-      const tag = trimmed.match(/^<([a-z]+)/i)[1];
-      const endTag = new RegExp('</' + tag + '\\s*>', 'i');
-      index = afterClosingLine(lines, index, line => endTag.test(line));
+      const tag = trimmed.match(/^<([a-z]+)/i)[1].toLowerCase();
+      const { sourceMarkdown, next, closed } = takeHtmlResource(lines, start, tag);
+      segments.push({ kind, sourceMarkdown, closed });
+      index = next;
+      continue;
     } else if (kind === 'table') {
       index += 2;
       while (index < lines.length && lines[index].trim() && lines[index].includes('|')) index++;
@@ -289,15 +325,20 @@ export function markdownBlockKind(block) {
 
 export function savedResourceLayoutIssue(block) {
   const source = block.sourceMarkdown;
-  if (!source || !source.includes('\n')) return '';
+  if (!source) return '';
   if ((!block.markdownKind || block.markdownKind === 'paragraph') && !block.resource && source.includes('|')
     && /\n[ \t|:]*-{3}/.test(source) && parsedMarkdownSegments(source).some(segment => segment.kind === 'table')) {
     return 'This saved paragraph contains a Markdown table. Choose the original PDF to extract the table in a new copy.';
   }
   if (block.resource && (!block.markdownKind || block.markdownKind === 'table' || block.markdownKind === 'html')
-    && /^<(?:table|figure|details|div|p|pre)\b/i.test(source) && /<\/[a-z]+\s*>[ \t]*\n\s*\S/i.test(source)
-    && parsedMarkdownSegments(source).some(segment => segment.kind === 'paragraph' || segment.kind === 'heading')) {
-    return 'This saved resource includes text after its closing tag. Choose the original PDF to recover the following paragraphs in a new copy.';
+    && /^<(?:table|figure|details|div|p|pre)\b/i.test(source) && /<\/[a-z]+\s*>/i.test(source)) {
+    const segments = parsedMarkdownSegments(source);
+    if (segments[0]?.closed === false) {
+      return 'This saved HTML panel ends before its outer closing tag. Choose the original PDF to restore the complete panel in a new copy.';
+    }
+    if (segments.some(segment => segment.kind === 'paragraph' || segment.kind === 'heading')) {
+      return 'This saved resource includes text after its closing tag. Choose the original PDF to recover the following paragraphs in a new copy.';
+    }
   }
   return '';
 }

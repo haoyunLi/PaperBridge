@@ -284,3 +284,4 @@ jobs:
               ref: context.ref, feed: JSON.parse(process.env.VERIFIED_RELEASE) };
             core.info(await publishReleaseFeed(verified));
             core.info(await publishDownloadPage(verified));
+            core.info(await publishDownloadPage({ ...verified, windowsGuide: true }));

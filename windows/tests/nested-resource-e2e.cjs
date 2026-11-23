@@ -13,7 +13,9 @@ async function run() {
   const artifacts = path.join(root, 'test-artifacts');
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'nested-resource-'));
-  const source = fs.readFileSync(path.join(fixtures, 'nested-resource.md'), 'utf8');
+  const deep = process.argv.includes('--deep');
+  const source = fs.readFileSync(path.join(fixtures, 'nested-resource.md'), 'utf8')
+    + (deep ? '\n' + fs.readFileSync(path.join(fixtures, 'deep-resource.md'), 'utf8') : '');
   const id = createHash('sha256').update(source).digest('hex');
   const bundle = path.join(workspace, 'mineru', id, 'paper', 'auto');
   fs.mkdirSync(path.join(bundle, 'images'), { recursive: true });
@@ -23,7 +25,7 @@ async function run() {
   const markdown = readMineruMarkdown(output);
   const { parsedMarkdownBlocks } = await import('../src/academicMarkdown.mjs');
   const blocks = parsedMarkdownBlocks(markdown);
-  assert.deepEqual(blocks.map(item => item.markdownKind), ['heading', 'paragraph', 'html', 'paragraph']);
+  assert.deepEqual(blocks.map(item => item.markdownKind), ['heading', 'paragraph', 'html', 'paragraph', ...(deep ? ['html', 'paragraph'] : [])]);
   const paper = { id, name: 'Calibration record', type: 'text', sourceMode: 'mineru', blocks, mineruBlocks: blocks, mineruMarkdown: markdown,
     connectedTranslation: markdown, inspectorOpen: true, position: { tab: 'Paper', displayMode: 'bilingual', block: 1 }, updatedAt: new Date().toISOString() };
   fs.mkdirSync(path.join(workspace, 'papers'));
@@ -49,11 +51,33 @@ async function run() {
       const result = await host.evaluate(observeResource);
       assert.deepEqual(result, expected, tab + ' must retain the complete calibration panel');
       assert.equal(await host.getByRole('img', { name: 'Tabbed comparison panel' }).isVisible(), false);
+      if (deep) {
+        const toggle = page.locator('.main-scroll summary').filter({ hasText: /^Detailed measurements$/ }).first();
+        const panel = toggle.locator('..');
+        await toggle.click();
+        await panel.getByText('The calibration applies to both instruments.', { exact: true }).waitFor();
+        assert.equal(await panel.getByRole('cell', { name: '24 °C' }).count(), 0);
+        await panel.locator('summary').filter({ hasText: /^Temperature series$/ }).click();
+        await panel.getByRole('cell', { name: '24 °C' }).waitFor();
+        await toggle.click();
+        assert.equal(await panel.getByText('The calibration applies to both instruments.').isVisible(), false);
+        const visibleProse = await page.locator('.main-scroll').evaluate(scroll => {
+          const texts = document.createTreeWalker(scroll, NodeFilter.SHOW_TEXT);
+          for (let node = texts.nextNode(); node; node = texts.nextNode()) {
+            if (!node.textContent.includes('The final observation agrees with the control.')) continue;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            if (range.getBoundingClientRect().height && !node.parentElement.closest('details:not([open])')) return true;
+          }
+          return false;
+        });
+        assert.equal(visibleProse, true, tab + ' must show the discussion after the closed panel');
+      }
     }
     await app.close(); app = await launch(); page = await app.firstWindow();
     const saved = page.locator('[data-view-scope="fullTranslation"]');
     assert.deepEqual(await saved.evaluate(observeResource), expected, 'Restored translation must open its figure offline');
-    await saved.locator('summary').click();
+    await saved.locator('summary').filter({ hasText: /^Calibration measurements$/ }).click();
     await saved.locator('figcaption').evaluate(caption => {
       const range = document.createRange();
       range.selectNodeContents(caption);
@@ -72,7 +96,7 @@ async function run() {
     await page.waitForFunction(() => document.querySelector('[data-view-scope="fullTranslation"] details')?.open === true, { }, { timeout: 4000 });
     assert.equal(await page.evaluate(() => window.getSelection().toString()), expected.figureCaption);
     assert.equal(await page.locator('.inspector textarea').inputValue(), note);
-    console.log(JSON.stringify({ views: 3, reopened: true, noteRestored: true, image: expected.image, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    console.log(JSON.stringify({ views: 3, reopened: true, noteRestored: true, image: expected.image, deep, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

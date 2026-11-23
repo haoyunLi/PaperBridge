@@ -18,6 +18,15 @@ test('refreshes the direct EXE links and version while preserving Mac, prose and
   assert.throws(() => updateDownloadPage(homepage('0.2.6').replace('x64-Setup.exe', 'Setup.zip'), '0.2.70'), /both EXE links/);
 });
 
+test('updates both direct links and the checksum label in the Windows guide without rewriting historical release notes', () => {
+  function guide(version) {
+    const section = homepage(version).replace('**Windows ' + version + ' x64**', '[Windows ' + version + ' release and SHA-256 checksums]');
+    return '# Windows guide\n' + section + '\n## Windows and macOS features\n' + homepage('0.2.74');
+  }
+  assert.equal(updateDownloadPage(guide('0.2.74'), '0.2.76', true), guide('0.2.76'));
+  assert.equal(updateDownloadPage(guide('0.2.76'), '0.2.75', true), guide('0.2.76'));
+});
+
 test('preserves simultaneous changes to main, checks both asset hashes, and never rolls the page back', async () => {
   const version = '0.2.70';
   const feed = { version, files: { Setup: { sha256: 'a'.repeat(64), size: 123 }, Portable: { sha256: 'b'.repeat(64), size: 100 } } };

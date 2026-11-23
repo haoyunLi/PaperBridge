@@ -19,7 +19,7 @@ async function run() {
   const temporaryDirectory = path.join(workspace, 'Portable extraction');
   await fs.mkdir(temporaryDirectory);
   const shortDirectory = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    '(New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:PAPERBRIDGE_TEST_TEMP).ShortPath'], {
+    '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); (New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:PAPERBRIDGE_TEST_TEMP).ShortPath'], {
     env: { ...process.env, PAPERBRIDGE_TEST_TEMP: temporaryDirectory }, windowsHide: true, encoding: 'utf8'
   }).trim();
   assert.equal(await fs.realpath(shortDirectory), await fs.realpath(temporaryDirectory));

@@ -115,7 +115,14 @@ async function run() {
     for (const name of ['supplement/protocol.md', 'supplement/Reference pages.pdf', 'supplement/温度.csv', 'images/panel.jpg', 'supplement/panel.jpg']) {
       assert.deepEqual(fs.readFileSync(path.join(moved, 'assets', 'source', name)), fs.readFileSync(path.join(source, name)), name);
     }
-    console.log(JSON.stringify({ views: 3, reopened: true, movedBundleFiles: 5, pdfHandoffs: 6, text: '温度.csv', image: [530, 418], nativeCompared: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    const standalone = path.join(destination, 'Original document.md');
+    await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath }); }, standalone);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Export Options…', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Original Markdown', exact: true }).click();
+    await page.getByText('Exported ' + standalone, { exact: true }).waitFor();
+    assert.equal(fs.readFileSync(standalone, 'utf8'), markdown);
+    console.log(JSON.stringify({ views: 3, reopened: true, originalUnchanged: true, movedBundleFiles: 5, pdfHandoffs: 6, text: '温度.csv', image: [530, 418], nativeCompared: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

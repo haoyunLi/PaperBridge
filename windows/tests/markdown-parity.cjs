@@ -44,7 +44,7 @@ async function run() {
   const figure = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=';
   const formula = 'A stack of $N = 6$ identical layers.';
   const protectedFormula = '$$z^2 = 4$$';
-  const protectedCode = "`const sample = '$&'`";
+  const protectedCode = "``const sample = `Δ > 0`; // '$&'``";
   const protectedExample = protectedFormula + ' with ' + protectedCode + '.';
   const translated = '阿什什<sup>∗</sup>报告了一个测量结果。 ' + formula;
   const resourceDirectory = path.join(workspace, 'mineru', id, 'paper', 'auto');
@@ -113,6 +113,10 @@ async function run() {
       response.statusCode = 503;
       return response.end('{}');
     }
+    if (input.includes('previous translation failed') && input.includes('const sample')) {
+      response.statusCode = 422;
+      return response.end('{}');
+    }
     let markdown = input.split('Markdown block:\n').at(-1)
       .replace('Research title', '研究标题').replace('A paragraph whose previous translation failed.', '已恢复的段落译文。');
     if (markdown.includes('Repeat repeat repeat.')) {
@@ -129,7 +133,8 @@ async function run() {
     fontSize: 21, lineHeight: 1.9, readingWidth: 700, autoCheckUpdates: false, onboardingCompletedVersion: 1,
     ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
-  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const launch = () => electron.launch({ ...(executablePath && { executablePath }), args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app;
   try {
     app = await launch();

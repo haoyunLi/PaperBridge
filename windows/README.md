@@ -4,12 +4,12 @@
 
 | Edition | How to open it | Download |
 | --- | --- | --- |
-| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.75/PaperBridge-Windows-0.2.75-x64-Portable.exe) |
-| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.75/PaperBridge-Windows-0.2.75-x64-Setup.exe) |
+| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.74/PaperBridge-Windows-0.2.74-x64-Portable.exe) |
+| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.74/PaperBridge-Windows-0.2.74-x64-Setup.exe) |
 
 You can open and annotate a PDF immediately. Choose **Local AI setup** to detect your hardware and install the components for translation or scanned PDFs. The app checks for updates automatically by default.
 
-Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.75 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.75) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
+Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.74 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.74) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
 
 ## Windows and macOS features
 
@@ -17,7 +17,7 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
-Version 0.2.75 opens saved supplementary PDFs in the default Windows viewer. You can read linked Markdown, text, CSV, TSV and images inside PaperBridge. Closing the supplement returns to your place in the paper. The portable Markdown bundle also keeps attachments linked inside HTML figures and filenames with parentheses.
+The 0.2.76 build restores the reader after a startup retry on Windows short paths. It also keeps code spans and nested figures intact during translation and opens saved supplementary PDFs in the default Windows viewer. You can read linked Markdown, text, CSV, TSV and images inside PaperBridge. Closing the supplement returns to your place in the paper. The portable Markdown bundle also keeps attachments linked inside HTML figures and filenames with parentheses.
 
 Version 0.2.74 keeps figure captions, table captions and column groups in folded figures. Opening a saved note expands the figure that contains it. Installed copies can download and verify an update in Settings, then open the Windows installer on request. Portable copies can show the verified file in Explorer.
 

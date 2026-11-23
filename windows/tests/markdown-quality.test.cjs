@@ -52,6 +52,28 @@ test('scientific literals survive Markdown analysis, search, citation validation
   assert.deepEqual(operators.map(block => block.text), ['Pass **kwargs through.', 'Evaluate x**2 for A*.']);
 });
 
+test('nested disclosures keep their outer caption and expose the prose that follows', async () => {
+  const { parsedMarkdownBlocks } = await markdown;
+  const { summarySourceBlocks, translationRangeIds } = await paper;
+  const lines = ['<details>', '<summary>Results</summary>', '<!-- </details> is a literal example -->',
+    '<details title="The string </details> occurs in the notes">', '<summary>Sensitivity</summary>',
+    '<table><tr><td>0.81</td></tr></table>', '</details>', '<p>Outer figure caption</p>', '</details>'];
+  const { savedResourceLayoutIssue } = await markdown;
+  const earlier = Object.freeze({ id: 7, resource: true, markdownKind: 'html', sourceMarkdown: lines.slice(0, 7).join('\n'), notes: [{ body: 'Saved measurement.' }] });
+  assert.match(savedResourceLayoutIssue(earlier), /before its outer closing tag/);
+  assert.equal(earlier.notes[0].body, 'Saved measurement.');
+  const [panel, discussion] = parsedMarkdownBlocks(lines.join('\n') + '\nThe results agree across all cohorts.');
+  assert.equal(panel.sourceMarkdown, lines.join('\n'));
+  assert.equal(panel.resource, true);
+  assert.equal(savedResourceLayoutIssue(panel), '');
+  assert.equal(discussion.text, 'The results agree across all cohorts.');
+  assert.deepEqual(summarySourceBlocks([panel, discussion]).map(block => block.id), [2]);
+  assert.deepEqual(translationRangeIds([panel, discussion]), [2]);
+  const nestedTable = '<table>\n<tr><td><table><tr><td>Nested cell</td></tr></table></td></tr>\n<tr><td>Final row</td></tr>\n</table>';
+  const after = parsedMarkdownBlocks(nestedTable + ' The table reports the final trial.');
+  assert.deepEqual(after.map(block => block.sourceMarkdown), [nestedTable, 'The table reports the final trial.']);
+});
+
 test('resource boundaries keep table cells and code out of model requests while preserving the prose that follows', async () => {
   const { parsedMarkdownBlocks } = await markdown;
   const { summarySourceBlocks, translationRangeIds } = await paper;

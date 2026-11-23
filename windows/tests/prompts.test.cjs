@@ -10,6 +10,27 @@ test('Markdown translation tokens preserve formulas and figure references', asyn
   assert.throws(() => restoreMarkdown('A model dropped every token.', protectedBlock.tokens));
 });
 
+test('structured paragraphs mask complete code spans and nested figures before translation', async () => {
+  const { protectStructuredMarkdown } = await import('../src/academicMarkdown.mjs');
+  const { restoreMarkdown } = await import('../src/prompts.mjs');
+  const code = '``printf(`sample`, "β")``';
+  const image = '![reference](figures/panel(2).png "run 2")';
+  const tagged = '<span title="Δ > 0">';
+  const source = 'Use [' + code + ' on the ' + image + '](notes/method(2).md), then compare ' + tagged + 'the result</span>.';
+  const { text, tokens } = protectStructuredMarkdown(source);
+  for (const literal of [code, image, tagged, '](notes/method(2).md)']) assert.ok(tokens.some(([, value]) => value === literal), literal);
+  for (const word of ['printf', 'sample', 'figures/', 'run 2', 'notes/', 'Δ']) assert.equal(text.includes(word), false, word);
+  const translated = text.replace('Use ', '使用').replace(' on the ', '，见').replace('then compare', '再比较').replace('the result', '结果');
+  const rendered = restoreMarkdown(translated, tokens);
+  assert.ok(rendered.includes('[' + code + '，见' + image + '](notes/method(2).md)'));
+  assert.ok(rendered.includes(tagged + '结果</span>'));
+  const fence = ['````python', 'print("```")', 'x = "second line"', '````'].join('\n');
+  const mixed = protectStructuredMarkdown('The example follows.\n\n' + fence + '\n\nCompare the readings.');
+  assert.ok(mixed.tokens.some(([, value]) => value === fence));
+  assert.ok(mixed.text.endsWith('Compare the readings.'));
+  assert.equal(mixed.text.includes('second line'), false);
+});
+
 test('structured translation keeps clickable link destinations when the model localizes punctuation', async () => {
   const { protectStructuredMarkdown } = await import('../src/academicMarkdown.mjs');
   const { restoreMarkdown } = await import('../src/prompts.mjs');
