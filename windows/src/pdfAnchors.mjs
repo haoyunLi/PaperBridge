@@ -43,7 +43,11 @@ export function validPdfSelection(selection) {
   );
 }
 
+export function sourcePageLabel(page, endPage) {
+  if (!Number.isSafeInteger(page) || page < 1) return '';
+  return Number.isSafeInteger(endPage) && endPage > page ? `pages ${page}–${endPage}` : `page ${page}`;
+}
+
 export function pdfPageLabel(item) {
-  const end = pdfAnchors(item).at(-1)?.page;
-  return end > item.page ? `pages ${item.page}–${end}` : `page ${item.page}`;
+  return sourcePageLabel(item.page, pdfAnchors(item).at(-1)?.page);
 }

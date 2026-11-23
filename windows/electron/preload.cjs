@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   finishBundle: payload => ipcRenderer.invoke('markdown:bundle-finish', payload),
   listModels: baseURL => ipcRenderer.invoke('ollama:models', baseURL),
   runningModels: baseURL => ipcRenderer.invoke('ollama:running', baseURL),
+  unloadModel: (baseURL, name) => ipcRenderer.invoke('ollama:unload', baseURL, name),
   graphicsStatus: () => ipcRenderer.invoke('hardware:status'),
   mineruRuntime: (executable, backend) => ipcRenderer.invoke('mineru:runtime', executable, backend),
   mineruStatus: (executable, backend) => ipcRenderer.invoke('mineru:status', executable, backend),

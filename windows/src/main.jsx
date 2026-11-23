@@ -11,7 +11,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
-import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
+import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
 import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, isPdfListing, pdfFootnoteMarker } from './text.mjs';
@@ -355,6 +355,16 @@ function PlainText({ as: Element = 'div', children, highlights, notes, ...attrib
   useRichAnnotations(host, content, notes, children);
   return <Element ref={host} {...attributes}>{content}</Element>;
 }
+function ReaderSourcePages({ block, onOpen }) {
+  const location = sourcePageLabel(block.page, block.endPage);
+  if (!location) return null;
+  if (!onOpen) return <span className="reader-block-page">{location}</span>;
+  const linkedPage = number => <button type="button" className="reader-page-link" aria-label={`Open original PDF page ${number}`}
+    onClick={event => { event.stopPropagation(); onOpen(number); }}>{number}</button>;
+  const range = Number.isSafeInteger(block.endPage) && block.endPage > block.page;
+  return <span className="reader-block-page">{range ? 'Pages ' : 'Page '}{linkedPage(block.page)}{range && <>–{linkedPage(block.endPage)}</>}</span>;
+}
+
 function BlockPassage({ block, kind, scope, structured = true, ...attributes }) {
   const translation = kind === 'translation';
   const text = translation ? block.translation : block.text;
@@ -1399,6 +1409,12 @@ function App() {
     recordReadingJump();
     setTab(target);
   }
+  function openReaderSourcePage(page) {
+    const location = currentReadingLocation();
+    if (!location || !recordReadingJump()) return;
+    restoreReadingLocation({ ...location, tab: 'Original', page,
+      scrollByTab: { ...location.scrollByTab, [scrollKey('Original', page)]: 0, [pdfScrollKey('pdf', page)]: 0 } });
+  }
   function compareOriginal(page) {
     navigateToTab('Paper');
     changeDisplayMode('source');
@@ -1595,10 +1611,11 @@ function App() {
   async function openUpdateInstaller(restart = false) {
     if (!installAvailable || busy || openingInstaller || (restart && !updateInfo.canRestartAfterUpdate)) return;
     setOpeningInstaller(true);
-    setUpdateStatus('Opening the verified installer. Respond to any Windows confirmation to continue.');
+    setUpdateStatus('Saving the current reading position and notes…');
     try {
       await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
       if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before opening the installer.');
+      setUpdateStatus('Opening the verified installer. Respond to any Windows confirmation to continue.');
       await api.openUpdateInstaller(updateInfo.tag, restart);
       setOpenedInstallerTag(updateInfo.tag);
       setUpdateStatus('Windows opened the verified installer.');
@@ -3729,7 +3746,7 @@ function App() {
               : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
                 : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && !verbatimTranslationIDs.has(block.id) ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
-          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span><span className="reader-block-number" aria-label={`Block ${block.id}`}>{String(block.id).padStart(2, '0')}</span><ReaderSourcePages block={block} onOpen={paper.type === 'pdf' ? openReaderSourcePage : null} />{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
           {issue && <ReaderQualityWarning issue={issue} onReextract={reextractAsNew} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}

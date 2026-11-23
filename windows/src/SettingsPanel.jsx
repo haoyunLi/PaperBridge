@@ -127,7 +127,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <Group title="Graphics acceleration"><div className="settings-status-row"><p>{hardware?.adapters?.length ? hardware.adapters.map(describeAdapter).join(' · ') : 'No graphics adapter reported by Windows.'}</p><button className="button outline" disabled={checking} onClick={() => { setMemoryCheck(value => value + 1); onCheck(); }}><RefreshCw size={14} />{checking ? 'Checking…' : 'Check'}</button></div>
           <p>{hardware?.cudaDriver?.length ? `NVIDIA driver detected: ${hardware.cudaDriver.map(device => `${device.name}, ${device.memoryMiB || '?'} MiB`).join('; ')}.` : hardware?.adapters?.some(adapter => adapter.vendor === 'AMD') ? 'AMD detected. Ollama may use supported ROCm or Vulkan hardware.' : 'Ollama chooses its available CPU or GPU backend automatically.'}</p>
           <p>{mineruRuntime?.description ? `MinerU: ${mineruRuntime.description}.` : mineruRuntime?.checked ? `MinerU Python: PyTorch ${mineruRuntime.torch}; CUDA ${mineruRuntime.cuda ? `available (${mineruRuntime.devices.join(', ')})` : 'unavailable'}.` : mineruRuntime?.reason || 'Check the MinerU runtime to see its acceleration status.'}</p>
-          <OllamaMemory baseURL={settings.ollamaBaseURL} revision={memoryCheck} />
+          <OllamaMemory key={settings.ollamaBaseURL} baseURL={settings.ollamaBaseURL} revision={memoryCheck} allowUnload disabled={locked} />
           {hardwareError && <p className="settings-error" role="alert">{hardwareError}</p>}
         </Group></>}
       </>}

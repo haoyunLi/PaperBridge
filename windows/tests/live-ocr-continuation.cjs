@@ -56,6 +56,15 @@ async function run() {
       const paper = await window.paperBridge.loadPaper(id);
       return paper.mineruPageMapVersion >= 2 && paper.blocks.some(b => b.endPage === 2 && b.text.includes('Without TriviaQA'));
     }, id);
+    const readerBlock = page.locator('#block-' + matched.id);
+    assert.match(await readerBlock.locator('.reader-block-page').textContent(), /pages 1–2/i);
+    for (const number of [2, 1]) {
+      await readerBlock.getByRole('button', { name: 'Open original PDF page ' + number, exact: true }).press('Enter');
+      await page.locator('[data-pdf-scope="pdf"]').waitFor({ timeout: 10000 });
+      await page.locator('.pdf-toolbar').getByText('Exact original PDF · page ' + number + ' of 2').waitFor({ timeout: 10000 });
+      await page.getByRole('button', { name: 'Back to previous reading location' }).click();
+      await readerBlock.locator('.translation-text.done').getByText(translation, { exact: true }).waitFor({ timeout: 10000 });
+    }
     const saved = read(), restored = saved.blocks.find(b => b.id === matched.id);
     assert.deepEqual([restored.page, restored.endPage, restored.text, restored.translation, restored.bookmark], [1, 2, matched.text, translation, true]);
     assert.deepEqual(assets(findPaperMineruMarkdown(dir, saved)), originalFiles);

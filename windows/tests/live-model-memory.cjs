@@ -80,8 +80,10 @@ async function run() {
       await pane.filter({ hasText: label }).waitFor({ timeout: 15000 });
       history.push({ offload, requested: expected, actual: kind, bytes: stats.size, vram: stats.size_vram,
         display: await pane.innerText(), translation: reply.response });
-      await api('generate', { model, keep_alive: 0, stream: false });
+      await pane.getByRole('button', { name: 'Release memory for ' + model, exact: true }).click();
       await empty();
+      assert.ok(!(await api('ps')).models.some(item => item.name === model));
+      assert.ok((await api('tags')).models.some(item => item.name === model));
       loaded = false;
     }
     console.log(JSON.stringify({ workspace, history }));

@@ -175,7 +175,7 @@ function registerHandlers() {
         availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The installed reader needs a current verified Setup update.');
     if (restart !== true) return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
     return updateFiles.openInstaller(tag, async filename => {
-      await launchRestartingInstaller(filename);
+      await launchRestartingInstaller(filename, window.getNativeWindowHandle());
       app.quit();
       return '';
     });
@@ -205,7 +205,7 @@ function registerHandlers() {
     return setupOperation;
   });
   ipcMain.handle('setup:cancel', () => setupManager.cancel());
-  ipcMain.handle('ollama:running', async (_event, baseURL) => {
+  async function runningModels(baseURL) {
     const response = await ollamaRequest(baseURL, 'api/ps', { signal: AbortSignal.timeout(3500) });
     const data = await response.json();
     if (!Array.isArray(data?.models)) throw new Error('Ollama did not return its loaded models.');
@@ -214,6 +214,18 @@ function registerHandlers() {
       sizeVram: Number.isSafeInteger(model.size_vram) && model.size_vram >= 0 ? model.size_vram : null,
       size: Number.isSafeInteger(model.size) && model.size > 0 ? model.size : null
     }));
+  }
+  ipcMain.handle('ollama:running', (_event, baseURL) => runningModels(baseURL));
+  ipcMain.handle('ollama:unload', async (_event, baseURL, name) => {
+    const loaded = await runningModels(baseURL);
+    if (!loaded.some(model => model.name === name)) return;
+    if (requests.size || modelPullManager.busy || setupManager?.controller) throw new Error('Finish the current local AI task before releasing model memory.');
+    const response = await ollamaRequest(baseURL, 'api/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(30000),
+      body: JSON.stringify({ model: name, keep_alive: 0, stream: false })
+    });
+    const result = await response.json();
+    if (result.error || result.done !== true) throw new Error(result.error || 'Ollama did not confirm the unload request.');
   });
   ipcMain.handle('settings:save', (_event, settings) => {
     store.saveSettings(settings);

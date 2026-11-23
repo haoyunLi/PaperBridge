@@ -18,6 +18,16 @@ test('portable reading records include every surface, direction, color, bookmark
   assert.doesNotMatch(output, /Pagequote/);
 });
 
+test('bookmark export preserves both printed pages of an OCR paragraph', async () => {
+  const { annotationsMarkdown, analysisAnnotations } = await import('../src/annotationsMarkdown.mjs');
+  const paper = { blocks: [{ id: 3, page: 6, endPage: 7, text: 'A cross-page paragraph.', bookmark: true },
+    { id: 4, page: 7, endPage: 3, text: 'An older single-page paragraph.', bookmark: true }] };
+  for (const document of [annotationsMarkdown(paper), analysisAnnotations(paper, new Set()).appendix]) {
+    assert.match(document, /Block 3 · pages 6–7: A cross-page paragraph/);
+    assert.match(document, /Block 4 · page 7: An older single-page paragraph/);
+  }
+});
+
 test('rendered quotes export with review status and no Markdown syntax', async () => {
   const { annotationsMarkdown } = await import('../src/annotationsMarkdown.mjs');
   const markdown = 'A stack of $N = 6$ identical layers.';

@@ -1,6 +1,6 @@
 import { anchorText } from './academicMarkdown.mjs';
 import { blockMarkdown, resolvedBlockAnnotation, paperArticleAnchorAvailable, textAnchorAvailable } from './markdownAnchors.mjs';
-import { pdfAnchorKey, pdfPageLabel } from './pdfAnchors.mjs';
+import { pdfAnchorKey, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
 
 function timestamp(value) {
   const parsed = typeof value === 'string' && value.trim() ? Date.parse(value) : NaN;
@@ -96,7 +96,10 @@ function renderAnnotation(record, level = 3, { includeNotes = true, includeColor
   return `${'#'.repeat(level)} ${record.label}${colors}${review}\n\n${warning}> ${quote}${notes ? `\n\n${notes}` : ''}`;
 }
 
-const bookmarkMarkdown = block => `- Block ${block.id}${block.page ? ` · page ${block.page}` : ''}: ${block.text}`;
+function bookmarkMarkdown(block) {
+  const location = sourcePageLabel(block.page, block.endPage);
+  return `- Block ${block.id}${location ? ' · ' + location : ''}: ${block.text}`;
+}
 
 export function annotationsMarkdown(paper) {
   const records = annotationRecords(paper);

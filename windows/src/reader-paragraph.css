@@ -22,7 +22,9 @@
 }
 .block:not(.heading-block) > .block-header { margin-bottom: 15px; gap: 9px; }
 .reader-block-number { color: #0a59d6; font-variant-numeric: tabular-nums; font-size: 12px; }
-.reader-block-page { margin-left: 9px; font-size: 9px; font-weight: 500; letter-spacing: 0; }
+.reader-block-page { margin-left: 9px; font-size: 10px; font-weight: 500; letter-spacing: 0; text-transform: uppercase; }
+.reader-page-link { appearance: none; background: none; border: 0; padding: 2px 3px; color: #0a59d6; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.reader-page-link:focus-visible { outline: 2px solid currentColor; outline-offset: 1px; }
 .reader-block-status { margin-left: 9px; font-size: 10px; letter-spacing: 0; }
 .block[data-block-status="failed"] .reader-block-status { color: #b52a24; }
 .reader-source-side, .reader-translation-side { display: flex; flex-direction: column; gap: 8px; }

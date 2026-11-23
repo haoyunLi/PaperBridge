@@ -164,12 +164,30 @@ async function run() {
           report.restartedService = (await json('/api/version')).version;
         }
         await smaller.click();
+        if (report.loadedAfterError?.some(item => item.name === model)) {
+          const memory = page.getByLabel('Ollama model memory');
+          const release = memory.getByRole('button', { name: 'Release memory for ' + model, exact: true });
+          if (process.env.GITHUB_REF_NAME.includes('release-memory')) {
+            await release.waitFor({ timeout: 15000 });
+            await release.click();
+            await memory.getByText('No Ollama models are loaded.').waitFor({ timeout: 50000 });
+            const after = await json('/api/ps');
+            report.largeModelUnloaded = !after.models.some(item => item.name === model);
+            assert.equal(report.largeModelUnloaded, true);
+          }
+        }
         await page.getByRole('tab', { name: 'Local AI', exact: true }).click();
         activeModel = 'translategemma:4b';
         checkpoint('selecting the smaller model after the large-model request failed');
         const fallback = page.locator('[data-model-id="' + activeModel + '"]');
         await fallback.getByRole('button', { name: 'Download & use', exact: true }).click();
-        await fallback.getByRole('button', { name: 'Selected', exact: true }).waitFor({ timeout: 10 * 60000 });
+        const dialog = page.getByRole('dialog');
+        await Promise.race([
+          fallback.getByRole('button', { name: 'Selected', exact: true }).waitFor({ timeout: 10 * 60000 }),
+          dialog.getByRole('alert').filter({ hasText: /./ }).first().waitFor({ timeout: 10 * 60000 }).then(async () => {
+            throw new Error('Smaller model download: ' + (await dialog.getByRole('alert').allTextContents()).join(' '));
+          })
+        ]);
         await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
         assert.equal(await page.locator('#block-1 .source-text').innerText(), original);
         await page.locator('#block-1').getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
@@ -200,7 +218,11 @@ async function run() {
     report.stage = 'complete';
   } catch (error) {
     report.error = error.message.slice(0, 1200);
+    const disk = fs.statfsSync(os.homedir());
+    report.remainingModelDisk = disk.bavail * disk.bsize;
+    report.remainingRAM = os.freemem();
     if (page && !page.isClosed()) {
+      report.messages = await page.getByRole('dialog').locator('[role="alert"], [role="status"]').allTextContents().catch(() => []);
       report.screen = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).slice(-2500);
       report.progress = await within(page.evaluate(() => window.setupReport), 5000, 'Reading final progress').catch(() => null);
     }

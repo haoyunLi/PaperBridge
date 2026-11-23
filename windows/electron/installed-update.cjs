@@ -33,7 +33,7 @@ async function isCurrentUserInstallation(executable = process.execPath) {
   } catch { return false; }
 }
 
-async function launchRestartingInstaller(filename) {
+async function launchRestartingInstaller(filename, parentWindow) {
   if (!await isCurrentUserInstallation()) throw new Error('Use Open installer to update this copy with the Windows setup wizard.');
   // The Windows shell opens the Internet-marked file under the current user's
   // normal execution policy. NSIS replaces this installation and relaunches it.
@@ -41,6 +41,8 @@ async function launchRestartingInstaller(filename) {
     $start=New-Object System.Diagnostics.ProcessStartInfo
     $start.FileName=$env:PAPERBRIDGE_VERIFIED_INSTALLER
     $start.UseShellExecute=$true
+    $start.ErrorDialog=$true
+    $start.ErrorDialogParentHandle=[IntPtr]([long]$env:PAPERBRIDGE_READER_HWND)
     $start.Verb='open'
     $start.Arguments='/S /currentuser --updated --force-run'
     $process=[Diagnostics.Process]::Start($start)
@@ -50,7 +52,7 @@ async function launchRestartingInstaller(filename) {
     await new Promise((resolve, reject) => {
       // Descendant installer handles must not hold the reader open while NSIS waits for it to exit.
       const child = spawn(windowsPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', script], {
-        windowsHide: true, stdio: 'ignore', env: { ...process.env, PAPERBRIDGE_VERIFIED_INSTALLER: filename }
+        windowsHide: true, stdio: 'ignore', env: { ...process.env, PAPERBRIDGE_VERIFIED_INSTALLER: filename, PAPERBRIDGE_READER_HWND: parentWindow.readBigUInt64LE(0).toString() }
       });
       child.once('error', reject);
       child.once('exit', code => code === 0 ? resolve() : reject(new Error('Windows declined the launch.')));

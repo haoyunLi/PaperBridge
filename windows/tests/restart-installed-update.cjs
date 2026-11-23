@@ -93,8 +93,22 @@ async function run() {
       const { stdout } = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
         "Get-Process | Where-Object { $_.MainWindowHandle -ne 0 -or $_.ProcessName -match 'PaperBridge|smartscreen' } | Select-Object ProcessName,MainWindowTitle | ConvertTo-Json -Compress"], { windowsHide: true, timeout: 8000 });
       report.windows = JSON.parse(stdout || '[]');
+      const tree = `Add-Type -AssemblyName UIAutomationClient
+        $root=[Windows.Automation.AutomationElement]::RootElement
+        $nodes=$root.FindAll('Children', [Windows.Automation.Condition]::TrueCondition)
+        @($nodes | ForEach-Object {
+          $element=$_
+          $owner=Get-Process -Id $element.Current.ProcessId -ErrorAction SilentlyContinue
+          $labels=@()
+          if ($owner.ProcessName -notin @('PaperBridge','explorer','WindowsTerminal','Taskmgr')) {
+            $labels=@($element.FindAll('Descendants',[Windows.Automation.Condition]::TrueCondition) | Select-Object -First 16 | ForEach-Object {$_.Current.Name})
+          }
+          [pscustomobject]@{owner=$owner.ProcessName; title=$element.Current.Name; type=$element.Current.ClassName; labels=$labels}
+        }) | ConvertTo-Json -Compress -Depth 4`;
+      const visible = await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', tree], { windowsHide: true, timeout: 12000 }).catch(() => ({ stdout: '[]' }));
+      report.visibleWindows = JSON.parse(visible.stdout || '[]');
       checkpoint('the installed reader stayed open');
-      console.log(JSON.stringify({ messages: report.messages, windows: report.windows }));
+      console.log(JSON.stringify({ messages: report.messages, windows: report.windows, visibleWindows: report.visibleWindows }));
       throw error;
     }
     app = null;
