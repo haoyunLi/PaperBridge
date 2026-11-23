@@ -5,6 +5,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
@@ -21,8 +22,9 @@ async function run() {
   const legacy = process.env.PAPERBRIDGE_LEGACY_STRUCTURED;
   if (legacy) fs.copyFileSync(path.join(legacy, 'papers', id + '.json'), file);
   fs.writeFileSync(path.join(dir, 'last-paper.json'), JSON.stringify({ id }));
+  const observation = await observeLocalOllama(legacy ? 'http://127.0.0.1:1' : defaults.ollamaBaseURL);
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ...defaults, onboardingCompletedVersion: 1, autoCheckUpdates: false,
-    ...(legacy && { ollamaBaseURL: 'http://127.0.0.1:1' }) }));
+    ollamaBaseURL: observation.url }));
   const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ cwd: root, ...(executablePath && { executablePath }),
     args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(dir, 'profile')],
@@ -31,13 +33,7 @@ async function run() {
   try {
     let page = await app.firstWindow();
     await openWorkspaceView(page, 'Reader');
-    await app.evaluate(() => {
-      const original = global.fetch; global.journalRequests = 0;
-      global.fetch = async (...args) => {
-        if (new URL(args[0]).pathname === '/api/generate') global.journalRequests++;
-        return original(...args);
-      };
-    });
+
     if (legacy) {
       const previous = JSON.parse(fs.readFileSync(file, 'utf8'));
       const code = previous.blocks.find(b => b.id === 30);
@@ -58,7 +54,7 @@ async function run() {
     const records = [];
     for (const blockID of targets) {
       const row = page.locator('#block-' + blockID);
-      const before = await app.evaluate(() => global.journalRequests);
+      const before = observation.calls.length;
       let result, attempts = 0;
       while (attempts < 2) {
         const action = attempts === 0 ? /^Translate (?:Paragraph|Heading)$/ : /^(?:Retry|Retry Heading)$/;
@@ -76,7 +72,7 @@ async function run() {
         if (result.status === 'ok') break;
       }
       records.push({ id: blockID, source: result.sourceMarkdown, translation: result.translationMarkdown || result.translation,
-        status: result.status, attempts, requests: (await app.evaluate(() => global.journalRequests)) - before });
+        status: result.status, attempts, requests: observation.calls.length - before });
     }
     const loaded = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
     const vram = loaded.models.find(m => m.name === 'translategemma:4b')?.size_vram;
@@ -94,6 +90,6 @@ async function run() {
     await app.close(); app = await launch(); page = await app.firstWindow(); await openWorkspaceView(page, 'Reader');
     const restored = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
     for (const r of records) assert.equal(restored.blocks.find(b => b.id === r.id).translationMarkdown, r.translation);
-  } finally { await app.close(); }
+  } finally { await app.close(); await observation.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

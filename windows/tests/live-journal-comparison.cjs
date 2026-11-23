@@ -5,6 +5,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
@@ -26,8 +27,9 @@ async function run() {
   fs.writeFileSync(paperFile, JSON.stringify({ id, name: 'Good enough practices in scientific computing', type: 'text',
     sourceMode: 'text', blocks, inspectorOpen: true, position: { tab: 'Reader', block: 1 } }));
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
+  const observation = await observeLocalOllama(base);
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ...defaults, aiProvider: 'ollama',
-    ollamaBaseURL: base, translationModel: model, maxParagraphChars: 500, onboardingCompletedVersion: 1, autoCheckUpdates: false }));
+    ollamaBaseURL: observation.url, translationModel: model, maxParagraphChars: 500, onboardingCompletedVersion: 1, autoCheckUpdates: false }));
   const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const app = await electron.launch({ cwd: root, ...(executablePath && { executablePath }),
     args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
@@ -35,14 +37,7 @@ async function run() {
   try {
     const page = await app.firstWindow();
     await openWorkspaceView(page, 'Reader');
-    await app.evaluate(() => {
-      global.plosRequests = [];
-      const nativeFetch = global.fetch;
-      global.fetch = (url, options) => {
-        if (new URL(url).pathname === '/api/generate') global.plosRequests.push(JSON.parse(options.body).prompt);
-        return nativeFetch(url, options);
-      };
-    });
+
     const waitForSave = async predicate => {
       const end = Date.now() + 240000;
       do {
@@ -55,13 +50,13 @@ async function run() {
     await page.getByRole('button', { name: 'Choose translation range', exact: true }).click();
     await page.getByRole('button', { name: /^All unfinished blocks/ }).click();
     const paragraphPaper = await waitForSave(p => p.blocks.every(b => b.status === 'ok' || b.status === 'failed'));
-    const readerRequests = await app.evaluate(() => global.plosRequests);
+    const readerRequests = observation.calls.length;
     await openWorkspaceView(page, 'Full Translation');
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
     const saved = await waitForSave(p => p.connectedTranslation && p.connectedBlocks?.length);
     const active = (await (await fetch(base + '/api/ps')).json()).models.find(m => m.name === model);
     const report = { application: await page.evaluate(async () => (await window.paperBridge.bootstrap()).version),
-      model, digest: weights.digest, version, vram: active?.size_vram, readerRequests: readerRequests.length,
+      model, digest: weights.digest, version, vram: active?.size_vram, readerRequests,
       paragraphs: paragraphPaper.blocks.map((b, i) => ({ articleID: samples[i].id, source: b.text, translation: b.translation, status: b.status })),
       connected: saved.connectedTranslation, batches: saved.connectedBlocks.length,
       failedBatches: saved.connectedBlocks.filter(b => b.status === 'failed').length };
@@ -71,6 +66,6 @@ async function run() {
     assert.ok(report.paragraphs.every(b => b.status === 'ok' && /\p{Script=Han}/u.test(b.translation)));
     assert.equal(report.readerRequests, 4, 'The third paragraph crosses the 500-character boundary');
     console.log(JSON.stringify({ file: output, readerRequests: report.readerRequests, batches: report.batches, failedBatches: report.failedBatches, vram: report.vram }));
-  } finally { await app.close(); }
+  } finally { await app.close(); await observation.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

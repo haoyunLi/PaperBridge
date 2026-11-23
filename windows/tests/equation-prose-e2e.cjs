@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 // Feed a saved extraction into the real PDF import path. Only the parser output is controlled.
@@ -21,9 +22,10 @@ async function run() {
   const markdown = [equation + ' ' + first, other + ' ' + second, orphan, third].join('\n\n');
   const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const base = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
+  const observation = process.argv.includes('--live') ? await observeLocalOllama(base) : null;
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ...defaults,
     onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: 'mineruOnly',
-    aiProvider: 'ollama', ollamaBaseURL: base, translationModel: model, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' }));
+    aiProvider: 'ollama', ollamaBaseURL: observation?.url || base, translationModel: model, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' }));
   const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ cwd: root, ...(executablePath && { executablePath }),
     args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
@@ -55,19 +57,11 @@ async function run() {
     assert.deepEqual(await math.allTextContents(), ['z = x + y', 'r=2']);
     const report = { workspace, paragraphs: 3, typeset: 2 };
     if (process.argv.includes('--live')) {
-      await app.evaluate(() => {
-        const original = global.fetch;
-        global.equationPrompts = [];
-        global.fetch = (url, options) => {
-          if (new URL(url).pathname === '/api/generate' && options?.body) global.equationPrompts.push(JSON.parse(options.body).prompt);
-          return original(url, options);
-        };
-      });
       await openWorkspaceView(page, 'Full Translation');
       await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
       await page.getByText(/^Structure-preserving full translation saved\./).waitFor({ timeout: 180000 });
       const translated = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
-      const prompts = await app.evaluate(() => global.equationPrompts);
+      const prompts = observation.calls.map(call => call.prompt);
       for (const phrase of [first, second, third]) assert.ok(prompts.some(p => p.includes(phrase)), phrase);
       for (const formula of ['z = x + y', 'r=2', '\\frac{a}{b}']) assert.ok(prompts.every(p => !p.includes(formula)), formula);
       const prose = translated.blocks.filter(b => !b.resource);
@@ -94,6 +88,6 @@ async function run() {
     await page.locator('#block-6 .source-text').filter({ hasText: third }).waitFor();
     if (report.exported) await page.locator('#block-6 .translation-text').filter({ hasText: report.translations[2] }).waitFor();
     console.log(JSON.stringify({ ...report, reopened: true }));
-  } finally { await app.close(); }
+  } finally { await app.close(); await observation?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

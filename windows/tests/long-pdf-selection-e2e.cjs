@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 const passages = require('./mac-parity/long-pdf-selections.json');
 
@@ -34,24 +35,14 @@ async function selectPassage(page, passage) {
   }, passage);
 }
 
-async function checkLiveTranslation(app, page, quote, model, baseURL, dir) {
-  await app.evaluate(() => {
-    const generate = global.fetch;
-    global.longSelectionRequests = [];
-    global.fetch = (url, options) => {
-      if (new URL(url).pathname === '/api/generate' && typeof options?.body === 'string') {
-        global.longSelectionRequests.push(JSON.parse(options.body).prompt);
-      }
-      return generate(url, options);
-    };
-  });
+async function checkLiveTranslation(observation, page, quote, model, baseURL, dir) {
   const inspector = page.locator('.inspector');
   const translate = inspector.getByRole('button', { name: 'Translate', exact: true });
   const started = Date.now();
   await translate.click();
   await inspector.getByText('Selection translated.', { exact: true }).waitFor({ timeout: 180000 });
   const translation = await inspector.locator('.inspector-result.translate p').innerText();
-  const prompts = await app.evaluate(() => global.longSelectionRequests);
+  const prompts = observation.calls.map(call => call.prompt);
   assert.equal(prompts.length, 1);
   assert.ok(prompts[0].includes('<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>\n' + quote + '\n<<<END_PAPERBRIDGE_SELECTION>>>'));
   assert.match(translation, /\p{Script=Han}/u);
@@ -73,9 +64,10 @@ async function run() {
   const live = process.argv.includes('--live-translation');
   const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const baseURL = live ? process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434' : 'http://127.0.0.1:9';
+  const observation = live ? await observeLocalOllama(baseURL) : null;
   const env = { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: dir };
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ...defaults, pdfExtractionMode: 'pdfOnly',
-    inspectorOpen: true, onboardingCompletedVersion: 1, autoCheckUpdates: false, ollamaBaseURL: baseURL,
+    inspectorOpen: true, onboardingCompletedVersion: 1, autoCheckUpdates: false, ollamaBaseURL: observation?.url || baseURL,
     sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', quickLookupModel: model }));
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ ...(exe && { executablePath: exe }), cwd: root, env,
@@ -101,7 +93,7 @@ async function run() {
         const line = Number.parseFloat(getComputedStyle(element).lineHeight);
         return element.clientHeight <= 8 * line + 1 && element.scrollHeight > element.clientHeight;
       }), 'The full quotation should fit behind the eight-line inspector preview');
-      if (live && item === passages[0]) await checkLiveTranslation(app, page, quote, model, baseURL, dir);
+      if (live && item === passages[0]) await checkLiveTranslation(observation, page, quote, model, baseURL, dir);
       await inspector.locator('.highlight.amber').click();
       await page.getByLabel('Note for selected passage').fill(item.name);
       await page.getByRole('button', { name: 'Save note', exact: true }).click();
@@ -157,6 +149,6 @@ async function run() {
     assert.equal(preserved.body, damaged.body);
     assert.deepEqual(preserved.anchors, damaged.anchors);
     console.log(JSON.stringify({ dir, pages: observed, comparedWithMac: Boolean(reference) }));
-  } finally { await app.close(); }
+  } finally { await app.close(); await observation?.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

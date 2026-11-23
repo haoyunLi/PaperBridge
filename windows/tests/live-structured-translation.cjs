@@ -5,6 +5,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
@@ -32,13 +33,14 @@ async function run() {
   const id = createHash('sha256').update(markdown).digest('hex');
   const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const base = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
+  const observation = await observeLocalOllama(base);
   const paper = { id, name: 'Control measurements', type: 'text', sourceMode: 'mineru', blocks,
     mineruBlocks: blocks, mineruMarkdown: markdown, position: { tab: 'Full Translation', displayMode: 'bilingual', block: 1 } };
   fs.mkdirSync(path.join(workspace, 'papers'));
   fs.writeFileSync(path.join(workspace, 'papers', id + '.json'), JSON.stringify(paper));
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ...defaults, onboardingCompletedVersion: 1,
-    sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', aiProvider: 'ollama', ollamaBaseURL: base,
+    sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', aiProvider: 'ollama', ollamaBaseURL: observation.url,
     translationModel: model, autoCheckUpdates: false }));
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ cwd: root, ...(exe && { executablePath: exe }),
@@ -49,20 +51,7 @@ async function run() {
   try {
     let page = await app.firstWindow();
     await openWorkspaceView(page, 'Full Translation');
-    await app.evaluate(() => {
-      const fetchLocal = global.fetch;
-      global.structuredInputs = [];
-      global.structuredOutputs = [];
-      global.fetch = async (url, options) => {
-        if (new URL(url).pathname === '/api/generate' && typeof options?.body === 'string') {
-          global.structuredInputs.push(JSON.parse(options.body).prompt);
-          const response = await fetchLocal(url, options);
-          if (response.ok) global.structuredOutputs.push((await response.clone().json()).response);
-          return response;
-        }
-        return fetchLocal(url, options);
-      };
-    });
+
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
     await page.getByText(/^(?:Structure-preserving full translation saved\.|Full translation saved with \d+ unfinished block)/).waitFor({ timeout: 180000 });
     const paperPath = path.join(workspace, 'papers', id + '.json');
@@ -89,8 +78,8 @@ async function run() {
     }
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
     report.version = await page.evaluate(async () => (await window.paperBridge.bootstrap()).version);
-    report.inputs = await app.evaluate(() => global.structuredInputs);
-    report.outputs = await app.evaluate(() => global.structuredOutputs);
+    report.inputs = observation.calls.map(call => call.prompt);
+    report.outputs = observation.calls.filter(call => call.response != null).map(call => call.response);
     report.blocks = saved.blocks.map(({ status, translationMarkdown, error }) => ({ status, translationMarkdown, error }));
     const active = (await (await fetch(base + '/api/ps')).json()).models.find(item => item.name === model || item.model === model);
     report.modelVramBytes = active?.size_vram;
@@ -132,6 +121,7 @@ async function run() {
     report.passed = true;
   } finally {
     await app.close();
+    await observation.close();
     fs.writeFileSync(path.join(workspace, 'result.json'), JSON.stringify(report, null, 2));
     console.log(workspace);
   }

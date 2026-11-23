@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function run() {
@@ -17,8 +18,9 @@ async function run() {
   const blocks = [opening, 'References ' + refs, 'Appendix', closing].map((text, index) => ({ id: index + 1, text }));
   const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const base = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
+  const observation = await observeLocalOllama(base);
   const settings = { ...defaults, onboardingCompletedVersion: 1, autoCheckUpdates: false,
-    sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', aiProvider: 'ollama', ollamaBaseURL: base, translationModel: model };
+    sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', aiProvider: 'ollama', ollamaBaseURL: observation.url, translationModel: model };
   fs.mkdirSync(path.join(work, 'papers'));
   const file = path.join(work, 'papers', id + '.json');
   fs.writeFileSync(file, JSON.stringify({ id, name: 'PLOS reference notes', type: 'text', sourceMode: 'text', blocks,
@@ -35,14 +37,6 @@ async function run() {
     await openWorkspaceView(page, 'Full Translation');
     await page.getByText(oldDraft, { exact: true }).waitFor();
     const read = () => JSON.parse(fs.readFileSync(file, 'utf8'));
-    await app.evaluate(() => {
-      const fetchLocal = global.fetch;
-      global.excerpts = [];
-      global.fetch = (url, options) => {
-        if (new URL(url).pathname === '/api/generate') global.excerpts.push(JSON.parse(options.body).prompt);
-        return fetchLocal(url, options);
-      };
-    });
     await page.getByRole('button', { name: 'Regenerate', exact: true }).click();
     const until = Date.now() + 90000;
     let saved;
@@ -52,7 +46,7 @@ async function run() {
           saved.connectedBlocks?.every(batch => batch.status === 'ok') && saved.connectedTranslation?.includes(refs)) break;
       await new Promise(resolve => setTimeout(resolve, 100));
     } while (Date.now() < until);
-    const prompts = await app.evaluate(() => global.excerpts);
+    const prompts = observation.calls.map(call => call.prompt);
     assert.ok(prompts.some(prompt => prompt.includes(opening)) && prompts.some(prompt => prompt.includes(closing)));
     assert.ok(prompts.every(prompt => !prompt.includes('Best Practices for Scientific Computing.') && !prompt.includes('Code Review For and By Scientists.')));
     assert.ok(saved.connectedTranslation.includes(refs) && /[\u3400-\u9fff]/u.test(saved.connectedTranslation));
@@ -71,6 +65,6 @@ async function run() {
     assert.equal(read().connectedStale, false);
     console.log(JSON.stringify({ work, model, vram: active.size_vram, requests: prompts.length, citationsPreserved: 20, characters: refs.length,
       openingAndAppendixTranslated: true, exported: true, reopened: true }));
-  } finally { await app.close(); }
+  } finally { await app.close(); await observation.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

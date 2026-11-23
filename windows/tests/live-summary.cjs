@@ -5,6 +5,7 @@ const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { createHash } = require('node:crypto');
 const { defaults } = require('../electron/storage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -20,7 +21,8 @@ async function run() {
   const baseURL = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
   const modelName = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const summaryModel = process.env.PAPERBRIDGE_LIVE_SUMMARY_MODEL || 'qwen3:4b-instruct';
-  const overrides = { ollamaBaseURL: baseURL, aiProvider: 'ollama', summaryModel, translationModel: modelName, autoCheckUpdates: false, onboardingCompletedVersion: 1 };
+  const observation = await observeLocalOllama(baseURL);
+  const overrides = { ollamaBaseURL: observation.url, aiProvider: 'ollama', summaryModel, translationModel: modelName, autoCheckUpdates: false, onboardingCompletedVersion: 1 };
   const settingsFile = path.join(workspace, 'settings.json');
   const settings = pdf ? { ...defaults, pdfExtractionMode: 'pdfOnly' } : JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
   fs.writeFileSync(settingsFile, JSON.stringify({ ...settings, ...overrides }));
@@ -44,17 +46,7 @@ async function run() {
       await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
       await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
     }
-    await app.evaluate(() => {
-      global.summaryInputs = [];
-      const fetchLocal = global.fetch;
-      global.fetch = (url, options) => {
-        if (new URL(url).pathname === '/api/generate' && typeof options?.body === 'string') {
-          const { prompt } = JSON.parse(options.body);
-          if (prompt?.startsWith('Summarize this academic paper excerpt')) global.summaryInputs.push(prompt.slice(prompt.indexOf('\n\n') + 2));
-        }
-        return fetchLocal(url, options);
-      };
-    });
+
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.evaluate(() => {
       window.summaryStages = new Set();
@@ -71,7 +63,8 @@ async function run() {
     assert.equal(await page.locator('.notice.error').count(), 0, await page.locator('.notice.error').allTextContents());
     await page.waitForFunction(async id => Boolean((await window.paperBridge.loadPaper(id))?.summary), id);
     const snapshot = await page.evaluate(async id => window.paperBridge.loadPaper(id), id);
-    const inputs = await app.evaluate(() => global.summaryInputs);
+    const inputs = observation.calls.map(call => call.prompt).filter(prompt => prompt.startsWith('Summarize this academic paper excerpt'))
+      .map(prompt => prompt.slice(prompt.indexOf('\n\n') + 2));
     const { summarySourceBlocks, summarySourceBatches } = await import('../src/paper.mjs');
     const expected = summarySourceBatches(summarySourceBlocks(snapshot.blocks)).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
     assert.deepEqual(inputs, expected, 'Every sent source and paragraph ID must match the fresh import');
@@ -133,7 +126,7 @@ async function run() {
       exactSources: sources.length, destinations, uniqueBlocks: [...new Set(sources.map(source => source.paragraphID))],
       models: models.map(model => ({ name: model.name || model.model, vram: model.size_vram, modelSize: model.size }))
     }, null, 2));
-  } finally { await app.close(); }
+  } finally { await app.close(); await observation.close(); }
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });
