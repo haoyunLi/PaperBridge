@@ -36,8 +36,10 @@ async function selectText(page, selector, quote) {
 }
 
 async function launch(root, workspace) {
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
-  const page = await app.firstWindow();
+  const app = await electron.launch({ args: ['.', '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const page = await app.firstWindow({ timeout: 20000 });
+  page.setDefaultTimeout(15000);
+  await page.bringToFront();
   await page.setViewportSize({ width: 1320, height: 900 });
   await page.locator('#block-1').waitFor({ timeout: 20000 });
   return { app, page };
@@ -46,8 +48,9 @@ async function launch(root, workspace) {
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
-  const workspace = path.join(artifacts, 'note-autosave-workspace');
-  fs.rmSync(workspace, { recursive: true, force: true });
+  fs.mkdirSync(artifacts, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'note-autosave-'));
+  const progress = message => fs.appendFileSync(path.join(workspace, 'progress.log'), message + '\n');
   fs.mkdirSync(path.join(workspace, 'papers'), { recursive: true });
   const id = crypto.createHash('sha256').update('PaperBridge note autosave fixture').digest('hex');
   const paperPath = path.join(workspace, 'papers', `${id}.json`);
@@ -70,7 +73,9 @@ async function run() {
   let app;
   let page;
   try {
+    progress('launching the reader');
     ({ app, page } = await launch(root, workspace));
+    progress('checking keyboard selection');
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.locator('.reader-top .search').focus();
@@ -85,6 +90,7 @@ async function run() {
     assert.equal(await textarea.inputValue(), '', 'review-needed note must not populate a new editing session');
     assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0, 'review-needed note must stay out of the text');
 
+    progress('editing a note and undoing changes');
     const exactBody = '  first draft with spaces  \n';
     await textarea.fill(exactBody);
     await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), '350 ms note autosave');
@@ -109,6 +115,7 @@ async function run() {
     await waitFor(async () => await textarea.inputValue() === exactBody, 'native annotation undo restores focused editor');
     await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), 'native undo persists restored text');
 
+    progress('switching selection and clearing an annotation');
     await selectText(page, '#block-1 .source-text', 'Beta control');
     await page.getByPlaceholder('What should you remember?').fill('selection switch flushes me');
     await selectText(page, '#block-1 .source-text', 'Alpha passage');
@@ -121,11 +128,13 @@ async function run() {
     assert.equal(readPaper().blocks[0].notes.some(item => item.id === 'stale' && item.needsReview), true, 'review record remains isolated');
 
     await textarea.fill('flush this exact body on close');
+    progress('closing the reader with a pending note');
     await app.close();
     app = null;
     assert.equal(readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === 'flush this exact body on close'), true, 'normal quit must flush a pending note');
     assert.deepEqual(pageErrors, []);
 
+    progress('reopening the reader and testing retry after a disk error');
     ({ app, page } = await launch(root, workspace));
     await selectText(page, '#block-1 .source-text', 'Alpha passage');
     assert.equal(await page.getByPlaceholder('What should you remember?').inputValue(), 'flush this exact body on close');
@@ -149,7 +158,8 @@ async function run() {
     await page.screenshot({ path: path.join(artifacts, 'note-autosave.png') });
     console.log('Note autosave checks passed: exact whitespace, review isolation, 350 ms debounce, session undo, selection flush, clear semantics, quit flush, sticky status and retry.');
   } catch (error) {
-    await page?.screenshot({ path: path.join(artifacts, 'note-autosave-failure.png') }).catch(() => {});
+    progress(String(error.stack || error));
+    await page?.screenshot({ path: path.join(workspace, 'failure.png'), timeout: 5000 }).catch(() => {});
     throw error;
   } finally {
     await app?.close().catch(() => {});
