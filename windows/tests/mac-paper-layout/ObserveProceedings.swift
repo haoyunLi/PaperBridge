@@ -32,6 +32,8 @@ struct ObserveProceedings {
             "afterFigure": try printed(third, CGRect(x: 69, y: 491, width: 224, height: 12)),
             "leftColumnEnd": try printed(third, CGRect(x: 69, y: 77, width: 224, height: 12)),
             "rightColumnStart": try printed(third, CGRect(x: 305, y: 491, width: 224, height: 12)),
+            "baseModel": try printed(third, CGRect(x: 307, y: 249, width: 52, height: 11)),
+            "largeModel": try printed(third, CGRect(x: 387, y: 235, width: 61, height: 11)),
             "ordinal": try printed(fourth, CGRect(x: 224, y: 441, width: 13, height: 13)),
             "indexedVector": try printed(fourth, CGRect(x: 83, y: 426, width: 11, height: 12)),
             "hiddenDimension": try printed(fifth, CGRect(x: 388, y: 207, width: 18, height: 13)),
