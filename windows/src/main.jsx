@@ -245,8 +245,9 @@ function domRangeIn(root, range, { visibleOnly = false, trimEdges = false } = {}
 // The visible selection carries paragraph breaks, code lines and table separators.
 // Keep textContent-based offsets for exact annotation navigation.
 function renderedSelectionQuote(range, text) {
-  const inMarkdown = node => (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('[data-markdown-host]');
-  if (!inMarkdown(range.startContainer) || !inMarkdown(range.endContainer)) return undefined;
+  const element = node => node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  const first = element(range.startContainer), last = element(range.endContainer);
+  if (!first?.closest('[data-markdown-host]') || !last?.closest('[data-markdown-host]')) return undefined;
   const selection = window.getSelection();
   if (!selection?.rangeCount) return undefined;
   const current = selection.getRangeAt(0);
@@ -254,6 +255,9 @@ function renderedSelectionQuote(range, text) {
       current.compareBoundaryPoints(Range.END_TO_END, range) !== 0) return undefined;
   const quote = selection.toString();
   if (!quote || quote === text || quote.replace(/\s/g, '') !== text.replace(/\s/g, '')) return undefined;
+  // Chromium inserts line breaks between boxes in inline equations. The
+  // visible math text already follows the printed formula in document order.
+  if (first.closest('.katex') || last.closest('.katex') || range.cloneContents().querySelector('.katex')) return undefined;
   return quote;
 }
 function textSelectionOffsets(captured, source, markdown) {
