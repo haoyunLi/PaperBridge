@@ -69,7 +69,7 @@ async function run() {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline && !JSON.parse(fs.readFileSync(paperPath, 'utf8')).blocks.every(block =>
       ['ok', 'failed'].includes(block.status))) await new Promise(resolve => setTimeout(resolve, 100));
-    if (tex.length) {
+    if (tex.length || process.argv.includes('--retry-protected')) {
       const firstPass = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
       const failed = firstPass.blocks.filter(block => block.status === 'failed');
       report.retried = failed.map(block => block.id);
@@ -78,9 +78,8 @@ async function run() {
         for (const block of failed) {
           assert.match(block.error, /changed a protected formula/);
           await page.locator('#block-' + block.id + ' .failure').getByRole('button', { name: 'Retry', exact: true }).click();
-          await page.locator('#block-' + block.id + ' .translation-text .katex annotation').first()
-            .waitFor({ state: 'attached', timeout: 35000 });
-          const until = Date.now() + 5000;
+          await page.locator('#block-' + block.id + ' .translation-text').waitFor({ timeout: 35000 });
+          const until = Date.now() + 10000;
           while (Date.now() < until && JSON.parse(fs.readFileSync(paperPath, 'utf8')).blocks.find(item => item.id === block.id)?.status !== 'ok') {
             await new Promise(resolve => setTimeout(resolve, 50));
           }

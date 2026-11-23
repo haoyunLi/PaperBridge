@@ -89,15 +89,15 @@ async function run() {
     const editor = page.locator('.inspector textarea');
     await editor.click();
     if (clipboardTest) {
-      const handle = await app.evaluate(({ BrowserWindow }) => {
+      const target = await app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows()[0];
         window.focus();
         const buffer = window.getNativeWindowHandle();
-        return String(buffer.length === 8 ? buffer.readBigUInt64LE() : buffer.readUInt32LE());
+        return { handle: String(buffer.length === 8 ? buffer.readBigUInt64LE() : buffer.readUInt32LE()), pid: process.pid };
       });
       for (const [layout, typed] of [['00000407', '€'], ['00000415', '€ś']]) {
         await execFileAsync('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', path.join(__dirname, 'type-altgr.ps1'),
-          '-WindowHandle', handle, '-AppProcessId', String(app.process().pid), '-Layout', layout], { windowsHide: true, timeout: 15000 });
+          '-WindowHandle', target.handle, '-AppProcessId', String(target.pid), '-Layout', layout], { windowsHide: true, timeout: 15000 });
         assert.equal(await editor.inputValue(), typed, 'AltGr on layout ' + layout + ' must type in the note');
       }
       await clickRole('selectall');
