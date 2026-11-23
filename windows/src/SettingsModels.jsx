@@ -11,7 +11,7 @@ export default function SettingsModels({ settings, models = [], hardware, busy =
   const cardProps = { settings, models, storage, busy: Boolean(busy || downloading), activeModel: downloading ? pullProgress.model : null, onUse, onDownload };
 
   return <div className="settings-models">
-    <ModelMemoryGuide className="settings-model-memory" hardware={hardware} storage={storage} />
+    <ModelMemoryGuide className="settings-model-memory" hardware={hardware} storage={storage} models={models} />
     <section className="settings-model-group" aria-labelledby={`${id}-translation`} data-model-role="translation">
       <header><h3 id={`${id}-translation`}>Translation models</h3><span>Required for translation</span></header>
       <p>Choose one TranslateGemma size. Selecting it updates assistant roles that followed the previous translation model or whose model is missing. Other installed assistant selections are kept.</p>

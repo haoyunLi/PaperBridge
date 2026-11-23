@@ -38,4 +38,13 @@ test('memory suggestions use system RAM and never mistake Windows adapter memory
   assert.equal(suggest(12, card('NVIDIA', 24)), 'translategemma:4b');
   assert.equal(suggest(64, card('Intel', 0.5)), 'translategemma:4b');
   assert.equal(suggest(64, { vendor: 'AMD', memoryBytes: 2 ** 32 - 1 }), 'translategemma:27b');
+  const hardware = { systemMemoryBytes: 64 * 1024 ** 3, adapters: [card('AMD', 16)] };
+  const onDisk = (freeBytes, installed = []) => suggestedTranslationModel(hardware, undefined, { freeBytes }, installed)?.id;
+  assert.equal(onDisk(8.1e9), 'translategemma:12b');
+  assert.equal(onDisk(8.1e9 - 1), 'translategemma:4b');
+  assert.equal(onDisk(155648), undefined);
+  assert.equal(onDisk(155648, ['translategemma:4b']), 'translategemma:4b');
+  assert.equal(onDisk(155648, ['translategemma:12b']), 'translategemma:12b');
+  assert.equal(onDisk(155648, ['translategemma:27b']), undefined);
+  assert.equal(onDisk(null), 'translategemma:12b');
 });

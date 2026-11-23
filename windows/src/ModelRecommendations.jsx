@@ -1,23 +1,23 @@
 import React from 'react';
 import { Check, Download } from 'lucide-react';
 import { hasOllamaModel } from '../electron/ollama-models.mjs';
-import { fitsModelEstimate, isCatalogModelSelected, largestDedicatedAdapter, suggestedTranslationModel } from './modelCatalog.mjs';
+import { fitsModelEstimate, hasEstimatedDownloadSpace, isCatalogModelSelected, largestDedicatedAdapter, suggestedTranslationModel } from './modelCatalog.mjs';
 import { describeAdapter, formatMemory } from './hardwareDisplay.mjs';
 import './model-recommendations.css';
 
-export function ModelMemoryGuide({ hardware, storage, className }) {
+export function ModelMemoryGuide({ hardware, storage, models, className }) {
   const memory = Number(hardware?.systemMemoryBytes) / 1024 ** 3;
   const adapter = largestDedicatedAdapter(hardware);
-  const model = suggestedTranslationModel(hardware, adapter);
+  const model = suggestedTranslationModel(hardware, adapter, storage, models);
   let guidance = 'This estimate uses system RAM and allows room for Windows and the model runtime.';
-  if (adapter) {
+  if (adapter && model) {
     const sizing = fitsModelEstimate(model, adapter) ? 'The estimate leaves 20% of dedicated memory for context and runtime.'
       : 'Even the smallest model may need to use system RAM.';
     guidance = `Based on system RAM and ${describeAdapter(adapter)}. ${sizing}`;
   }
   return <div className={className}>
     <strong>{Number.isFinite(memory) && memory > 0 ? `This PC: ${Math.round(memory)} GiB system RAM` : 'System memory is not available'}</strong>
-    <span>Starting suggestion: {model.title}</span>
+    <span>{model ? `Starting suggestion: ${model.title}` : 'More free disk space may be needed for a recommended model.'}</span>
     <p>{guidance} Ollama reports GPU use after loading the model.</p>
     {storage && <p>Windows model drive {storage.drive} · {formatMemory(storage.freeBytes)} free at last check</p>}
   </div>;
@@ -27,7 +27,7 @@ export function ModelCard({ model, installed, selected, active, disabled, storag
   return <article className={`model-card onboarding-model-card ${selected ? 'selected' : ''}`} data-model-id={model.id}>
     <div className="model-card-copy"><div className="model-card-title"><h3>{model.title}</h3><span>{model.badge}</span>{installed && <b><Check size={12} /> Installed</b>}</div>
       <code>{model.id}</code><p>{model.detail}</p><small>{model.guidance}</small>
-      {!installed && storage && storage.freeBytes < model.downloadGB * 1e9 && <small className="model-space-warning">
+      {!installed && !hasEstimatedDownloadSpace(model, storage) && <small className="model-space-warning">
         The full download may need more space than this drive has. Ollama can reuse existing model files.
       </small>}
       <div className="model-card-meta"><span>About {model.downloadGB.toFixed(1)} GB download</span><a href={model.url} target="_blank" rel="noreferrer">Official model details</a></div>

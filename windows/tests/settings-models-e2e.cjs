@@ -292,6 +292,7 @@ async function run() {
     await page.getByLabel('Translation model').locator('option').filter({ hasText: 'translategemma:4b' }).waitFor({ state: 'attached' });
     await clickTab('Local AI');
     await page.getByText('Windows model drive T: · 155,648 bytes free at last check', { exact: true }).waitFor();
+    await page.getByText('Starting suggestion: TranslateGemma 4B', { exact: true }).waitFor();
     assert.equal(await card('translategemma:4b').locator('.model-space-warning').count(), 0);
     for (const model of ['translategemma:12b', 'translategemma:27b']) {
       await card(model).locator('.model-space-warning').waitFor();

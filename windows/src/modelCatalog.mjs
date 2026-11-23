@@ -64,10 +64,15 @@ export function fitsModelEstimate(model, adapter) {
   return Boolean(adapter && model.downloadGB * 1e9 <= adapter.dedicatedMemoryBytes * 0.8);
 }
 
-export function suggestedTranslationModel(hardware, adapter = largestDedicatedAdapter(hardware)) {
+export function hasEstimatedDownloadSpace(model, storage) {
+  return !Number.isSafeInteger(storage?.freeBytes) || storage.freeBytes < 0 || model.downloadGB * 1e9 <= storage.freeBytes;
+}
+
+export function suggestedTranslationModel(hardware, adapter = largestDedicatedAdapter(hardware), storage, installed = []) {
   const bytes = Number(hardware?.systemMemoryBytes);
   const gib = Number.isFinite(bytes) && bytes > 0 ? bytes / 1024 ** 3 : 0;
   const index = gib >= 48 ? 2 : gib >= 24 ? 1 : 0;
-  if (!adapter) return TRANSLATION_MODELS[index];
-  return TRANSLATION_MODELS.slice(0, index + 1).findLast(model => fitsModelEstimate(model, adapter)) || TRANSLATION_MODELS[0];
+  return TRANSLATION_MODELS.slice(0, index + 1).findLast(model =>
+    (!adapter || model === TRANSLATION_MODELS[0] || fitsModelEstimate(model, adapter)) &&
+    (hasEstimatedDownloadSpace(model, storage) || hasOllamaModel(installed, model.id))) || null;
 }
