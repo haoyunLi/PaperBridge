@@ -9,15 +9,22 @@ const exec = promisify(execFile);
 
 const pythonVersionDir = /^Python3\d{1,2}t?(?:-(?:32|64|arm64))?$/i;
 
+const managerVersionDir = /^pythoncore-3\.(\d{1,2}t?)(?:-(?:32|64|arm64))?$/i;
+
+function pathDirectories(environment) {
+  return String(environment.PATH || environment.Path || '').split(path.delimiter)
+    .map(directory => directory.trim().replace(/^"|"$/g, '')).filter(Boolean);
+}
+
 function userPythonBase(environment) {
   return environment.PYTHONUSERBASE || (environment.APPDATA && path.join(environment.APPDATA, 'Python'));
 }
 
-function pythonScriptDirectories(root, fileSystem) {
+function pythonScriptDirectories(root, fileSystem, pattern = pythonVersionDir) {
   if (!root || !path.isAbsolute(root)) return [];
   try {
     return fileSystem.readdirSync(root, { withFileTypes: true })
-      .filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && pythonVersionDir.test(entry.name))
+      .filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && pattern.test(entry.name))
       .map(entry => entry.name).sort((a, b) => b.localeCompare(a, 'en', { numeric: true }))
       .map(name => path.join(root, name, 'Scripts'));
   } catch { return []; }
@@ -28,13 +35,18 @@ function candidates(configured, toolsRoot, environment = process.env, fileSystem
   if (selected && !/^(?:mineru|mineru\.exe)$/i.test(selected)) return [{ executable: path.resolve(selected), source: 'configured' }];
   const result = [];
   if (toolsRoot) result.push({ executable: path.join(toolsRoot, 'mineru', 'Scripts', 'mineru.exe'), source: 'managed' });
-  for (const directory of String(environment.PATH || environment.Path || '').split(path.delimiter)) {
-    const cleaned = directory.trim().replace(/^"|"$/g, '');
-    if (cleaned) result.push({ executable: path.join(cleaned, 'mineru.exe'), source: 'path' });
+  for (const directory of pathDirectories(environment)) {
+    result.push({ executable: path.join(directory, 'mineru.exe'), source: 'path' });
   }
   const localPython = environment.LOCALAPPDATA && path.join(environment.LOCALAPPDATA, 'Programs', 'Python');
   for (const root of [userPythonBase(environment), localPython]) {
     for (const directory of pythonScriptDirectories(root, fileSystem)) {
+      result.push({ executable: path.join(directory, 'mineru.exe'), source: 'python' });
+    }
+  }
+  if (environment.LOCALAPPDATA) {
+    const root = path.join(environment.LOCALAPPDATA, 'Python');
+    for (const directory of pythonScriptDirectories(root, fileSystem, managerVersionDir)) {
       result.push({ executable: path.join(directory, 'mineru.exe'), source: 'python' });
     }
   }
@@ -45,6 +57,38 @@ function candidates(configured, toolsRoot, environment = process.env, fileSystem
     seen.add(key);
     return true;
   });
+}
+
+async function managerInterpreters(environment = process.env) {
+  const directories = pathDirectories(environment);
+  if (environment.LOCALAPPDATA) directories.push(path.join(environment.LOCALAPPDATA, 'Microsoft', 'WindowsApps'));
+  const manager = directories.filter(directory => path.isAbsolute(directory))
+    .map(directory => path.join(directory, 'pymanager.exe')).find(file => fs.existsSync(file));
+  if (!manager) return [];
+  try {
+    // "list" reads installed runtimes, including custom locations, without launching Python.
+    const { stdout } = await exec(manager, ['list', '--format=exe'], {
+      env: { ...environment, PYTHON_MANAGER_AUTOMATIC_INSTALL: 'false', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+      timeout: 4000, windowsHide: true, encoding: 'utf8'
+    });
+    return stdout.split(/\r?\n/).map(line => line.trim()).filter(file =>
+      path.isAbsolute(file) && /^python(?:3(?:\.\d+)?t?)?\.exe$/i.test(path.basename(file)) && isFile(file));
+  } catch { return []; }
+}
+
+async function* discoveryCandidates(configured, toolsRoot, environment, fileSystem, listInterpreters) {
+  const initial = candidates(configured, toolsRoot, environment, fileSystem);
+  yield* initial;
+  if (initial[0]?.source === 'configured') return;
+  const seen = new Set(initial.map(item => path.resolve(item.executable).toLowerCase()));
+  for (const python of await listInterpreters(environment)) {
+    const executable = path.join(path.dirname(python), 'Scripts', 'mineru.exe');
+    const key = path.resolve(executable).toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      yield { executable, source: 'python' };
+    }
+  }
 }
 
 async function probeVersion(executable, toolsRoot) {
@@ -119,7 +163,7 @@ function isFile(file, fileSystem = fs) {
   try { return fileSystem.statSync(file).isFile(); } catch { return false; }
 }
 
-function mineruPython(executable, environment = process.env) {
+async function mineruPython(executable, environment = process.env, listInterpreters = managerInterpreters) {
   const directory = path.dirname(executable);
   const adjacent = path.join(directory, 'python.exe');
   if (isFile(adjacent)) return adjacent;
@@ -142,12 +186,20 @@ function mineruPython(executable, environment = process.env) {
     const header = /#!(?:"([^"\x00-\x1f]+)"|([^"\x00-\x1f]+))\r?\nPK\x03\x04/.exec(launcher.subarray(-65536).toString('utf8'));
     const recorded = header?.[1] || header?.[2];
     if (!recorded || !path.isAbsolute(recorded)) return '';
-    const local = path.join(environment.LOCALAPPDATA, 'Programs', 'Python');
-    const version = path.basename(prefix).replace(/-(?:32|64|arm64)$/i, '');
-    for (const suffix of ['', '-32', '-64', '-arm64']) {
-      const expected = path.join(local, version + suffix, 'python.exe');
-      if (path.resolve(recorded).toLowerCase() === path.resolve(expected).toLowerCase() && isFile(expected)) return expected;
+    if (!isFile(recorded)) return '';
+    const owner = path.dirname(recorded);
+    const ownerName = path.basename(owner);
+    const ownerRoot = path.dirname(owner).toLowerCase();
+    const version = path.basename(prefix).replace(/-(?:32|64|arm64)$/i, '').toLowerCase();
+    if (path.basename(recorded).toLowerCase() === 'python.exe') {
+      const classic = path.join(environment.LOCALAPPDATA, 'Programs', 'Python').toLowerCase();
+      if (ownerRoot === classic && ownerName.replace(/-(?:32|64|arm64)$/i, '').toLowerCase() === version) return recorded;
+      const manager = path.join(environment.LOCALAPPDATA, 'Python').toLowerCase();
+      const match = managerVersionDir.exec(ownerName);
+      if (ownerRoot === manager && match && 'python3' + match[1].toLowerCase() === version) return recorded;
     }
+    const installed = await listInterpreters(environment);
+    return installed.find(file => path.resolve(file).toLowerCase() === path.resolve(recorded).toLowerCase()) || '';
   } catch { /* Unknown launchers retain their normal import path. */ }
   return '';
 }
@@ -160,7 +212,9 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
   let firstIncompatible = null;
   let managedUnavailable = '';
   const managed = toolsRoot && path.join(mineruPaths(toolsRoot).final, 'Scripts', 'mineru.exe').toLowerCase();
-  for (const candidate of candidates(configured, toolsRoot, options.environment, fileSystem)) {
+  const locations = discoveryCandidates(configured, toolsRoot, options.environment || process.env, fileSystem,
+    options.listInterpreters || managerInterpreters);
+  for await (const candidate of locations) {
     if (managed && path.resolve(candidate.executable).toLowerCase() === managed && !options.repairOwner) {
       try {
         if (!managedMineruAvailable(toolsRoot)) managedUnavailable = 'MinerU setup is running in another operation. Wait for it to finish.';

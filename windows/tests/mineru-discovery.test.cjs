@@ -6,7 +6,7 @@ const path = require('node:path');
 const { candidates, createMineruStaging, detectMineruExecutable, mineruInvocation, mineruPython } = require('../electron/mineru-discovery.cjs');
 const { mineruPaths, claimMineruSetup, beginMineruActivation, commitMineruActivation } = require('../electron/mineru-installation.cjs');
 
-test('legacy probes use the interpreter belonging to the launcher installation', t => {
+test('legacy probes use the interpreter belonging to the launcher installation', async t => {
   const { root } = fixture(t);
   const scripts = path.join(root, 'Python with spaces', 'Scripts');
   const executable = path.join(scripts, 'mineru.exe');
@@ -14,14 +14,14 @@ test('legacy probes use the interpreter belonging to the launcher installation',
   const globalPython = path.join(prefix, 'python.exe'), venvPython = path.join(scripts, 'python.exe');
   fs.mkdirSync(scripts, { recursive: true });
   fs.writeFileSync(globalPython, '');
-  assert.equal(mineruPython(executable), '', 'A parent Python without the MinerU package is ambiguous');
+  assert.equal(await mineruPython(executable), '', 'A parent Python without the MinerU package is ambiguous');
   const pkg = path.join(prefix, 'Lib', 'site-packages', 'mineru');
   fs.mkdirSync(pkg, { recursive: true });
   fs.writeFileSync(path.join(pkg, '__init__.py'), '');
-  assert.equal(mineruPython(executable), globalPython);
-  assert.equal(mineruPython(path.join(prefix, 'other', 'mineru.exe')), '');
+  assert.equal(await mineruPython(executable), globalPython);
+  assert.equal(await mineruPython(path.join(prefix, 'other', 'mineru.exe')), '');
   fs.writeFileSync(venvPython, '');
-  assert.equal(mineruPython(executable), venvPython);
+  assert.equal(await mineruPython(executable), venvPython);
 });
 
 function fixture(t) {
@@ -71,17 +71,71 @@ test('standard Python script directories are discoverable even when pip did not 
   const environment = { LOCALAPPDATA: local, APPDATA: roaming, PATH: '' };
   const launcher = executable => Buffer.from('#!"' + executable + '"\r\nPK\x03\x04');
   fs.writeFileSync(userCommand, launcher(python));
-  assert.equal(mineruPython(userCommand, environment), python);
+  assert.equal(await mineruPython(userCommand, environment), python);
   assert.deepEqual(candidates('', toolsRoot, environment).filter(c => c.source === 'python').map(c => c.executable),
     [userCommand, path.join(pythonPrefix, 'Scripts', 'mineru.exe')]);
   const found = await detectMineruExecutable('', toolsRoot, { environment, probeVersion: async cmd =>
     cmd === userCommand ? 'MinerU 3.4.5' : 'Unavailable' });
   assert.equal(found.executable, userCommand);
   fs.writeFileSync(userCommand, launcher(path.join(root, 'other', 'python.exe')));
-  assert.equal(mineruPython(userCommand, environment), '');
+  assert.equal(await mineruPython(userCommand, environment), '');
   fs.writeFileSync(userCommand, launcher(python));
-  assert.equal(mineruPython(userCommand, { ...environment, PYTHONUSERBASE: path.join(root, 'different base') }), '');
+  assert.equal(await mineruPython(userCommand, { ...environment, PYTHONUSERBASE: path.join(root, 'different base') }), '');
   assert.deepEqual(candidates(userCommand, toolsRoot, environment), [{ executable: userCommand, source: 'configured' }]);
+});
+
+test('Python install manager directories, including free-threaded ones, resolve without starting a manager', async t => {
+  const { root } = fixture(t);
+  const local = path.join(root, 'Local');
+  const user = path.join(root, 'User', 'Python313t');
+  const managed = path.join(local, 'Python', 'pythoncore-3.13t-arm64');
+  const classic = path.join(local, 'Programs', 'Python', 'Python313');
+  const script = path.join(managed, 'Scripts', 'mineru.exe');
+  const userScript = path.join(user, 'Scripts', 'mineru.exe');
+  const python = path.join(managed, 'python.exe');
+  for (const file of [script, userScript, python, path.join(user, 'site-packages', 'mineru', '__init__.py'),
+    path.join(classic, 'python.exe'), path.join(local, 'Python', '_cache', 'Scripts', 'mineru.exe')]) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, '');
+  }
+  const env = { LOCALAPPDATA: local, PYTHONUSERBASE: path.dirname(user), PATH: '' };
+  const unexpected = () => assert.fail('A working standard install should resolve without listing runtimes');
+  fs.writeFileSync(userScript, '#!"' + python + '"\nPK\x03\x04');
+  assert.equal(await mineruPython(userScript, env, unexpected), python);
+  const found = await detectMineruExecutable('', '', { environment: { LOCALAPPDATA: local, PATH: '' },
+    probeVersion: async () => 'MinerU 3.4.5', listInterpreters: unexpected });
+  assert.equal(found.executable, script);
+  fs.writeFileSync(userScript, '#!"' + path.join(classic, 'python.exe') + '"\nPK\x03\x04');
+  assert.equal(await mineruPython(userScript, env, async () => []), '');
+});
+
+test('custom manager locations are queried after ordinary discovery and remain subordinate to an explicit path', async t => {
+  const { root, onPath } = fixture(t);
+  const prefix = path.join(root, '自定义 安装');
+  const python = path.join(prefix, 'python.exe'), mineru = path.join(prefix, 'Scripts', 'mineru.exe');
+  fs.mkdirSync(path.dirname(mineru), { recursive: true });
+  fs.writeFileSync(python, '');
+  fs.writeFileSync(mineru, '');
+  let lists = 0;
+  const opts = { environment: { PATH: path.dirname(onPath) },
+    listInterpreters: async () => { lists++; return [python, python]; },
+    probeVersion: async executable => executable === mineru ? 'MinerU 3.4.5' : 'unrecognized' };
+  const found = await detectMineruExecutable('', '', opts);
+  assert.equal(found.executable, mineru);
+  assert.equal(found.source, 'python');
+  assert.equal(lists, 1);
+  const explicit = await detectMineruExecutable(onPath, '', opts);
+  assert.equal(explicit.compatible, false);
+  assert.equal(lists, 1);
+  const env = { ...opts.environment, LOCALAPPDATA: root, PYTHONUSERBASE: path.join(root, 'pip') };
+  const user = path.join(env.PYTHONUSERBASE, 'Python312');
+  const userScript = path.join(user, 'Scripts', 'mineru.exe');
+  fs.mkdirSync(path.dirname(userScript), { recursive: true });
+  fs.mkdirSync(path.join(user, 'site-packages', 'mineru'), { recursive: true });
+  fs.writeFileSync(path.join(user, 'site-packages', 'mineru', '__init__.py'), '');
+  fs.writeFileSync(userScript, '#!"' + python + '"\r\nPK\x03\x04');
+  assert.equal(await mineruPython(userScript, env, opts.listInterpreters), python);
+  assert.equal(await mineruPython(userScript, env, async () => []), '');
 });
 
 test('auto-detect skips a broken managed command and chooses compatible PATH MinerU', async t => {

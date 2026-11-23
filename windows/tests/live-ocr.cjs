@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { _electron: electron } = require('playwright-core');
+const { mineruPython } = require('../electron/mineru-discovery.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -56,7 +57,8 @@ async function run() {
       assert.match(detected.runtime.description, /compatibility mode uses CPU/);
     }
     if (installMineru) assert.equal(detected.source, 'managed');
-    const python = path.join(path.dirname(detected.executable), 'python.exe');
+    const python = await mineruPython(detected.executable);
+    assert.ok(python, 'The scan fixture needs the Python interpreter that owns the detected MinerU installation');
     execFileSync(python, [path.join(__dirname, 'make-scanned-pdf.py'), source]);
     const started = performance.now();
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, source);

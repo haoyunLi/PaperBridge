@@ -116,7 +116,7 @@ async function mineruRuntime(executable, toolsRoot, { found, signal, backend = '
       return { checked: true, engine: 'onnx', directml, devices: directml && adapter ? [adapter] : [], description };
     } catch (error) { return { checked: false, engine: 'onnx', reason: `Cannot check MinerU ONNX: ${error.message.slice(0, 140)}` }; }
   }
-  const python = mineruPython(detected.executable);
+  const python = await mineruPython(detected.executable);
   if (!python) return { checked: false, reason: 'Could not identify the Python environment that owns this MinerU command. Check acceleration in that environment manually.' };
   try {
     const script = `
