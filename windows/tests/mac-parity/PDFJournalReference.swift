@@ -74,5 +74,7 @@ func nativePDFJournal(fixtures: URL) throws -> [String: Any] {
         if partial[index].id == 189 { partial[index].status = .failed }
     }
     return ["sourceSHA256": saved.sourceSHA256, "nativeSource": nativeSource,
+            "nativeSummaryBatches": SummaryEvidence.sourceBatches(paper.paragraphs),
+            "savedSummaryBatches": SummaryEvidence.sourceBatches(complete.map(\.original)),
             "complete": try export(complete, name: "Complete"), "partial": try export(partial, name: "Partial")]
 }

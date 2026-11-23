@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { markdownDocuments } from '../../src/exportDocuments.mjs';
 import { annotationsMarkdown } from '../../src/annotationsMarkdown.mjs';
 import { referenceBlockIds } from '../../src/references.mjs';
+import { summarySourceBlocks, summarySourceBatches } from '../../src/paper.mjs';
 import { writeBundle } from '../../electron/bundle.cjs';
 
 const directory = new URL('./good-enough/', import.meta.url);
@@ -65,6 +66,13 @@ export function verifyPDFJournal(reference, work) {
   const pdf = fileURLToPath(new URL('article.pdf', directory));
   assert.equal(createHash('sha256').update(readFileSync(pdf)).digest('hex'), reference.sourceSHA256);
   assert.ok(reference.nativeSource.some(text => text.includes('Good enough practices in scientific computing')));
+  // Each PDF reader assigns its own paragraph IDs. Run both batching implementations
+  // on each independent extraction so that a citation always points into the source used.
+  const tagged = blocks => summarySourceBatches(blocks).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
+  assert.deepEqual(tagged(reference.nativeSource.map((text, i) => ({ id: i + 1, text }))), reference.nativeSummaryBatches);
+  const source = summarySourceBlocks(savedPDFJournal().blocks);
+  assert.deepEqual(tagged(source), reference.savedSummaryBatches);
+  assert.ok(reference.nativeSummaryBatches.length > 6 && reference.savedSummaryBatches.length > 6);
   for (const state of ['complete', 'partial']) {
     const paper = savedPDFJournal(state === 'partial');
     assert.equal(paper.id, reference.sourceSHA256);

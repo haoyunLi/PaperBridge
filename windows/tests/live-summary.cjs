@@ -1,34 +1,60 @@
-// Opt-in AMD test. Reuse a real PDF workspace from the DirectML MinerU test.
+// Opt-in AMD test using a new PDF or an isolated copy of the DirectML MinerU workspace.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
+const { createHash } = require('node:crypto');
+const { defaults } = require('../electron/storage.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
   const source = process.env.PAPERBRIDGE_LIVE_SUMMARY_WORKSPACE || path.join(artifacts, 'live-mineru-directml-workspace');
   const workspace = fs.mkdtempSync(path.join(artifacts, 'summary-amd-'));
-  fs.cpSync(source, workspace, { recursive: true });
+  const pdf = process.env.PAPERBRIDGE_LIVE_SUMMARY_PDF;
+  if (!pdf) fs.cpSync(source, workspace, { recursive: true });
   const paperDir = path.join(workspace, 'papers');
-  const paperFile = path.join(paperDir, fs.readdirSync(paperDir).find(name => /^[a-f\d]{64}\.json$/.test(name)));
-  const readPaper = () => JSON.parse(fs.readFileSync(paperFile, 'utf8'));
-  const saved = readPaper();
-  assert.equal(saved.sourceMode, 'mineru');
+  const id = pdf ? createHash('sha256').update(fs.readFileSync(pdf)).digest('hex')
+    : fs.readdirSync(paperDir).find(name => /^[a-f\d]{64}\.json$/.test(name)).slice(0, -5);
+  const paperFile = path.join(paperDir, id + '.json');
   const baseURL = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
   const modelName = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
   const summaryModel = process.env.PAPERBRIDGE_LIVE_SUMMARY_MODEL || 'qwen3:4b-instruct';
   const overrides = { ollamaBaseURL: baseURL, aiProvider: 'ollama', summaryModel, translationModel: modelName, autoCheckUpdates: false, onboardingCompletedVersion: 1 };
   const settingsFile = path.join(workspace, 'settings.json');
-  fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')), ...overrides }));
-  fs.writeFileSync(paperFile, JSON.stringify({ ...saved, summary: null, taskSettings: { ...saved.taskSettings, ...overrides } }));
+  const settings = pdf ? { ...defaults, pdfExtractionMode: 'pdfOnly' } : JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+  fs.writeFileSync(settingsFile, JSON.stringify({ ...settings, ...overrides }));
+  if (!pdf) {
+    const saved = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    assert.equal(saved.sourceMode, 'mineru');
+    fs.writeFileSync(paperFile, JSON.stringify({ ...saved, summary: null, taskSettings: { ...saved.taskSettings, ...overrides } }));
+  }
 
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     const page = await app.firstWindow();
-    await page.getByRole('button', { name: 'Paper', exact: true }).click();
-    await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
-    await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
+    if (pdf) {
+      await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, path.resolve(pdf));
+      await page.getByRole('button', { name: 'Open PDF', exact: true }).first().click();
+      await page.getByRole('heading', { name: path.basename(pdf), exact: true }).waitFor({ timeout: 60000 });
+      await page.waitForFunction(() => !document.querySelector('.task-progress'));
+    } else {
+      await page.getByRole('button', { name: 'Paper', exact: true }).click();
+      await page.getByRole('button', { name: 'Switch to PDF text', exact: true }).click();
+      await page.getByRole('button', { name: 'Switch to MinerU Markdown', exact: true }).waitFor();
+    }
+    await app.evaluate(() => {
+      global.summaryInputs = [];
+      const fetchLocal = global.fetch;
+      global.fetch = (url, options) => {
+        if (new URL(url).pathname === '/api/generate' && typeof options?.body === 'string') {
+          const { prompt } = JSON.parse(options.body);
+          if (prompt?.startsWith('Summarize this academic paper excerpt')) global.summaryInputs.push(prompt.slice(prompt.indexOf('\n\n') + 2));
+        }
+        return fetchLocal(url, options);
+      };
+    });
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.evaluate(() => {
       window.summaryStages = new Set();
@@ -43,8 +69,13 @@ async function run() {
     await page.getByText('Summary saved. Only exact-match source quotations are linked.', { exact: true })
       .or(page.locator('.notice.error')).first().waitFor({ timeout: 600000 });
     assert.equal(await page.locator('.notice.error').count(), 0, await page.locator('.notice.error').allTextContents());
-    await page.waitForFunction(async id => Boolean((await window.paperBridge.loadPaper(id))?.summary), saved.id);
-    const snapshot = await page.evaluate(async id => window.paperBridge.loadPaper(id), saved.id);
+    await page.waitForFunction(async id => Boolean((await window.paperBridge.loadPaper(id))?.summary), id);
+    const snapshot = await page.evaluate(async id => window.paperBridge.loadPaper(id), id);
+    const inputs = await app.evaluate(() => global.summaryInputs);
+    const { summarySourceBlocks, summarySourceBatches } = await import('../src/paper.mjs');
+    const expected = summarySourceBatches(summarySourceBlocks(snapshot.blocks)).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
+    assert.deepEqual(inputs, expected, 'Every sent source and paragraph ID must match the fresh import');
+    fs.writeFileSync(path.join(workspace, 'model-inputs.json'), JSON.stringify(inputs));
     const sources = snapshot.summary.claims.flatMap(claim => claim.sources);
     assert.ok(snapshot.summary.claims.length > 0 && snapshot.summary.claims.length <= 6);
     assert.ok(sources.length > 0, 'The live model should produce at least one exact citation');
@@ -90,7 +121,7 @@ async function run() {
     const models = loaded.models.filter(item => [modelName, summaryModel].includes(item.name || item.model));
     assert.ok(models.some(model => (model.name || model.model) === modelName && model.size_vram > 0), 'Ollama must report translation model VRAM allocation');
     console.log(JSON.stringify({
-      workspace, seconds: (Date.now() - started) / 1000, stages, claims: snapshot.summary.claims.length,
+      workspace, sourceId: id, inputBatches: inputs.length, seconds: (Date.now() - started) / 1000, stages, claims: snapshot.summary.claims.length,
       exactSources: sources.length, destinations, uniqueBlocks: [...new Set(sources.map(source => source.paragraphID))],
       models: models.map(model => ({ name: model.name || model.model, vram: model.size_vram, modelSize: model.size }))
     }, null, 2));
