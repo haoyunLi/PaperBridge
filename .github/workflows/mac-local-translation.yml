@@ -1,0 +1,64 @@
+name: Compare local Mac translations
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mac-local-translation.yml'
+      - 'windows/tests/mac-local-translation/**'
+  workflow_dispatch:
+
+jobs:
+  translate:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile the Mac reader's translation actions
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          services=(PaperBridge/Services/*.swift)
+          services=("${services[@]:#*/AppUpdateController.swift}")
+          xcrun swiftc PaperBridge/Models.swift PaperBridge/PaperReaderViewModel*.swift PaperBridge/Utilities/*.swift \
+            PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/SelectableAcademicText.swift PaperBridge/Views/PDFDocumentView.swift PaperBridge/Views/MarkdownPreviewView.swift \
+            "${services[@]}" windows/tests/mac-local-translation/Compare.swift -o "$RUNNER_TEMP/compare-local"
+      - name: Translate the three PLOS paragraphs and their connected draft
+        shell: bash
+        env:
+          OLLAMA_HOST: 127.0.0.1:11491
+          OLLAMA_MODELS: ${{ runner.temp }}/paperbridge-models
+        run: |
+          set -euo pipefail
+          dir="$RUNNER_TEMP/ollama-local"
+          out="$RUNNER_TEMP/mac-local-result"
+          mkdir -p "$dir" "$out"
+          curl -fLsS --retry 3 https://github.com/ollama/ollama/releases/download/v0.40.16/ollama-darwin.tgz -o "$dir/cli.tgz"
+          (cd "$dir" && echo "a743717494315da7cd352982b805f6b992d4b4452ca117fd5fbf86c4ee46fca0  cli.tgz" | shasum -a 256 -c -)
+          tar -xzf "$dir/cli.tgz" -C "$dir"
+          cli=$(find "$dir" -type f -name ollama -print -quit)
+          "$cli" serve > "$RUNNER_TEMP/ollama-serve.log" 2>&1 &
+          service=$!
+          trap 'kill "$service" 2>/dev/null || true' EXIT
+          for i in {1..60}; do
+            if curl -fsS "http://$OLLAMA_HOST/api/version" > "$out/version.json" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          "$cli" pull translategemma:4b > "$RUNNER_TEMP/ollama-pull.log" 2>&1 || { tail -c 1200 "$RUNNER_TEMP/ollama-pull.log"; exit 1; }
+          curl -fsS "http://$OLLAMA_HOST/api/tags" > "$out/tags.json"
+          python3 - "$out" <<'PY'
+          import json, pathlib, sys
+          folder = pathlib.Path(sys.argv[1])
+          assert json.loads((folder / 'version.json').read_text())['version'] == '0.40.16'
+          weights = next(m for m in json.loads((folder / 'tags.json').read_text())['models'] if m['name'] == 'translategemma:4b')
+          assert weights['digest'] == 'c49d986b0764f5881c476eb21435bb62b7abc62347aab3d4a6071e811be510a1'
+          PY
+          "$RUNNER_TEMP/compare-local" windows/tests/mac-parity/good-enough/reader.json "$out/translation.json"
+          curl -fsS "http://$OLLAMA_HOST/api/ps" > "$out/model-runtime.json"
+          sysctl -n machdep.cpu.brand_string > "$out/processor.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-local-translation
+          path: ${{ runner.temp }}/mac-local-result
+          if-no-files-found: error
