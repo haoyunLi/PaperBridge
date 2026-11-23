@@ -32,10 +32,18 @@ jobs:
           xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift PaperBridge/Services/PDFTextExtractor.swift \
             windows/tests/mac-paper-layout/ObserveProceedings.swift -o "$RUNNER_TEMP/proceedings"
           "$RUNNER_TEMP/proceedings" "$RUNNER_TEMP/bert.pdf" "$RUNNER_TEMP/proceedings.json"
+      - name: Read the table and interrupted body columns in the published ResNet PDF
+        if: contains(github.ref_name, 'resnet-table')
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 https://arxiv.org/pdf/1512.03385 -o "$RUNNER_TEMP/resnet.pdf"
+          (cd "$RUNNER_TEMP" && echo "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a  resnet.pdf" | shasum -a 256 -c -)
+          xcrun swift windows/tests/mac-paper-layout/ObserveColumnTable.swift "$RUNNER_TEMP/resnet.pdf" "$RUNNER_TEMP/column-table.json"
       - uses: actions/upload-artifact@v4
         with:
           name: mac-paper-layout
           path: |
             ${{ runner.temp }}/reading.json
             ${{ runner.temp }}/proceedings.json
+            ${{ runner.temp }}/column-table.json
           if-no-files-found: error
