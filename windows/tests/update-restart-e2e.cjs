@@ -184,7 +184,6 @@ async function run() {
     await assert.rejects(page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag), /no longer matches/);
     await page.locator('.update-banner').getByRole('button', { name: 'Download portable update' }).waitFor();
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /installed reader/);
-    await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag, true), identity.tag), /installed reader/);
     await app.close(); app = null;
     fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')), autoCheckUpdates: false, autoDownloadUpdates: false }));
     app = await launch();

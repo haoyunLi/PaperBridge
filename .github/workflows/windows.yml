@@ -355,17 +355,17 @@ jobs:
         run: |
           node tests/portable-relaunch-pdf.cjs "$env:PUBLIC_PORTABLE"
 
-  verify-update-restart:
+  verify-update-handoff:
     needs: verify-public-download
     if: startsWith(github.ref, 'refs/tags/windows-v')
     permissions:
       contents: read
-    uses: ./.github/workflows/windows-update-restart.yml
+    uses: ./.github/workflows/windows-update-handoff.yml
     with:
       release_feed: ${{ needs.verify-public-download.outputs.release_feed }}
 
   publish-update-feed:
-    needs: [verify-public-download, verify-update-restart]
+    needs: [verify-public-download, verify-update-handoff]
     if: github.repository == 'haoyunLi/PaperBridge' && startsWith(github.ref, 'refs/tags/windows-v')
     runs-on: ubuntu-latest
     permissions:

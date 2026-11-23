@@ -17,7 +17,7 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
-Version 0.2.94 restores the source pages for OCR paragraphs that cross a page break. Reopening an older paper can recover the page range from its saved OCR data while preserving translations, bookmarks and figures. Slow local model requests now have the same ten-minute idle limit as on macOS. The in-app updater also verifies the GitHub build proof before offering either Windows executable.
+Version 0.2.95 adds links from a Reader paragraph to its first and last original PDF pages. Reopening an older OCR paper can recover this range from its saved parser data and preserve its translations, bookmarks and figures. Local model requests use the macOS ten-minute idle limit. Settings can release a loaded model from memory while keeping its installed files. The in-app updater checks the signed GitHub build proof and saves reading progress before it opens the Windows setup wizard.
 
 Version 0.2.93 improves reading order across tables and paper columns, keeps model names such as BERT with their subscripts, and refreshes actual GPU memory use while Local AI settings are open. If a translation model runs out of memory or loses its connection, the reader keeps completed work and offers a model change.
 

@@ -1,9 +1,9 @@
-name: Verify Windows update and restart
+name: Verify installed Windows update delivery
 permissions:
   contents: read
 on:
   push:
-    tags: ['windows-restart-check-*']
+    tags: ['windows-handoff-check-*']
   workflow_call:
     inputs:
       release_feed:
@@ -33,7 +33,7 @@ jobs:
             $feed = (Invoke-RestMethod 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json') | ConvertTo-Json -Compress -Depth 4
           }
           if (($feed | ConvertFrom-Json).version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid public target' }
-          "PAPERBRIDGE_RESTART_FEED=$feed" >> $env:GITHUB_ENV
+          "PAPERBRIDGE_VERIFIED_FEED=$feed" >> $env:GITHUB_ENV
       - name: Build and install an earlier client on the fresh machine
         run: |
           npm ci
@@ -44,16 +44,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm exec -- electron-builder --win nsis --x64 --publish never
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $install = Join-Path $env:RUNNER_TEMP 'PaperBridge update restart'
+          $install = Join-Path $env:RUNNER_TEMP 'PaperBridge update delivery'
           $setup = (Resolve-Path release/PaperBridge-Windows-0.1.0-x64-Setup.exe).Path
           $p = Start-Process -FilePath $setup -ArgumentList "/S /currentuser /D=$install" -Wait -PassThru -WindowStyle Hidden
           if ($p.ExitCode -ne 0) { throw "Initial Setup failed with exit code $($p.ExitCode)" }
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
-      - name: Install and restart from the verified download
-        run: node tests/restart-installed-update.cjs
+      - name: Deliver the verified Setup to Windows
+        run: node tests/public-installed-update.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-installed-update-restart
-          path: windows/test-artifacts/installed-restart.json
+          name: windows-installed-update-handoff
+          path: windows/test-artifacts/installed-update.json
           if-no-files-found: ignore

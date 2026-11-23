@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
 const root = path.resolve(__dirname, '..');
 const artifacts = path.join(root, 'test-artifacts');
 const metadata = require('../package.json');
-const { installId: guid } = require('../electron/installed-update.cjs');
+const guid = '1a046d2c-29e5-5f45-8614-2c68ad2c6d75';
 const note = 'Installer lifecycle: retain this annotation through installation and uninstall.';
 
 function safePath(value, parent) {
