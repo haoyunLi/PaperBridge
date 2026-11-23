@@ -15,7 +15,13 @@ struct ObserveProceedings {
             guard let text = page.selection(for: rect)?.string, !text.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
             return text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         }
+        guard let beforeTables = document.page(at: 5)?.string?.components(separatedBy: .newlines)
+            .first(where: { $0.contains("Without TriviaQA fine-") }),
+              let afterTables = document.page(at: 6)?.string?.components(separatedBy: .newlines)
+            .first(where: { $0.contains("tuning data, we only lose") }) else { throw CocoaError(.fileReadCorruptFile) }
         let output: [String: Any] = [
+            "beforeTables": beforeTables,
+            "afterTables": afterTables,
             "pages": document.pageCount,
             "title": try printed(first, CGRect(x: 105, y: 740, width: 388, height: 38)),
             "byline": try printed(first, CGRect(x: 115, y: 701, width: 372, height: 13)),

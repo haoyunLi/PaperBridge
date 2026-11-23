@@ -5,6 +5,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { compareVersions } = require('../electron/updates.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function selectedLabel(page) {
@@ -66,17 +67,25 @@ async function run() {
       await old.locator('span[role="presentation"]').filter({ hasText: /^missing$/ }).nth(3).dblclick();
       await page.locator('.inspector blockquote').filter({ hasText: /^missing$/ }).first().waitFor();
       await saveNote(page, id, 'Older visible label');
-      await textRange(old, 'Input-Input Layer5', 'Input-Input Layer5', 1);
-      await page.locator('.inspector blockquote').filter({ hasText: /^Input-Input Layer5$/ }).first().waitFor();
-      await saveNote(page, id, 'Older clipped label');
+      const version = await app.evaluate(({ app }) => app.getVersion());
+      const couldSelectHidden = compareVersions(version, '0.2.89') < 0;
+      if (couldSelectHidden) {
+        await textRange(old, 'Input-Input Layer5', 'Input-Input Layer5', 1);
+        await page.locator('.inspector blockquote').filter({ hasText: /^Input-Input Layer5$/ }).first().waitFor();
+        await saveNote(page, id, 'Older clipped label');
+      } else {
+        await old.locator('[data-pdf-clipped]').filter({ hasText: /^Input-Input Layer5$/ }).first().waitFor({ state: 'attached' });
+      }
       await app.close(); app = await launch(); page = await app.firstWindow();
       await openWorkspaceView(page, 'Reader');
       await page.locator('.annotation-row').filter({ hasText: 'Older visible label' }).getByRole('button').first().click();
       await page.waitForFunction(() => getSelection()?.toString() === 'missing');
       assert.equal(await page.getByLabel('Note for selected passage').inputValue(), 'Older visible label');
-      await page.locator('.annotation-row').filter({ hasText: 'Older clipped label' }).getByRole('button').first().click();
-      await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id))?.pdfNotes?.some(n => n.body === 'Older clipped label' && n.needsReview), id);
-      assert.equal(JSON.parse(fs.readFileSync(file)).pdfNotes.length, 2);
+      if (couldSelectHidden) {
+        await page.locator('.annotation-row').filter({ hasText: 'Older clipped label' }).getByRole('button').first().click();
+        await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id))?.pdfNotes?.some(n => n.body === 'Older clipped label' && n.needsReview), id);
+      }
+      assert.equal(JSON.parse(fs.readFileSync(file)).pdfNotes.length, couldSelectHidden ? 2 : 1);
     }
     await page.getByRole('button', { name: 'Previous page', exact: true }).click();
     const heading = page.locator('.textLayer[data-page="13"]');
