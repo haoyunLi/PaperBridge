@@ -1,3 +1,4 @@
+import { structuredBlockSource as sourceText } from '../electron/markdown-code-context.mjs';
 import { usesSharedMarkdown, completedBlockTranslation, restoreStructuredTranslations } from './academicMarkdown.mjs';
 import { parseMarkdown } from './markdownRendering.mjs';
 import { analysisAnnotations, annotationsMarkdown } from './annotationsMarkdown.mjs';
@@ -5,7 +6,6 @@ import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, le
 import { connectedTranslationMarkdown } from './connectedTranslationExport.mjs';
 import { commonOutputLanguage, migrateOutputLanguages, normalizeOutputLanguage, readerOutputLanguage } from './outputLanguages.mjs';
 
-const sourceText = block => block.sourceMarkdown || block.text;
 const languageCodes = Object.freeze({ English: 'en', 'Simplified Chinese': 'zh-Hans', 'Traditional Chinese': 'zh-Hant',
   Japanese: 'ja', Korean: 'ko', French: 'fr', German: 'de', Spanish: 'es', Italian: 'it', Portuguese: 'pt', Russian: 'ru' });
 const knownLanguage = value => Object.hasOwn(languageCodes, value) ? value : null;

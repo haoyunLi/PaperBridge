@@ -52,6 +52,37 @@ test('scientific literals survive Markdown analysis, search, citation validation
   assert.deepEqual(operators.map(block => block.text), ['Pass **kwargs through.', 'Evaluate x**2 for A*.']);
 });
 
+test('prose following a display equation reaches translation, summary and the shared draft', async () => {
+  const { parsedMarkdownBlocks, savedResourceLayoutIssue, withSharedMarkdownTranslation } = await markdown;
+  const { summarySourceBlocks, translationRangeIds } = await paper;
+  for (const [open, close] of [['$$', '$$'], ['\\[', '\\]']]) {
+    for (const equation of [open + 'r=2' + close, [open, 'r=2', close].join('\n')]) {
+      const prose = 'The chamber reached equilibrium.';
+      const source = equation + ' ' + prose;
+      const blocks = parsedMarkdownBlocks(source);
+      assert.deepEqual(blocks.map(b => [b.resource, b.sourceMarkdown]), [[true, equation], [false, prose]]);
+      assert.deepEqual(summarySourceBlocks(blocks).map(b => b.text), [prose]);
+      assert.deepEqual([...translationRangeIds(blocks, { scope: 'all' })], [2]);
+      const draft = withSharedMarkdownTranslation({ sourceMode: 'mineru', blocks: [
+        blocks[0], { ...blocks[1], status: 'ok', translation: '腔体达到平衡。', translationMarkdown: '腔体达到平衡。' }
+      ] });
+      assert.ok(draft.connectedTranslation.includes(equation) && draft.connectedTranslation.includes('腔体达到平衡。'));
+      assert.match(savedResourceLayoutIssue({ ...blocks[0], sourceMarkdown: source }), /following text/);
+      assert.equal(savedResourceLayoutIssue(blocks[0]), '');
+    }
+    const orphan = open + '\nv = \\frac{a}{b}';
+    const blocks = parsedMarkdownBlocks(orphan + '\n\n# Results\n\nThe sensor stabilized.');
+    assert.deepEqual(blocks.map(b => b.markdownKind), ['formula', 'heading', 'paragraph']);
+    assert.equal(blocks[0].sourceMarkdown, orphan);
+    assert.equal(blocks[2].text, 'The sensor stabilized.');
+    const later = parsedMarkdownBlocks([orphan, 'The next sample cooled.', open + 'v=3' + close].join('\n\n'));
+    assert.deepEqual(later.map(b => b.sourceMarkdown), [orphan, 'The next sample cooled.', open + 'v=3' + close]);
+    assert.equal(later[0].incompleteFormula, true);
+    const spaced = [open, 'x = a +', '', 'b', close].join('\n');
+    assert.deepEqual(parsedMarkdownBlocks(spaced).map(b => b.sourceMarkdown), [spaced]);
+  }
+});
+
 test('nested disclosures keep their outer caption and expose the prose that follows', async () => {
   const { parsedMarkdownBlocks } = await markdown;
   const { summarySourceBlocks, translationRangeIds } = await paper;

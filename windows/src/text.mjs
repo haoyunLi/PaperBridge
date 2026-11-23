@@ -1,3 +1,5 @@
+import { fencedCodeMarkdown } from '../electron/markdown-code-context.mjs';
+export { fencedCodeMarkdown as pdfListingMarkdown };
 import { isMethodsHeading, splitLeadingReferenceHeading } from './references.mjs';
 import { numberedSectionTitle, splitJoinedSections } from './sectionHeadings.mjs';
 import { countCharacters, sectionRanges } from './documentOutline.mjs';
@@ -137,13 +139,6 @@ function groupPdfListings(lines) {
   return output;
 }
 
-export function pdfListingMarkdown(text) {
-  let length = 3;
-  for (const [run] of text.matchAll(/`+/g)) length = Math.max(length, run.length + 1);
-  const fence = '`'.repeat(length);
-  return fence + '\n' + text + '\n' + fence;
-}
-
 export function isPdfListing(block) {
   if (typeof block?.sourceMarkdown !== 'string' || !block.sourceMarkdown.startsWith('```') || typeof block.text !== 'string') return false;
   const fence = block.sourceMarkdown.split('\n', 1)[0];
@@ -163,7 +158,7 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     if (text) {
       const block = { id: startId + blocks.length, text, page: pageNumber, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] };
       if (listing) {
-        block.sourceMarkdown = pdfListingMarkdown(text);
+        block.sourceMarkdown = fencedCodeMarkdown(text);
         block.heading = false;
       }
       if (group[0].raisedNoteMarker) block.pdfFootnoteMarker = group[0].raisedNoteMarker;

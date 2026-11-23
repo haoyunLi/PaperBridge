@@ -1,3 +1,4 @@
+import { structuredBlockSource } from '../electron/markdown-code-context.mjs';
 import { referenceBlockIds } from './references.mjs';
 
 const supportedLanguages = new Set(['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean',
@@ -77,7 +78,7 @@ function connectedMetadata(text, value, hasValue, batches, fallback, shared = fa
       const references = referenceBlockIds(blocks);
       const output = block => !block.resource && !references.has(block.id) && block.status === 'ok'
         ? block.translationMarkdown || block.translation || '' : '';
-      if (blocks.map(block => output(block) || block.sourceMarkdown || block.text).join('\n\n') === text) {
+      if (blocks.map(block => output(block) || structuredBlockSource(block)).join('\n\n') === text) {
         const completed = blocks.filter(block => output(block));
         const pairs = completed.map(block => block.translationLanguage);
         return fromExact(completed.length ? commonOutputLanguage(pairs) : fallback, pairs);

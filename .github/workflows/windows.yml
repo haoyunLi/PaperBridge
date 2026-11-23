@@ -115,6 +115,11 @@ jobs:
           $env:PAPERBRIDGE_MAC_REFERENCE = "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
           $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
           npm run test:edit-menu-e2e
+      - name: Keep equation-adjacent prose readable in the packaged app
+        shell: pwsh
+        run: |
+          $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
+          node tests/equation-prose-e2e.cjs
       - name: Verify onboarding and desktop setup workflows
         timeout-minutes: 20
         shell: pwsh

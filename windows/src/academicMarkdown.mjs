@@ -1,5 +1,5 @@
 import { parseFragment } from 'parse5';
-import { mayContainIndentedOrNestedCode } from '../electron/markdown-code-context.mjs';
+import { structuredBlockSource, mayContainIndentedOrNestedCode } from '../electron/markdown-code-context.mjs';
 import { parseMarkdown, renderedMarkdownText } from './markdownRendering.mjs';
 import { protectMarkdown } from './prompts.mjs';
 import { referenceBlockIds, referenceCoverageVersion } from './references.mjs';
@@ -71,7 +71,7 @@ export function completedBlockTranslation(block, references) {
 }
 
 function sharedMarkdownText(blocks, references) {
-  return blocks.map(block => completedBlockTranslation(block, references) || block.sourceMarkdown || block.text).join('\n\n');
+  return blocks.map(block => completedBlockTranslation(block, references) || structuredBlockSource(block)).join('\n\n');
 }
 
 // Older structured records may contain a plain translation without its Markdown.
@@ -234,6 +234,41 @@ function afterClosingLine(lines, index, closes) {
   return index;
 }
 
+function takeDisplayFormula(lines, start) {
+  const first = lines[start];
+  const opener = first.trimStart().slice(0, 2);
+  const closer = opener === '$$' ? '$$' : '\\]';
+  let firstBlank = -1;
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line.trim()) {
+      if (firstBlank < 0) firstBlank = i;
+      continue;
+    }
+    if (firstBlank >= 0 && !lines[i - 1].trim() && /^\s*\p{L}[^\\=^{}]*[.!?。！？]\s*$/u.test(line)) break;
+    if (i > start && (line.trimStart().startsWith('\\[') || /^(?:#{1,6}\s|~~~|```)/.test(line.trimStart()))) break;
+    // After a paragraph break, a fresh dollar expression starts its own block.
+    if (i > start && firstBlank >= 0 && opener === '$$' && /^\s*\$\$\S/.test(line)) break;
+    const offset = i === start ? first.indexOf(opener) + opener.length : 0;
+    for (let pos = line.indexOf(closer, offset); pos >= 0; pos = line.indexOf(closer, pos + closer.length)) {
+      let slashes = 0;
+      while (line[pos - slashes - 1] === '\\') slashes++;
+      if (slashes % 2) continue;
+      const end = pos + closer.length, tail = line.slice(end);
+      if (!tail.trim() || /^[\s\p{P}\p{N}]+$/u.test(tail)) {
+        return { sourceMarkdown: lines.slice(start, i + 1).join('\n').trim(), next: i + 1 };
+      }
+      const sourceMarkdown = [...lines.slice(start, i), line.slice(0, end)].join('\n').trim();
+      lines[i] = tail;
+      return { sourceMarkdown, next: i };
+    }
+  }
+  // Preserve an incomplete extraction, and resume reading at the next paragraph.
+  let next = start + 1;
+  while (next < lines.length && lines[next].trim() && !segmentKind(lines, next)) next++;
+  return { sourceMarkdown: lines.slice(start, next).join('\n').trim(), next, incompleteFormula: true };
+}
+
 function takeHtmlResource(lines, start, tag) {
   const close = new RegExp('</' + tag + '\\s*>', 'i');
   let end = afterClosingLine(lines, start, line => close.test(line));
@@ -298,9 +333,10 @@ function parsedMarkdownSegments(markdown) {
       const endFence = new RegExp('^' + fence[0] + '{' + fence.length + ',}$');
       index = afterClosingLine(lines, index + 1, line => endFence.test(line.trim()));
     } else if (kind === 'formula') {
-      const endFormula = trimmed.startsWith('$$') ? '$$' : '\\]';
-      index = trimmed.slice(2).includes(endFormula) ? index + 1
-        : afterClosingLine(lines, index + 1, line => line.includes(endFormula));
+      const { sourceMarkdown, next, incompleteFormula } = takeDisplayFormula(lines, start);
+      segments.push({ kind, sourceMarkdown, incompleteFormula });
+      index = next;
+      continue;
     } else if (kind === 'html' || (kind === 'table' && /^<table\b/i.test(trimmed))) {
       const tag = trimmed.match(/^<([a-z]+)/i)[1].toLowerCase();
       const { sourceMarkdown, next, closed } = takeHtmlResource(lines, start, tag);
@@ -342,9 +378,9 @@ export function markdownHeadingText(block) {
 }
 
 export function parsedMarkdownBlocks(markdown) {
-  return parsedMarkdownSegments(markdown).map(({ kind, sourceMarkdown }, index) => {
+  return parsedMarkdownSegments(markdown).map(({ kind, sourceMarkdown, incompleteFormula }, index) => {
     const block = {
-      id: index + 1, text: plainText(sourceMarkdown), sourceMarkdown, markdownKind: kind,
+      id: index + 1, text: incompleteFormula ? sourceMarkdown : plainText(sourceMarkdown), sourceMarkdown, markdownKind: kind, ...(incompleteFormula && { incompleteFormula: true }),
       page: null, heading: kind === 'heading', resource: ['image', 'formula', 'table', 'code', 'html'].includes(kind),
       translation: '', status: 'pending', bookmark: false, highlights: [], notes: []
     };
@@ -378,6 +414,10 @@ export function savedResourceLayoutIssue(block) {
   if ((!block.markdownKind || block.markdownKind === 'paragraph') && !block.resource && source.includes('|')
     && /\n[ \t|:]*-{3}/.test(source) && parsedMarkdownSegments(source).some(segment => segment.kind === 'table')) {
     return 'This saved paragraph contains a Markdown table. Choose the original PDF to extract the table in a new copy.';
+  }
+  if (block.resource && (!block.markdownKind || block.markdownKind === 'formula') && /^(?:\$\$|\\\[)/.test(source.trimStart())
+    && parsedMarkdownSegments(source).some(segment => segment.kind === 'paragraph' || segment.kind === 'heading')) {
+    return 'This saved equation includes the following text. Choose the original PDF to recover the text in a new copy.';
   }
   if (block.resource && (!block.markdownKind || block.markdownKind === 'table' || block.markdownKind === 'html')
     && /^<(?:table|figure|details|div|p|pre)\b/i.test(source) && /<\/[a-z]+\s*>/i.test(source)) {

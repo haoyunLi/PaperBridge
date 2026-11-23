@@ -1,3 +1,4 @@
+import { structuredBlockSource } from '../electron/markdown-code-context.mjs';
 import { completedBlockTranslation, usesSharedMarkdown } from './academicMarkdown.mjs';
 import { supportsConnectedBatchVersion, planConnectedBatches } from './connectedTranslation.mjs';
 import { referenceBlockIds } from './paper.mjs';
@@ -32,7 +33,7 @@ export function connectedTranslationMarkdown(input, _legacyTargetLanguage, conte
     const references = referenceBlockIds(paper.blocks);
     if (paper.blocks.some(block => completedBlockTranslation(block, references) && mismatchedLanguage(block.translationLanguage))) return content;
     passages = paper.blocks.map(block => ({
-      output: completedBlockTranslation(block, references) || block.sourceMarkdown || block.text,
+      output: completedBlockTranslation(block, references) || structuredBlockSource(block),
       failed: !block.resource && !references.has(block.id) && block.status === 'failed',
       label: `paragraph ${block.id}`, error: block.error
     }));

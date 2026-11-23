@@ -1,3 +1,4 @@
+import { structuredBlockSource } from '../electron/markdown-code-context.mjs';
 import { isPdfListing } from './text.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { generatedViewText, renderedMarkdownText } from './markdownRendering.mjs';
@@ -89,7 +90,7 @@ export function validPaperArticleSelection(paper, item) {
 }
 
 export function blockMarkdown(block, kind) {
-  return kind === 'translation' ? block?.translationMarkdown : block?.sourceMarkdown;
+  return kind === 'translation' ? block?.translationMarkdown : block?.sourceMarkdown && structuredBlockSource(block);
 }
 
 export function selectionOffsets(captured, offset, markdown, anchorSource) {
