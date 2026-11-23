@@ -33,6 +33,22 @@ struct ObserveOllama {
         } catch OllamaClientError.invalidResponse {
             observations["invalidRejected"] = true
         }
+        var generations: [String: String] = [:]
+        for scenario in ["text", "memory", "length", "empty", "malformed"] {
+            do {
+                generations[scenario] = try await client.generate(baseURL: root + "/" + scenario, model: model,
+                                                                 prompt: "Temperature?", systemPrompt: "Translate.")
+            } catch OllamaClientError.httpError(let detail) where detail == "model requires more system memory" {
+                generations[scenario] = "memory"
+            } catch OllamaClientError.incompleteResponse {
+                generations[scenario] = "incomplete"
+            } catch OllamaClientError.emptyResponse {
+                generations[scenario] = "empty"
+            } catch OllamaClientError.invalidResponse {
+                generations[scenario] = "invalid"
+            }
+        }
+        observations["generations"] = generations
         FileHandle.standardOutput.write(try JSONSerialization.data(withJSONObject: observations))
     }
 }

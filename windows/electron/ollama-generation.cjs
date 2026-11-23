@@ -25,8 +25,32 @@ async function requestGeneration(baseURL, payload, signal, { idleMs = ollamaIdle
     const detail = ['ECONNRESET', 'ECONNREFUSED', 'EPIPE'].includes(cause.code) ? ' (' + cause.code + ')' : '';
     throw localCertificateError(cause) || new Error('Lost the connection to local Ollama during generation.' + detail);
   }
-  if (status < 200 || status >= 300) throw new Error('Ollama ' + status + ': ' + body.slice(0, 300));
-  return JSON.parse(body);
+  let data;
+  try { data = JSON.parse(body); } catch { /* An HTTP error may contain plain text. */ }
+  if (status < 200 || status >= 300) {
+    const detail = typeof data?.error === 'string' && data.error ? data.error : body;
+    throw new Error('Ollama ' + status + ': ' + detail.slice(0, 300));
+  }
+  if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      (data.done != null && typeof data.done !== 'boolean') ||
+      ['response', 'done_reason', 'error'].some(key => data[key] != null && typeof data[key] !== 'string')) {
+    throw new Error('The local Ollama service returned an unreadable generation response. Check the Ollama URL in Settings and try again.');
+  }
+  return data;
 }
 
-module.exports = { requestGeneration };
+async function generateOllamaText(baseURL, { model, prompt, system, format }, signal) {
+  const data = await requestGeneration(baseURL, {
+    model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}),
+    options: { temperature: 0.1, ...(format === 'json' ? { num_predict: 2048 } : {}) }
+  }, signal);
+  if (data.error) throw new Error(data.error);
+  if (data.done === false || data.done_reason === 'length') {
+    throw new Error(format === 'json' ? 'The summary response was cut off. Choose a different summary model in Settings and try again.' : 'Model response was cut off. Try a smaller paragraph.');
+  }
+  const text = data.response?.trim();
+  if (!text) throw new Error('Ollama returned an empty response.');
+  return text;
+}
+
+module.exports = { requestGeneration, generateOllamaText };

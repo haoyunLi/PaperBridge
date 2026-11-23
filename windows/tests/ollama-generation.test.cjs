@@ -26,6 +26,18 @@ test('a slow local generator can return the complete Unicode response after dela
   assert.deepEqual(await requestGeneration(url, { stream: false }, new AbortController().signal, { idleMs: 1500 }), { response: '测温', done: true });
 });
 
+test('generation rejects incorrect response types and presents the Ollama server error', async t => {
+  let status = 200, body = '';
+  const url = await endpoint(t, (_req, res) => { res.writeHead(status); res.end(body); });
+  const request = () => requestGeneration(url, {}, new AbortController().signal);
+  for (body of ['<html>Proxy</html>', 'null', '[]', '{"response":32}', '{"done":"false","response":"partial"}']) {
+    await assert.rejects(request(), /unreadable generation response/);
+  }
+  status = 500;
+  body = JSON.stringify({ error: 'model requires more system memory', done: false });
+  await assert.rejects(request(), { message: 'Ollama 500: model requires more system memory' });
+});
+
 test('waiting for a model can be cancelled and slow headers and incomplete bodies time out', async t => {
   let withHeaders = false;
   const url = await endpoint(t, (_req, res) => { if (withHeaders) res.write('{"response":'); });

@@ -10,6 +10,7 @@ async function run(failure) {
   const root = path.resolve(__dirname, '..');
   const big = 'translategemma:27b', small = 'translategemma:4b';
   let submitted = [], constrained = true;
+  const memoryFailure = failure === 'memory' || failure === 'memory-in-body';
   const server = http.createServer(async (req, res) => {
     res.setHeader('Content-Type', 'application/json');
     if (req.url === '/api/tags') return res.end(JSON.stringify({ models: [big, small].map(name => ({ model: name })) }));
@@ -25,8 +26,8 @@ async function run(failure) {
         res.write('{"response":');
         return setTimeout(() => res.destroy(), 30);
       }
-      res.statusCode = 500;
-      return res.end(JSON.stringify({ error: 'model requires more system memory (18.5 GiB) than is available (10.2 GiB)' }));
+      res.statusCode = failure === 'memory-in-body' ? 200 : 500;
+      return res.end(JSON.stringify({ done: false, error: 'model requires more system memory (18.5 GiB) than is available (10.2 GiB)' }));
     }
     res.end(JSON.stringify({ response: model === big ? '首段结果。' : '后续结果。', done: true }));
   });
@@ -44,7 +45,7 @@ async function run(failure) {
       await page.getByLabel('Translation model', { exact: true }).selectOption(model);
       await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     };
-    const smaller = page.getByRole('button', { name: failure === 'memory' ? 'Choose a smaller model' : 'Choose another model', exact: true });
+    const smaller = page.getByRole('button', { name: memoryFailure ? 'Choose a smaller model' : 'Choose another model', exact: true });
     const recover = async () => {
       await smaller.click();
       await page.getByRole('tab', { name: 'Models', selected: true }).waitFor();
@@ -60,7 +61,7 @@ async function run(failure) {
     const id = await paste(input, 'Reader');
     await page.getByRole('button', { name: 'Translate Paper', exact: true }).click();
     await smaller.waitFor();
-    if (failure !== 'memory') {
+    if (!memoryFailure) {
       await page.getByRole('button', { name: 'Check local AI', exact: true }).click();
       await page.locator('.setup-panel').waitFor();
       await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
@@ -110,6 +111,6 @@ async function run(failure) {
   } finally { await app.close(); server.close(); }
 }
 async function main() {
-  for (const failure of ['memory', 'disconnect', 'partial-response']) await run(failure);
+  for (const failure of ['memory', 'memory-in-body', 'disconnect', 'partial-response']) await run(failure);
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

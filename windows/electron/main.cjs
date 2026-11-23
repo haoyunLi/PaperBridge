@@ -8,7 +8,7 @@ const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
-const { requestGeneration } = require('./ollama-generation.cjs');
+const { generateOllamaText } = require('./ollama-generation.cjs');
 const { ollamaRequest } = require('./ollama-http.cjs');
 const { localOllamaURL } = require('./ollama-installation.cjs');
 const { readOllamaModelList } = require('./ollama-models.mjs');
@@ -359,16 +359,7 @@ function registerHandlers() {
     const controller = new AbortController();
     requests.set(requestId, controller);
     try {
-      const data = await requestGeneration(baseURL, {
-        model, prompt, system, stream: false, ...(format === 'json' ? { format: 'json' } : {}),
-        options: { temperature: 0.1, ...(format === 'json' ? { num_predict: 2048 } : {}) }
-      }, controller.signal);
-      if (data.done === false || data.done_reason === 'length') {
-        throw new Error(format === 'json' ? 'The summary response was cut off. Choose a different summary model in Settings and try again.' : 'Model response was cut off. Try a smaller paragraph.');
-      }
-      if (data.error) throw new Error(data.error);
-      if (!data.response?.trim()) throw new Error('Ollama returned an empty response.');
-      return data.response.trim();
+      return await generateOllamaText(baseURL, { model, prompt, system, format }, controller.signal);
     } finally { requests.delete(requestId); }
   });
   ipcMain.handle('ollama:cancel', (_event, requestId) => { requests.get(requestId)?.abort(); });
