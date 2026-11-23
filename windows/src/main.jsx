@@ -10,6 +10,7 @@ import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
 import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, HardDrive, ZoomIn, ZoomOut } from 'lucide-react';
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
+import { omitClippedFigureText } from './pdfFigureText.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
 import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
@@ -272,7 +273,10 @@ function textRangeAt(root, offset, length, visibleOnly = false) {
   return range;
 }
 function readablePdfRange(range) {
+  const ancestor = range.commonAncestorContainer;
+  if ((ancestor.nodeType === Node.ELEMENT_NODE ? ancestor : ancestor.parentElement)?.closest('[data-pdf-clipped]')) return '';
   const fragment = range.cloneContents();
+  for (const clipped of fragment.querySelectorAll('[data-pdf-clipped]')) clipped.remove();
   for (const lineBreak of fragment.querySelectorAll('br')) lineBreak.replaceWith(' ');
   return fragment.textContent.replace(/\s+/g, ' ').trim();
 }
@@ -420,10 +424,23 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
       if (reusable) { onReady?.(number, Boolean(root.textContent.trim())); return; }
       const pdfjs = await import('pdfjs-dist');
       const textContentSource = await page.getTextContent();
+      const visible = await omitClippedFigureText(page, textContentSource, pdfjs.OPS);
       if (cancelled) return;
       textLayer = new pdfjs.TextLayer({ textContentSource, container: root, viewport });
       await textLayer.render();
       if (cancelled) return;
+      if (visible !== textContentSource) {
+        // Keep unmodified text nodes for saved PDF offsets. Invisible figure titles
+        // must not intercept mouse clicks on the printed labels under them.
+        const shown = new Set(visible.items);
+        const items = textContentSource.items.filter(item => typeof item.str === 'string');
+        for (const [i, item] of items.entries()) {
+          const span = textLayer.textDivs[i];
+          if (shown.has(item) || !span || span.textContent !== item.str) continue;
+          span.setAttribute('data-pdf-clipped', '');
+          span.hidden = true;
+        }
+      }
       root.dataset.page = String(number);
       finishedLayer.current = { pdf, number, textLayer };
       setRendered(true);
@@ -488,7 +505,8 @@ function capturePdfRange(host, range) {
     if (!fragment.toString().trim()) continue;
     const captured = domRangeIn(root, fragment, { trimEdges: true });
     if (!captured || captured.context.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return null;
-    parts.push({ ...pdfSelectionContent(root, fragment, captured.text, captured.offset, captured.context), page });
+    const part = pdfSelectionContent(root, fragment, captured.text, captured.offset, captured.context);
+    if (part.quote !== '') parts.push({ ...part, page });
   }
   if (!parts.length) return null;
   const rect = range.getBoundingClientRect();

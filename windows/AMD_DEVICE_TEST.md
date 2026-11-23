@@ -391,6 +391,8 @@ Ollama 0.34.2 日志确认选择 `ROCm0 (AMD Radeon RX 7800 XT)`，`/api/ps` 报
 
 在 RX 7800 XT 上从原 PDF 导入 *Attention Is All You Need* 第 7 版。第 13–15 页的三幅图共包含十行旋转轴标签。Windows 读出十行完整标签，保留图 3–5 的说明，并把图 4 的 Top 与 Bottom 说明连在同一个段落中。原生 PDFKit 的文字层还包含五处被裁出图框的内部标题。Windows 已将这五处从阅读文字中剔除，原 PDF 的 SHA-256 保持一致。[原论文](https://arxiv.org/abs/1706.03762) · [macOS 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45122595860)
 
+在 Original PDF 中直接双击第四幅图的第二个 `application` 时，0.2.88 的透明文字层会让一处不可见标题拦截鼠标。开发版现在保留旧笔记的文字偏移，并让鼠标命中印刷文字。在两页上分别选取四处同名标签，保存八条不同笔记。退出后改变缩放，从 Reader 的标注列表逐条跳回，选区与 Mac PDFKit 的实际位置均相符。旧版的可见标签笔记仍能跳转，锚在不可见标题上的旧笔记保留并提示复核。跨过被裁文字的引文仅显示印刷内容。[Mac PDFKit 同名标签定位](https://github.com/haoyunLi/PaperBridge/actions/runs/45124348109)
+
 这些轴标签原先触发了十条“句末缺标点”提醒。修正后，Overview 和 Reader 都保留了真正需要核对的段落。实测从 Overview 打开第 4 页警告，再点击 Compare Original，可到达原 PDF 第 4 页并返回该段。手动改写标签文字后，常规质量检查重新生效。
 
 TranslateGemma 4B 默认曾将图 4 的 `layer 5 of 6` 译为“第 5 层（也是第 6 层）”。在阅读器选区保存 `layer 5 of 6` 和 `attention heads` 两条术语，随后使用段落菜单重新翻译，得到了“两个注意力头，也位于六层中的第五层”。退出并重新打开后，修订译文与原文均保留。此例验证了术语修订的实际效果，普通模型输出仍需结合原文判断。
