@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.78 长引文、跨页笔记和按句重排（2026-11-22）
+
+在 20 页的 *Good enough practices in scientific computing* 上选取第 2 页的长引文，以及从第 2 页延伸到第 3 页的引文。Mac PDFKit 与 Windows 公开版都保留了完整选区、页序和笔记。Windows 可以在检查器内预览、翻译和导出全文，重新打开后仍可跳回高亮。用 RX 7800 XT 和 TranslateGemma 4B 翻译其中 3,313 个字符，用时 5.97 秒；重复翻译使用缓存。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45095379801/job/137433929093)
+
+按完整句重排的原生对照增加到 20 组。Windows 保留中、日引文的开引号，并将法语引述语接在引文后。公开版通过了笔记迁移、撤销和跨显示器的桌面测试。在 125% 与 200% 两台显示器之间移动窗口后，长标题均显示为两行。通过 Edge 从仓库首页下载并核验了两份未签名 EXE，在本机从 0.2.77 升级后，原有论文、高亮、笔记与阅读设置均可打开。[公开下载验证](https://github.com/haoyunLi/PaperBridge/actions/runs/45095379801/job/137437140242) · [0.2.78 发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.78)
+
 ## 0.2.77 旧 PDF 笔记、编辑后的摘要与显卡回退（2026-11-22）
 
 在 *emcee v3* 上分别测试了六条旧笔记。唯一的引文可以在原页找回，重复引文和错页保留待复核。已经保存精确范围的重复引文仍选中原来的那一处。公开 Windows 安装版与 Mac 原生 PDFKit 给出了相同结果。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137427173509) · [公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137430573406)
