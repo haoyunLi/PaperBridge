@@ -1,4 +1,4 @@
-const http = require('node:http');
+const { localRequest, localCertificateError } = require('./ollama-http.cjs');
 const { localOllamaURL } = require('./ollama-installation.cjs');
 
 // Ollama may send no headers until the whole non-streaming response is ready.
@@ -10,7 +10,7 @@ async function requestGeneration(baseURL, payload, signal, { idleMs = 600000, to
   let body, status, idleTimeout = false;
   try {
     const response = await new Promise((resolve, reject) => {
-      const req = http.request(url, { method: 'POST', signal: combined, headers: { 'Content-Type': 'application/json' } }, resolve);
+      const req = localRequest(url, { method: 'POST', signal: combined, headers: { 'Content-Type': 'application/json' } }, resolve);
       req.on('error', reject);
       req.setTimeout(idleMs, () => { idleTimeout = true; req.destroy(new Error('Ollama idle timeout')); });
       req.end(JSON.stringify(payload));
@@ -23,7 +23,7 @@ async function requestGeneration(baseURL, payload, signal, { idleMs = 600000, to
     signal.throwIfAborted();
     if (deadline.aborted || idleTimeout) throw new Error('Ollama timed out during generation.');
     const detail = ['ECONNRESET', 'ECONNREFUSED', 'EPIPE'].includes(cause.code) ? ' (' + cause.code + ')' : '';
-    throw new Error('Lost the connection to local Ollama during generation.' + detail);
+    throw localCertificateError(cause) || new Error('Lost the connection to local Ollama during generation.' + detail);
   }
   if (status < 200 || status >= 300) throw new Error('Ollama ' + status + ': ' + body.slice(0, 300));
   return JSON.parse(body);

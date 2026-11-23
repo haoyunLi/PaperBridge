@@ -8,8 +8,9 @@ const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
-const { localOllamaURL } = require('./ollama-installation.cjs');
 const { requestGeneration } = require('./ollama-generation.cjs');
+const { ollamaRequest } = require('./ollama-http.cjs');
+const { localOllamaURL } = require('./ollama-installation.cjs');
 const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { openPaperAttachment } = require('./paper-attachment.cjs');
@@ -94,23 +95,6 @@ function cancelRendererClose() {
   quitAfterClose = false;
   if (closeTimer) clearTimeout(closeTimer);
   closeTimer = null;
-}
-
-async function ollamaRequest(baseURL, endpoint, options = {}) {
-  const url = localOllamaURL(baseURL, endpoint);
-  let response;
-  try { response = await fetch(url, options); }
-  catch (cause) {
-    if (options.signal?.aborted && options.signal.reason?.name !== 'TimeoutError') {
-      const error = new Error('Setup cancelled.'); error.name = 'AbortError'; throw error;
-    }
-    throw new Error('Cannot reach local Ollama. Start Ollama, then refresh models.');
-  }
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(`Ollama ${response.status}: ${message.slice(0, 300)}`);
-  }
-  return response;
 }
 
 function progress(data) {

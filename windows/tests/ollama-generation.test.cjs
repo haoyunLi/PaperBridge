@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const { ollamaRequest } = require('../electron/ollama-http.cjs');
 const { requestGeneration } = require('../electron/ollama-generation.cjs');
 
 async function endpoint(t, handler) {
@@ -36,6 +37,30 @@ test('waiting for a model can be cancelled and slow headers and incomplete bodie
     await assert.rejects(requestGeneration(url, {}, new AbortController().signal, { idleMs: 80 }), /timed out during generation/);
   }
   await assert.rejects(requestGeneration(url, {}, new AbortController().signal, { totalMs: 80 }), /timed out during generation/);
+});
+
+test('model downloads stream through a named loopback mount and redirects stay at the configured origin', async t => {
+  const observed = [];
+  let finish;
+  const url = await endpoint(t, (req, res) => {
+    observed.push(req.url);
+    if (req.url === '/models/api/tags') { res.writeHead(307, { Location: '/moved' }); return res.end('Moved'); }
+    assert.equal(req.url, '/models/api/pull');
+    assert.equal(req.method, 'POST');
+    res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
+    res.write('{"status":"pulling"}\n');
+    finish = () => res.end('{"status":"success"}\n');
+  });
+  const base = url.replace('127.0.0.1', 'papers.localhost') + '/models/';
+  const stream = await ollamaRequest(base, 'api/pull', { method: 'POST', body: '{"model":"example"}' });
+  assert.equal(stream.headers.get('content-type'), 'application/x-ndjson');
+  const reader = stream.body.getReader(), decoder = new TextDecoder();
+  assert.equal(decoder.decode((await reader.read()).value), '{"status":"pulling"}\n');
+  finish();
+  assert.equal(decoder.decode((await reader.read()).value), '{"status":"success"}\n');
+  assert.equal((await reader.read()).done, true);
+  await assert.rejects(ollamaRequest(base, 'api/tags'), /Ollama 307: Moved/);
+  assert.deepEqual(observed, ['/models/api/pull', '/models/api/tags']);
 });
 
 test('service errors and truncated network responses keep their separate recovery messages', async t => {

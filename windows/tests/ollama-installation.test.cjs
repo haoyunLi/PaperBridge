@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { ollamaLaunch, ollamaPath } = require('../electron/ollama-installation.cjs');
+const { ollamaLaunch, ollamaPath, localOllamaURL } = require('../electron/ollama-installation.cjs');
 const { SetupManager } = require('../electron/setup.cjs');
 
 test('Ollama discovery supports the desktop installer, standalone CLI and registered custom folder', async t => {
@@ -27,6 +27,20 @@ test('Ollama discovery supports the desktop installer, standalone CLI and regist
   const companion = path.join(standard, 'ollama.exe');
   fs.writeFileSync(companion, '');
   assert.deepEqual(ollamaLaunch(desktop, 'http://localhost:11518'), { executable: companion, args: ['serve'], host: 'http://localhost:11518' });
+});
+
+test('custom loopback endpoints append the API below the configured prefix and preserve TLS', async () => {
+  for (const base of ['https://papers.localhost/reader', 'https://papers.localhost/reader/']) {
+    assert.equal(localOllamaURL(base, 'api/tags').href, 'https://papers.localhost/reader/api/tags');
+  }
+  assert.equal(localOllamaURL('http://[::1]:18181/mounted', 'api/ps').href, 'http://[::1]:18181/mounted/api/ps');
+  for (const base of ['https://localhost.example.com', 'https://user@localhost', 'https://localhost/?private=true', 'file://localhost/x']) {
+    assert.throws(() => localOllamaURL(base, 'api/generate'), /local Ollama/);
+  }
+  assert.throws(() => localOllamaURL('http://localhost:11434', '//example.com'), /API path/);
+  const manager = new SetupManager({ toolsRoot: '', emit: () => assert.fail('A custom proxy must not trigger installation'),
+    ollamaRequest: async () => { throw new Error('Proxy is offline'); } });
+  await assert.rejects(manager.startOrInstallOllama('https://papers.localhost/reader'), /Start the local proxy/);
 });
 
 test('if a local service became ready during setup, no installer or second server is needed', async () => {

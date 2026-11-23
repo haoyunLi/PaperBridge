@@ -7,10 +7,13 @@ const exec = promisify(execFile);
 
 function localOllamaURL(value, endpoint) {
   const url = new URL(value || 'http://localhost:11434');
-  if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('PaperBridge only connects to a local Ollama HTTP server.');
+  const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.hostname.endsWith('.localhost');
+  if (!['http:', 'https:'].includes(url.protocol) || !localHost || url.username || url.password || url.search || url.hash) {
+    throw new Error('PaperBridge only connects to a local Ollama HTTP or HTTPS server.');
   }
-  return new URL(endpoint, url);
+  if (endpoint !== '/' && !/^api\/[a-z]+$/.test(endpoint)) throw new Error('Invalid local Ollama API path.');
+  url.pathname = url.pathname.replace(/\/+$/, '') + '/' + (endpoint === '/' ? '' : endpoint);
+  return url;
 }
 
 function executableIn(directory, name) {
@@ -43,8 +46,16 @@ async function ollamaPath(environment = process.env, readRegistered = registered
   return executableIn(registered, 'ollama app.exe') || executableIn(registered, 'ollama.exe');
 }
 
-function ollamaLaunch(file, baseURL) {
+function localServerEndpoint(baseURL) {
   const endpoint = localOllamaURL(baseURL, '/');
+  if (endpoint.protocol !== 'http:' || endpoint.pathname !== '/' || endpoint.hostname.endsWith('.localhost')) {
+    throw new Error('Start the local proxy configured for this Ollama URL, or use http://localhost:11434 in Settings for one-click installation.');
+  }
+  return endpoint;
+}
+
+function ollamaLaunch(file, baseURL) {
+  const endpoint = localServerEndpoint(baseURL);
   const standalone = path.basename(file).toLowerCase() === 'ollama.exe';
   // The tray app can already own the default endpoint. A second loopback port needs its own server.
   const server = standalone ? file : endpoint.port !== '11434' && executableIn(path.dirname(file), 'ollama.exe');
@@ -52,4 +63,4 @@ function ollamaLaunch(file, baseURL) {
     : { executable: file, args: [], host: null };
 }
 
-module.exports = { localOllamaURL, ollamaLaunch, ollamaPath };
+module.exports = { localOllamaURL, localServerEndpoint, ollamaLaunch, ollamaPath };

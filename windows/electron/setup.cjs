@@ -8,7 +8,7 @@ const { pipeline } = require('node:stream/promises');
 const { setTimeout: delay } = require('node:timers/promises');
 const { isMineruReady } = require('./mineru-readiness.mjs');
 const { missingOllamaModels } = require('./ollama-models.mjs');
-const { ollamaPath, ollamaLaunch } = require('./ollama-installation.cjs');
+const { ollamaPath, ollamaLaunch, localServerEndpoint } = require('./ollama-installation.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
 const { mineruPaths, claimMineruSetup, recoverMineru, rollbackMineru, beginMineruActivation,
@@ -231,6 +231,7 @@ class SetupManager {
       catch { return false; }
     };
     if (await ready()) return;
+    localServerEndpoint(baseURL);
     let appPath = await ollamaPath();
     if (!appPath) {
       fs.mkdirSync(this.toolsRoot, { recursive: true });
