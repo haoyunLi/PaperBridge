@@ -38,11 +38,30 @@ function isReferenceEntry(text) {
     || (identifier && bibliographicDate.test(authorText) && terminalDOI.test(authorText));
 }
 
+function isInlineBibliography(text) {
+  if (isReferenceEntry(text)) return true;
+  // A PDF text layer can put an entire numbered bibliography after the heading.
+  // Verify its first two items individually before excluding the larger passage.
+  const first = /^(?:\[(\d+)\]|(\d+)[.)]\s)/.exec(text);
+  if (!first || text.length <= 1200) return false;
+  const start = Number(first[1] || first[2]);
+  function nextItem(number, offset) {
+    const pattern = new RegExp('\\s+(?=\\[' + number + '\\]|' + number + '[.)]\\s)', 'g');
+    pattern.lastIndex = offset;
+    const match = pattern.exec(text);
+    return match && match.index + match[0].length;
+  }
+  const second = nextItem(start + 1, first[0].length);
+  if (!second || !isReferenceEntry(text.slice(0, second).trim())) return false;
+  const third = nextItem(start + 2, second);
+  return isReferenceEntry(text.slice(second, third ?? text.length).trim());
+}
+
 export function splitLeadingReferenceHeading(text) {
   const label = referenceHeading.exec(text);
   if (!label) return [text];
   const entry = text.slice(label[0].length);
-  return isReferenceEntry(entry) ? [label[0].trimEnd(), entry] : [text];
+  return isInlineBibliography(entry) ? [label[0].trimEnd(), entry] : [text];
 }
 
 function continuesSplitCitation(text, next) {
@@ -87,13 +106,13 @@ function implicitStart(entries) {
 
 const contentsHeading = /^(?:table of contents|contents)\s*[:.]?$/i;
 
-function referenceEntries(blocks) {
+function referenceEntries(blocks, inlineReference = isInlineBibliography) {
   const entries = blocks.flatMap((block, index) => {
     const text = String(block.text || '').trim().replace(/^#{1,6}\s+/, '');
     if (!text || block.resource) return [];
     const label = referenceHeading.exec(text);
     const rest = label ? text.slice(label[0].length) : '';
-    const inline = Boolean(label && isReferenceEntry(rest));
+    const inline = Boolean(label && inlineReference(rest));
     return [{ index, text, heading: block.heading || /^#{1,6}\s/.test(block.sourceMarkdown || ''),
       entry: isReferenceEntry(text), explicit: Boolean(label && (!rest || inline)), inline }];
   });
@@ -114,19 +133,36 @@ function referenceEntries(blocks) {
   return entries;
 }
 
-// Keep earlier outputs readable while offering regeneration for the recovered body.
+export const referenceCoverageVersion = 2;
+
+// Keep a saved draft readable while offering regeneration if an upgrade changed
+// which paragraphs were sent to the model.
 export function reviewSavedReferenceCoverage(paper) {
-  const summary = paper.summary && !paper.summary.stale && !paper.summary.contentsChecked;
-  const connected = (paper.connectedTranslation || paper.connectedBlocks?.length) &&
-    !paper.connectedShared && !paper.connectedStale && !paper.connectedContentsChecked;
-  if ((!summary && !connected) || !paper.blocks?.some(block => contentsHeading.test(block.text?.trim())) ||
-      !referenceEntries(paper.blocks).some(entry => entry.contentsLink)) return paper;
-  return { ...paper, ...(summary && { summary: { ...paper.summary, stale: true } }),
-    ...(connected && { connectedStale: true }) };
+  const summary = paper.summary && !paper.summary.stale;
+  const draft = (paper.connectedTranslation || paper.connectedBlocks?.length) && !paper.connectedStale;
+  if ((!summary && !draft) || !paper.blocks?.length) return paper;
+  const contents = ((summary && !paper.summary.contentsChecked) || (draft && !paper.connectedShared && !paper.connectedContentsChecked))
+    && paper.blocks.some(block => contentsHeading.test(block.text?.trim()))
+    && referenceEntries(paper.blocks).some(entry => entry.contentsLink);
+  const oldSummary = summary && paper.summary.referenceCoverageVersion !== referenceCoverageVersion;
+  const oldDraft = draft && paper.connectedReferenceCoverageVersion !== referenceCoverageVersion;
+  let changed = false;
+  if ((oldSummary || oldDraft) && paper.blocks.some(block => block.text?.length > 1200 && referenceHeading.test(block.text.trim().replace(/^#{1,6}\s+/, '')))) {
+    const old = excludedBlockIds(paper.blocks, referenceEntries(paper.blocks, isReferenceEntry));
+    changed = [...referenceBlockIds(paper.blocks)].some(id => !old.has(id));
+  }
+  const reviewSummary = (contents && summary && !paper.summary.contentsChecked) || (changed && oldSummary);
+  const reviewDraft = (contents && draft && !paper.connectedShared && !paper.connectedContentsChecked) || (changed && oldDraft);
+  if (!reviewSummary && !reviewDraft) return paper;
+  return { ...paper, ...(reviewSummary && { summary: { ...paper.summary, stale: true } }),
+    ...(reviewDraft && { connectedStale: true }) };
 }
 
 export function referenceBlockIds(blocks) {
-  const entries = referenceEntries(blocks);
+  return excludedBlockIds(blocks, referenceEntries(blocks));
+}
+
+function excludedBlockIds(blocks, entries) {
   const ids = new Set();
   let start = entries.findIndex(item => item.explicit);
   if (start < 0) start = implicitStart(entries);

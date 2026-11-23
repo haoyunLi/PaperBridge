@@ -184,6 +184,33 @@ test('a split author list stays in references before a lettered appendix in a tw
   assert.deepEqual([...referenceBlockIds([body, ...references.slice(0, 3), title, references.at(-1)])], [2, 3, 4]);
 });
 
+test('a grouped PLOS bibliography stays in the original paper and leaves the appendix eligible', async () => {
+  const { referenceCoverageVersion, reviewSavedReferenceCoverage, referenceBlockIds, splitLeadingReferenceHeading } = await import('../src/references.mjs');
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const source = require('./mac-parity/good-enough/reader.json').blocks.at(-1).text;
+  const heading = 'References ' + source;
+  assert.deepEqual(splitLeadingReferenceHeading(heading), ['References', source]);
+  const blocks = ['Main observation.', heading, 'Appendix', 'We verified the control.'].map((text, index) => ({ id: index + 1, text }));
+  assert.deepEqual([...referenceBlockIds(blocks)], [2]);
+  const note = { text: 'observation', body: 'Retain my note' };
+  const old = { name: 'Laboratory record', blocks, summary: { source: 'Saved conclusion', contentsChecked: true },
+    connectedTranslation: 'Existing draft', connectedContentsChecked: true, viewNotes: [note] };
+  for (const connectedShared of [true, false]) {
+    const reviewed = reviewSavedReferenceCoverage({ ...old, connectedShared });
+    assert.ok(reviewed.summary.stale && reviewed.connectedStale);
+    assert.equal(reviewed.connectedTranslation, old.connectedTranslation);
+    assert.equal(reviewed.viewNotes, old.viewNotes);
+    const fresh = { ...old, connectedShared, summary: { ...old.summary, referenceCoverageVersion }, connectedReferenceCoverageVersion: referenceCoverageVersion };
+    assert.equal(reviewSavedReferenceCoverage(fresh), fresh);
+  }
+  const alreadyExcluded = { ...old, blocks: [{ id: 0, text: 'References' }, ...blocks.slice(1)] };
+  assert.equal(reviewSavedReferenceCoverage(alreadyExcluded), alreadyExcluded);
+  const original = markdownDocuments(old, undefined, 'original')[0].content;
+  assert.ok(original.includes(source) && original.includes('We verified the control.'));
+  const narrative = 'References 1. Please follow the numbered instructions to verify the response. 2. ' + 'Continue observing. '.repeat(70);
+  assert.deepEqual(splitLeadingReferenceHeading(narrative), [narrative]);
+});
+
 test('translation range counts exactly the unfinished queue including headings', async () => {
   const { referenceBlockIds, translationRangeIds } = await import('../src/paper.mjs');
   const blocks = [

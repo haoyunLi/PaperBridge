@@ -2,7 +2,7 @@ import { parseFragment } from 'parse5';
 import { mayContainIndentedOrNestedCode } from '../electron/markdown-code-context.mjs';
 import { parseMarkdown, renderedMarkdownText } from './markdownRendering.mjs';
 import { protectMarkdown } from './prompts.mjs';
-import { referenceBlockIds } from './references.mjs';
+import { referenceBlockIds, referenceCoverageVersion } from './references.mjs';
 import { commonOutputLanguage, normalizeOutputLanguage } from './outputLanguages.mjs';
 
 export function usesSharedMarkdown(paper) {
@@ -116,7 +116,7 @@ export function withSharedMarkdownTranslation(paper) {
   const connectedLanguage = translated.length ? commonOutputLanguage(translated.map(block => block.translationLanguage))
     : normalizeOutputLanguage(paper.taskSettings);
   return { ...paper, connectedTranslation: markdown, connectedLanguage, connectedLanguageConflict: false,
-    connectedBlocks: [], connectedBatchVersion: null, connectedShared: true, connectedStale: false };
+    connectedBlocks: [], connectedBatchVersion: null, connectedShared: true, connectedStale: false, connectedReferenceCoverageVersion: referenceCoverageVersion };
 }
 
 export function readableHtml(text) {

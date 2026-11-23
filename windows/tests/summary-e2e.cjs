@@ -19,6 +19,9 @@ async function run() {
   const unvalidated = 'The appendix reported a separate measurement without a confidence interval.';
   const longParagraph = `${'Repeated measurements reproduced the control. '.repeat(340)}${tail} ${unvalidated}`;
   const references = 'This reference entry must never be sent to the summary model.';
+  const longBibliography = process.argv.includes('--long-bibliography');
+  const citations = longBibliography ? 'References ' + require('./mac-parity/good-enough/reader.json').blocks.at(-1).text
+    : 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.';
   const appendix = 'Appendix A. The team calibrated the sensors again after cold storage.';
   const requests = [];
   let held;
@@ -104,7 +107,7 @@ async function run() {
     };
     await revealSidebarSource(page);
     await openPasteText(page);
-    await page.locator('.paste-area').fill([opening, longParagraph, 'Limitations', 'We could only measure response times in daylight.', 'References [1] Ng, A. (2021). Earlier calibration. Journal of Testing.', references, appendix].join('\n\n'));
+    await page.locator('.paste-area').fill([opening, longParagraph, 'Limitations', 'We could only measure response times in daylight.', citations, references, appendix].join('\n\n'));
     await loadPastedText(page, { view: 'Paper' });
     await openWorkspaceView(page, 'Overview');
     await page.locator('.toolbar-actions').getByRole('button', { name: 'Summarize Paper' }).click();
@@ -149,6 +152,12 @@ async function run() {
     assert.ok(narrowTarget.y >= narrowSource.y + narrowSource.height);
     await page.setViewportSize({ width: 1320, height: 850 });
     const excerpts = requests.filter(item => item.kind === 'excerpt');
+    if (longBibliography) {
+      for (const title of ['Best Practices for Scientific Computing.', 'Code Review For and By Scientists.']) {
+        assert.ok(citations.includes(title));
+        assert.ok(excerpts.every(item => !item.payload.includes(title)), 'Reference text reached the summary model: ' + title);
+      }
+    }
     assert.equal(excerpts.length, 4);
     assert.ok(excerpts.every(item => item.payload.length <= 6000 && !item.payload.includes(references) && !item.payload.includes('Earlier calibration.')));
     assert.match(excerpts.at(-1).payload, /\[P2\][\s\S]*low visibility conditions/);

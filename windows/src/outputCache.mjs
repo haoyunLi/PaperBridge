@@ -88,7 +88,8 @@ function switchDocumentOutputs(current, destination, previous, next) {
         source, text: current.connectedTranslation, blocks: current.connectedBlocks, stale: current.connectedStale,
         connectedLanguage: normalizeOutputLanguage(current.connectedLanguage),
         connectedLanguageConflict: current.connectedLanguageConflict === true,
-        contentsChecked: current.connectedContentsChecked, shared: current.connectedShared, batchVersion: current.connectedBatchVersion, notes, highlights
+        contentsChecked: current.connectedContentsChecked, referenceCoverageVersion: current.connectedReferenceCoverageVersion,
+        shared: current.connectedShared, batchVersion: current.connectedBatchVersion, notes, highlights
       } };
     }
     const saved = variantFor(variants.connected, to, connectedKey(next));
@@ -101,6 +102,7 @@ function switchDocumentOutputs(current, destination, previous, next) {
       connectedLanguageConflict: match?.connectedLanguageConflict === true,
       connectedStale: Boolean(match && (match.stale || !exact)), connectedShared: match?.shared || false,
       connectedBatchVersion: match?.batchVersion ?? null, connectedContentsChecked: match?.contentsChecked === true,
+      connectedReferenceCoverageVersion: match?.referenceCoverageVersion,
       viewNotes: [...(result.viewNotes || []).filter(item => !isConnected(item)), ...(match?.notes || [])],
       viewHighlights: [...(result.viewHighlights || []).filter(item => !isConnected(item)), ...(match?.highlights || [])]
     });

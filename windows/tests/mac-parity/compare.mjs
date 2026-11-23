@@ -252,6 +252,15 @@ const taggedByline = text => `[P${byline.id}]\n${text}`;
 assert.deepEqual(taggedSummaryBatches(structuredSource), nativeJournal.summaryBatches.map(batch =>
   batch.replace(taggedByline(nativeByline), taggedByline(byline.text))), 'All MinerU journal passages and Reader IDs in the summary input');
 
+if (reference.longBibliographies) {
+  assert.deepEqual(reference.longBibliographies.map(sample => sample.references.length), [1, 2]);
+  for (const sample of reference.longBibliographies) {
+    const blocks = sample.paragraphs.map((text, index) => ({ id: index + 1, text }));
+    const excluded = referenceBlockIds(blocks);
+    assert.deepEqual(blocks.filter(block => excluded.has(block.id)).map(block => block.text), sample.references);
+    assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), sample.body);
+  }
+}
 assert.equal(reference.bibliographies.length, fixtures.bibliographies.length);
 for (const [index, fixture] of fixtures.bibliographies.entries()) {
   const blocks = blocksFromText(fixture.paragraphs.join('\n\n'));
