@@ -1,4 +1,5 @@
 import { parseFragment } from 'parse5';
+import { mayContainIndentedOrNestedCode } from '../electron/markdown-code-context.mjs';
 import { parseMarkdown, renderedMarkdownText } from './markdownRendering.mjs';
 import { protectMarkdown } from './prompts.mjs';
 import { referenceBlockIds } from './references.mjs';
@@ -9,7 +10,7 @@ export function usesSharedMarkdown(paper) {
 }
 
 export function protectStructuredMarkdown(markdown, { boundLinks = true } = {}) {
-  if (!markdown.includes('](') && !/[`<@]|~{3}|\]:|https?:\/\/|\bwww\./i.test(markdown)) return protectMarkdown(markdown);
+  if (!mayContainIndentedOrNestedCode(markdown) && !markdown.includes('](') && !/[`<@]|~{3}|\]:|https?:\/\/|\bwww\./i.test(markdown)) return protectMarkdown(markdown);
   const ranges = [];
   const boundedLinks = new Map();
   let standaloneLabel = false;
@@ -260,11 +261,35 @@ function takeHtmlResource(lines, start, tag) {
   }
 }
 
+function containerCodeBlocks(source) {
+  const blocks = new Map();
+  if (!mayContainIndentedOrNestedCode(source)) return blocks;
+  // Only line boundaries are needed here. Large embedded figures do not affect block structure.
+  const outline = source.replace(/(data:image\/[\w.+-]+;base64,)[A-Za-z0-9+/=]{512,}/gi, '$1AA==');
+  const containsCode = node => node.type === 'code' || Boolean(node.children?.some(containsCode));
+  const onlyCode = node => node.type === 'code' || ['list', 'listItem', 'blockquote'].includes(node.type) && node.children.every(onlyCode);
+  for (const node of parseMarkdown(outline).children) {
+    if (node.type === 'code' || (node.type === 'list' || node.type === 'blockquote') && containsCode(node)) {
+      const kind = onlyCode(node) ? 'code' : node.type === 'blockquote' ? 'quote' : 'list';
+      blocks.set(node.position.start.line - 1, { end: node.position.end.line, kind });
+    }
+  }
+  return blocks;
+}
+
 function parsedMarkdownSegments(markdown) {
-  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+  const source = String(markdown || '').replace(/\r\n?/g, '\n');
+  const lines = source.split('\n');
+  const codeBlocks = containerCodeBlocks(source);
   const segments = [];
   for (let index = 0; index < lines.length;) {
     if (!lines[index].trim()) { index++; continue; }
+    const container = codeBlocks.get(index);
+    if (container) {
+      segments.push({ kind: container.kind, sourceMarkdown: lines.slice(index, container.end).join('\n') });
+      index = container.end;
+      continue;
+    }
     const kind = segmentKind(lines, index) || 'paragraph';
     const start = index;
     const trimmed = lines[index].trim();
@@ -334,11 +359,13 @@ export function parsedMarkdownBlocks(markdown) {
 // Reading this metadata never migrates or rewrites the saved block.
 export function markdownBlockKind(block) {
   if (typeof block?.sourceMarkdown !== 'string' || !block.sourceMarkdown.trim()) return null;
-  const source = block.sourceMarkdown.replace(/\r\n?/g, '\n').trim();
-  const kind = segmentKind(source.split('\n'), 0) || 'paragraph';
+  const raw = block.sourceMarkdown.replace(/\r\n?/g, '\n');
+  const containers = mayContainIndentedOrNestedCode(raw) ? parsedMarkdownSegments(raw) : null;
+  const source = containers ? raw : raw.trim();
+  const kind = containers?.[0]?.kind || segmentKind(source.split('\n'), 0) || 'paragraph';
   if (kind === 'paragraph') return kind;
   if (block.markdownKind != null && block.markdownKind !== kind) return null;
-  const segments = parsedMarkdownSegments(source);
+  const segments = containers ?? parsedMarkdownSegments(source);
   if (segments.length !== 1) return null;
   const legacyText = plainText(segments[0].sourceMarkdown);
   if (block.text !== legacyText && block.text !== (markdownHeadingText(block) ?? proseText(source, legacyText))) return null;

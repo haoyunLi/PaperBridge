@@ -2,7 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash, randomBytes } = require('node:crypto');
 const { assetFile, mineruResultManifest } = require('./markdown-assets.cjs');
-const { mineruMarkdownFiles, readMineruMarkdown, embedMineruImages } = require('./mineru-output.cjs');
+const { mineruMarkdownFiles, embedMineruImages } = require('./mineru-output.cjs');
+const { mayContainIndentedOrNestedCode } = require('./markdown-code-context.mjs');
 
 const resultsDirectory = 'mineru-results';
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -83,10 +84,15 @@ function findPaperMineruMarkdown(root, paper) {
     for (const file of mineruMarkdownFiles(legacy)) {
       if (!assetFile(legacy, path.relative(legacy, file))) continue;
       try {
-        const current = readMineruMarkdown(file);
-        // An older importer could leave some linked figures as relative paths.
-        // Resolve the stored version in the same folder before comparing its content.
-        if (current !== paper.mineruMarkdown && current !== embedMineruImages(paper.mineruMarkdown, file)) continue;
+        const raw = fs.readFileSync(file, 'utf8');
+        function matchesSaved(options) {
+          const embedded = embedMineruImages(raw, file, undefined, options);
+          return embedded === paper.mineruMarkdown || embedded === embedMineruImages(paper.mineruMarkdown, file, undefined, options);
+        }
+        // Older imports sometimes embedded image paths printed inside code. Accept only a
+        // complete match to the archived document, using the image treatment of its importer.
+        if (raw !== paper.mineruMarkdown && !matchesSaved() &&
+            !(mayContainIndentedOrNestedCode(raw) && matchesSaved({ legacyCodeImages: true }))) continue;
       } catch { continue; }
       if (match) return null;
       match = file;

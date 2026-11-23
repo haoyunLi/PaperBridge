@@ -114,7 +114,7 @@ function findMineruMarkdown(folder, preferredStem) {
 
 const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 
-function embedMineruImages(markdown, file, resourceRoot = path.dirname(file)) {
+function embedMineruImages(markdown, file, resourceRoot = path.dirname(file), options) {
   const directory = fs.realpathSync(resourceRoot);
   const from = path.relative(directory, fs.realpathSync(file)).split(path.sep).join('/');
   return rewriteAssetUrls(markdown, url => {
@@ -127,7 +127,7 @@ function embedMineruImages(markdown, file, resourceRoot = path.dirname(file)) {
       if (asset && asset.size <= maxImageBytes) return `data:${mime};base64,${fs.readFileSync(asset.file).toString('base64')}`;
     } catch { /* An unavailable figure must not prevent reading the extracted text. */ }
     return url;
-  });
+  }, options);
 }
 
 function readMineruMarkdown(file, resourceRoot) {

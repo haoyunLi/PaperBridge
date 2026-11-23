@@ -42,6 +42,11 @@ func nativeBundleReference(fixturesDirectory: URL) throws -> [String: Any] {
         let bytes = try Data(contentsOf: moved.appendingPathComponent(name))
         return (name, SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())
     })
-    return ["wrapped": wrappedHashes, "copied": result.copiedAssetCount, "missing": result.missingAssetPaths,
+    let literal = try String(contentsOf: fixturesDirectory.appendingPathComponent("literal-asset-examples.md"), encoding: .utf8)
+    let examples = try MarkdownBundleExporter().export(paperName: "Calibration examples.pdf", documents: ["examples.md": literal],
+        assetSourceDirectory: source, to: exported)
+    let printed = try String(contentsOf: examples.directoryURL.appendingPathComponent("examples.md"), encoding: .utf8)
+    guard printed == literal else { throw CocoaError(.fileReadCorruptFile) }
+    return ["wrapped": wrappedHashes, "literalDocument": printed, "copied": result.copiedAssetCount, "missing": result.missingAssetPaths,
             "guide": try String(contentsOf: movedGuide, encoding: .utf8), "targets": hashes]
 }

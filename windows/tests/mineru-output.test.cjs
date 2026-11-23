@@ -195,6 +195,27 @@ test('moved supplements follow nested Markdown and retain original attachment na
   assert.equal(fs.readFileSync(relativeToGuide('tables/B/count.csv'), 'utf8'), 'other series');
 });
 
+test('code examples keep literal paths in containers while real links in a list continuation still resolve', async () => {
+  const { rewriteAssetUrls } = require('../electron/markdown-assets.cjs');
+  const { parsedMarkdownBlocks, protectStructuredMarkdown } = await import('../src/academicMarkdown.mjs');
+  const doc = ['> - ~~~html', '>   <img src="image.png">', '>   ~~~', '',
+    '- The readings were recorded.', '    See [the table](data.csv).', '',
+    '    The example follows.', '', '        ![table](image.png)'].join('\n');
+  const seen = [];
+  const rewritten = rewriteAssetUrls(doc, (url, kind) => { seen.push([url, kind]); return 'offline/' + url; }, { includeLinks: true });
+  assert.deepEqual(seen, [['data.csv', 'link']]);
+  assert.equal(rewritten, doc.replace('](data.csv)', '](offline/data.csv)'));
+  const blocks = parsedMarkdownBlocks(doc);
+  assert.equal(blocks.length, 2);
+  assert.equal(blocks[0].resource, true);
+  assert.equal(blocks[1].markdownKind, 'list');
+  assert.equal(blocks[1].resource, false);
+  const protectedList = protectStructuredMarkdown(blocks[1].sourceMarkdown);
+  assert.ok(protectedList.text.includes('The readings were recorded.'));
+  assert.ok(protectedList.tokens.some(([, text]) => text.includes('![table](image.png)')));
+  assert.ok(!protectedList.text.includes('image.png'));
+});
+
 test('wrapped and reference-style assets survive import, separate Reader blocks and a moved bundle', async t => {
   const file = fixture(t);
   const image = Buffer.from('test figure bytes');
@@ -375,6 +396,23 @@ test('saved MinerU generations keep their own attachments and page hints even wi
   removeMineruResult(file(''), currentId);
   assert.equal(fs.existsSync(path.dirname(current)), false);
   assert.equal(findPaperMineruMarkdown(file(''), { ...paper, mineruResourceId: oldId }), previous);
+});
+
+test('earlier workspaces that embedded images inside code still resolve only their own archived document', t => {
+  const file = fixture(t), id = '7'.repeat(64);
+  const original = '# Attachment guide\n\n    ![Example](figures/sample.png)\n\n![Actual](figures/sample.png)';
+  const first = file('mineru/' + id + '/first/paper.md', original);
+  const bytes = Buffer.from('old captured figure');
+  file('mineru/' + id + '/first/figures/sample.png', bytes);
+  const inline = 'data:image/png;base64,' + bytes.toString('base64');
+  const old = { id, mineruMarkdown: original.replaceAll('figures/sample.png', inline) };
+  assert.equal(findPaperMineruMarkdown(file(''), old), first);
+  const other = 'mineru/' + id + '/other/';
+  file(other + 'paper.md', original);
+  file(other + 'figures/sample.png', 'different figure');
+  assert.equal(findPaperMineruMarkdown(file(''), old), first);
+  file(other + 'figures/sample.png', bytes);
+  assert.equal(findPaperMineruMarkdown(file(''), old), null);
 });
 
 test('legacy MinerU assets require a unique match with the saved Markdown', t => {
