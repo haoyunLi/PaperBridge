@@ -18,22 +18,31 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm ci --ignore-scripts
-      - name: Install the current verified GitHub release
+      - run: npm ci
+      - name: Package a candidate for a clean installation
+        if: startsWith(github.ref_name, 'windows-setup-check-candidate-')
+        run: npm run dist
+      - name: Install PaperBridge for the current user
         run: |
           $ErrorActionPreference = 'Stop'
           if (Get-Command ollama -ErrorAction SilentlyContinue) { throw 'Expected a fresh machine without Ollama' }
-          $feed = Invoke-RestMethod 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json'
-          if ($feed.version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
-          $name = "PaperBridge-Windows-$($feed.version)-x64-Setup.exe"
-          $installer = Join-Path $env:RUNNER_TEMP $name
           $install = Join-Path $env:RUNNER_TEMP 'Clean PaperBridge'
-          Invoke-WebRequest "https://github.com/haoyunLi/PaperBridge/releases/download/windows-v$($feed.version)/$name" -OutFile $installer -MaximumRetryCount 3
-          if ((Get-Item $installer).Length -ne $feed.files.Setup.size -or (Get-FileHash $installer).Hash -ne $feed.files.Setup.sha256) { throw 'Unexpected installer bytes' }
+          if ($env:GITHUB_REF_NAME -like 'windows-setup-check-candidate-*') {
+            $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+            $installer = (Resolve-Path "release/PaperBridge-Windows-$version-x64-Setup.exe").Path
+          } else {
+            $feed = Invoke-RestMethod 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json'
+            $version = $feed.version
+            if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+            $name = "PaperBridge-Windows-$version-x64-Setup.exe"
+            $installer = Join-Path $env:RUNNER_TEMP $name
+            Invoke-WebRequest "https://github.com/haoyunLi/PaperBridge/releases/download/windows-v$version/$name" -OutFile $installer -MaximumRetryCount 3
+            if ((Get-Item $installer).Length -ne $feed.files.Setup.size -or (Get-FileHash $installer).Hash -ne $feed.files.Setup.sha256) { throw 'Unexpected installer bytes' }
+          }
           $process = Start-Process -FilePath $installer -ArgumentList "/S /currentuser /D=$install" -WindowStyle Hidden -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
-          "PAPERBRIDGE_CLEAN_RELEASE=$($feed.version)" >> $env:GITHUB_ENV
+          "PAPERBRIDGE_CLEAN_RELEASE=$version" >> $env:GITHUB_ENV
       - name: Install Ollama and translate with the first-run model card
         timeout-minutes: 36
         run: node tests/clean-ollama-setup.cjs

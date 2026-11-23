@@ -232,7 +232,10 @@ class SetupManager {
         await this.download('https://ollama.com/download/OllamaSetup.exe', installer, 'ollama', 'Downloading the official Ollama installer…');
         this.send('ollama', 'Checking the Ollama publisher signature…');
         await this.verifyOllamaSignature(installer);
-        await this.run(installer, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'], 'ollama', 'Installing Ollama for this Windows user…');
+        // The signed installer starts the tray app after setup. An inherited
+        // output pipe can stay open for the lifetime of that background app.
+        await this.run(installer, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'], 'ollama',
+          'Installing Ollama for this Windows user…', { stdio: 'ignore' });
       } finally { if (fs.existsSync(installer)) fs.rmSync(installer, { force: true }); }
       if (await ready()) return;
       appPath = await ollamaPath();
