@@ -41,10 +41,17 @@ async function run() {
         const viewport = await page.evaluate(() => [innerWidth, innerHeight, devicePixelRatio]);
         throw Error(JSON.stringify({ target, native, viewport }) + ' ' + error.message);
       });
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentSize());
-      const viewport = await page.evaluate(() => [innerWidth, innerHeight]);
-      assert.ok(size.every((value, i) => Math.abs(value - viewport[i]) <= 1), JSON.stringify({ size, viewport }));
+      // WM_DPICHANGED can update the native frame before Chromium lays out its
+      // new viewport. Require the same final geometry on both sides.
+      const deadline = Date.now() + 5000;
+      let size, viewport;
+      do {
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
+        size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getContentSize());
+        viewport = await page.evaluate(() => [innerWidth, innerHeight]);
+        if (size.every((value, i) => Math.abs(value - viewport[i]) <= 1)) return;
+      } while (Date.now() < deadline);
+      assert.fail(JSON.stringify({ target, size, viewport }));
     }
     const onboarding = page.locator('.onboarding');
     await onboarding.waitFor();
