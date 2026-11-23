@@ -359,7 +359,9 @@ async function run() {
       await card.focus();
       await page.evaluate(() => window.getSelection().removeAllRanges());
       await page.keyboard.press('Control+Shift+ArrowRight');
-      assert.equal(await page.locator('.inspector blockquote').textContent(), 'A');
+      const selectedWord = await page.evaluate(() => window.getSelection().getRangeAt(0).toString());
+      assert.equal(selectedWord, 'A ');
+      assert.equal(await page.locator('.inspector blockquote').textContent(), selectedWord);
       assert.equal(await selectFormula(card.locator('p').first()), formulaQuote);
       await page.locator('.inspector .highlight.coral').click();
       await page.locator('.inspector textarea').fill(`Formula in ${side}`);
