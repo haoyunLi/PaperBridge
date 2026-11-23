@@ -23,10 +23,20 @@ async function run() {
   assert.equal(await json('/api/version').then(() => true, () => false), false);
   const launch = () => electron.launch({ executablePath: process.env.PAPERBRIDGE_TEST_EXECUTABLE, cwd: root,
     args: ['--user-data-dir=' + path.join(workspace, 'profile')], env: { ...process.env, PAPERBRIDGE_WORKSPACE: workspace } });
-  let app = await launch(), page;
+  let app = await launch(), page, heartbeat;
   try {
     page = await app.firstWindow();
     page.setDefaultTimeout(45000);
+    heartbeat = setInterval(async () => {
+      try {
+        const snapshot = await page.evaluate(() => ({
+          screen: document.querySelector('.onboarding, .modal')?.innerText.slice(-1100),
+          progress: window.setupReport
+        }));
+        fs.writeFileSync(reportFile, JSON.stringify({ ...report, ...snapshot }, null, 2));
+      } catch { /* The reader can be between processes during restart. */ }
+    }, 30000);
+    heartbeat.unref();
     checkpoint('opening the first-run guide');
     const guide = page.locator('.onboarding');
     await guide.waitFor();
@@ -103,6 +113,7 @@ async function run() {
     }
     throw error;
   } finally {
+    clearInterval(heartbeat);
     fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report));
     // A failed setup may still own a task and prompt on normal quit. Only this

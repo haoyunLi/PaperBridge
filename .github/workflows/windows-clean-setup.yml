@@ -35,6 +35,7 @@ jobs:
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
           "PAPERBRIDGE_CLEAN_RELEASE=$($feed.version)" >> $env:GITHUB_ENV
       - name: Install Ollama and translate with the first-run model card
+        timeout-minutes: 36
         run: node tests/clean-ollama-setup.cjs
       - uses: actions/upload-artifact@v4
         if: always()
