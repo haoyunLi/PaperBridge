@@ -102,12 +102,26 @@ async function run() {
     // performs the actual edition selection, file verification and persistence.
     const bytes = 'Portable release fixture for ' + nextVersion;
     const hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+    // These small UI fixtures are not published binaries. After the real rejection
+    // below, isolate just the proof verifier for the handoff and restart UI checks.
+    // The public-release job verifies the actual executables and the signed bundle.
+    const useFixtureVerifier = instance => instance.evaluate(({ app }, hash) => {
+      const requireApp = process.getBuiltinModule('node:module').createRequire(process.getBuiltinModule('node:path').join(app.getAppPath(), 'package.json'));
+      const type = requireApp('./electron/update-download.cjs').UpdateDownload;
+      const original = type.prototype.save;
+      type.prototype.save = function(download, signal) {
+        if (download.file.sha256 !== hash) throw new Error('Unexpected test download');
+        this.verifyProvenance = async () => {};
+        return original.call(this, download, signal);
+      };
+    }, hash);
     const provideDownload = instance => instance.evaluate(({ session, shell }, { identity, bytes, hash }) => {
       const asset = { size: Buffer.byteLength(bytes), sha256: hash };
       const feed = { version: identity.tag.slice('windows-v'.length), files: { Setup: asset, Portable: asset } };
       const originalFetch = global.fetch;
       global.fetch = (url, options) => {
         if (String(url).endsWith('/windows/latest-release.json')) return Promise.resolve(Response.json(feed));
+        if (String(url).endsWith('-provenance.json')) return Promise.resolve(new Response(null, { status: 404 }));
         if (String(url).startsWith('https://api.github.com/')) return Promise.resolve(new Response(null, { status: 403 }));
         return originalFetch(url, options);
       };
@@ -137,6 +151,13 @@ async function run() {
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Check now' && !button.disabled));
     assert.deepEqual(await app.evaluate(() => global.__fileRequests), []);
     await background.check();
+    await page.getByText(/Could not verify the GitHub build proof/).last().waitFor();
+    assert.equal(fs.existsSync(path.join(workspace, 'update-downloads', identity.portableName)), false);
+    assert.equal(await page.getByRole('button', { name: 'Show downloaded update' }).count(), 0);
+    await background.uncheck();
+    await useFixtureVerifier(app);
+    await app.evaluate(() => { global.__fileRequests = []; });
+    await background.check();
     const reveal = page.getByRole('button', { name: 'Show downloaded update', exact: true });
     try { await reveal.last().waitFor({ timeout: 20000 }); }
     catch (error) {
@@ -150,8 +171,13 @@ async function run() {
     assert.equal(await app.evaluate(() => global.__revealed), savedFile);
     await app.close(); app = null;
     app = await launch(true);
+    await useFixtureVerifier(app);
     page = await app.firstWindow();
-    await page.locator('.update-banner').getByRole('button', { name: 'Show downloaded update' }).waitFor();
+    const restartedDownload = page.locator('.update-banner');
+    await restartedDownload.waitFor();
+    // The first-window bootstrap may have checked the cache before test instrumentation.
+    await page.evaluate(() => window.paperBridge.checkUpdates(true));
+    await restartedDownload.getByRole('button', { name: 'Show downloaded update' }).waitFor();
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, true);
     await app.evaluate(({ shell }) => { shell.showItemInFolder = () => { throw new Error('Changed download must never be revealed'); }; });
     fs.writeFileSync(savedFile, 'x'.repeat(bytes.length));
@@ -163,6 +189,7 @@ async function run() {
     app = await launch();
     page = await app.firstWindow();
     await provideDownload(app);
+    await useFixtureVerifier(app);
     await app.evaluate(({ app, shell }) => {
       if (!app.isPackaged) Object.defineProperty(app, 'isPackaged', { get: () => true });
       global.__installerRequests = [];

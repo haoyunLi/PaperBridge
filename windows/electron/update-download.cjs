@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { compareVersions } = require('./updates.cjs');
+const { verifyUpdateProvenance } = require('./update-provenance.cjs');
 
 async function matchesRelease(filename, file, signal) {
   const stat = await fs.promises.lstat(filename).catch(error => {
@@ -63,9 +64,10 @@ function chromiumTransfer(session) {
 }
 
 class UpdateDownload {
-  constructor({ directory, transfer, notify, reveal, currentVersion, runningPortable }) {
+  constructor({ directory, transfer, notify, reveal, currentVersion, runningPortable, verifyProvenance = verifyUpdateProvenance }) {
     this.directory = directory;
     this.transfer = transfer;
+    this.verifyProvenance = verifyProvenance;
     this.notify = notify;
     this.reveal = reveal;
     this.state = { phase: 'idle' };
@@ -125,7 +127,7 @@ class UpdateDownload {
     signal.throwIfAborted();
     const { file, tag } = download;
     const final = path.join(this.directory, file.name);
-    if (await matchesRelease(final, file, signal)) return;
+    if (await matchesRelease(final, file, signal)) return this.verifyProvenance(download, this.directory, signal);
     signal.throwIfAborted();
     await fs.promises.mkdir(this.directory, { recursive: true });
     const temporary = await fs.promises.mkdtemp(path.join(this.directory, '.partial-'));
@@ -137,6 +139,7 @@ class UpdateDownload {
         if (!signal.aborted && percent !== this.state.percent) this.publish({ tag, phase: 'downloading', percent });
       });
       if (!await matchesRelease(staged, file, signal)) throw new Error('The downloaded file failed the GitHub size or SHA-256 check.');
+      await this.verifyProvenance(download, this.directory, signal);
       signal.throwIfAborted();
       await fs.promises.rename(staged, final);
     } finally {
@@ -178,7 +181,7 @@ class UpdateDownload {
     });
     for (const entry of entries) {
       const file = path.join(this.directory, entry.name);
-      const version = /^PaperBridge-Windows-(\d+\.\d+\.\d+)-x64-(?:Setup|Portable)\.exe$/.exec(entry.name)?.[1];
+      const version = /^PaperBridge-Windows-(\d+\.\d+\.\d+)-(?:x64-(?:Setup|Portable)\.exe|provenance\.json)$/.exec(entry.name)?.[1];
       if (entry.isDirectory() && /^\.partial-[a-zA-Z0-9]{6}$/.test(entry.name)) {
         await fs.promises.rm(file, { recursive: true, force: true });
       } else if (entry.isFile() && version && compareVersions(version, currentVersion) < 0 && file.toLowerCase() !== runningPortable?.toLowerCase()) {

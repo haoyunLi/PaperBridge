@@ -176,7 +176,7 @@ function registerHandlers() {
     availableDownload = candidate;
     if (candidate && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
     else if (!updateFiles.matches(candidate)) updateFiles.cancel();
-    return { ...result, downloadLabel: candidate?.label,
+    return { ...result, downloadLabel: candidate?.label, downloadInApp: Boolean(candidate?.file),
       canOpenInstaller: Boolean(app.isPackaged && !portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Setup.exe`),
       updateFile: updateFiles.state };
   });

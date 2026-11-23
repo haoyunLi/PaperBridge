@@ -75,6 +75,7 @@
     "dist:signed": "npm run build && node scripts/dist-signed.cjs"
   },
   "dependencies": {
+    "@sigstore/core": "4.0.1",
     "entities": "6.0.1",
     "katex": "^0.16.22",
     "lucide-react": "^0.468.0",
@@ -94,6 +95,7 @@
     "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
+    "sigstore": "5.0.1",
     "unicode-case-folding": "1.1.2",
     "unified": "^11.0.5",
     "yauzl": "3.4.0"

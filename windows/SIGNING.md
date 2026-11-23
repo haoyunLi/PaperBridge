@@ -47,6 +47,8 @@ foreach ($file in $files) {
 gh attestation verify .\PaperBridge-Windows-0.2.88-x64-Portable.exe --repo haoyunLi/PaperBridge --signer-workflow haoyunLi/PaperBridge/.github/workflows/windows.yml --source-ref refs/tags/windows-v0.2.88 --deny-self-hosted-runners
 ```
 
+从 Windows 0.2.94 起，在应用内下载更新会核对文件长度、SHA-256 和 GitHub 签署的构建来源证明。验证涵盖仓库身份、Windows 打包工作流、版本标签和对应版本的文件名。两种 EXE 共用发布页附带的 `-provenance.json`。应用保留已验证的证明，重启后可以离线复核已经下载的文件。手动从浏览器首次下载时仍由 Windows 显示该文件的发布者信息。[GitHub 构建证明离线核验](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/verify-attestations-offline)
+
 安装版使用同一条命令，将文件名里的 Portable 改为 Setup 即可。直接下载和使用 PaperBridge 的用户可以省略这一步。[GitHub CLI 命令说明](https://cli.github.com/manual/gh_attestation_verify)
 
 ## 美国个人开发者申请

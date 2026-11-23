@@ -46,6 +46,10 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Installed app failed the translation range comparison' }
             node "$PSScriptRoot/nested-resource-e2e.cjs" --deep
             if ($LASTEXITCODE -ne 0) { throw 'Installed reader failed the native table and figure caption comparison' }
+            if (Test-Path -LiteralPath (Join-Path $dir "PaperBridge-Windows-$Version-provenance.json")) {
+                node "$PSScriptRoot/public-update-proof.cjs" $dir $Version
+                if ($LASTEXITCODE -ne 0) { throw 'The installed reader failed to verify the public signed update proof' }
+            }
             node "$PSScriptRoot/update-restart-e2e.cjs"
             if ($LASTEXITCODE -ne 0) { throw 'Installed update controls did not hand the verified Setup edition to Windows correctly' }
             node "$PSScriptRoot/structured-draft-e2e.cjs"

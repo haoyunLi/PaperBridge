@@ -234,15 +234,45 @@ jobs:
           name: PaperBridge-Windows
           path: built
       - name: Sign the build provenance of both Windows executables
+        id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: 'built/PaperBridge-Windows-*-x64-*.exe'
           create-storage-record: false
+      - name: Name the build proof for the release
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          cp -- "$BUNDLE_PATH" "PaperBridge-Windows-${GITHUB_REF_NAME#windows-v}-provenance.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-provenance
+          path: PaperBridge-Windows-*-provenance.json
+          if-no-files-found: error
+
+  stage-build-provenance:
+    needs: attest-windows-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build-provenance
+      - name: Attach the signed build proof to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="PaperBridge-Windows-${GITHUB_REF_NAME#windows-v}-provenance.json"
+          assets=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if ! grep -Fxq "$name" <<< "$assets"; then
+            gh release upload "$GITHUB_REF_NAME" "$name" --repo "$GITHUB_REPOSITORY"
+          fi
 
   verify-public-download:
     outputs:
       release_feed: ${{ steps.public-download.outputs.release_feed }}
-    needs: [build, attest-windows-release]
+    needs: [build, stage-build-provenance]
     if: startsWith(github.ref, 'refs/tags/windows-v')
     runs-on: windows-latest
     timeout-minutes: 12
@@ -265,6 +295,9 @@ jobs:
           if ($response.StatusCode -ne 200) { throw "Could not read release $tag (HTTP $($response.StatusCode))" }
           $release = $response.Content | ConvertFrom-Json
           if ($release.tag_name -cne $tag -or $release.draft) { throw "Expected publicly downloadable release $tag" }
+          $proofName = "PaperBridge-Windows-$version-provenance.json"
+          $proof = Join-Path $dir.FullName $proofName
+          Invoke-WebRequest "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$proofName" -OutFile $proof -MaximumRetryCount 3
           $feed = [ordered]@{ version = $version; files = [ordered]@{} }
           foreach ($kind in @('Portable', 'Setup')) {
             $name = "PaperBridge-Windows-$version-x64-$kind.exe"
@@ -284,6 +317,8 @@ jobs:
             }
             gh attestation verify $file --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/windows.yml" --source-ref $env:GITHUB_REF --source-digest $env:GITHUB_SHA --deny-self-hosted-runners
             if ($LASTEXITCODE -ne 0) { throw "GitHub build provenance verification failed for $name" }
+            gh attestation verify $file --bundle $proof --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/windows.yml" --source-ref $env:GITHUB_REF --source-digest $env:GITHUB_SHA --deny-self-hosted-runners
+            if ($LASTEXITCODE -ne 0) { throw "Public build proof verification failed for $name" }
             $feed.files[$kind] = [ordered]@{ size = $download.Length; sha256 = $hash }
           }
           "portable=$(Join-Path $dir.FullName "PaperBridge-Windows-$version-x64-Portable.exe")" >> $env:GITHUB_OUTPUT

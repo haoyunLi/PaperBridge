@@ -35,11 +35,11 @@ test('only the matching official edition contributes a usable digest to the dail
   }
 });
 
-async function fixture(t, transfer) {
+async function fixture(t, transfer, verifyProvenance = async () => {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'paperbridge-update-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const changes = [], shown = [];
-  const create = () => new UpdateDownload({ directory, transfer, notify: value => changes.push(value), reveal: file => shown.push(file) });
+  const create = () => new UpdateDownload({ directory, transfer, verifyProvenance, notify: value => changes.push(value), reveal: file => shown.push(file) });
   return { directory, changes, shown, create };
 }
 
@@ -95,6 +95,27 @@ test('missing metadata, a bad hash or length, and cancellation never publish an 
   await canceled;
   assert.equal(manager.state.phase, 'idle');
   assert.deepEqual(await fs.readdir(directory), []);
+});
+
+test('a matching hash without an authentic build proof cannot be offered, even after restart', async t => {
+  let valid = false, verifications = 0;
+  const { directory, create } = await fixture(t, async (_download, file) => fs.writeFile(file, payload), async () => {
+    verifications++;
+    if (!valid) throw new Error('Build proof failed.');
+  });
+  const manager = create();
+  await manager.prepare(next);
+  assert.equal(manager.state.phase, 'failed');
+  assert.deepEqual(await fs.readdir(directory), []);
+  valid = true;
+  await manager.prepare(next);
+  assert.equal(manager.state.phase, 'ready');
+  valid = false;
+  const restarted = create();
+  await restarted.prepare(next);
+  assert.equal(restarted.state.phase, 'failed');
+  await assert.rejects(restarted.show(tag), /No verified/);
+  assert.equal(verifications, 3);
 });
 
 test('an explicit Setup action rechecks the file and shares one Windows handoff while it is opening', async t => {
