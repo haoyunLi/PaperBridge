@@ -56,6 +56,14 @@ async function run() {
       report.figureContinuation = figureBody.id;
       report.figureCaption = caption.id;
     }
+    let columns;
+    if (native.leftColumnEnd && native.rightColumnStart) {
+      const word = native.leftColumnEnd.replace(/-$/, '') + native.rightColumnStart.replace(/-$/, '');
+      columns = blocks.find(b => b.page === 3 && b.text.includes(word));
+      assert.ok(columns && !columns.endPage);
+      await page.locator('#block-' + columns.id).getByText(word, { exact: false }).first().waitFor();
+      report.columnContinuation = columns.id;
+    }
     if (process.argv.includes('--live')) {
       await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
       const translated = row.locator('.translation-text.done');
@@ -72,6 +80,15 @@ async function run() {
         assert.match(report.figureBodyTranslation, /左(?:向|到|至)右/);
         assert.doesNotMatch(report.figureBodyTranslation, /分隔符|特殊标记|问题[和与]答案/);
       }
+      if (columns) {
+        const row = page.locator('#block-' + columns.id);
+        await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+        const result = row.locator('.translation-text.done');
+        await result.waitFor({ timeout: 150000 });
+        report.columnTranslation = await result.innerText();
+        assert.match(report.columnTranslation, /预训练/);
+        assert.match(report.columnTranslation, /下游/);
+      }
       const running = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
       report.vram = running.models.find(m => m.name === 'translategemma:4b')?.size_vram;
       assert.ok(report.vram > 0);
@@ -79,6 +96,7 @@ async function run() {
       await openWorkspaceView(page, 'Reader');
       assert.equal(await page.locator('#block-' + paragraph.id + ' .translation-text.done').innerText(), report.translation);
       if (figureBody) assert.equal(await page.locator('#block-' + figureBody.id + ' .translation-text.done').innerText(), report.figureBodyTranslation);
+      if (columns) assert.equal(await page.locator('#block-' + columns.id + ' .translation-text.done').innerText(), report.columnTranslation);
     }
     console.log(JSON.stringify(report));
   } finally { await app.close(); }

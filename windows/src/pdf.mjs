@@ -62,6 +62,7 @@ export async function extractPdf(pdf, onPage, checkActive) {
   const cleaned = filterRepeatedPageDecorations(pages);
   const blocks = [];
   const openingFigureIDs = new Set();
+  const columnStarts = new Set();
   for (const page of cleaned) {
     const { pageNumber, lines } = page;
     const opening = pageNumber > 1 && openingFigure(lines, page.height);
@@ -72,15 +73,23 @@ export async function extractPdf(pdf, onPage, checkActive) {
         blocks.push(...figureBlocks);
       }
     }
+    let previousGroup;
     for (const group of pdfReadingGroups(opening ? opening.body : lines, page)) {
-      blocks.push(...blocksFromLines(group, pageNumber, blocks.length + 1, true));
+      const first = group[0], lastLeft = previousGroup?.at(-1);
+      const groupBlocks = blocksFromLines(group, pageNumber, blocks.length + 1, true);
+      if (groupBlocks.length && first?.lane === 'right' && lastLeft?.lane === 'left' &&
+          Math.abs(previousGroup[0].y - first.y) <= first.height && first.y - lastLeft.y >= 2 * first.height) {
+        columnStarts.add(groupBlocks[0].id);
+      }
+      blocks.push(...groupBlocks);
+      previousGroup = group;
     }
   }
   // Match the final Mac postProcessParagraphs and buildPaper/cleanExtractedText
   // passes after page stitching. Each pass is non-overlapping, not a fixed point.
   // Only newly extracted text is normalized; saved blocks/annotation offsets
   // and the original PDF bytes are never sent through this import pipeline.
-  return stitchPageBlocks(blocks, openingFigureIDs).map(block => block.sourceMarkdown ? block : {
+  return stitchPageBlocks(blocks, { openingFigureIDs, columnStarts }).map(block => block.sourceMarkdown ? block : {
     ...block, text: finishExtractedPdfText(block.text)
   });
 }

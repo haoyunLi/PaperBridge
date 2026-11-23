@@ -303,13 +303,23 @@ test('only an isolated full-width opening figure lets a body paragraph resume pa
   assert.equal(opening.figure.at(-1).text, 'Figure 1: Comparison of objectives.');
   const blocks = stitchPageBlocks([{ id: 1, page: 2, text: 'Left-to-right language model-' },
     ...opening.figure.map((row, i) => ({ id: i + 2, page: 3, text: row.text })),
-    { id: 4, page: 3, text: body[0].text }], new Set([2, 3]));
+    { id: 4, page: 3, text: body[0].text }], { openingFigureIDs: new Set([2, 3]) });
   assert.deepEqual(blocks.map(b => b.text), ['Left-to-right language modeling and encoding across several methods.',
     diagram.text, opening.figure.at(-1).text]);
   assert.equal(blocks[0].endPage, 3);
   assert.equal(openingFigure([{ ...diagram, text: 'Previous body paragraph at normal size' }, caption, tail, ...body], 800), null);
   assert.equal(openingFigure([diagram, caption, tail, body[0]], 800), null);
   assert.equal(openingFigure([diagram, { ...caption, lane: 'left' }, tail, ...body], 800), null);
+});
+
+test('only hyphenated prose can continue from the bottom of a column to the top of the next', async () => {
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  const blocks = [{ id: 1, page: 3, text: 'There is mini-' }, { id: 2, page: 3, text: 'mal difference between the models.' }];
+  const turn = { columnStarts: new Set([2]) };
+  assert.equal(stitchPageBlocks(blocks, turn)[0].text, 'There is minimal difference between the models.');
+  assert.equal(stitchPageBlocks(blocks).length, 2);
+  assert.equal(stitchPageBlocks([{ ...blocks[0], text: 'There is a difference.' }, blocks[1]], turn).length, 2);
+  assert.equal(stitchPageBlocks([blocks[0], { ...blocks[1], heading: true }], turn).length, 2);
 });
 
 test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {

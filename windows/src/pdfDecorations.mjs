@@ -55,7 +55,7 @@ function isStandaloneEquation(text) {
     && text.split(/\s+/u).length <= 16;
 }
 
-export function stitchPageBlocks(blocks, openingFigureIDs) {
+export function stitchPageBlocks(blocks, { openingFigureIDs, columnStarts } = {}) {
   const result = [];
   let lastPage;
   for (const block of blocks) {
@@ -72,6 +72,8 @@ export function stitchPageBlocks(blocks, openingFigureIDs) {
     const left = previous?.text?.trim() || '';
     const right = block.text?.trim() || '';
     const adjacent = newPage && (previous?.endPage ?? previous?.page) === block.page - 1;
+    const columnWord = columnStarts?.has(block.id) && previous?.page === block.page &&
+      /\p{Ll}[-‐]$/u.test(left) && /^\p{Ll}+[\s,.;:]/u.test(right);
     const prose = previous && !block.pdfFootnoteMarker && !previous.pdfFootnoteMarker && !previous.heading && !block.heading && !previous.resource && !block.resource &&
       !previous.sourceMarkdown && !block.sourceMarkdown && previous.pdfAxisText !== previous.text && block.pdfAxisText !== block.text &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
@@ -89,9 +91,9 @@ export function stitchPageBlocks(blocks, openingFigureIDs) {
     const listContinuation = /^[•‣◦]\s/u.test(right) && /(?:^|[:：]\s*)[•‣◦]\s/u.test(left)
       && /[,;，；](?:\s+(?:and|or))?$/iu.test(left);
     const continuation = proseContinuation || technicalContinuation || listContinuation || incompletePhrase || closingDelimiter;
-    if (adjacent && prose && continuation && !isStandaloneEquation(left) && !isStandaloneEquation(right) && (left.length >= 20 || /[‐-]$/.test(left))) {
+    if ((adjacent || columnWord) && prose && continuation && !isStandaloneEquation(left) && !isStandaloneEquation(right) && (left.length >= 20 || /[‐-]$/.test(left))) {
       previous.text = joinPdfText(left, right);
-      previous.endPage = block.page;
+      if (adjacent) previous.endPage = block.page;
     } else result.push({ ...block });
   }
   return result.map((block, index) => ({ ...block, id: index + 1 }));
