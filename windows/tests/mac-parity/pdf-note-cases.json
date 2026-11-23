@@ -1,0 +1,44 @@
+[
+  {
+    "name": "unique",
+    "quote": "Will M. Farr",
+    "page": 1,
+    "stored": "wrong",
+    "expect": true
+  },
+  {
+    "name": "noOffset",
+    "quote": "Tobias Erhardt",
+    "page": 1,
+    "stored": "missing",
+    "expect": true
+  },
+  {
+    "name": "repeated",
+    "quote": "ensemble sampling toolkit",
+    "page": 1,
+    "stored": "wrong",
+    "expect": false
+  },
+  {
+    "name": "wrongPage",
+    "quote": "Will M. Farr",
+    "page": 2,
+    "stored": "wrong",
+    "expect": false
+  },
+  {
+    "name": "explicitWrong",
+    "quote": "Will M. Farr",
+    "page": 1,
+    "stored": "explicitWrong",
+    "expect": false
+  },
+  {
+    "name": "exactRepeated",
+    "quote": "ensemble sampling toolkit",
+    "page": 1,
+    "stored": "explicitLast",
+    "expect": true
+  }
+]
