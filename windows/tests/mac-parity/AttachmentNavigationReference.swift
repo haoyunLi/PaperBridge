@@ -31,6 +31,7 @@ func nativeAttachmentLinks(fixtures: URL) throws -> [[String: String]] {
     try files.createDirectory(at: images, withIntermediateDirectories: true)
     try files.copyItem(at: fixtures.appendingPathComponent("landscape-swatches.pdf"), to: supplement.appendingPathComponent("Reference pages.pdf"))
     try files.copyItem(at: fixtures.appendingPathComponent("tabbed/images/page_2_chart_5.jpg"), to: images.appendingPathComponent("panel.jpg"))
+    try files.copyItem(at: images.appendingPathComponent("panel.jpg"), to: supplement.appendingPathComponent("panel.jpg"))
     try "sample,temperature\ncontrol,18.5\n".write(to: supplement.appendingPathComponent("温度.csv"), atomically: true, encoding: .utf8)
     try files.copyItem(at: fixtures.appendingPathComponent("supplement-protocol.md"), to: supplement.appendingPathComponent("protocol.md"))
 

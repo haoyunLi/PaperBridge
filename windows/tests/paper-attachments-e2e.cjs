@@ -20,6 +20,7 @@ async function run() {
   fs.copyFileSync(path.join(fixtures, 'supplement-protocol.md'), path.join(support, 'protocol.md'));
   fs.copyFileSync(path.join(fixtures, 'landscape-swatches.pdf'), path.join(support, 'Reference pages.pdf'));
   fs.copyFileSync(path.join(fixtures, 'tabbed', 'images', 'page_2_chart_5.jpg'), path.join(source, 'images', 'panel.jpg'));
+  fs.copyFileSync(path.join(source, 'images', 'panel.jpg'), path.join(support, 'panel.jpg'));
   const csv = 'sample,temperature\ncontrol,18.5\n';
   fs.writeFileSync(path.join(support, '温度.csv'), csv);
   const document = path.join(source, 'paper.md');
