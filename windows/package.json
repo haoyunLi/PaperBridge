@@ -26,6 +26,7 @@
     "test:reading-history-e2e": "node tests/reading-history-e2e.cjs",
     "test:heading-parity-e2e": "node tests/heading-parity-e2e.cjs",
     "test:note-autosave-e2e": "node tests/note-autosave-e2e.cjs",
+    "test:rich-annotation-review-e2e": "node tests/rich-annotation-review-e2e.cjs",
     "test:saved-annotations-e2e": "node tests/saved-annotations-e2e.cjs",
     "test:task-isolation-e2e": "node tests/task-isolation-e2e.cjs",
     "test:multi-display": "node tests/multi-display-e2e.cjs",

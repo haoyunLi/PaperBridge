@@ -1,4 +1,4 @@
-import { generatedViewText } from './markdownRendering.mjs';
+import { generatedViewText, renderedMarkdownText } from './markdownRendering.mjs';
 
 const generatedScopes = new Set(['fullTranslation', 'summarySource', 'summaryTarget']);
 const contextSize = 32;
@@ -113,14 +113,26 @@ export function resolvedBlockAnnotation(item, source, markdown) {
   return offset !== null && offset !== item.offset ? { ...item, offset } : item;
 }
 
-export function textAnchorAvailable(item, source, markdown) {
+const blockViews = new WeakMap();
+
+function renderedBlockText(block, markdown) {
+  if (!block) return renderedMarkdownText(markdown);
+  const side = block.translationMarkdown === markdown ? 'translation' : 'source';
+  const cached = blockViews.get(block) || {};
+  if (cached[side]?.markdown !== markdown) {
+    cached[side] = { markdown, text: renderedMarkdownText(markdown) };
+    blockViews.set(block, cached);
+  }
+  return cached[side].text;
+}
+
+export function textAnchorAvailable(item, source, markdown, block) {
   if (generatedScopes.has(item?.scope)) {
     return typeof markdown === 'string' && markdown.length > 0 &&
       markdownAnnotationOffset(generatedViewText(item.scope, markdown), item, source) !== null;
   }
-  if (item?.renderedAnchor) return Boolean(markdown) && hasRenderedAnchor(item);
-  if (!markdown) return markdownAnnotationOffset(source, item) !== null;
-  return Number.isInteger(item?.offset) && item.offset >= 0 && typeof item.text === 'string' && item.text.length > 0;
+  if (!markdown) return !item?.renderedAnchor && markdownAnnotationOffset(source, item) !== null;
+  return markdownAnnotationOffset(renderedBlockText(block, markdown), item, source) !== null;
 }
 
 export function validTextSelection(item, source, markdown) {

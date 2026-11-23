@@ -286,7 +286,7 @@ function markdownViewTab(scope) {
   return scope === 'fullTranslation' ? 'Full Translation' : 'Summary';
 }
 function validBlockAnchor(block, item, kind, markdown = blockMarkdown(block, kind)) {
-  return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), markdown);
+  return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), markdown, block);
 }
 function blockAnnotationScope(item) { return item?.scope === 'paper' ? 'paper' : 'reader'; }
 function blockAnnotationsFor(items, scope) { return (items || []).filter(item => blockAnnotationScope(item) === scope); }

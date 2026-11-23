@@ -30,15 +30,15 @@ function textAnchor(item, order) {
 function annotationRecords(paper) {
   const records = new Map();
   let order = 0;
-  function append(label, item, category, identity, source, markdown, blockId) {
+  function append(label, item, category, identity, source, markdown, block) {
     const sequence = order++;
-    const review = Boolean(item.needsReview || (source !== undefined && !textAnchorAvailable(item, source, markdown)));
+    const review = Boolean(item.needsReview || (source !== undefined && !textAnchorAvailable(item, source, markdown, block)));
     const scope = item.scope || 'reader';
     const key = JSON.stringify([...identity, review]);
     let record = records.get(key);
     const time = timestamp(item.createdAt);
     if (!record) {
-      record = { label, scope, blockId, review, quote: item.quote ?? item.text, colors: [], noteColors: [], notes: [],
+      record = { label, scope, blockId: block?.id, review, quote: item.quote ?? item.text, colors: [], noteColors: [], notes: [],
         hasHighlight: false, hasNote: false, time, order: sequence };
       records.set(key, record);
     } else record.time = record.time === null || time === null ? null : Math.min(record.time, time);
@@ -59,7 +59,7 @@ function annotationRecords(paper) {
         const source = anchorText(block, kind);
         const markdown = blockMarkdown(block, kind);
         const resolved = resolvedBlockAnnotation(item, source, markdown);
-        append(label, resolved, category, ['block', block.id, scope, kind, textAnchor(resolved, order)], source, markdown, block.id);
+        append(label, resolved, category, ['block', block.id, scope, kind, textAnchor(resolved, order)], source, markdown, block);
       }
     }
   }

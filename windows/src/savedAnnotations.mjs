@@ -61,7 +61,7 @@ export function savedAnnotations(paper) {
       const markdown = blockMarkdown(block, kind);
       const resolved = resolvedBlockAnnotation(item, source, markdown);
       anchor = textIdentity(resolved);
-      review ||= !textAnchorAvailable(resolved, source, markdown);
+      review ||= !textAnchorAvailable(resolved, source, markdown, block);
     } else if (location === 'view') {
       if (scope === 'paperArticle') review ||= !paperArticleAnchorAvailable(paper, item);
       else {
