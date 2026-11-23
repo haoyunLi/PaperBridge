@@ -37,7 +37,7 @@ import { ReadingAppearancePopover } from './ReadingAppearance.jsx';
 import readingAppearanceDefaults from '../electron/reading-appearance.json';
 import { readerLineHeight } from '../electron/reading-appearance.mjs';
 import { modelSettingsPatch } from './modelCatalog.mjs';
-import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalOpenAIError } from './aiSettings.mjs';
+import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalAIError, isOllamaMemoryError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
 import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
 import { filteredReaderBlocks, searchableText, searchKey } from './textSearch.mjs';
@@ -784,7 +784,7 @@ function PdfReference({ paper, pageNumber, onPage }) {
 }
 
 function Empty({ title, body, children }) { return <div className="empty"><BookOpen size={36} strokeWidth={1.5} /><h2>{title}</h2><p>{body}</p>{children}</div>; }
-function Notice({ children, tone = 'info', onClose, className = '' }) { return <div className={`notice ${tone} ${className}`}><span>{children}</span>{onClose && <button className="icon-button" aria-label="Dismiss" onClick={onClose}><X size={15} /></button>}</div>; }
+function Notice({ children, tone = 'info', onClose, className = '' }) { return <div className={`notice ${tone} ${className}`}><div className="notice-body">{children}</div>{onClose && <button className="icon-button" aria-label="Dismiss" onClick={onClose}><X size={15} /></button>}</div>; }
 const workspacePanelWidths = {
   sidebar: { minimum: 240, initial: 264, maximum: 300 },
   inspector: { minimum: 280, initial: 330, maximum: 420 }
@@ -2495,7 +2495,7 @@ function App() {
             translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '', errorCode: null });
         } catch (err) {
           if (token.cancelled) break;
-          if (config.aiProvider === 'openai' && isGlobalOpenAIError(err.message)) throw err;
+          if (isGlobalAIError(config.aiProvider, err.message)) throw err;
           recordTranslation(block.id, { status: 'failed', error: err.message, errorCode: err.code || null });
           failed++;
         }
@@ -2763,7 +2763,7 @@ function App() {
           batches[index] = { ...batch, output, translationLanguage: normalizeOutputLanguage(config), status: 'ok' };
         } catch (cause) {
           if (token.cancelled) return;
-          if (config.aiProvider === 'openai' && isGlobalOpenAIError(cause.message)) throw cause;
+          if (isGlobalAIError(config.aiProvider, cause.message)) throw cause;
           batches[index] = { ...batch, status: 'failed', error: cause.message,
             ...(cause.code === 'PROTECTED_MARKDOWN_CHANGED' && { errorCode: cause.code }),
             ...(localRetry && { retryProtectedMarkup: true }) };
@@ -3651,7 +3651,11 @@ function App() {
       </div>}
       </header>
       {(error || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
-        {error && <Notice tone="error" onClose={() => setError('')}>{error}</Notice>}
+        {error && <Notice tone="error" onClose={() => setError('')}>{settings.aiProvider === 'ollama' && isOllamaMemoryError(error) ? <>
+          Ollama reported insufficient memory to run the selected model. <button className="button outline" disabled={Boolean(busy)}
+            onClick={() => openSettings({ message: 'Choose a smaller installed model for this task, or download one in Local AI.' }, 'models')}>Choose a smaller model</button>
+          <details><summary>Ollama details</summary>{error}</details>
+        </> : error}</Notice>}
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {showUpdateBanner && <div className="update-banner" role="status">
           <div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong>{fileMessage && <div role="status">{fileMessage}</div>}</div>

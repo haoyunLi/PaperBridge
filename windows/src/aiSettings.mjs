@@ -53,6 +53,11 @@ export function aiTaskSetupIssue(settings, roles, { models = [], ollamaStatus, c
   return missing.length ? { destination: 'setup', models: required, message: `Install or select the models required for this task. Missing locally: ${missing.join(', ')}.` } : null;
 }
 
-export function isGlobalOpenAIError(message) {
+export function isOllamaMemoryError(message) {
+  return /requires more (?:system |GPU )?memory|out of (?:device |GPU |system |CUDA )?memory|insufficient (?:system |GPU |device )?memory|not enough (?:system |GPU |device )?memory/i.test(String(message || ''));
+}
+
+export function isGlobalAIError(provider, message) {
+  if (provider !== 'openai') return isOllamaMemoryError(message);
   return /authenticate|denied access|rate or usage limit|Save an OpenAI API key|Choose an OpenAI model|allow sending text to OpenAI|HTTP (?:400|404)/i.test(String(message || ''));
 }
