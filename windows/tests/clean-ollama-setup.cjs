@@ -14,6 +14,7 @@ async function run() {
   const workspace = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'paperbridge-first-use-'));
   const size = process.env.GITHUB_REF_NAME?.match(/-(12b|27b)$/)?.[1] || '4b';
   const model = 'translategemma:' + size;
+  const withInstalledFallback = size === '27b' && process.env.GITHUB_REF_NAME.includes('installed-fallback');
   const report = { release: process.env.PAPERBRIDGE_CLEAN_RELEASE, model, stage: 'fresh installation', systemRAM: os.totalmem() };
   const reportFile = path.join(artifacts, 'clean-ollama-report.json');
   function checkpoint(stage) {
@@ -97,6 +98,16 @@ async function run() {
     report.freeRAM = os.freemem();
     checkpoint('selecting the translation model');
     await next();
+    if (withInstalledFallback) {
+      checkpoint('installing 4B before trying a larger translation model');
+      const small = guide.locator('[data-model-id="translategemma:4b"]');
+      await small.getByRole('button', { name: 'Download & use', exact: true }).click();
+      await small.getByRole('button', { name: 'Selected', exact: true }).waitFor({ timeout: 10 * 60000 });
+      const installed = (await json('/api/tags')).models.find(item => item.name === 'translategemma:4b');
+      assert.ok(installed?.size > 3e9);
+      report.installedFallbackDigest = installed.digest;
+      await page.evaluate(() => { window.setupReport.modelBytes = 0; });
+    }
     const card = guide.locator('[data-model-id="' + model + '"]');
     const download = card.getByRole('button', { name: 'Download & use', exact: true });
     await download.click();
@@ -180,7 +191,14 @@ async function run() {
         activeModel = 'translategemma:4b';
         checkpoint('selecting the smaller model after the large-model request failed');
         const fallback = page.locator('[data-model-id="' + activeModel + '"]');
-        await fallback.getByRole('button', { name: 'Download & use', exact: true }).click();
+        if (withInstalledFallback) {
+          const installed = (await json('/api/tags')).models.find(item => item.name === activeModel);
+          assert.equal(installed?.digest, report.installedFallbackDigest);
+          await fallback.getByRole('button', { name: 'Use model', exact: true }).click();
+          report.usedInstalledFallback = true;
+        } else {
+          await fallback.getByRole('button', { name: 'Download & use', exact: true }).click();
+        }
         const dialog = page.getByRole('dialog');
         await Promise.race([
           fallback.getByRole('button', { name: 'Selected', exact: true }).waitFor({ timeout: 10 * 60000 }),

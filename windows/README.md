@@ -17,7 +17,7 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
-In 0.2.96 the portable launcher shows **Opening PaperBridge…** while it extracts the reader. This appears after Windows accepts the launch. Model downloads that end without a completion message are checked against the local model list before PaperBridge offers to use them.
+In 0.2.96 the portable launcher shows **Opening PaperBridge…** while it extracts the reader. This appears after Windows accepts the launch. Model downloads that end without a completion message are checked against the local model list before PaperBridge offers to use them. For a standard local Ollama installation, the guide and model settings show the free space on the model drive. If it fills up, you can free space and resume the download or use an installed model.
 
 Version 0.2.95 adds links from a Reader paragraph to its first and last original PDF pages. Reopening an older OCR paper can recover this range from its saved parser data and preserve its translations, bookmarks and figures. Local model requests use the macOS ten-minute idle limit. Settings can release a loaded model from memory while keeping its installed files. The in-app updater checks the signed GitHub build proof and saves reading progress before it opens the Windows setup wizard.
 

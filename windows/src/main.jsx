@@ -1096,7 +1096,7 @@ function App() {
   const [openedInstallerTag, setOpenedInstallerTag] = useState('');
   const filePhase = updateInfo && updateInfo.tag === updateFile?.tag ? updateFile.phase : 'idle';
   const fileMessage = filePhase === 'downloading' ? `Downloading Windows update · ${updateFile.percent}%`
-    : filePhase === 'ready' && openedInstallerTag === updateInfo?.tag ? 'Installer opened. Follow the Windows setup wizard to finish the update.'
+    : filePhase === 'ready' && openedInstallerTag === updateInfo?.tag ? 'Follow the Windows setup wizard. If no window appears, choose Show downloaded update to find the installer in File Explorer.'
     : filePhase === 'ready' ? 'Download complete. SHA-256 and GitHub build proof verified.'
     : filePhase === 'failed' ? updateFile.message
     : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
@@ -1612,6 +1612,7 @@ function App() {
   async function openUpdateInstaller() {
     if (!installAvailable || busy || openingInstaller) return;
     setOpeningInstaller(true);
+    setOpenedInstallerTag('');
     setUpdateStatus('Saving the current reading position and notes…');
     try {
       await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
@@ -1619,7 +1620,7 @@ function App() {
       setUpdateStatus('Opening the verified installer. Respond to any Windows confirmation to continue.');
       await api.openUpdateInstaller(updateInfo.tag);
       setOpenedInstallerTag(updateInfo.tag);
-      setUpdateStatus('Windows opened the verified installer.');
+      setUpdateStatus('');
     } catch (cause) { setUpdateStatus(cause.message); setError(cause.message); }
     finally { setOpeningInstaller(false); }
   }

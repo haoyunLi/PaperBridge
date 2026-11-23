@@ -137,7 +137,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <Group title="Translation style guide"><label>Optional translation instructions<textarea value={settings.translationStyleGuide || ''} maxLength={2000} placeholder="For example: concise academic Chinese; keep established English acronyms." onChange={event => onSettings({ translationStyleGuide: event.target.value.slice(0, 2000) })} /></label><p>{(settings.translationStyleGuide || '').length}/2,000 characters. Sent to the selected provider with translation requests. Do not include secrets.</p></Group>
         <Group title="Reading appearance"><ReadingAppearanceControls settings={settings} onSettings={onSettings} /></Group>
       </fieldset>}
-      {section === 'updates' && <Group title={`Windows updates · ${updates.version || 'unknown version'}`}>
+      {section === 'updates' && <><Group title={`Windows updates · ${updates.version || 'unknown version'}`}>
         <label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>
         <label className="settings-checkbox"><input type="checkbox" disabled={settings.autoCheckUpdates === false} checked={settings.autoDownloadUpdates === true} onChange={event => onSettings({ autoDownloadUpdates: event.target.checked })} />Download new Windows releases in the background</label>
         <div className="row">
@@ -150,8 +150,10 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}
         {updates.filePhase === 'ready' && !updates.onOpenInstaller && <p>Show the file in File Explorer, then close PaperBridge before opening the new version.</p>}
         {updates.downloadLabel && !updates.downloadInApp && <p>The download button opens GitHub in your browser.</p>}
+      </Group><Group title="Update verification">
+        <p>PaperBridge checks each in-app download against its SHA-256 checksum and the signed GitHub build record for the official Windows release. Windows may also ask you to confirm the publisher.</p>
         <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
-      </Group>}
+      </Group></>}
       {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data also clears extracted text and figures. Your original PDF copies and separately encrypted OpenAI key are kept.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
     </div>
   </div>;

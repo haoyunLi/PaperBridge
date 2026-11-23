@@ -193,7 +193,8 @@ async function run() {
     await app.evaluate(({ app, shell }) => {
       if (!app.isPackaged) Object.defineProperty(app, 'isPackaged', { get: () => true });
       global.__installerRequests = [];
-      shell.openPath = async filename => { global.__installerRequests.push(filename); return ''; };
+      shell.showItemInFolder = filename => { global.__revealedSetup = filename; };
+      shell.openPath = async filename => { global.__installerRequests.push(filename); return global.__installerError || ''; };
     });
     await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
     await page.getByRole('tab', { name: 'Updates', exact: true }).click();
@@ -205,14 +206,20 @@ async function run() {
     assert.deepEqual(await app.evaluate(() => global.__installerRequests), [], 'Downloading must never open the installer automatically');
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, false);
     await install.click();
-    await settings.getByText('Installer opened. Follow the Windows setup wizard to finish the update.').waitFor();
+    await settings.getByText('Follow the Windows setup wizard. If no window appears, choose Show downloaded update to find the installer in File Explorer.').waitFor();
     assert.ok(await page.isVisible('body'), 'Opening the standard wizard keeps the reader available');
     const installer = path.join(workspace, 'update-downloads', identity.installerName);
     assert.deepEqual(await app.evaluate(() => global.__installerRequests), [installer]);
+    await settings.getByRole('heading', { name: 'Update verification' }).waitFor();
+    await app.evaluate(() => { global.__installerError = 'Windows blocked this installer'; });
+    await install.click();
+    await settings.getByText(/Windows blocked this installer/).waitFor();
+    await settings.getByRole('button', { name: 'Show downloaded update', exact: true }).click();
+    assert.equal(await app.evaluate(() => global.__revealedSetup), installer);
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), 'windows-v99.0.0'), /current verified Setup/);
     fs.writeFileSync(installer, 'x'.repeat(bytes.length));
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /no longer matches/);
-    assert.equal(await app.evaluate(() => global.__installerRequests.length), 1);
+    assert.equal(await app.evaluate(() => global.__installerRequests.length), 2);
     console.log('Verified update downloads, explicit installer handoff, portable isolation, offline restart and changed-file rejection passed.');
   } finally { await app?.close(); }
 }

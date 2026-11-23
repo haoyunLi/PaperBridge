@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.95 的公开下载与更新
+
+全新 Windows 从 GitHub Release 下载并验证了安装版和便携版，打开阅读器后完成了论文导入及 Mac 阅读结果对照。另一台 Windows 用已安装的旧客户端实际下载新版，核对互联网来源标记、SHA-256 和 GitHub 签发的构建证明，保存当前论文的书签和笔记，再将同一份安装包交给 Windows。安装向导仍由用户确认。[下载与阅读器验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45168290715/job/137677374786) · [更新及笔记验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45168290715/job/137679404037)
+
+在 RX 7800 XT 上，跨两页的扫描段落可以从译文分别跳到原始 PDF 的起始页和结束页。重开旧论文后译文、书签，以及原有的七份解析文件均得到保留。设置中的模型内存读数也已用纯 CPU、CPU 与 GPU 混合、GPU 三种实际运行方式核对。[AMD 真机记录](AMD_DEVICE_TEST.md)
+
 ## 0.2.91 的下载、首次翻译与论文恢复
 
 公开安装版和便携版均在独立 Windows 上通过下载、SHA-256、构建证明和主窗口启动验收。本机再用上一正式版 0.2.89 实际检查更新并覆盖安装，重开后保留论文、外观、高亮和笔记。两种 EXE 目前均显示未知发布者。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45141418668/job/137584823547) · [下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.91)
