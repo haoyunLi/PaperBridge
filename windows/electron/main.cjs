@@ -8,6 +8,7 @@ const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
+const { localOllamaURL } = require('./ollama-installation.cjs');
 const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
 const { openPaperAttachment } = require('./paper-attachment.cjs');
@@ -91,14 +92,6 @@ function cancelRendererClose() {
   quitAfterClose = false;
   if (closeTimer) clearTimeout(closeTimer);
   closeTimer = null;
-}
-
-function localOllamaURL(value, endpoint) {
-  const url = new URL(value || 'http://localhost:11434');
-  if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('PaperBridge only connects to a local Ollama HTTP server.');
-  }
-  return new URL(endpoint, url);
 }
 
 async function ollamaRequest(baseURL, endpoint, options = {}) {

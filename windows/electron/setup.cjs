@@ -8,6 +8,7 @@ const { pipeline } = require('node:stream/promises');
 const { setTimeout: delay } = require('node:timers/promises');
 const { isMineruReady } = require('./mineru-readiness.mjs');
 const { missingOllamaModels } = require('./ollama-models.mjs');
+const { ollamaPath, ollamaLaunch } = require('./ollama-installation.cjs');
 const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { detectMineruExecutable, mineru4Environment } = require('./mineru-discovery.cjs');
 const { mineruPaths, claimMineruSetup, recoverMineru, rollbackMineru, beginMineruActivation,
@@ -89,18 +90,6 @@ async function activateStagedMineru(staging, final, signal) {
   }
 }
 
-async function where(command) {
-  try { return (await exec('where.exe', [command], { timeout: 3000, windowsHide: true })).stdout.split(/\r?\n/).find(value => value && fs.existsSync(value)) || ''; }
-  catch { return ''; }
-}
-
-async function ollamaAppPath() {
-  const local = process.env.LOCALAPPDATA || '';
-  const candidate = local && path.join(local, 'Programs', 'Ollama', 'ollama app.exe');
-  if (candidate && fs.existsSync(candidate)) return candidate;
-  return where('ollama app.exe');
-}
-
 async function mineruStatus(configured, toolsRoot, backend) {
   const found = await detectMineruExecutable(configured, toolsRoot, {
     probeRuntime: candidate => mineruRuntime(candidate.executable, toolsRoot, { found: candidate, backend })
@@ -150,7 +139,7 @@ class SetupManager {
 
   async status({ baseURL, mineruExecutable, mineruBackend, models = [], components, repairMineru = false }) {
     const [hardware, mineru, appPath, response] = await Promise.all([
-      graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot, mineruBackend), ollamaAppPath(),
+      graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot, mineruBackend), ollamaPath(),
       this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }).then(async value => ({ running: true, models: (await value.json()).models?.map(item => item.model || item.name).filter(Boolean) || [] })).catch(error => ({ running: false, models: [], error: error.message }))
     ]);
     const result = { hardware, mineru, ollama: { installed: Boolean(appPath), path: appPath, ...response } };
@@ -230,7 +219,12 @@ class SetupManager {
   }
 
   async startOrInstallOllama(baseURL) {
-    let appPath = await ollamaAppPath();
+    const ready = async () => {
+      try { await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); return true; }
+      catch { return false; }
+    };
+    if (await ready()) return;
+    let appPath = await ollamaPath();
     if (!appPath) {
       fs.mkdirSync(this.toolsRoot, { recursive: true });
       const installer = ownedPath(this.toolsRoot, path.join(this.toolsRoot, `OllamaSetup-${crypto.randomUUID()}.exe`));
@@ -240,25 +234,28 @@ class SetupManager {
         await this.verifyOllamaSignature(installer);
         await this.run(installer, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'], 'ollama', 'Installing Ollama for this Windows user…');
       } finally { if (fs.existsSync(installer)) fs.rmSync(installer, { force: true }); }
-      appPath = await ollamaAppPath();
+      if (await ready()) return;
+      appPath = await ollamaPath();
       if (!appPath) throw new Error('Ollama installer finished, but the application was not found. Open it once and use Refresh.');
     }
-    let ready = false;
-    try { await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); ready = true; } catch { /* Start existing installation. */ }
-    if (!ready) {
-      this.send('ollama', 'Starting Ollama and waiting for its local API…');
-      await new Promise((resolve, reject) => {
-        const child = spawn(appPath, [], { detached: true, windowsHide: true, stdio: 'ignore' });
-        child.once('error', reject);
-        child.once('spawn', () => { child.unref(); resolve(); });
-      });
+    const { executable, args, host } = ollamaLaunch(appPath, baseURL);
+    cancelled(this.controller.signal);
+    this.send('ollama', 'Starting Ollama and waiting for its local API…');
+    const child = spawn(executable, args, { detached: true, windowsHide: true, stdio: 'ignore',
+      env: host ? { ...process.env, OLLAMA_HOST: host } : process.env });
+    try {
+      await new Promise((resolve, reject) => { child.once('error', reject); child.once('spawn', resolve); });
       for (let index = 0; index < 45; index++) {
         cancelled(this.controller.signal);
-        try { await this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }); ready = true; break; } catch { /* Keep waiting. */ }
+        if (await ready()) return;
+        if (host && child.exitCode !== null) throw new Error('The Ollama server exited before its local API responded.');
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    }
-    if (!ready) throw new Error('Ollama is installed but its local API did not start. Open Ollama and retry.');
+      throw new Error('Ollama is installed but its local API did not start. Open Ollama and retry.');
+    } catch (error) {
+      if (host && child.pid && child.exitCode === null && !child.killed) child.kill();
+      throw error;
+    } finally { child.unref(); }
   }
 
   async installUV() {
