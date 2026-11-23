@@ -443,6 +443,22 @@ export function openingFigure(lines, height) {
   return { figure: [...diagram, { ...caption, text, independent: true }], body: lines.slice(end) };
 }
 
+// A numerical table can occupy the top of the right column while the last
+// word in the left column continues in the body printed below that table.
+export function bodyAfterColumnTable(lines) {
+  const captionAt = lines.findIndex(line => /^Table\s+\d+[.:]\s/iu.test(line.text));
+  if (captionAt < 3) return 0;
+  const caption = lines[captionAt], table = lines.slice(0, captionAt);
+  if (table.some(line => line.x < caption.x - caption.height || line.height > caption.height * 1.05 || hasProse(line.text)) ||
+      table.filter(line => /\d+(?:\.\d+)?\s+\d+(?:\.\d+)?\s*$/u.test(line.text)).length < 2) return 0;
+  let end = captionAt + 1;
+  while (end < lines.length && Math.abs(lines[end].height - caption.height) <= caption.height * 0.08 &&
+      Math.abs(lines[end].x - caption.x) <= caption.height && lines[end - 1].y - lines[end].y <= caption.height * 1.5) end++;
+  const body = lines[end];
+  return body && body.height >= caption.height * 1.05 && lines[end - 1].y - body.y >= body.height * 1.6 &&
+    /^\p{Ll}+[\s,.;:]/u.test(body.text) && hasProse(body.text) ? end : 0;
+}
+
 function publicationFrontMatter(lines) {
   const groups = [];
   let previous;

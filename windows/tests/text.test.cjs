@@ -321,13 +321,33 @@ test('only an isolated full-width opening figure lets a body paragraph resume pa
   assert.equal(opening.figure.at(-1).text, 'Figure 1: Comparison of objectives.');
   const blocks = stitchPageBlocks([{ id: 1, page: 2, text: 'Left-to-right language model-' },
     ...opening.figure.map((row, i) => ({ id: i + 2, page: 3, text: row.text })),
-    { id: 4, page: 3, text: body[0].text }], { openingFigureIDs: new Set([2, 3]) });
+    { id: 4, page: 3, text: body[0].text }], { floatingIDs: new Set([2, 3]) });
   assert.deepEqual(blocks.map(b => b.text), ['Left-to-right language modeling and encoding across several methods.',
     diagram.text, opening.figure.at(-1).text]);
   assert.equal(blocks[0].endPage, 3);
   assert.equal(openingFigure([{ ...diagram, text: 'Previous body paragraph at normal size' }, caption, tail, ...body], 800), null);
   assert.equal(openingFigure([diagram, caption, tail, body[0]], 800), null);
   assert.equal(openingFigure([diagram, { ...caption, lane: 'left' }, tail, ...body], 800), null);
+});
+
+test('a numeric table in the right column stays separate from a split word underneath it', async () => {
+  const { bodyAfterColumnTable } = await import('../src/pdfLayout.mjs');
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  const line = (text, x, y, height = 9) => ({ text, x, y, height, lane: 'right' });
+  const rows = [line('method val test', 330, 720), line('Model A 12.3 14.5', 325, 708),
+    line('Model B 10.1 13.6', 325, 697), line('Table 14. Performance', 310, 680),
+    line('on a held-out dataset.', 310, 669), line('ports the observed error across tasks.', 310, 645, 10)];
+  assert.equal(bodyAfterColumnTable(rows), 5);
+  assert.equal(bodyAfterColumnTable([{ ...rows[0], text: 'Some ordinary paragraphs also mention tables.' }, ...rows.slice(1)]), 0);
+  assert.equal(bodyAfterColumnTable([...rows.slice(0, -1), { ...rows.at(-1), y: 659 }]), 0);
+  const blocks = [{ id: 1, page: 12, text: 'Table 13 compares the results. The publication re-' },
+    { id: 2, page: 12, text: 'Model A 12.3 14.5' }, { id: 3, page: 12, text: 'Table 14. Performance on a held-out dataset.' },
+    { id: 4, page: 12, text: rows.at(-1).text }];
+  const positions = { floatingIDs: new Set([2, 3]), columnStarts: new Set([4]) };
+  const stitched = stitchPageBlocks(blocks, positions);
+  assert.equal(stitched[0].text, 'Table 13 compares the results. The publication reports the observed error across tasks.');
+  assert.deepEqual(stitched.slice(1).map(b => b.text), blocks.slice(1, 3).map(b => b.text));
+  assert.equal(stitchPageBlocks([{ ...blocks[0], text: 'Table 13. Measurements of the re-' }, ...blocks.slice(1)], positions).length, 4);
 });
 
 test('only hyphenated prose can continue from the bottom of a column to the top of the next', async () => {

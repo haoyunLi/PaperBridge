@@ -55,28 +55,31 @@ function isStandaloneEquation(text) {
     && text.split(/\s+/u).length <= 16;
 }
 
-export function stitchPageBlocks(blocks, { openingFigureIDs, columnStarts } = {}) {
+export function stitchPageBlocks(blocks, { floatingIDs, columnStarts } = {}) {
   const result = [];
   let lastPage;
   for (const block of blocks) {
-    if (openingFigureIDs?.has(block.id)) {
+    if (floatingIDs?.has(block.id)) {
       result.push({ ...block });
       continue;
     }
     let index = result.length - 1;
     const newPage = lastPage === block.page - 1;
-    // Printed notes stay on their own page while body text can continue on the next.
-    if (newPage) while (index >= 0 && (result[index].pdfFootnoteMarker || openingFigureIDs?.has(result[index].id))) index--;
+    const columnStart = columnStarts?.has(block.id);
+    if (newPage || columnStart) {
+      while (index >= 0 && (floatingIDs?.has(result[index].id) || (newPage && result[index].pdfFootnoteMarker))) index--;
+    }
     const previous = result[index];
     lastPage = block.page;
     const left = previous?.text?.trim() || '';
     const right = block.text?.trim() || '';
     const adjacent = newPage && (previous?.endPage ?? previous?.page) === block.page - 1;
-    const columnWord = columnStarts?.has(block.id) && previous?.page === block.page &&
+    const columnWord = columnStart && previous?.page === block.page &&
       /\p{Ll}[-‐]$/u.test(left) && /^\p{Ll}+[\s,.;:]/u.test(right);
     const prose = previous && !block.pdfFootnoteMarker && !previous.pdfFootnoteMarker && !previous.heading && !block.heading && !previous.resource && !block.resource &&
       !previous.sourceMarkdown && !block.sourceMarkdown && previous.pdfAxisText !== previous.text && block.pdfAxisText !== block.text &&
-      !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
+      (!/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) ||
+        (columnWord && /^(?:Table|Figure)\s+\d+\s+(?:compares|shows|presents|reports|lists|summari[sz]es)\b/u.test(left))) &&
       !/^(?:(?:figure|table|references|bibliography)\b|fig\.\s*\d|[图表]\s*\d|\[\d+\]|\d+[.)]\s)/iu.test(right);
     const incompletePhrase = /\b(?:such as|because of|due to|rather than|with respect to|compared with|the|and|or|of|to|for|with|from|into|via)$/iu.test(left)
       && /^\p{Lu}[\p{L}\p{N}-]*[,\s].*\p{Ll}/u.test(right);
