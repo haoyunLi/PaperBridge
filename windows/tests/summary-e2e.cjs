@@ -253,7 +253,7 @@ async function run() {
     const replacement = requests.slice(beforeLegacy).find(request => request.kind === 'excerpt');
     assert.ok(replacement.payload.includes('model_A and modelA using C# and paired A* search.'));
     assert.equal((await page.evaluate(id => window.paperBridge.loadPaper(id), legacyId)).summary.source, legacySummary.source);
-    console.log('Summary verified: responsive language panels, keyboard disclosures, batch-specific citations, cancelled regeneration, and exact source navigation after split, undo, and restart.');
+    console.log('Summary verified: saved/current and legacy menu actions, responsive panels, batch-specific citations, cancellation and navigation after split, undo and restart.');
   } finally {
     held?.destroy();
     await app?.close();
