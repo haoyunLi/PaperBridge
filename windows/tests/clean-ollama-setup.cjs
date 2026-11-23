@@ -18,6 +18,14 @@ async function run() {
     fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
     console.log(stage);
   }
+  async function within(operation, milliseconds, label) {
+    let timer;
+    try {
+      return await Promise.race([operation, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(label + ' timed out')), milliseconds);
+      })]);
+    } finally { clearTimeout(timer); }
+  }
   const url = 'http://127.0.0.1:11434', model = 'translategemma:4b';
   const json = async route => (await fetch(url + route, { signal: AbortSignal.timeout(3500) })).json();
   assert.equal(await json('/api/version').then(() => true, () => false), false);
@@ -29,6 +37,7 @@ async function run() {
     page.setDefaultTimeout(45000);
     heartbeat = setInterval(async () => {
       try {
+        fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
         const snapshot = await page.evaluate(() => ({
           screen: document.querySelector('.onboarding, .modal')?.innerText.slice(-1100),
           progress: window.setupReport
@@ -90,17 +99,22 @@ async function run() {
     await revealSidebarSource(page); await openPasteText(page);
     await page.locator('.paste-area').fill('The solar panel supplied power to the temperature sensor. The researchers recorded the temperature every hour.');
     await loadPastedText(page, { view: 'Reader' });
+    checkpoint('requesting a translation from the fresh local model');
     await page.locator('#block-1').getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
     const result = page.locator('#block-1 .translation-text.done');
     await result.waitFor({ timeout: 5 * 60000 });
     report.translation = await result.innerText();
     assert.match(report.translation, /温度/);
+    checkpoint('checking the loaded model after translation');
     const loaded = (await json('/api/ps')).models.find(m => m.name === model);
     assert.ok(loaded && loaded.size > 0);
     report.runtimeBytes = loaded.size; report.vramBytes = loaded.size_vram;
     const settings = JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json')));
     assert.equal(settings.translationModel, model);
-    await app.close(); app = await launch(); page = await app.firstWindow();
+    checkpoint('closing the reader after its first translation');
+    await within(app.close(), 75000, 'Closing the translated reader');
+    checkpoint('reopening the translated reader');
+    app = await launch(); page = await app.firstWindow({ timeout: 60000 });
     page.setDefaultTimeout(45000);
     await openWorkspaceView(page, 'Reader');
     assert.equal(await page.locator('#block-1 .translation-text.done').innerText(), report.translation);
@@ -108,8 +122,8 @@ async function run() {
   } catch (error) {
     report.error = error.message.slice(0, 1200);
     if (page && !page.isClosed()) {
-      report.screen = (await page.locator('body').innerText().catch(() => '')).slice(-2500);
-      report.progress = await page.evaluate(() => window.setupReport).catch(() => null);
+      report.screen = (await page.locator('body').innerText({ timeout: 5000 }).catch(() => '')).slice(-2500);
+      report.progress = await within(page.evaluate(() => window.setupReport), 5000, 'Reading final progress').catch(() => null);
     }
     throw error;
   } finally {
@@ -118,8 +132,9 @@ async function run() {
     console.log(JSON.stringify(report));
     // A failed setup may still own a task and prompt on normal quit. Only this
     // test's disposable reader needs to exit so Actions can collect its report.
-    if (report.error) await app.evaluate(({ app }) => { setImmediate(() => app.exit(1)); }).catch(() => {});
-    else await app.close();
+    if (report.error) {
+      await within(app.evaluate(({ app }) => { setImmediate(() => app.exit(1)); }), 5000, 'Closing the failed test reader').catch(() => {});
+    } else await within(app.close(), 75000, 'Closing the reopened reader');
   }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
