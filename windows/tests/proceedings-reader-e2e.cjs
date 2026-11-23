@@ -32,7 +32,7 @@ async function run() {
     assert.equal(blocks[0].text, native.title);
     assert.equal(blocks[1].text, native.byline);
     const notice = blocks.find(b => b.text.startsWith(native.notice.split(' pages')[0]));
-    assert.ok(notice.text.includes('Association for Computational Linguistics'));
+    assert.ok(notice.text.includes('©2019 Association for Computational Linguistics'));
     assert.ok(notice.id < blocks.find(b => b.text === 'Abstract').id);
     const join = native.lastBodyLine + ' ' + native.firstBodyLine;
     const paragraph = blocks.find(b => b.text.includes(join));

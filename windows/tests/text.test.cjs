@@ -263,6 +263,13 @@ test('PDF code listings retain physical lines and indentation without treating a
   assert.equal(ordinary[0].sourceMarkdown, undefined);
 });
 
+test('overprinted copyright glyphs produce one symbol and ordinary following text remains present', async () => {
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const item = (str, x, width) => ({ str, width, height: 9, transform: [9, 0, 0, 9, x, 30] });
+  const items = [item('c', 122, 4), item('©', 120, 9), item('2019', 129, 18), item('c', 151, 4)];
+  assert.equal(pageLines({ items }, [0, 0, 600, 800])[0].text, '©2019 c');
+});
+
 test('a first-page proceedings imprint stays with the byline and out of a continued body paragraph', async () => {
   const { pdfReadingGroups } = await import('../src/pdfLayout.mjs');
   const line = (text, lane, x, width, y, height = 10) => ({ text, lane, x, width, y, height });

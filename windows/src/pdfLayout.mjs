@@ -194,7 +194,11 @@ function lineFromItems(items, y, vertical, pageHeight) {
   const x = items[0].x;
   let end = x;
   let text = '';
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
+    // TeX can print a lowercase c inside a separate circled glyph mapped to ©.
+    const outer = items[index - 1];
+    if (item.text === 'c' && outer?.text === '©' && item.x > outer.x && item.end < outer.end &&
+        Math.abs(item.y - outer.y) < outer.height * 0.12) continue;
     if (text && (item.spaceBefore || item.x - end > Math.max(2, item.height * 0.25))) text += ' ';
     text += item.text;
     end = Math.max(end, item.end);
