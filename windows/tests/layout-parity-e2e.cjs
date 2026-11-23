@@ -213,7 +213,7 @@ async function run() {
   };
   const assertStatus = async () => {
     const m = await evaluate(() => {
-      const node = document.querySelector('.workspace-status'), text = node.querySelector('span');
+      const node = document.querySelector('.workspace-status'), text = node.querySelector('.notice-body');
       const style = getComputedStyle(node), dot = getComputedStyle(node, '::before'), box = node.getBoundingClientRect();
       return { padding: [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft], radius: style.borderRadius,
         gap: style.gap, dot: [dot.width, dot.height], textLeft: text.getBoundingClientRect().left - box.left,
