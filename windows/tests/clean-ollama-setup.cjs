@@ -132,17 +132,41 @@ async function run() {
     const result = page.locator('#block-1 .translation-text.done');
     let activeModel = model;
     if (size === '27b') {
-      const smaller = page.getByRole('button', { name: 'Choose a smaller model', exact: true });
+      const started = Date.now();
+      const smaller = page.getByRole('button', { name: /^Choose (?:a smaller|another) model$/ });
       await Promise.race([result.waitFor({ timeout: 8 * 60000 }), smaller.waitFor({ timeout: 8 * 60000 })]);
       if (await smaller.isVisible()) {
         await page.locator('.notice.error summary').click();
-        report.modelCapacityError = await page.locator('.notice.error details').innerText();
-        assert.match(report.modelCapacityError, /requires more.*memory|out of.*memory|insufficient.*memory|not enough.*memory/i);
+        report.largeModelWaitMs = Date.now() - started;
+        report.largeModelError = await page.locator('.notice.error details').innerText();
+        assert.match(report.largeModelError, /requires more.*memory|out of.*memory|insufficient.*memory|not enough.*memory|during generation/i);
+        report.serviceAfterError = await json('/api/version').then(data => data.version, () => null);
+        report.loadedAfterError = await json('/api/ps').then(data => data.models.map(m => ({ name: m.name, size: m.size, vram: m.size_vram })), () => null);
+        const serverLog = path.join(process.env.LOCALAPPDATA, 'Ollama', 'server.log');
+        if (fs.existsSync(serverLog)) {
+          report.runtimeEvents = fs.readFileSync(serverLog, 'utf8').split(/\r?\n/)
+            .filter(line => /memory|error|timed out|stopped|offload/i.test(line)).slice(-12).map(line => line.slice(0, 400));
+        }
         const original = await page.locator('#block-1 .source-text').innerText();
+        if (!report.serviceAfterError) {
+          await page.getByRole('button', { name: 'Check local AI', exact: true }).click();
+          const setup = page.locator('.setup-panel');
+          await setup.getByRole('checkbox', { name: 'Ollama runtime' }).check();
+          await setup.getByRole('checkbox', { name: 'Selected AI models' }).uncheck();
+          await setup.getByRole('checkbox', { name: /MinerU PDF parser/ }).uncheck();
+          await setup.getByRole('button', { name: 'Check again', exact: true }).waitFor();
+          const install = setup.getByRole('button', { name: 'Install missing components', exact: true });
+          const ready = setup.getByRole('button', { name: /ready/i });
+          await Promise.race([install.waitFor(), ready.waitFor()]);
+          if (await install.isVisible()) await install.click();
+          await ready.waitFor({ timeout: 3 * 60000 });
+          await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+          report.restartedService = (await json('/api/version')).version;
+        }
         await smaller.click();
         await page.getByRole('tab', { name: 'Local AI', exact: true }).click();
         activeModel = 'translategemma:4b';
-        checkpoint('selecting the smaller model after the reported memory limit');
+        checkpoint('selecting the smaller model after the large-model request failed');
         const fallback = page.locator('[data-model-id="' + activeModel + '"]');
         await fallback.getByRole('button', { name: 'Download & use', exact: true }).click();
         await fallback.getByRole('button', { name: 'Selected', exact: true }).waitFor({ timeout: 10 * 60000 });

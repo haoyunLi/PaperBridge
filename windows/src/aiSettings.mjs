@@ -57,7 +57,11 @@ export function isOllamaMemoryError(message) {
   return /requires more (?:system |GPU )?memory|out of (?:device |GPU |system |CUDA )?memory|insufficient (?:system |GPU |device )?memory|not enough (?:system |GPU |device )?memory/i.test(String(message || ''));
 }
 
+export function isOllamaGenerationConnectionError(message) {
+  return /Lost the connection to local Ollama during generation|Ollama timed out during generation/i.test(String(message || ''));
+}
+
 export function isGlobalAIError(provider, message) {
-  if (provider !== 'openai') return isOllamaMemoryError(message);
+  if (provider !== 'openai') return isOllamaMemoryError(message) || isOllamaGenerationConnectionError(message);
   return /authenticate|denied access|rate or usage limit|Save an OpenAI API key|Choose an OpenAI model|allow sending text to OpenAI|HTTP (?:400|404)/i.test(String(message || ''));
 }

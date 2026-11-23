@@ -6,7 +6,7 @@ const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
 const { openPasteText, loadPastedText, revealSidebarSource } = require('./sidebar-controls.cjs');
 
-async function run() {
+async function run(failure) {
   const root = path.resolve(__dirname, '..');
   const big = 'translategemma:27b', small = 'translategemma:4b';
   let submitted = [], constrained = true;
@@ -20,6 +20,11 @@ async function run() {
     const { model, prompt } = JSON.parse(payload);
     submitted.push({ model, prompt });
     if (model === big && constrained && submitted.length > 1) {
+      if (failure === 'disconnect') return res.destroy();
+      if (failure === 'partial-response') {
+        res.write('{"response":');
+        return setTimeout(() => res.destroy(), 30);
+      }
       res.statusCode = 500;
       return res.end(JSON.stringify({ error: 'model requires more system memory (18.5 GiB) than is available (10.2 GiB)' }));
     }
@@ -39,7 +44,7 @@ async function run() {
       await page.getByLabel('Translation model', { exact: true }).selectOption(model);
       await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     };
-    const smaller = page.getByRole('button', { name: 'Choose a smaller model', exact: true });
+    const smaller = page.getByRole('button', { name: failure === 'memory' ? 'Choose a smaller model' : 'Choose another model', exact: true });
     const recover = async () => {
       await smaller.click();
       await page.getByRole('tab', { name: 'Models', selected: true }).waitFor();
@@ -55,6 +60,12 @@ async function run() {
     const id = await paste(input, 'Reader');
     await page.getByRole('button', { name: 'Translate Paper', exact: true }).click();
     await smaller.waitFor();
+    if (failure !== 'memory') {
+      await page.getByRole('button', { name: 'Check local AI', exact: true }).click();
+      await page.locator('.setup-panel').waitFor();
+      await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+      assert.equal(await page.getByText('Ollama reported insufficient memory to run the selected model.').count(), 0);
+    }
     assert.deepEqual(submitted.map(item => item.model), [big, big]);
     const stored = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
     assert.equal(stored.blocks[0].translation, '首段结果。');
@@ -95,7 +106,10 @@ async function run() {
     for (const batch of draft.filter(b => b.status === 'ok')) assert.deepEqual(finished.find(b => b.source === batch.source), batch);
     assert.ok(submitted.slice(2).every(item => item.model === big));
     assert.ok(!submitted.slice(2).some(item => item.prompt === submitted[0].prompt));
-    console.log(JSON.stringify({ workspace: dir, reader: stored.blocks.length, connected: finished.length, resumed: submitted.length - 2 }));
+    console.log(JSON.stringify({ failure, workspace: dir, reader: stored.blocks.length, connected: finished.length, resumed: submitted.length - 2 }));
   } finally { await app.close(); server.close(); }
 }
-run().catch(error => { console.error(error); process.exitCode = 1; });
+async function main() {
+  for (const failure of ['memory', 'disconnect', 'partial-response']) await run(failure);
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });

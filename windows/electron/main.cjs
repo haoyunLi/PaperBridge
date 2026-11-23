@@ -95,14 +95,28 @@ function cancelRendererClose() {
 }
 
 async function ollamaRequest(baseURL, endpoint, options = {}) {
+  const url = localOllamaURL(baseURL, endpoint);
   let response;
-  try { response = await fetch(localOllamaURL(baseURL, endpoint), options); }
-  catch { if (options.signal?.aborted && options.signal.reason?.name !== 'TimeoutError') { const error = new Error('Setup cancelled.'); error.name = 'AbortError'; throw error; } throw new Error('Cannot reach local Ollama. Start Ollama, then refresh models.'); }
+  try { response = await fetch(url, options); }
+  catch (cause) {
+    if (options.signal?.aborted && options.signal.reason?.name !== 'TimeoutError') {
+      const error = new Error('Setup cancelled.'); error.name = 'AbortError'; throw error;
+    }
+    if (endpoint === 'api/generate') throw generationConnectionError(cause);
+    throw new Error('Cannot reach local Ollama. Start Ollama, then refresh models.');
+  }
   if (!response.ok) {
     const message = await response.text();
     throw new Error(`Ollama ${response.status}: ${message.slice(0, 300)}`);
   }
   return response;
+}
+
+function generationConnectionError(cause) {
+  const code = cause.cause?.code || cause.code;
+  if (code === 'UND_ERR_HEADERS_TIMEOUT' || code === 'UND_ERR_BODY_TIMEOUT') return new Error('Ollama timed out during generation.');
+  const detail = ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'UND_ERR_SOCKET'].includes(code) ? ' (' + code + ')' : '';
+  return new Error('Lost the connection to local Ollama during generation.' + detail);
 }
 
 function progress(data) {
@@ -389,7 +403,10 @@ function registerHandlers() {
         }),
         signal: controller.signal
       });
-      const data = await response.json();
+      const data = await response.json().catch(cause => {
+        if (controller.signal.aborted || cause instanceof SyntaxError) throw cause;
+        throw generationConnectionError(cause);
+      });
       if (data.done === false || data.done_reason === 'length') {
         throw new Error(format === 'json' ? 'The summary response was cut off. Choose a different summary model in Settings and try again.' : 'Model response was cut off. Try a smaller paragraph.');
       }

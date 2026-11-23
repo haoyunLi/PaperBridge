@@ -37,7 +37,7 @@ import { ReadingAppearancePopover } from './ReadingAppearance.jsx';
 import readingAppearanceDefaults from '../electron/reading-appearance.json';
 import { readerLineHeight } from '../electron/reading-appearance.mjs';
 import { modelSettingsPatch } from './modelCatalog.mjs';
-import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalAIError, isOllamaMemoryError } from './aiSettings.mjs';
+import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalAIError, isOllamaMemoryError, isOllamaGenerationConnectionError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
 import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
 import { filteredReaderBlocks, searchableText, searchKey } from './textSearch.mjs';
@@ -3651,9 +3651,12 @@ function App() {
       </div>}
       </header>
       {(error || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
-        {error && <Notice tone="error" onClose={() => setError('')}>{settings.aiProvider === 'ollama' && isOllamaMemoryError(error) ? <>
-          Ollama reported insufficient memory to run the selected model. <button className="button outline" disabled={Boolean(busy)}
-            onClick={() => openSettings({ message: 'Choose a smaller installed model for this task, or download one in Local AI.' }, 'models')}>Choose a smaller model</button>
+        {error && <Notice tone="error" onClose={() => setError('')}>{settings.aiProvider === 'ollama' && (isOllamaMemoryError(error) || isOllamaGenerationConnectionError(error)) ? <>
+          {isOllamaMemoryError(error) ? 'Ollama reported insufficient memory to run the selected model.' : <>
+            The local model stopped responding during this task. <button className="button outline" disabled={Boolean(busy)} onClick={() => openSetup()}>Check local AI</button>
+          </>} <button className="button outline" disabled={Boolean(busy)}
+            onClick={() => openSettings({ message: 'Choose an installed model for this task, or download one in Local AI.' }, 'models')}>
+            {isOllamaMemoryError(error) ? 'Choose a smaller model' : 'Choose another model'}</button>
           <details><summary>Ollama details</summary>{error}</details>
         </> : error}</Notice>}
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
