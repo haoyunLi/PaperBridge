@@ -237,6 +237,7 @@ struct Reference {
         let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource, "deepResource": navigation.deep,
                                      "retainedSlice": try nativeRetainedSlice(paragraphs: body, checksum: checksum),
                                      "legacyParagraphAnchors": try nativeLegacyParagraphAnchors(paragraphs: body, checksum: checksum),
+                                     "longBibliographies": try nativeLongBibliographies(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "htmlEquations": try nativeEquations(fixtures: fixtureURL.deletingLastPathComponent(), document: "html-equations.md"),
                                      "texDelimiters": try nativeEquations(fixtures: fixtureURL.deletingLastPathComponent(), document: "tex-delimiters.md"),
                                      "overlappingHighlights": try nativeOverlappingHighlights(fixtures: fixtureURL.deletingLastPathComponent()),
