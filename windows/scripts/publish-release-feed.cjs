@@ -1,7 +1,7 @@
 const { isDeepStrictEqual } = require('node:util');
 const { compareVersions, releaseFromFeed, selectWindowsRelease } = require('../electron/updates.cjs');
 
-async function publishReleaseFeed({ repos, repo, ref, feed }) {
+async function publishReleaseFeed({ repos, repo, ref, feed, promotePrerelease = false }) {
   const release = releaseFromFeed(feed, feed.version);
   if (ref !== 'refs/tags/' + release.tag) throw new Error('The verified feed must match the release tag.');
   const location = { ...repo, path: 'windows/latest-release.json' };
@@ -12,12 +12,21 @@ async function publishReleaseFeed({ repos, repo, ref, feed }) {
     const existing = releaseFromFeed(previous, feed.version);
     if (compareVersions(existing.latestVersion, feed.version) > 0) return 'A newer verified release is already published.';
 
-    // A same-tag rebuild can replace assets. Only announce the exact files still on GitHub.
     const { data: published } = await repos.getReleaseByTag({ ...repo, tag: release.tag });
-    const live = selectWindowsRelease([published], feed.version);
-    if (live.tag !== release.tag || !isDeepStrictEqual(live.files, release.files)) {
-      throw new Error('The public Windows assets changed since the download test.');
+    function confirmAssets(candidate) {
+      const live = selectWindowsRelease([candidate], feed.version);
+      if (live.tag !== release.tag || !isDeepStrictEqual(live.files, release.files)) {
+        throw new Error('The public Windows assets changed since the download test.');
+      }
     }
+    if (published.prerelease && promotePrerelease) {
+      // A prerelease is publicly downloadable for testing while older apps skip it.
+      // Check both verified assets before exposing the release to the fallback API.
+      confirmAssets({ ...published, prerelease: false });
+      const { data: promoted } = await repos.updateRelease({ ...repo, release_id: published.id,
+        prerelease: false, make_latest: 'false' });
+      confirmAssets(promoted);
+    } else confirmAssets(published);
     if (existing.tag === release.tag && isDeepStrictEqual(existing.files, release.files)) return 'Feed is current.';
     try {
       await repos.createOrUpdateFileContents({ ...location, branch, sha: file.sha,

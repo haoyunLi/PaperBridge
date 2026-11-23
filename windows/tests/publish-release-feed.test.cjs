@@ -25,7 +25,7 @@ function fixture() {
       state.previous = state.writes.at(-1);
     }
   };
-  return { feed, published, state, repos, run: () => publishReleaseFeed({ repos, repo: { owner: 'haoyunLi', repo: 'PaperBridge' }, ref: 'refs/tags/' + tag, feed }) };
+  return { feed, published, state, repos, run: (promotePrerelease = false) => publishReleaseFeed({ repos, repo: { owner: 'haoyunLi', repo: 'PaperBridge' }, ref: 'refs/tags/' + tag, feed, promotePrerelease }) };
 }
 
 test('only publishes verified release bytes, idempotently', async () => {
@@ -37,6 +37,40 @@ test('only publishes verified release bytes, idempotently', async () => {
   f.published.prerelease = true;
   await assert.rejects(f.run(), /changed/);
   assert.equal(f.state.writes.length, 1);
+});
+
+test('the fallback update channel only sees a prerelease after both public downloads have been verified', async () => {
+  const f = fixture();
+  Object.assign(f.published, { id: 712, prerelease: true });
+  let promotions = 0;
+  f.repos.updateRelease = async options => {
+    assert.equal(options.release_id, 712);
+    assert.equal(options.make_latest, 'false');
+    assert.equal(options.prerelease, false);
+    promotions++;
+    f.published.prerelease = false;
+    return { data: f.published };
+  };
+  const original = f.published.assets[0].digest;
+  f.published.assets[0].digest = 'sha256:' + 'c'.repeat(64);
+  await assert.rejects(f.run(true), /changed/);
+  assert.equal(promotions, 0);
+  f.published.assets[0].digest = original;
+  await f.run(true);
+  await f.run(true);
+  assert.equal(promotions, 1);
+  assert.deepEqual(f.state.writes, [f.feed]);
+});
+
+test('a draft or a newer verified channel prevents prerelease promotion', async () => {
+  const f = fixture();
+  f.repos.updateRelease = () => assert.fail('must not publish');
+  Object.assign(f.published, { draft: true, prerelease: true });
+  await assert.rejects(f.run(true), /changed/);
+  f.published.draft = false;
+  f.state.previous = { ...f.feed, version: '0.2.46' };
+  await f.run(true);
+  assert.deepEqual(f.state.writes, []);
 });
 
 test('conflicting publication re-reads the channel and keeps a newer release', async () => {

@@ -158,12 +158,46 @@ jobs:
             windows/release/PaperBridge-Windows-*-x64-*.exe
             windows/release/PaperBridge-Windows-*-x64-*.exe.sha256
           if-no-files-found: error
-      - name: Attach Windows binaries to release
+      - name: Check the release tag before staging public downloads
+        id: release-stage
         if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -cne "windows-v$version") { throw "Package version and tag differ" }
+          $url = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag"
+          $response = Invoke-WebRequest $url -Headers @{Authorization="Bearer $env:GH_TOKEN"} -SkipHttpErrorCheck
+          $stage = $true
+          if ($response.StatusCode -eq 200) {
+            $existing = $response.Content | ConvertFrom-Json
+            $missing = $false
+            foreach ($kind in 'Portable','Setup') {
+              foreach ($suffix in '.exe','.exe.sha256') {
+                $name = "PaperBridge-Windows-$version-x64-$kind$suffix"
+                $asset = @($existing.assets | Where-Object name -ceq $name)
+                if ($asset.Count -eq 0) { $missing = $true; continue }
+                $digest = (Get-FileHash -LiteralPath "release/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($asset.Count -ne 1 -or $asset[0].digest -cne "sha256:$digest") {
+                  throw "The tag already has different bytes for $name. Publish a new version."
+                }
+              }
+            }
+            if ($missing -and !$existing.prerelease -and !$existing.draft) { throw "An existing stable release has incomplete assets." }
+            $stage = $existing.draft -or $missing
+          } elseif ($response.StatusCode -ne 404) { throw "Could not inspect release tag (HTTP $($response.StatusCode))" }
+          "stage=$($stage.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Stage Windows binaries as a public prerelease
+        if: steps.release-stage.outputs.stage == 'true'
         uses: softprops/action-gh-release@v2
         with:
           name: PaperBridge for Windows ${{ steps.release-assets.outputs.version }}
           make_latest: 'false'
+          prerelease: true
+          draft: false
+          overwrite_files: false
           fail_on_unmatched_files: true
           body: |
             PaperBridge for Windows is a development preview for Windows x64.
@@ -226,7 +260,7 @@ jobs:
           $response = Invoke-WebRequest "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" -SkipHttpErrorCheck
           if ($response.StatusCode -ne 200) { throw "Could not read release $tag (HTTP $($response.StatusCode))" }
           $release = $response.Content | ConvertFrom-Json
-          if ($release.tag_name -cne $tag -or $release.draft -or $release.prerelease) { throw "Expected stable public release $tag" }
+          if ($release.tag_name -cne $tag -or $release.draft) { throw "Expected publicly downloadable release $tag" }
           $feed = [ordered]@{ version = $version; files = [ordered]@{} }
           foreach ($kind in @('Portable', 'Setup')) {
             $name = "PaperBridge-Windows-$version-x64-$kind.exe"
@@ -298,6 +332,6 @@ jobs:
             const { publishDownloadPage } = require('./windows/scripts/publish-download-page.cjs');
             const verified = { repos: github.rest.repos, repo: context.repo,
               ref: context.ref, feed: JSON.parse(process.env.VERIFIED_RELEASE) };
-            core.info(await publishReleaseFeed(verified));
+            core.info(await publishReleaseFeed({ ...verified, promotePrerelease: true }));
             core.info(await publishDownloadPage(verified));
             core.info(await publishDownloadPage({ ...verified, windowsGuide: true }));
