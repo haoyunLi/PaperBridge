@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## Windows 0.2.93 的双栏阅读与摘要
+
+从 GitHub 下载的 Windows 0.2.93 在 RX 7800 XT 上读取 ResNet 的表 14，跨栏恢复的段落在翻译后保留了 33.1%、13.3%、11.7% 和 14.4%。BERT 第 6–7 页的一句话被三张表打断，重建后原文和译文都保留了 TriviaQA 及 0.1–0.4 F1。第 3 页的 BERT 子型号及 110M、340M 参数量也保留在各自的句子里。20 页论文的摘要使用了与 Mac 相同的 11 批输入，本机完成时间为 133 秒。[Windows 发布包与 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45155801727)
+
+在另一台全新 Windows 上，引导下载并加载了 27B。16 GiB 内存、纯 CPU 条件下，客户端约 332 秒后报告生成超时，Ollama 仍在运行。通过应用内的模型选择切换到 4B 后，同一原文生成了中文译文，退出重开后仍能读取。此次使用 GitHub 测试机下载大模型。[27B 下载、故障恢复与译文](https://github.com/haoyunLi/PaperBridge/actions/runs/45154513298)
+
 ## Windows 0.2.91 的首次本地翻译
 
 两台全新 Windows 测试机分别从首次引导安装了签名通过校验的 Ollama 0.40.17。在收到真实模型数据后取消下载，从后台继续，分别完成了 TranslateGemma 4B（3,298,875,707 字节）和 12B（8,109,827,612 字节）的安装。两台都通过 CPU 生成译文。4B 和 RX 7800 XT 的实际结果一致，为「太阳能电池板为温度传感器供电。研究人员每小时记录一次温度。」12B 的第一句为「太阳能电池板为温度传感器提供电力。」每台都确认旧阅读器进程退出、新进程启动、原译文恢复。12B 在独立测试机下载。[4B 首装与重启](https://github.com/haoyunLi/PaperBridge/actions/runs/45140574505) · [12B 首装与重启](https://github.com/haoyunLi/PaperBridge/actions/runs/45141422747)
