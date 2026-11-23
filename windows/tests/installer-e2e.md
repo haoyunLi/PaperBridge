@@ -13,7 +13,7 @@ The preflight is read-only. Every invocation checks HKCU/HKLM, both registry vie
 
 The script copies the built installer into a fresh `test-artifacts/i-*` directory and records its SHA-256. It installs under that directory, opens the installed executable, creates a practice paper with a highlight and note through the UI, closes the app, reinstalls the same version, and verifies restored UI and data. It then uninstalls and confirms the saved paper and settings remain. The app workspace, Chromium profile, and managed-tools directory are isolated under the fixture. Results remain in `report.json` alongside the saved data.
 
-For a cross-version upgrade, place the previous trusted installer in `release/` and set `PAPERBRIDGE_INSTALLER_FROM_VERSION` to its version. The test accepts the versioned x64 filename and the older `PaperBridge Setup <version>.exe` convention. Both installers are hashed before use, and the test checks the running app and registry version before and after the upgrade.
+For a cross-version upgrade, place the previous trusted installer in `release/` and set `PAPERBRIDGE_INSTALLER_FROM_VERSION` to its version. The test accepts the versioned x64 filename and the older `PaperBridge Setup <version>.exe` convention. When checking an already published update after the checkout has moved ahead, set `PAPERBRIDGE_INSTALLER_TO_VERSION` to the version of the downloaded target installer. Both installers are hashed before use, and the test checks the running app and registry version before and after the upgrade.
 
 After the target release is public, pass `--check-published-update` to verify the older installed app's update banner against GitHub and confirm that the upgraded app reports the current version.
 

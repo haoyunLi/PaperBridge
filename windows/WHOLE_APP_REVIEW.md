@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.81 旧笔记回跳与用户目录中的 MinerU（2026-11-22）
+
+在 *Tabbed* 的比较表中改写表头和单元格后，Mac 原生范围与公开 Windows 程序对同一组六条笔记得出了相同结果。移位的唯一引文和位置明确的重复符号可以回跳，其余四条保留并标记复核。跨两个正文段落的两条笔记也分别验证了回跳和导出。七个阅读位置均验证了三色切换、单独去掉高亮、撤销和带笔记重开。
+
+公开版在本机从标准 Python 用户安装目录找到了未加入 PATH 的 MinerU。用 RX 7800 XT 和 DirectML 从扫描件识别出五段文字并完成翻译。从 0.2.80 升级到 0.2.81 后，既有论文、高亮、笔记和阅读外观均可恢复。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.81) · [Mac 原生测试](https://github.com/haoyunLi/PaperBridge/actions/runs/45102459588/job/137456180178) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45102459588/job/137462027317)
+
 ## 0.2.80 PDF 代码、译文地址与解析器回退（2026-11-22）
 
 在 20 页的 PLOS 论文中，Windows 恢复了八行命令的换行、缩进和 `*.dat` 通配符。下一页正文与目录树最后一个文件名已分开。AMD 真机验证了纯文本 Reader 和全文译稿中的地址、真实扫描件的 DirectML OCR，以及首个 MinerU 环境损坏时自动选到第二个可用环境。已有的全文翻译任务可继续使用原先的分批方式。

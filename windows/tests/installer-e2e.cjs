@@ -214,10 +214,12 @@ async function run() {
   assert.equal(metadata.build.nsis.oneClick, false);
   assert.equal(metadata.build.nsis.allowToChangeInstallationDirectory, false, 'The assisted installer must keep the safe default path');
   for (const option of ['perMachine', 'script', 'include', 'deleteAppDataOnUninstall']) if (metadata.build.nsis[option]) throw new Error(`Review test safety before using NSIS option ${option}`);
-  const source = executable(path.join(root, 'release', `PaperBridge-Windows-${metadata.version}-x64-Setup.exe`), root);
-  const fromVersion = process.env.PAPERBRIDGE_INSTALLER_FROM_VERSION || metadata.version;
-  assert.ok(/^\d+\.\d+\.\d+$/.test(fromVersion) && compareVersions(fromVersion, metadata.version) <= 0, 'The starting installer version must be the current version or an older version.');
-  const upgrading = fromVersion !== metadata.version;
+  const toVersion = process.env.PAPERBRIDGE_INSTALLER_TO_VERSION || metadata.version;
+  assert.match(toVersion, /^\d+\.\d+\.\d+$/, 'Expected the target installer version.');
+  const source = executable(path.join(root, 'release', `PaperBridge-Windows-${toVersion}-x64-Setup.exe`), root);
+  const fromVersion = process.env.PAPERBRIDGE_INSTALLER_FROM_VERSION || toVersion;
+  assert.ok(/^\d+\.\d+\.\d+$/.test(fromVersion) && compareVersions(fromVersion, toVersion) <= 0, 'The starting installer version must be the current version or an older version.');
+  const upgrading = fromVersion !== toVersion;
   if (checkPublishedUpdate && !upgrading) throw new Error('The published update check needs an older starting version.');
   const namedOlder = path.join(root, 'release', `PaperBridge-Windows-${fromVersion}-x64-Setup.exe`);
   const firstSource = upgrading ? executable(fs.existsSync(namedOlder) ? namedOlder : path.join(root, 'release', `PaperBridge Setup ${fromVersion}.exe`), root) : source;
@@ -232,7 +234,7 @@ async function run() {
   const longestInstalledPath = longestPackagedPath(installDir);
   if (longestInstalledPath.length >= 260) throw new Error(`Test install path would exceed the NSIS update limit: ${JSON.stringify(longestInstalledPath)}`);
   if (fs.existsSync(fixture)) throw new Error('Installer fixture must be new.');
-  const plan = { version: metadata.version, fromVersion, source, firstSource, installerSha256: hash(source), firstInstallerSha256: hash(firstSource),
+  const plan = { version: toVersion, fromVersion, source, firstSource, installerSha256: hash(source), firstInstallerSha256: hash(firstSource),
     fixture, installDir, updaterCache, longestInstalledPath, coverage: `Real NSIS install, ${lifecycle.toLowerCase()}, uninstall and isolated workspace preservation.` };
   if (preflightOnly) { console.log(JSON.stringify({ preflight: 'passed', ...plan }, null, 2)); return; }
 
@@ -278,7 +280,7 @@ async function run() {
   };
   const uninstall = async () => {
     const state = await inspectMachine();
-    assertOwned(state, installDir, fromVersion, metadata.version);
+    assertOwned(state, installDir, fromVersion, toVersion);
     const sourceUninstaller = executable(path.join(installDir, 'Uninstall PaperBridge.exe'), fixture);
     const runner = path.join(fixture, 'runner', 'Uninstall PaperBridge.exe');
     safePath(runner, fixture);
@@ -313,9 +315,9 @@ async function run() {
       await app.evaluate(({ Menu, BrowserWindow }) => {
         Menu.getApplicationMenu().getMenuItemById('command:checkUpdates').click(null, BrowserWindow.getAllWindows()[0]);
       });
-      await page.locator('.update-banner').getByText(`PaperBridge for Windows ${metadata.version} is available`, { exact: true }).waitFor();
+      await page.locator('.update-banner').getByText(`PaperBridge for Windows ${toVersion} is available`, { exact: true }).waitFor();
       const { release } = JSON.parse(fs.readFileSync(path.join(workspace, 'updates.json'), 'utf8'));
-      assert.equal(release.tag, `windows-v${metadata.version}`);
+      assert.equal(release.tag, `windows-v${toVersion}`);
       assert.equal(release.installerName, path.basename(source));
       record('Previous installed version showed the published update banner', { release });
     }
@@ -361,16 +363,16 @@ async function run() {
     }
     const reinstall = await runHidden(installer, `/S /currentuser /D=${safePath(installDir, fixture)}`, fixture);
     const updated = await inspectMachine();
-    assertOwned(updated, installDir, metadata.version);
+    assertOwned(updated, installDir, toVersion);
     assert.ok(updated.registry.some(entry => entry.type === 'uninstall'));
     assert.deepEqual(JSON.parse(fs.readFileSync(paperFile(), 'utf8')), savedPaper, `${lifecycle} must preserve saved paper data`);
-    page = await launch(metadata.version);
+    page = await launch(toVersion);
     await page.locator('.title-wrap h1').getByText(savedPaper.name, { exact: true }).waitFor({ timeout: 20000 });
     if (checkPublishedUpdate) {
       const update = await page.evaluate(() => window.paperBridge.checkUpdates(false));
       assert.equal(update.status, 'current');
-      assert.equal(update.latestVersion, metadata.version);
-      assert.equal(update.currentVersion, metadata.version);
+      assert.equal(update.latestVersion, toVersion);
+      assert.equal(update.currentVersion, toVersion);
       record('Upgraded app confirmed it is on the current published Windows version', { update });
     }
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
