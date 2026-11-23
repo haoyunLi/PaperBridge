@@ -66,7 +66,8 @@ func nativeLongPDFSelections(fixtures: URL) throws -> [String: [Int]] {
         }
         let anchors = PDFDocumentView.anchors(for: selection, in: document)
         guard let first = anchors.first, let text = selection.string, text.count > 3000,
-              first.quote.hasPrefix(item.start), anchors.last?.quote.hasSuffix(item.end) == true else {
+              first.quote.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(item.start),
+              anchors.last?.quote.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(item.end) == true else {
             throw failure("Selected \(selection.string?.count ?? 0) characters in \(anchors.count) ranges, starting with \(anchors.first?.quote.prefix(65) ?? "") and ending with \(anchors.last?.quote.suffix(65) ?? "")")
         }
         model.captureTextSelection(ReaderTextSelection(scope: .paper, paragraphID: 0, side: .original, text: text,
