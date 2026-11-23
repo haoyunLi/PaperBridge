@@ -17,7 +17,9 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
-The 0.2.97 development build reads the current and older NVIDIA driver reports when selecting a CUDA runtime. The setup guide considers free space and installed models along with RAM and dedicated GPU memory. Press Enter in the guide to continue, or Tab to another action.
+In the 0.2.98 development build, an inactive Ollama model download times out and can be resumed. Progress updates identify the model even when the server only reports byte counts. During translation, a server memory error opens the smaller-model recovery path and retains completed work.
+
+Version 0.2.97 reads the current and older NVIDIA driver reports when selecting a CUDA runtime. The setup guide considers free space and installed models along with RAM and dedicated GPU memory. Press Enter in the guide to continue, or Tab to another action.
 
 In 0.2.96 the portable launcher shows **Opening PaperBridge…** while it extracts the reader. This appears after Windows accepts the launch. Model downloads that end without a completion message are checked against the local model list before PaperBridge offers to use them. For a standard local Ollama installation, the guide and model settings show the free space on the model drive. If it fills up, you can free space and resume the download or use an installed model.
 
