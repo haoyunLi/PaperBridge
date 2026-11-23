@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
-import { pageLines, pdfReadingGroups, recoverCodeAsterisks } from './pdfLayout.mjs';
+import { pageLines, pdfReadingGroups, recoverCodeAsterisks, recoverInlineSummations } from './pdfLayout.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -50,7 +50,8 @@ export async function extractPdf(pdf, onPage, checkActive) {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     checkActive?.();
     const page = await pdf.getPage(pageNumber);
-    const content = await recoverCodeAsterisks(page, await page.getTextContent());
+    const textLayer = await recoverCodeAsterisks(page, await page.getTextContent());
+    const content = await recoverInlineSummations(page, textLayer);
     checkActive?.();
     const [, bottom, , top] = page.view;
     pages.push({ pageNumber, height: top - bottom, lines: pageLines(content, page.view) });

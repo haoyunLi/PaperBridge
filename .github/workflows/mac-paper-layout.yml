@@ -1,0 +1,29 @@
+name: Check the published paper layout on Mac
+permissions:
+  contents: read
+on:
+  push:
+    tags: ['mac-pdf-check-*']
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: macos-15
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the two physical pages and their paragraphs with PDFKit and PaperBridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 https://arxiv.org/pdf/1706.03762v7 -o "$RUNNER_TEMP/article.pdf"
+          (cd "$RUNNER_TEMP" && echo "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697  article.pdf" | shasum -a 256 -c -)
+          xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift PaperBridge/Services/PDFTextExtractor.swift \
+            windows/tests/mac-paper-layout/Observe.swift -o "$RUNNER_TEMP/observe"
+          "$RUNNER_TEMP/observe" "$RUNNER_TEMP/article.pdf" "$RUNNER_TEMP/reading.json"
+          cat "$RUNNER_TEMP/reading.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-paper-layout
+          path: ${{ runner.temp }}/reading.json
+          if-no-files-found: error

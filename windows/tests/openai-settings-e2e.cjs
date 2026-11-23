@@ -80,7 +80,7 @@ async function run() {
     const requests = await app.evaluate(() => globalThis.__paperBridgeOpenAIRequests);
     assert.equal(requests.length, 1);
     assert.equal(requests[0].model, 'gpt-translation-fixture');
-    assert.match(requests[0].prompt, /complete academic item/);
+    assert.match(requests[0].prompt, /as a complete item/);
     assert.match(requests[0].system, /Document title.*Welcome to PaperBridge/);
     assert.match(requests[0].system, /Use concise academic Chinese/);
 

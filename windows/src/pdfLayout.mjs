@@ -33,7 +33,90 @@ export async function recoverCodeAsterisks(page, content) {
   return { ...content, items: corrected };
 }
 
-function textRows(items, left, bottom, width, styles) {
+// Computer Modern's math-extension font places its inline summation above the
+// text baseline. Some PDFs expose its encoded "P" without any Unicode mapping.
+export async function recoverInlineSummations(page, content) {
+  const { items } = content;
+  const candidates = [];
+  let previous;
+  for (let i = 0; i < items.length; i++) {
+    const glyph = items[i];
+    if (!glyph.str?.trim()) continue;
+    if (glyph.str === 'P' && previous?.str.trimEnd().endsWith('=') && glyph.height > 0) {
+      const baseline = previous.transform[5], left = glyph.transform[4], height = glyph.height;
+      const gap = left - (previous.transform[4] + previous.width);
+      if (gap >= -height * 0.15 && gap <= height && glyph.transform[5] > baseline + height * 0.3 &&
+          glyph.transform[5] < baseline + height) candidates.push({ i, baseline });
+    }
+    previous = glyph;
+  }
+  if (!candidates.length) return content;
+  try { await page.getOperatorList(); } catch { return content; }
+  const corrected = items.slice();
+  for (const { i, baseline } of candidates) {
+    const glyph = items[i], height = glyph.height, x = glyph.transform[4] + glyph.width;
+    if (!page.commonObjs.has(glyph.fontName) || !/^(?:[A-Z]{6}\+)?CMEX(?:7|8|9|10)$/u.test(page.commonObjs.get(glyph.fontName)?.name)) continue;
+    const upper = [], lower = [];
+    let j = i + 1;
+    for (; j < items.length; j++) {
+      const item = items[j];
+      if (!item.str?.trim()) continue;
+      const dx = item.transform[4] - x, dy = item.transform[5] - baseline;
+      if (dx < -0.2 * height || dx > 3 * height || Math.abs(dy) > height || Math.abs(dy) < 0.12 * height ||
+          item.height > 0.8 * height || !/^[\p{L}\p{N}=+−-]+$/u.test(item.str)) break;
+      const limit = dy > 0 ? upper : lower;
+      if (!limit.length && Math.abs(dx) > height * 0.3) break;
+      if (limit.length && item.transform[4] < limit.at(-1).transform[4]) break;
+      limit.push(item);
+    }
+    if (!upper.length || !lower.length || !items[j] || Math.abs(items[j].transform[5] - baseline) > height * 0.15) continue;
+    const limitText = parts => {
+      let value = '', subscript = '';
+      for (const item of parts) {
+        if (item.height < parts[0].height * 0.9 && item.transform[5] < parts[0].transform[5] - height * 0.12) {
+          subscript += item.str;
+        } else {
+          if (subscript) value += '_{' + subscript + '}';
+          subscript = '';
+          value += item.str;
+        }
+      }
+      return value + (subscript ? '_{' + subscript + '}' : '');
+    };
+    const right = Math.max(...[...lower, ...upper].map(item => item.transform[4] + item.width));
+    const followingGap = items[j].transform[4] - right;
+    if (followingGap < -height * 0.25 || followingGap > height) continue;
+    corrected[i] = { ...glyph, str: '∑_{' + limitText(lower) + '}^{' + limitText(upper) + '}',
+      transform: [...glyph.transform.slice(0, 5), baseline], width: right - glyph.transform[4] };
+    for (let k = i + 1; k < j; k++) if (items[k].str?.trim()) corrected[k] = { ...items[k], str: '' };
+    // Preserve subscripts on an adjacent product of mathematical variables.
+    // Ordinary printed letters can share the same horizontal geometry.
+    for (let k = j; k + 1 < items.length; k += 2) {
+      const variable = items[k], script = items[k + 1], next = items[k + 2];
+      if (!/^\p{L}$/u.test(variable.str) || !/^[\p{L}\p{N}]+$/u.test(script.str) ||
+          !page.commonObjs.has(variable.fontName) || !page.commonObjs.has(script.fontName) ||
+          !/^(?:[A-Z]{6}\+)?CMMI\d+$/u.test(page.commonObjs.get(variable.fontName)?.name) ||
+          !/^(?:[A-Z]{6}\+)?CM(?:MI|R)\d+$/u.test(page.commonObjs.get(script.fontName)?.name)) break;
+      if (Math.abs(variable.transform[5] - baseline) > height * 0.15 || script.height >= variable.height * 0.85 ||
+          Math.abs(script.transform[4] - variable.transform[4] - variable.width) > height * 0.25 ||
+          script.transform[5] > baseline - height * 0.06 || script.transform[5] < baseline - height * 0.5) break;
+      if (next?.str?.trim() && Math.abs(next.transform[5] - script.transform[5]) < height * 0.05) break;
+      corrected[k] = { ...variable, str: ' ' + variable.str + '_{' + script.str + '}',
+        width: script.transform[4] + script.width - variable.transform[4] };
+      corrected[k + 1] = { ...script, str: '' };
+    }
+  }
+  return { ...content, items: corrected };
+}
+
+function startsFootnote(marker, body, pageHeight) {
+  return marker && body && body.y < pageHeight * 0.18 && /^(?:\p{Nd}{1,3}|[*†‡])$/u.test(marker.text.trim()) &&
+    /^\s*\p{L}/u.test(body.text) && marker.height < body.height * 0.9 &&
+    marker.y - body.y >= body.height * 0.15 && marker.y - body.y <= body.height * 0.8 &&
+    Math.abs(body.x - marker.end) <= body.height * 0.6;
+}
+
+function textRows(items, left, bottom, width, pageHeight, styles) {
   const rows = [];
   let previousText;
   for (const [index, item] of items.entries()) {
@@ -53,11 +136,14 @@ function textRows(items, left, bottom, width, styles) {
     const raisedSuffix = raisedNumber || (adjacent && previousText.raisedSuffix &&
       /^[*†‡§¶☯]{1,3}$/u.test(item.str.trim()) && Math.abs(y - previousText.y) <= height * 0.2 &&
       Math.abs(height - previousText.height) <= height * 0.2);
-    let row = raisedSuffix ? previousText.row : rows.find(candidate => candidate.vertical === vertical && Math.abs(candidate.y - y) < Math.max(2, height * 0.4));
+    const raisedPrefix = adjacent && !previousText.raisedSuffix && previousText.row.items.length === 1 &&
+      startsFootnote(previousText, { text: item.str, x, y, height }, pageHeight);
+    let row = raisedSuffix || raisedPrefix ? previousText.row : rows.find(candidate => candidate.vertical === vertical && Math.abs(candidate.y - y) < Math.max(2, height * 0.4));
     if (!row) {
       row = { y, items: [], vertical };
       rows.push(row);
     }
+    if (raisedPrefix) row.y = y;
     const previous = items[index - 1];
     const spaceBefore = previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
     const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore,
@@ -93,10 +179,7 @@ function lineFromItems(items, y, vertical, pageHeight) {
     }).join('').trim();
   }
   const [marker, body] = items;
-  if (!vertical && body && y < pageHeight * 0.18 && /^(?:\p{Nd}{1,3}|[*†‡])$/u.test(marker.text.trim()) &&
-      /^\s*\p{L}/u.test(body.text) && marker.height < body.height * 0.9 &&
-      marker.y - body.y >= body.height * 0.15 && marker.y - body.y <= body.height * 0.8 &&
-      Math.abs(body.x - marker.end) <= body.height * 0.6) {
+  if (!vertical && startsFootnote(marker, body, pageHeight)) {
     line.raisedNoteMarker = marker.text.trim();
     line.y = body.y;
   }
@@ -187,7 +270,7 @@ export function pageLines(content, [left, bottom, right, top]) {
     if (line.x >= mid - tolerance) return 'right';
     return 'spanning';
   };
-  const physicalRows = textRows(content.items, left, bottom, width, content.styles);
+  const physicalRows = textRows(content.items, left, bottom, width, pageHeight, content.styles);
   for (const row of physicalRows) row.items.sort((a, b) => a.x - b.x);
   const sidebar = journalSidebarBoundary(physicalRows, width);
   if (sidebar !== null) {

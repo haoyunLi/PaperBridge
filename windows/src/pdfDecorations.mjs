@@ -45,17 +45,33 @@ export function filterRepeatedPageDecorations(pages) {
   });
 }
 
+function isStandaloneEquation(text) {
+  if (text.length > 220 || text.includes('://') || text.includes('@')) return false;
+  return /[=≈≠≤≥]/u.test(text) && /[+*/∑∫∂→←^]|(?:^|\s)[−-](?:\s|$)/u.test(text)
+    && text.split(/\s+/u).length <= 16;
+}
+
 export function stitchPageBlocks(blocks) {
   const result = [];
+  let lastPage;
   for (const block of blocks) {
-    const previous = result.at(-1);
+    let index = result.length - 1;
+    const newPage = lastPage === block.page - 1;
+    // Printed notes stay on their own page while body text can continue on the next.
+    if (newPage) while (index >= 0 && result[index].pdfFootnoteMarker) index--;
+    const previous = result[index];
+    lastPage = block.page;
     const left = previous?.text?.trim() || '';
     const right = block.text?.trim() || '';
-    const adjacent = (previous?.endPage ?? previous?.page) === block.page - 1;
-    const prose = previous && !previous.heading && !block.heading && !previous.resource && !block.resource &&
+    const adjacent = newPage && (previous?.endPage ?? previous?.page) === block.page - 1;
+    const prose = previous && !block.pdfFootnoteMarker && !previous.pdfFootnoteMarker && !previous.heading && !block.heading && !previous.resource && !block.resource &&
       !previous.sourceMarkdown && !block.sourceMarkdown &&
       !/^(?:figure|fig\.|table|references|bibliography|图|表)\b/i.test(left) &&
       !/^(?:(?:figure|table|references|bibliography)\b|fig\.\s*\d|[图表]\s*\d|\[\d+\]|\d+[.)]\s)/iu.test(right);
+    const incompletePhrase = /\b(?:such as|because of|due to|rather than|with respect to|compared with|the|and|or|of|to|for|with|from|into|via)$/iu.test(left)
+      && /^\p{Lu}[\p{L}\p{N}-]*[,\s].*\p{Ll}/u.test(right);
+    const closingDelimiter = right.startsWith(']') && left.lastIndexOf('[') > left.lastIndexOf(']')
+      || right.startsWith(')') && left.lastIndexOf('(') > left.lastIndexOf(')');
     const proseContinuation = /[\p{Ll}‐-]$/u.test(left) && /^[\p{Ll},;:)]/u.test(right);
     // Technical tokens can resume with a digit or capital at the top of the
     // next page. Keep isolated labels and two adjacent numeric entries separate.
@@ -64,8 +80,8 @@ export function stitchPageBlocks(blocks) {
       && !(/\p{N}[-‐]$/u.test(left) && /^\p{N}/u.test(right));
     const listContinuation = /^[•‣◦]\s/u.test(right) && /(?:^|[:：]\s*)[•‣◦]\s/u.test(left)
       && /[,;，；](?:\s+(?:and|or))?$/iu.test(left);
-    const continuation = proseContinuation || technicalContinuation || listContinuation;
-    if (adjacent && prose && continuation && (left.length >= 20 || /[‐-]$/.test(left))) {
+    const continuation = proseContinuation || technicalContinuation || listContinuation || incompletePhrase || closingDelimiter;
+    if (adjacent && prose && continuation && !isStandaloneEquation(left) && !isStandaloneEquation(right) && (left.length >= 20 || /[‐-]$/.test(left))) {
       previous.text = joinPdfText(left, right);
       previous.endPage = block.page;
     } else result.push({ ...block });

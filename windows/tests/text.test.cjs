@@ -195,6 +195,43 @@ test('raised numbers follow their attached word or formula on the same PDF line'
   assert.ok(lines.includes('4'), 'An unconnected number is not appended to a distant word');
 });
 
+test('an inline Computer Modern summation stays in its footnote with independent limits and variable indices', async () => {
+  const { recoverInlineSummations, pageLines } = await import('../src/pdfLayout.mjs');
+  const { blocksFromLines } = await import('../src/text.mjs');
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  const glyph = (str, x, y, height, width, fontName = 'roman') => ({ str, transform: [height, 0, 0, height, x, y], height, width, fontName });
+  const content = { items: [
+    glyph('The heads produce independent', 50, 101, 10, 148),
+    glyph('4', 62, 87, 6, 3), glyph('The measured product is', 65, 83, 9, 102),
+    glyph('equal to', 50, 72, 9, 32), glyph('=', 85, 72, 9, 5),
+    glyph('P', 93, 78.7, 9, 10, 'extension'), glyph('d', 103, 76.3, 6, 4, 'italic'),
+    glyph('k', 107, 74.9, 5, 3, 'italic'), glyph('i', 103, 69.2, 6, 3, 'italic'), glyph('=1', 106, 69.2, 6, 7),
+    glyph('q', 115, 72, 9, 4, 'italic'), glyph('i', 119, 71, 6, 3, 'italic'),
+    glyph('k', 123, 72, 9, 5, 'italic'), glyph('i', 128, 71, 6, 3, 'italic'), glyph('.', 132, 72, 9, 3)
+  ] };
+  const original = structuredClone(content);
+  const fonts = new Map([['extension', { name: 'ABCDEF+CMEX9' }], ['italic', { name: 'CMMI9' }], ['roman', { name: 'CMR9' }]]);
+  const page = { getOperatorList: async () => {}, commonObjs: fonts };
+  const recovered = await recoverInlineSummations(page, content);
+  const extracted = blocksFromLines(pageLines(recovered, [0, 0, 612, 792]), 4);
+  const outside = { id: 3, page: 5, text: 'output values.' };
+  const following = { id: 4, page: 5, text: 'these measurements belong to a separate paragraph.' };
+  const blocks = stitchPageBlocks([...extracted, outside, following]);
+  assert.equal(blocks.length, 3);
+  assert.equal(blocks[0].text, 'The heads produce independent output values.');
+  assert.equal(blocks[0].endPage, 5);
+  assert.equal(blocks[1].pdfFootnoteMarker, '4');
+  assert.equal(blocks[1].text, '4The measured product is equal to = ∑_{i=1}^{d_{k}} q_{i} k_{i}.');
+  assert.equal(blocks[2].text, following.text, 'Only the first physical block on the new page can continue the preceding page');
+  assert.deepEqual(content, original);
+  fonts.set('extension', { name: 'CMR9' });
+  assert.deepEqual(await recoverInlineSummations(page, content), original);
+  const distant = structuredClone(original);
+  distant.items[10].transform[4] += 80;
+  fonts.set('extension', { name: 'CMEX9' });
+  assert.deepEqual(await recoverInlineSummations(page, distant), distant);
+});
+
 test('a raised TeX code star follows its monospace row without changing other fonts or the original layer', async () => {
   const { recoverCodeAsterisks, pageLines } = await import('../src/pdfLayout.mjs');
   const item = (str, x, y, height, width, fontName) => ({ str, transform: [height, 0, 0, height, x, y], height, width, fontName });
