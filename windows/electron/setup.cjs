@@ -29,13 +29,20 @@ function versionAtLeast(actual, minimum) {
   return a[0] > b[0] || (a[0] === b[0] && (a[1] || 0) >= (b[1] || 0));
 }
 
-function cudaPlan(hardware) {
+function onnxDevicePlan(backend) {
+  return backend === 'pipeline'
+    ? 'MinerU will use the CPU selected in parser settings. Ollama selects acceleration separately.'
+    : 'MinerU checks for DirectML and uses CPU when GPU acceleration is unavailable. Ollama selects acceleration separately.';
+}
+
+function cudaPlan(hardware, backend) {
   if (!hardware?.cudaDriver?.length) return { index: null, reason: process.arch === 'x64'
-    ? 'The managed MinerU ONNX installation selects DirectML or CPU on Windows. Ollama chooses its own acceleration.'
+    ? onnxDevicePlan(backend)
     : 'No NVIDIA CUDA driver was detected; the managed MinerU installation uses its CPU pipeline.' };
   if (versionAtLeast(hardware.cudaVersion, '12.8')) return { index: 'cu128', reason: `NVIDIA CUDA ${hardware.cudaVersion}: install matching PyTorch CUDA wheels in the managed MinerU environment.` };
   if (versionAtLeast(hardware.cudaVersion, '12.6')) return { index: 'cu126', reason: `NVIDIA CUDA ${hardware.cudaVersion}: install matching PyTorch CUDA wheels in the managed MinerU environment.` };
-  return { index: null, reason: `NVIDIA driver reports CUDA ${hardware.cudaVersion || 'unknown'}. Managed CUDA wheels require 12.6 or newer.` };
+  const fallback = process.arch === 'x64' ? onnxDevicePlan(backend) : 'The managed MinerU installation uses its CPU pipeline.';
+  return { index: null, reason: `NVIDIA driver reports CUDA ${hardware.cudaVersion || 'unknown'}. Managed CUDA wheels require 12.6 or newer. ${fallback}` };
 }
 
 function selectedComponents(components) {
@@ -50,14 +57,14 @@ function selectedComponents(components) {
 function setupPlan(status, requiredModels = [], config = {}) {
   const components = selectedComponents(config.components);
   const models = components.models ? missingOllamaModels(requiredModels, status.ollama.models) : [];
-  const gpu = cudaPlan(status.hardware);
+  const gpu = cudaPlan(status.hardware, config.mineruBackend);
   const parserReady = isMineruReady(status.mineru);
   const keepCpuPipeline = config.mineruBackend === 'pipeline' && parserReady &&
     !status.mineru.kitExecutable && status.mineru.runtime?.checked === true && status.mineru.runtime.cuda === false;
   if (status.mineru.kitExecutable) {
-    gpu.reason = parserReady && !config.repairMineru
-      ? 'Setup keeps the installed MinerU ONNX parser. Ollama selects acceleration independently.'
-      : 'Setup will repair the managed MinerU ONNX environment. Ollama selects acceleration independently.';
+    const parser = parserReady && !config.repairMineru ? 'Setup keeps the installed MinerU ONNX parser.' :
+      'Setup will repair the managed MinerU ONNX environment.';
+    gpu.reason = parser + ' ' + onnxDevicePlan(config.mineruBackend);
   } else if (gpu.index && keepCpuPipeline && !config.repairMineru) {
     gpu.reason = 'MinerU is ready with its CPU pipeline. Choose Repair / update MinerU to retry CUDA.';
   }

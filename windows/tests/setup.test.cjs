@@ -124,6 +124,13 @@ test('NVIDIA setup chooses supported wheel index and repairs CPU-only MinerU', (
   const onnxPlan = setupPlan(onnx);
   assert.equal(onnxPlan.mineru, false, 'A working ONNX parser does not require a CUDA reinstall');
   assert.match(onnxPlan.gpu.reason, /keeps the installed MinerU ONNX parser/);
+  assert.match(onnxPlan.gpu.reason, /checks for DirectML/);
+  assert.match(setupPlan(onnx, [], { mineruBackend: 'pipeline' }).gpu.reason, /CPU selected in parser settings/);
+  if (process.arch === 'x64') {
+    const olderDriver = { ...hardware, cudaVersion: '12.4' };
+    assert.match(cudaPlan(olderDriver).reason, /12\.4.*12\.6 or newer.*DirectML/);
+    assert.match(cudaPlan(olderDriver, 'pipeline').reason, /CPU selected in parser settings/);
+  }
   assert.equal(setupPlan({ ...onnx, mineru: { ...onnx.mineru, runtime: { checked: false } } }).mineru, true);
 });
 
