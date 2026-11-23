@@ -22,7 +22,7 @@ jobs:
           xcrun swiftc PaperBridge/Models.swift PaperBridge/PaperReaderViewModel*.swift PaperBridge/Utilities/*.swift \
             PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/SelectableAcademicText.swift PaperBridge/Views/PDFDocumentView.swift PaperBridge/Views/MarkdownPreviewView.swift \
             "${services[@]}" windows/tests/mac-local-translation/Compare.swift -o "$RUNNER_TEMP/compare-local"
-      - name: Translate the three PLOS paragraphs and their connected draft
+      - name: Translate PLOS paragraphs, their connected draft and the structured JOSS paper
         shell: bash
         env:
           OLLAMA_HOST: 127.0.0.1:11491
@@ -52,7 +52,8 @@ jobs:
           weights = next(m for m in json.loads((folder / 'tags.json').read_text())['models'] if m['name'] == 'translategemma:4b')
           assert weights['digest'] == 'c49d986b0764f5881c476eb21435bb62b7abc62347aab3d4a6071e811be510a1'
           PY
-          "$RUNNER_TEMP/compare-local" windows/tests/mac-parity/good-enough/reader.json "$out/translation.json"
+          "$RUNNER_TEMP/compare-local" windows/tests/mac-parity/good-enough/reader.json "$out/translation.json" \
+            windows/tests/mac-parity/tabbed/article.md "$out/journal.json"
           curl -fsS "http://$OLLAMA_HOST/api/ps" > "$out/model-runtime.json"
           sysctl -n machdep.cpu.brand_string > "$out/processor.txt"
           tail -n 100 "$RUNNER_TEMP/ollama-serve.log" > "$out/ollama-runtime.log"
