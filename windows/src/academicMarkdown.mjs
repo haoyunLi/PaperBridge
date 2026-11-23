@@ -9,8 +9,9 @@ export function usesSharedMarkdown(paper) {
 }
 
 export function protectStructuredMarkdown(markdown) {
-  if (!markdown.includes('](') && !/[`<]|~{3}|\]:/.test(markdown)) return protectMarkdown(markdown);
+  if (!markdown.includes('](') && !/[`<@]|~{3}|\]:|https?:\/\/|\bwww\./i.test(markdown)) return protectMarkdown(markdown);
   const ranges = [];
+  const boundedLinks = new Map();
   let standaloneLabel = false;
   function visit(node) {
     // The Markdown parser knows where longer code delimiters and nested image destinations end.
@@ -22,8 +23,23 @@ export function protectStructuredMarkdown(markdown) {
     if (node.type === 'link') {
       const start = node.position.start.offset;
       const end = node.position.end.offset;
+      // Autolink labels are the address itself. GFM supplies the exact boundary,
+      // including balanced parentheses and excluding the following punctuation.
+      if (markdown[start] !== '[') {
+        ranges.push([start, end]);
+        if (markdown[start] !== '<') {
+          const literal = markdown.slice(start, end);
+          // Translated punctuation can touch either end of a formerly bare address.
+          // Bound it in Markdown so the Reader and exported documents keep its target.
+          const label = literal.replace(/[\\[\]`*_~$<>&|]/g, '\\$&');
+          const target = node.url.replace(/[\\<>&|]/g, '\\$&');
+          boundedLinks.set(literal, literal === node.url && !/[\s<>]/.test(literal)
+            ? '<' + literal + '>' : '[' + label + '](<' + target + '>)');
+        }
+        return;
+      }
       const labelEnd = node.children.at(-1)?.position.end.offset ?? start + 1;
-      if (markdown[start] === '[' && markdown.startsWith('](', labelEnd)) {
+      if (markdown.startsWith('](', labelEnd)) {
         // Translate the label while preserving the punctuation that makes it a link.
         if (labelEnd === start + 1) ranges.push([start, end]);
         else {
@@ -39,7 +55,8 @@ export function protectStructuredMarkdown(markdown) {
   visit(parseMarkdown(markdown));
   ranges.sort((left, right) => left[0] - right[0]);
   const payload = protectMarkdown(markdown, ranges);
-  return { ...payload, standaloneLabel: standaloneLabel && ranges.length === 2 && payload.tokens.length === 2 };
+  const tokens = payload.tokens.map(([marker, original]) => [marker, boundedLinks.get(original) ?? original]);
+  return { ...payload, tokens, standaloneLabel: standaloneLabel && ranges.length === 2 && tokens.length === 2 };
 }
 
 export function completedBlockTranslation(block, references) {

@@ -31,6 +31,27 @@ test('structured paragraphs mask complete code spans and nested figures before t
   assert.equal(mixed.text.includes('second line'), false);
 });
 
+test('visible web and email addresses stay whole while their surrounding prose can be translated', async () => {
+  const { protectStructuredMarkdown } = await import('../src/academicMarkdown.mjs');
+  const { restoreMarkdown } = await import('../src/prompts.mjs');
+  const urls = ['https://example.org/a/(phase)/calibration#plot', 'www.example.org/archive_(notes)/data', 'authors+study@example.org'];
+  const source = `See (${urls[0]}), then ${urls[1]}. Contact ${urls[2]}.`;
+  const { text, tokens } = protectStructuredMarkdown(source);
+  assert.equal(text, 'See (__PAPERBRIDGE_TOKEN_0__), then __PAPERBRIDGE_TOKEN_1__. Contact __PAPERBRIDGE_TOKEN_2__.');
+  const { parseMarkdown } = await import('../src/markdownRendering.mjs');
+  const translated = '参见__PAPERBRIDGE_TOKEN_0__。其次是__PAPERBRIDGE_TOKEN_1__，联系__PAPERBRIDGE_TOKEN_2__。';
+  const links = value => parseMarkdown(value).children[0].children.filter(node => node.type === 'link')
+    .map(node => [node.url, node.children.map(child => child.value).join('')]);
+  assert.deepEqual(links(restoreMarkdown(translated, tokens)), links(source));
+  for (const address of ['https://example.org/a>file', 'www.example.org/a_(b)?x=1&amp;y=2', 'www.example.org/path*a*c', 'a+b@example.org']) {
+    const original = 'See ' + address + ' for data.';
+    const item = protectStructuredMarkdown(original);
+    assert.deepEqual(links(restoreMarkdown('见' + item.tokens[0][0] + '。', item.tokens)), links(original));
+  }
+  const angle = '<https://example.org/measurements_(v2)>';
+  assert.deepEqual(protectStructuredMarkdown('See ' + angle + '!').tokens.map(([, value]) => value), [angle]);
+});
+
 test('structured translation keeps clickable link destinations when the model localizes punctuation', async () => {
   const { protectStructuredMarkdown } = await import('../src/academicMarkdown.mjs');
   const { restoreMarkdown } = await import('../src/prompts.mjs');
