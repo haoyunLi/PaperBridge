@@ -915,6 +915,7 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
       {visible.translation && <><BlockPassage block={block} kind="translation" scope="paper" structured={markdown}
           className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>}
       {visible.showMissing && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>}
+      {markdown && block.heading && <span className="paper-heading-break" aria-hidden="true"><br /></span>}
     </section>;
   }), [blocks, displayMode, referenceIDs, sourceMode, structured]);
   return <article ref={host} data-view-scope="paperArticle" data-source-mode={sourceMode} data-display-mode={displayMode} className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"

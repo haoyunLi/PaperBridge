@@ -282,7 +282,7 @@ async function run() {
     await back.click();
     await page.locator('.quality-list[open]').waitFor();
     await page.getByRole('button', { name: 'Paper', exact: true }).click();
-    const structuredQuote = 'MinerU section 7\nStructured passage 8.';
+    const structuredQuote = 'MinerU section 7\n\nStructured passage 8.';
     await page.evaluate(() => {
       const article = document.querySelector('[data-view-scope="paperArticle"]');
       const start = article.querySelector('[data-paper-block-id="7"] [data-paper-kind="source"] h1').firstChild;

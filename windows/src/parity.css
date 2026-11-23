@@ -1,3 +1,12 @@
+/* Retain the paragraph break when copying from a Markdown heading into the
+   next paragraph. It occupies no space and adds no text to stored offsets. */
+.paper-heading-break { display: none; }
+.paper-preview-block:has(> [data-paper-kind]:last-of-type [data-markdown-host] > :is(h1, h2, h3, h4, h5, h6):last-child):has(+ .paper-preview-block > [data-paper-kind]:first-child [data-markdown-host] > p:first-child) > .paper-heading-break {
+  display: block;
+  height: 0;
+  font-size: 0;
+  line-height: 0;
+}
 .reader-mode-select{min-width:125px;font-size:12px}
 .workspace > .header{padding:20px 22px 16px}
 .header > .title-row{min-height:64px}
