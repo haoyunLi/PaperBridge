@@ -1,5 +1,15 @@
 # Windows 全软件功能复查
 
+## 0.2.77 旧 PDF 笔记、编辑后的摘要与显卡回退（2026-11-22）
+
+在 *emcee v3* 上分别测试了六条旧笔记。唯一的引文可以在原页找回，重复引文和错页保留待复核。已经保存精确范围的重复引文仍选中原来的那一处。公开 Windows 安装版与 Mac 原生 PDFKit 给出了相同结果。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137427173509) · [公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137430573406)
+
+在 213 段的 *Good enough practices in scientific computing* 上拆分第 19 段，六条既有摘要引文同步改号，导出的分析报告提示摘要需要复核。撤销并重开后，六条引文都回到原段。Mac 在编辑后清除当前摘要和全文译稿，Windows 保留旧稿并标明过期，两端撤销都恢复原有内容。Windows 菜单也能重新生成旧版本保存、丢失科学符号的摘要。
+
+RX 7800 XT 上的正式版使用 Qwen3 4B Instruct 与 TranslateGemma 4B，分 11 批处理同一份 20 页论文。本次用时 129 秒，六条双语结论含七条可跳回原段的引文。引用的文本位置经过程序核对，结论对原意的概括仍需读者判断。扫描 PDF 的五个文字块经 DirectML 识别并完成翻译。旧 PyTorch 报告 CUDA 可用但无法执行实际运算时，MinerU 现在对该次导入使用 CPU。这个分支使用受控故障验证，尚未在实体 NVIDIA 显卡上验收。
+
+从仓库首页通过 Edge 下载的两份 EXE 均通过 SHA-256 核验。实际安装 0.2.76 后升级到 0.2.77，论文、高亮、笔记和阅读设置都保留。文件保持未签名，首页和应用内更新清单均已切换。[0.2.77 发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.77) · [下载清单发布任务](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137431486460)
+
 ## 0.2.76 短路径启动、离线附件与双屏阅读（2026-11-22）
 
 0.2.75 的打包检查发现，便携版在 Windows 短路径中解压时，阅读器载入失败后的 **Try again** 会被误拦。0.2.76 统一了窗口加载和校验所用的阅读器地址。用实际公开下载连续打开两次，重试后原窗口可导入并阅读 PDF。在 AMD 电脑上从 GitHub 首页分别下载两个 EXE，核对 SHA-256，验证了互联网来源标记、从 0.2.74 安装升级到 0.2.76、重开论文及保留笔记、高亮和阅读设置。首页、Windows 说明页和自动更新清单均在公开包验收后切换。[macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45090437632/job/137418530223) · [GitHub 公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45090437632/job/137421750982)
