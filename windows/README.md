@@ -17,6 +17,10 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
+Version 0.2.94 restores the source pages for OCR paragraphs that cross a page break. Reopening an older paper can recover the page range from its saved OCR data while preserving translations, bookmarks and figures. Slow local model requests now have the same ten-minute idle limit as on macOS. The in-app updater also verifies the GitHub build proof before offering either Windows executable.
+
+Version 0.2.93 improves reading order across tables and paper columns, keeps model names such as BERT with their subscripts, and refreshes actual GPU memory use while Local AI settings are open. If a translation model runs out of memory or loses its connection, the reader keeps completed work and offers a model change.
+
 Version 0.2.88 follows the Mac paragraph translation prompt in all eleven reader languages. PDF text extraction keeps raised footnotes separate when the main paragraph continues on the next page. Inline Computer Modern summation signs can retain their upper and lower limits. This release also adds GitHub build provenance for both Windows downloads.
 
 Version 0.2.87 adds the native Edit menu, F11 full screen, Ctrl+, for Settings and a version panel under Help. Equations in ordinary Markdown also support the TeX parenthesis and bracket delimiters. Reader can retry a local translation while keeping its original formulas and code. Saved notes on repeated words can recover their position when the full surrounding passage identifies the occurrence. Summaries and full translations now recognize an entire page of numbered references and resume at the appendix. Earlier drafts remain available to read or regenerate. Structured PDF imports can translate sentences following display equations and retain an incomplete equation as printed text.

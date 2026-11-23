@@ -209,6 +209,7 @@ jobs:
             - **Setup** installs PaperBridge for the current Windows user.
             - **Portable** runs directly after download.
             - The project's [GitHub build attestations](${{ github.server_url }}/${{ github.repository }}/attestations) identify the tagged workflow that built each executable.
+            - The attached `-provenance.json` lets PaperBridge verify the origin of either executable during an in-app update.
             - Each executable has a SHA-256 checksum. ${{ steps.release-assets.outputs.signature_note }}
 
             You can open and annotate PDFs immediately. Use **Local AI setup** to install Ollama and the translation model when you first need local AI. MinerU is optional for scanned PDFs and structured extraction.
