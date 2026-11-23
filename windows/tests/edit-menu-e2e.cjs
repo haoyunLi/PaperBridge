@@ -29,6 +29,16 @@ async function run() {
     const entries = await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.flatMap(menu =>
       (menu.submenu?.items || []).map(item => ({ menu: menu.role || menu.label, role: item.role,
         title: item.label, command: item.id, accelerator: item.accelerator || '' }))));
+    async function expectClipboard(expected) {
+      const deadline = Date.now() + 5000;
+      let actual;
+      do {
+        actual = await app.evaluate(({ clipboard }) => clipboard.readText());
+        if (actual === expected) return;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      } while (Date.now() < deadline);
+      assert.equal(actual, expected);
+    }
     const roles = entries.filter(item => item.menu === 'editmenu').map(item => item.role);
     const required = ['undo', 'redo', 'cut', 'copy', 'paste', 'delete', 'selectall'];
     for (const role of required) assert.ok(roles.includes(role), 'Missing native Edit menu role ' + role);
@@ -73,6 +83,10 @@ async function run() {
       assert.equal(fullscreen, expected);
     }
     await page.bringToFront();
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.focus(); window.webContents.focus();
+    });
     const source = page.locator('#block-1 .source-text');
     await source.waitFor();
     await source.evaluate(element => {
@@ -83,8 +97,9 @@ async function run() {
       element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
     if (clipboardTest) {
+      await page.waitForFunction(text => document.getSelection()?.toString() === text, passage);
       await clickRole('copy');
-      assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), passage);
+      await expectClipboard(passage);
     }
     const editor = page.locator('.inspector textarea');
     await editor.click();
@@ -118,7 +133,7 @@ async function run() {
       await clickRole('selectall');
       await clickRole('cut');
       await page.waitForFunction(() => document.activeElement.value === '');
-      assert.equal(await app.evaluate(({ clipboard }) => clipboard.readText()), 'Updated');
+      await expectClipboard('Updated');
       await clickRole('paste');
       await page.waitForFunction(() => document.activeElement.value === 'Updated');
     }
