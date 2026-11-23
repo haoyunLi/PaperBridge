@@ -102,8 +102,10 @@ async function ollamaAppPath() {
 }
 
 async function mineruStatus(configured, toolsRoot, backend) {
-  const found = await detectMineruExecutable(configured, toolsRoot);
-  return { ...found, runtime: found.compatible ? await mineruRuntime(found.executable, toolsRoot, { found, backend }) : null };
+  const found = await detectMineruExecutable(configured, toolsRoot, {
+    probeRuntime: candidate => mineruRuntime(candidate.executable, toolsRoot, { found: candidate, backend })
+  });
+  return { ...found, runtime: found.runtime ?? null };
 }
 
 async function sha256(file) {

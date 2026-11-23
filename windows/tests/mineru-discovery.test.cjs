@@ -69,6 +69,31 @@ test('auto-detect skips a broken managed command and chooses compatible PATH Min
   assert.equal(result.compatible, true);
 });
 
+test('discovery checks actual runtimes and preserves an explicit parser choice', async t => {
+  const { managed, onPath, toolsRoot, environment } = fixture(t);
+  const options = { environment, probeVersion: async () => 'MinerU 3.4.5' };
+  const broken = { checked: false, unusable: true, reason: 'Cannot load PyTorch' };
+  const unknown = { checked: false, reason: 'Custom launcher' };
+  const ready = { checked: true, cuda: false };
+  for (const first of [broken, unknown, ready]) {
+    const tried = [];
+    options.probeRuntime = async found => {
+      tried.push(found.executable);
+      return found.executable === managed ? first : ready;
+    };
+    const result = await detectMineruExecutable('', toolsRoot, options);
+    assert.equal(result.executable, first === ready ? managed : onPath);
+    assert.deepEqual(tried, first === ready ? [managed] : [managed, onPath]);
+    const explicit = await detectMineruExecutable(managed, toolsRoot, options);
+    assert.equal(explicit.executable, managed);
+    assert.deepEqual(explicit.runtime, first);
+  }
+  options.probeRuntime = async found => found.executable === managed ? broken : unknown;
+  assert.equal((await detectMineruExecutable('', toolsRoot, options)).executable, onPath);
+  options.probeRuntime = async () => broken;
+  assert.deepEqual((await detectMineruExecutable('', toolsRoot, options)).runtime, broken);
+});
+
 test('detection leaves a live repair alone and restores the old parser after its owner exits', async t => {
   const fixturePaths = fixture(t);
   const { toolsRoot, managed, onPath, environment } = fixturePaths;

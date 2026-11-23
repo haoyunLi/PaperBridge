@@ -6,7 +6,7 @@ const { externalPaperURL } = require('./paper-link.mjs');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
-const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
+const { graphicsStatus } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
@@ -194,7 +194,10 @@ function registerHandlers() {
   });
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
-  ipcMain.handle('mineru:runtime', (_event, executable, backend) => mineruRuntime(executable, setupManager.toolsRoot, { backend }));
+  ipcMain.handle('mineru:runtime', async (_event, executable, backend) => {
+    const found = await mineruStatus(executable, setupManager.toolsRoot, backend);
+    return found.runtime ?? { checked: false, reason: found.reason };
+  });
   ipcMain.handle('mineru:status', (_event, executable, backend) => mineruStatus(executable, setupManager.toolsRoot, backend));
   ipcMain.handle('mineru:detect', (_event, backend) => mineruStatus('', setupManager.toolsRoot, backend));
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });

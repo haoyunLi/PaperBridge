@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { isMineruReady } = require('./mineru-readiness.mjs');
 const { mineruPaths, managedMineruAvailable } = require('./mineru-installation.cjs');
 
 const exec = promisify(execFile);
@@ -111,6 +112,8 @@ function mineruPython(executable) {
 async function detectMineruExecutable(configured, toolsRoot, options = {}) {
   const fileSystem = options.fileSystem || fs;
   const checkVersion = options.probeVersion || probeVersion;
+  let firstUnchecked = null;
+  let firstUnusable = null;
   let firstIncompatible = null;
   let managedUnavailable = '';
   const managed = toolsRoot && path.join(mineruPaths(toolsRoot).final, 'Scripts', 'mineru.exe').toLowerCase();
@@ -134,10 +137,21 @@ async function detectMineruExecutable(configured, toolsRoot, options = {}) {
       : `MinerU at ${candidate.executable} does not report a compatible 3.x or 4.1+ version.`;
     const found = { installed: true, compatible, executable: candidate.executable,
       version, source: candidate.source, kitExecutable, reason: compatible ? '' : reason };
-    if (compatible) return found;
-    firstIncompatible ||= found;
+    if (!compatible) {
+      firstIncompatible ||= found;
+      continue;
+    }
+    if (!options.probeRuntime) return found;
+    found.runtime = await options.probeRuntime(found);
+    if (isMineruReady(found)) {
+      if (found.runtime?.checked) return found;
+      firstUnchecked ||= found;
+    } else firstUnusable ||= found;
   }
-  if (firstIncompatible) return firstIncompatible;
+  // A working fallback avoids reinstalling a broken earlier PATH entry. Keep
+  // unknown legacy launchers usable if no verified alternative exists.
+  const fallback = firstUnchecked || firstUnusable || firstIncompatible;
+  if (fallback) return fallback;
   const explicit = String(configured || '').trim();
   return { installed: false, compatible: false, executable: '', version: '', source: '',
     reason: managedUnavailable || (explicit && !/^(?:mineru|mineru\.exe)$/i.test(explicit) ? `Configured MinerU executable was not found: ${explicit}`
