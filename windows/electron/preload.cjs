@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   },
   downloadUpdate: tag => ipcRenderer.invoke('updates:download', tag),
   openUpdateRelease: tag => ipcRenderer.invoke('updates:open-release', tag),
+  openPaperAttachment: (id, href, from) => ipcRenderer.invoke('paper:attachment', { id, href, from }),
   openPaperLink: href => ipcRenderer.send('paper:open-link', href),
   importPdf: () => ipcRenderer.invoke('pdf:import'),
   importPdfBytes: payload => ipcRenderer.invoke('pdf:import-bytes', payload),

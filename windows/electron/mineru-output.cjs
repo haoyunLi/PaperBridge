@@ -114,11 +114,12 @@ function findMineruMarkdown(folder, preferredStem) {
 
 const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
 
-function readMineruMarkdown(file) {
-  const directory = fs.realpathSync(path.dirname(file));
+function readMineruMarkdown(file, resourceRoot = path.dirname(file)) {
+  const directory = fs.realpathSync(resourceRoot);
+  const from = path.relative(directory, fs.realpathSync(file)).split(path.sep).join('/');
   return rewriteAssetUrls(fs.readFileSync(file, 'utf8'), url => {
-    const reference = localAssetReference(url);
-    if (!reference) return url;
+    const reference = localAssetReference(url, from);
+    if (!reference || !archivePathKey(reference.relative)) return url;
     const mime = imageTypes[path.extname(reference.relative).toLowerCase()];
     if (!mime) return url;
     const asset = assetFile(directory, reference.relative);
@@ -179,4 +180,4 @@ function readMineruPageHints(markdownFile) {
   return [];
 }
 
-module.exports = { mineruMarkdownFiles, findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive };
+module.exports = { mineruMarkdownFiles, findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive, imageTypes, maxImageBytes };

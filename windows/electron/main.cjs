@@ -10,6 +10,7 @@ const { graphicsStatus, mineruRuntime } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
 const { createMineruStaging, detectMineruExecutable, mineruInvocation } = require('./mineru-discovery.cjs');
 const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive } = require('./mineru-output.cjs');
+const { openPaperAttachment } = require('./paper-attachment.cjs');
 const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('./mineru-resources.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
@@ -474,6 +475,11 @@ function registerHandlers() {
       }
     }
   });
+  ipcMain.handle('paper:attachment', (event, { id, href, from = '' }) => {
+    if (event.sender !== window?.webContents || event.senderFrame !== event.sender.mainFrame ||
+        event.senderFrame?.url.split('#')[0] !== readerURL) throw new Error('Open attachments from the PaperBridge reader.');
+    return openPaperAttachment(store.root, store.paper(safeId(id)), href, from, file => shell.openPath(file));
+  });
   ipcMain.on('paper:open-link', (event, href) => {
     if (event.sender !== window?.webContents || event.senderFrame !== event.sender.mainFrame ||
         event.senderFrame?.url.split('#')[0] !== readerURL) return;
@@ -550,7 +556,7 @@ function createWindow() {
   const contents = window.webContents;
   // A browser destination should never replace the reading workspace.
   contents.on('will-navigate', (event, url) => {
-    if (/^https?:/i.test(url) && url.split('#')[0] !== readerURL) event.preventDefault();
+    if (url.split('#')[0] !== readerURL) event.preventDefault();
   });
   const owner = window;
   let processLosses = 0;
