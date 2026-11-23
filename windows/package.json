@@ -59,6 +59,7 @@
     "test:reopen-mineru": "node tests/reopen-mineru.cjs",
     "test:live": "node tests/live-local.cjs",
     "test:live-connected": "node tests/live-connected.cjs",
+    "test:live-structured": "node tests/live-structured-translation.cjs",
     "test:live-summary": "node tests/live-summary.cjs",
     "test:live-mineru": "node tests/live-mineru.cjs",
     "test:live-ocr": "node tests/live-ocr.cjs",
