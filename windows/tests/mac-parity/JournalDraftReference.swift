@@ -68,7 +68,8 @@ func nativeJournalDraft(fixtures: URL) throws -> [String: Any] {
         return ParagraphResult(id: id, original: segment.analysisText ?? "", sourceMarkdown: segment.source,
                                translation: targets[id - 1], status: .ok)
     }
-    return ["matched": matched.count, "unmatched": translations.keys.filter { !matched.contains($0) }.sorted(),
+    return ["readerOccurrences": try nativeJournalReaderSelections(complete),
+            "matched": matched.count, "unmatched": translations.keys.filter { !matched.contains($0) }.sorted(),
             "analysis": analysis, "complete": documents, "unfinished": drafts(unfinished), "failedCount": unfinished.filter { $0.status == .failed }.count,
             "exportedFull": exported, "imageHashes": imageHashes, "assets": result.copiedAssetCount,
             "legacyTranslated": AcademicMarkdownProcessor.translatedMarkdown(segments: legacy.segments, results: legacyResults),
