@@ -50,6 +50,9 @@ async function run() {
     assert.ok(firstPage.every(text => !text.includes('a1111111111') && !text.includes('PLOS Computational Biology |')));
     if (reference) {
       assert.ok(reference.nativeSource.includes('Overview\n' + firstPage[overview + 1]));
+      const { summarySourceBlocks, summarySourceBatches } = await import('../src/paper.mjs');
+      const inputs = summarySourceBatches(summarySourceBlocks(imported.blocks)).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
+      assert.deepEqual(inputs, reference.currentWindowsSummaryBatches, 'Every summary input on a fresh 20-page import must match native batching');
     }
 
     for (const state of ['complete', 'partial']) {

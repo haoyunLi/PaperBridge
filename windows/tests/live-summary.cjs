@@ -76,6 +76,11 @@ async function run() {
     const expected = summarySourceBatches(summarySourceBlocks(snapshot.blocks)).map(batch => batch.map(block => `[P${block.id}]\n${block.text}`).join('\n\n'));
     assert.deepEqual(inputs, expected, 'Every sent source and paragraph ID must match the fresh import');
     fs.writeFileSync(path.join(workspace, 'model-inputs.json'), JSON.stringify(inputs));
+    if (pdf && process.env.PAPERBRIDGE_MAC_REFERENCE) {
+      const native = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8')).pdfJournal;
+      assert.equal(id, native.sourceSHA256);
+      assert.deepEqual(inputs, native.currentWindowsSummaryBatches);
+    }
     const sources = snapshot.summary.claims.flatMap(claim => claim.sources);
     assert.ok(snapshot.summary.claims.length > 0 && snapshot.summary.claims.length <= 6);
     assert.ok(sources.length > 0, 'The live model should produce at least one exact citation');
@@ -116,7 +121,10 @@ async function run() {
     await page.getByRole('button', { name: 'Summary, sources and notes', exact: true }).click();
     await page.getByText('Exported ' + destination, { exact: true }).waitFor();
     const exported = fs.readFileSync(destination, 'utf8');
-    for (const source of sources) assert.ok(exported.includes(`- Block ${source.paragraphID}: “${source.quote}”`));
+    for (const source of sources) {
+      const quote = source.quote.split('\n').map(line => '> ' + line).join('\n');
+      assert.ok(exported.includes(`Original paragraph ${source.paragraphID}:\n${quote}`));
+    }
     const loaded = await fetch(new URL('/api/ps', baseURL)).then(response => response.json());
     const models = loaded.models.filter(item => [modelName, summaryModel].includes(item.name || item.model));
     assert.ok(models.some(model => (model.name || model.model) === modelName && model.size_vram > 0), 'Ollama must report translation model VRAM allocation');

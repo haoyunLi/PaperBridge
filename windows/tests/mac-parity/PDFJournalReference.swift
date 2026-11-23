@@ -5,6 +5,7 @@ import PDFKit
 private struct SavedPDFJournal: Decodable {
     struct Block: Decodable {
         let id: Int
+        let page: Int
         let text: String
         let translation: String?
     }
@@ -17,6 +18,8 @@ func nativePDFJournal(fixtures: URL) throws -> [String: Any] {
     let files = FileManager.default
     let input = fixtures.appendingPathComponent("good-enough")
     let saved = try JSONDecoder().decode(SavedPDFJournal.self, from: Data(contentsOf: input.appendingPathComponent("reader.json")))
+    let firstPage = try JSONDecoder().decode([String].self, from: Data(contentsOf: input.appendingPathComponent("first-page-paragraphs.json")))
+    let activeWindowsText = firstPage + saved.blocks.filter { $0.page > 1 && $0.translation != nil }.map(\.text)
     let pdf = input.appendingPathComponent("article.pdf")
     let bytes = try Data(contentsOf: pdf)
     let root = files.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -75,6 +78,7 @@ func nativePDFJournal(fixtures: URL) throws -> [String: Any] {
     }
     return ["sourceSHA256": saved.sourceSHA256, "nativeSource": nativeSource,
             "nativeSummaryBatches": SummaryEvidence.sourceBatches(paper.paragraphs),
+            "currentWindowsSummaryBatches": SummaryEvidence.sourceBatches(activeWindowsText),
             "savedSummaryBatches": SummaryEvidence.sourceBatches(complete.map(\.original)),
             "complete": try export(complete, name: "Complete"), "partial": try export(partial, name: "Partial")]
 }
