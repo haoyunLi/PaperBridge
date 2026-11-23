@@ -40,6 +40,21 @@ test('match dedicated memory to each GPU without displaying the truncated WMI va
   assert.deepEqual(nvidiaDevices('No devices were found'), []);
 });
 
+test('old and new nvidia-smi report labels choose the matching CUDA wheel', () => {
+  const { nvidiaSupportedCuda } = require('../electron/hardware.cjs');
+  const hardware = { cudaDriver: [{ name: 'NVIDIA GPU' }] };
+  for (const [report, version, wheel] of [
+    ['Driver Version  : 560.94\nCUDA Version         : 12.6', '12.6', 'cu126'],
+    ['KMD Version : 610.10\nCUDA UMD Version     : 13.4', '13.4', 'cu128'],
+    ['Driver Version : 550.10 | CUDA Version: 12.4 |', '12.4', null],
+    ['CUDA UMD Version : N/A\nCUDA Toolkit Version : 13.4', null, null]
+  ]) {
+    const cudaVersion = nvidiaSupportedCuda(report);
+    assert.equal(cudaVersion, version);
+    assert.equal(cudaPlan({ ...hardware, cudaVersion }).index, wheel);
+  }
+});
+
 test('managed Python lookup uses a real versioned interpreter and ignores the minor-version link', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-python-test-'));
   const architecture = process.arch === 'arm64' ? 'aarch64' : 'x86_64';

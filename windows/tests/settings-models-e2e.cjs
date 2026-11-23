@@ -297,6 +297,14 @@ async function run() {
       await card(model).locator('.model-space-warning').waitFor();
       assert.equal(await card(model).getByRole('button', { name: 'Download & use' }).isEnabled(), true);
     }
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('hardware:status');
+      ipcMain.handle('hardware:status', () => ({ adapters: [{ name: 'NVIDIA GPU', vendor: 'NVIDIA' }],
+        cudaDriver: [{ name: 'NVIDIA GPU' }], cudaVersion: '13.4' }));
+    });
+    await clickTab('Models');
+    await page.getByRole('button', { name: 'Check', exact: true }).click();
+    await page.getByText('The NVIDIA driver supports CUDA up to 13.4.', { exact: true }).waitFor();
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(artifacts, 'settings-models-actions.json'), JSON.stringify({ pulls: pulls.map(pull => pull.payload), viewports, zoom, settings: saved() }, null, 2));
     console.log('Settings recommendations passed: nine cards, RAM and dedicated GPU memory suggestion, official links, cancellation across tabs, retry, download/use task roles, specialist retention, independent quick lookup, restart persistence, late completion isolation across papers/endpoints, and tab navigation at 980x620 with 100%/150% Electron zoom.');

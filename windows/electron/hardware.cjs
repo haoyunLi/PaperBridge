@@ -42,6 +42,11 @@ function nvidiaDevices(output) {
   });
 }
 
+// nvidia-smi -q uses "CUDA UMD Version" on newer drivers and "CUDA Version" on older ones.
+function nvidiaSupportedCuda(output) {
+  return /\bCUDA(?: UMD)? Version[ \t]*:[ \t]*(\d+\.\d+)\b/i.exec(output)?.[1] || null;
+}
+
 function mergeAdapterInventory(controllers, devices) {
   const adapters = controllers.filter(item => item?.Name).map(item => {
     const dedicatedMemoryBytes = Number.isSafeInteger(item.DedicatedBytes) && item.DedicatedBytes > 0 ? item.DedicatedBytes : null;
@@ -89,8 +94,8 @@ async function graphicsStatus() {
   }
   if (cudaDriver?.length) {
     try {
-      const { stdout } = await run(smiPath, [], { timeout: 5000, windowsHide: true });
-      cudaVersion = stdout.match(/CUDA Version:\s*(\d+\.\d+)/i)?.[1] || null;
+      const { stdout } = await run(smiPath, ['-q'], { timeout: 5000, windowsHide: true });
+      cudaVersion = nvidiaSupportedCuda(stdout);
     } catch { /* Driver inventory still works when the full report is unavailable. */ }
   }
   return { adapters: mergeAdapterInventory(controllers, cudaDriver), cudaDriver, cudaVersion,
@@ -162,4 +167,4 @@ print(json.dumps({"torch": torch.__version__, "cuda": ready, "devices": devices,
   } catch (error) { return { checked: false, reason: `Cannot verify MinerU PyTorch CUDA: ${error.message.slice(0, 140)}` }; }
 }
 
-module.exports = { graphicsStatus, mineruRuntime, vendorOf, nvidiaDevices, mergeAdapterInventory };
+module.exports = { graphicsStatus, mineruRuntime, vendorOf, nvidiaDevices, nvidiaSupportedCuda, mergeAdapterInventory };
