@@ -20,6 +20,11 @@
     "end": "Iterative Reading"
   },
   {
+    "name": "Heading into a paragraph",
+    "start": "Structural Detection",
+    "end": "A header line (line 7 of Figure 1)"
+  },
+  {
     "name": "Inside Python listing",
     "start": "with open(",
     "end": "reader = Reader(infile)"
