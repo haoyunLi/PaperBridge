@@ -62,6 +62,7 @@ import { SidebarLanguage, SidebarAIStatus } from './SidebarControls.jsx';
 import './compact-workspace.css';
 import SidebarSource from './SidebarSource.jsx';
 
+if (import.meta.env.DEV) document.title = 'PaperBridge Dev';
 const api = window.paperBridge;
 const ONBOARDING_VERSION = 1;
 const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text, value.anchors && pdfAnchorKey(value), value.renderedAnchor, value.displayMode, value.sourceMode]) : '';

@@ -6,6 +6,8 @@
 
 引导与设置在同一台 RX 7800 XT 上均显示了实际的 16 GiB 显存和 C 盘剩余空间。全新 Windows 的 4B 首次使用也完成了安装、取消及续传、中文翻译和重开，译文与本机相同。[独立 Windows 的首次安装](https://github.com/haoyunLi/PaperBridge/actions/runs/45171471770)
 
+另一台 16 GiB 的 Windows 先通过引导安装 4B，再试用 27B。27B 下载并加载后未在等待期内生成译文。释放模型内存后直接选用原来安装的 4B，无需再下载，完成了同一段的中文翻译，重开后译文仍在。[真实 27B 超时、模型切换及重开](https://github.com/haoyunLi/PaperBridge/actions/runs/45172171617)
+
 ## Windows 0.2.95 的扫描页和本地模型
 
 用公开的 0.2.91 打开 BERT 第 6–7 页的纯图像 PDF，在 RX 7800 XT 上运行 MinerU 4.1.7 和 TranslateGemma 4B，保存书签与译文后用候选版重新打开。跨页段落的两个页码都能用键盘打开对应的原始 PDF 页，返回后译文与书签仍在。原 PDF 和 7 个解析文件逐一核对哈希一致，其中有 4 张 JPG。注释 Markdown 的书签现在保留起止页。

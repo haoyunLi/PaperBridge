@@ -25,7 +25,7 @@
 | M110-17 | 取消/失败导入保留前一论文全部工作 | 新论文只在提取完成后 commit；取消会隐藏导入屏，迟到 MinerU 结果无法覆盖旧论文 | 对齐 | Electron 验证旧 bookmark、正文和 paper 数量不变；真实 MinerU 崩溃仍继续扩大样本。 |
 | M110-18 | 清除 workspace 撤销在线许可并保留独立 API key | 清除动作在主进程撤销许可，保留加密 key；可在 Models 单独删除 key | 对齐 | Electron 在许可启用时清空，验证主进程在线生成闸门关闭且密钥文件仍在。 |
 | M110-19 | API key、usage、data controls 小入口 | OpenAI 设置提供三个官方链接；新窗口白名单只允许精确 HTTPS 路径 | 对齐 | unit/Electron link allowlist 拒绝端口、query、fragment、同形恶意域名。 |
-| M110-20 | 开发构建与下载版分离 | 非 packaged 且非 production 的 Electron 使用 `PaperBridge Dev` 名称和独立 user-data 目录 | 对齐 | 正式包及 production E2E 保持 PaperBridge 目录；仍需一次交互式 `npm run dev` 目视确认。 |
+| M110-20 | 开发构建与下载版分离 | 非 packaged 且非 production 的 Electron 使用 `PaperBridge Dev` 名称和独立 user-data 目录 | 对齐 | 实际 Vite 开发服务器与 Electron 已验证首次引导、窗口标题 `PaperBridge Dev`、独立的 user-data / session-data 目录和设置保存。正式包通过独立启动与重开验收。 |
 | M110-21 | 在线选区翻译过度扩写时提示换模型，单次点击至多请求一次 | OpenAI 扩写返回错误，Ollama 仍可自动严格重译一次 | 对齐 | OpenAI Electron 回归注入扩写，检查请求数为 1 且无译文；主 Electron 流程验证 Ollama 的两次请求与缓存命中。 |
 
 ## 当前结论
