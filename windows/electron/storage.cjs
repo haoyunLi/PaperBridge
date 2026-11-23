@@ -238,11 +238,12 @@ function createStore(root) {
       writeJson(lastPaperFile, { id, openedAt: { ...previous?.openedAt, [id]: lastOpened } });
       return { id, lastOpened };
     },
-    savePaper(paper) {
+    savePaper(paper, onPaperWritten) {
       const id = safeId(paper?.id);
       if (!validPaper(paper, id)) throw new Error('Invalid paper workspace.');
       const saved = { ...paper, id, updatedAt: new Date().toISOString() };
       const revision = writeJson(paperPath(id), saved, { validBackup: value => validPaper(value, id), captureRevision: true });
+      onPaperWritten?.();
       const index = readLibraryIndex(libraryIndexFile);
       index.entries[id] = libraryEntryFromPaper(saved, index.entries[id], revision);
       writeIndex(index);

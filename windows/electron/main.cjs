@@ -262,9 +262,11 @@ function registerHandlers() {
   ipcMain.handle('paper:mark-opened', (_event, id) => store.markPaperOpened(id));
   ipcMain.handle('paper:update-library-metadata', (_event, payload) => store.updateLibraryMetadata(payload));
   ipcMain.handle('paper:save', (event, paper) => {
-    store.savePaper(paper);
-    const pending = pendingMineruResults.get(paper.mineruResourceId);
-    if (pending && pending.sender === event.sender && pending.id === paper.id) pendingMineruResults.delete(paper.mineruResourceId);
+    store.savePaper(paper, () => {
+      // The saved document owns its OCR files even if updating the library index fails.
+      const pending = pendingMineruResults.get(paper.mineruResourceId);
+      if (pending && pending.sender === event.sender && pending.id === paper.id) pendingMineruResults.delete(paper.mineruResourceId);
+    });
     return store.list();
   });
   ipcMain.handle('paper:clear-data', () => {

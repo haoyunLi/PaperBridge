@@ -19,6 +19,24 @@ function paper(id, overrides = {}) {
     blocks: [{ id: 1, text: 'One', status: 'ok' }, { id: 2, text: 'Two', status: 'pending' }], ...overrides };
 }
 
+test('resource ownership follows the saved document even if its library index is unwritable', t => {
+  const root = workspace(t, 'paperbridge-library-assets-');
+  const store = createStore(root);
+  const id = 'a'.repeat(64);
+  const resource = '0123456789abcdef';
+  const snapshot = paper(id, { mineruResourceId: resource });
+  fs.mkdirSync(path.join(root, 'library-index.json'));
+  let committed = 0;
+  const onPaperWritten = () => {
+    assert.equal(store.paper(id).mineruResourceId, resource);
+    committed++;
+  };
+  assert.throws(() => store.savePaper(snapshot, onPaperWritten));
+  assert.equal(committed, 1);
+  assert.throws(() => store.savePaper({ id }, onPaperWritten), /Invalid paper/);
+  assert.equal(committed, 1);
+});
+
 test('legacy papers seed the independent index and later workspace saves cannot roll back labels', t => {
   const root = workspace(t, 'paperbridge-library-seed-');
   const id = 'a'.repeat(64);
