@@ -33,3 +33,46 @@ func nativePDFNoteRecovery(pdf: Data, fixtures: URL) throws -> [String: Bool] {
     }
     return matched
 }
+
+// PDFKit and PDF.js order some page furniture differently. Compare the selected pages
+// and boundary words, and verify the exact ranges against each engine's own page text.
+@MainActor
+func nativeLongPDFSelections(fixtures: URL) throws -> [String: [Int]] {
+    struct Passage: Decodable {
+        let name, start, end: String
+        let first, last: Int
+    }
+    let cases = try JSONDecoder().decode([Passage].self, from: Data(contentsOf: fixtures.appendingPathComponent("long-pdf-selections.json")))
+    guard let document = PDFDocument(url: fixtures.appendingPathComponent("good-enough/article.pdf")) else { throw CocoaError(.fileReadCorruptFile) }
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let model = PaperReaderViewModel(workspaceStore: WorkspaceStore(rootURL: root))
+    model.applyLoadedPaper(PaperDocument(name: "Good enough practices", checksum: "long-pdf-selection",
+        cleanedText: "Good enough practices", paragraphs: ["Good enough practices"], excludedReferenceParagraphs: [], referenceSectionTitle: nil))
+    var results: [String: [Int]] = [:]
+    for item in cases {
+        let selection = PDFSelection(document: document)
+        for number in item.first...item.last {
+            guard let page = document.page(at: number - 1), let text = page.string as NSString? else { throw CocoaError(.fileReadCorruptFile) }
+            let start = number == item.first ? text.range(of: item.start).location : 0
+            let match = text.range(of: item.end)
+            guard start != NSNotFound, number != item.last || match.location != NSNotFound else { throw CocoaError(.fileReadCorruptFile) }
+            let end = number == item.last ? NSMaxRange(match) : text.length
+            guard end > start, let part = page.selection(for: NSRange(location: start, length: end - start)) else { throw CocoaError(.fileReadCorruptFile) }
+            selection.add(part)
+        }
+        let anchors = PDFDocumentView.anchors(for: selection, in: document)
+        guard let first = anchors.first, let text = selection.string, text.count > 3000,
+              first.quote.hasPrefix(item.start), anchors.last?.quote.hasSuffix(item.end) == true else { throw CocoaError(.fileReadCorruptFile) }
+        model.captureTextSelection(ReaderTextSelection(scope: .paper, paragraphID: 0, side: .original, text: text,
+            context: text, rangeLocation: first.location, rangeLength: first.length,
+            locator: "pdf-page-\(first.pageIndex)", pdfAnchors: anchors))
+        model.applyHighlight(.amber)
+        model.saveSelectionNote(item.name)
+        guard let note = model.activeSelectionAnnotation, note.note == item.name, note.highlightColor == .amber,
+              let reopened = PDFDocumentView.selection(for: note, in: document),
+              PDFDocumentView.anchors(for: reopened, in: document) == anchors else { throw CocoaError(.fileReadCorruptFile) }
+        results[item.name] = anchors.map { $0.pageIndex + 1 }
+    }
+    return results
+}
