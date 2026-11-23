@@ -1,0 +1,44 @@
+name: Verify a clean Windows local AI installation
+permissions:
+  contents: read
+on:
+  push:
+    tags: ['windows-setup-check-*']
+  workflow_dispatch:
+jobs:
+  clean-windows-setup:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts
+      - name: Install the current verified GitHub release
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Command ollama -ErrorAction SilentlyContinue) { throw 'Expected a fresh machine without Ollama' }
+          $feed = Invoke-RestMethod 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json'
+          if ($feed.version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release version' }
+          $name = "PaperBridge-Windows-$($feed.version)-x64-Setup.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $name
+          $install = Join-Path $env:RUNNER_TEMP 'Clean PaperBridge'
+          Invoke-WebRequest "https://github.com/haoyunLi/PaperBridge/releases/download/windows-v$($feed.version)/$name" -OutFile $installer -MaximumRetryCount 3
+          if ((Get-Item $installer).Length -ne $feed.files.Setup.size -or (Get-FileHash $installer).Hash -ne $feed.files.Setup.sha256) { throw 'Unexpected installer bytes' }
+          $process = Start-Process -FilePath $installer -ArgumentList "/S /currentuser /D=$install" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Installer exited $($process.ExitCode)" }
+          "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
+          "PAPERBRIDGE_CLEAN_RELEASE=$($feed.version)" >> $env:GITHUB_ENV
+      - name: Install Ollama and translate with the first-run model card
+        run: node tests/clean-ollama-setup.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: clean-windows-local-ai
+          path: windows/test-artifacts/clean-ollama-report.json
+          if-no-files-found: ignore
