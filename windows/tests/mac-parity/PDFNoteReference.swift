@@ -51,19 +51,24 @@ func nativeLongPDFSelections(fixtures: URL) throws -> [String: [Int]] {
         cleanedText: "Good enough practices", paragraphs: ["Good enough practices"], excludedReferenceParagraphs: [], referenceSectionTitle: nil))
     var results: [String: [Int]] = [:]
     for item in cases {
+        func failure(_ message: String) -> NSError {
+            NSError(domain: "PaperBridge.LongPDFSelections", code: 1, userInfo: [NSLocalizedDescriptionKey: "\(item.name): \(message)"])
+        }
         let selection = PDFSelection(document: document)
         for number in item.first...item.last {
-            guard let page = document.page(at: number - 1), let text = page.string as NSString? else { throw CocoaError(.fileReadCorruptFile) }
+            guard let page = document.page(at: number - 1), let text = page.string as NSString? else { throw failure("Cannot read page \(number)") }
             let start = number == item.first ? text.range(of: item.start).location : 0
             let match = text.range(of: item.end)
-            guard start != NSNotFound, number != item.last || match.location != NSNotFound else { throw CocoaError(.fileReadCorruptFile) }
+            guard start != NSNotFound, number != item.last || match.location != NSNotFound else { throw failure("Boundary missing on page \(number), start \(start), end \(match.location)") }
             let end = number == item.last ? NSMaxRange(match) : text.length
-            guard end > start, let part = page.selection(for: NSRange(location: start, length: end - start)) else { throw CocoaError(.fileReadCorruptFile) }
+            guard end > start, let part = page.selection(for: NSRange(location: start, length: end - start)) else { throw failure("Cannot select \(start)..<\(end) on page \(number)") }
             selection.add(part)
         }
         let anchors = PDFDocumentView.anchors(for: selection, in: document)
         guard let first = anchors.first, let text = selection.string, text.count > 3000,
-              first.quote.hasPrefix(item.start), anchors.last?.quote.hasSuffix(item.end) == true else { throw CocoaError(.fileReadCorruptFile) }
+              first.quote.hasPrefix(item.start), anchors.last?.quote.hasSuffix(item.end) == true else {
+            throw failure("Selected \(selection.string?.count ?? 0) characters in \(anchors.count) ranges, starting with \(anchors.first?.quote.prefix(65) ?? "") and ending with \(anchors.last?.quote.suffix(65) ?? "")")
+        }
         model.captureTextSelection(ReaderTextSelection(scope: .paper, paragraphID: 0, side: .original, text: text,
             context: text, rangeLocation: first.location, rangeLength: first.length,
             locator: "pdf-page-\(first.pageIndex)", pdfAnchors: anchors))
@@ -71,7 +76,7 @@ func nativeLongPDFSelections(fixtures: URL) throws -> [String: [Int]] {
         model.saveSelectionNote(item.name)
         guard let note = model.activeSelectionAnnotation, note.note == item.name, note.highlightColor == .amber,
               let reopened = PDFDocumentView.selection(for: note, in: document),
-              PDFDocumentView.anchors(for: reopened, in: document) == anchors else { throw CocoaError(.fileReadCorruptFile) }
+              PDFDocumentView.anchors(for: reopened, in: document) == anchors else { throw failure("Saving or revisiting the exact highlighted note changed its ranges") }
         results[item.name] = anchors.map { $0.pageIndex + 1 }
     }
     return results
