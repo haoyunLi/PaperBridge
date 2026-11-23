@@ -91,7 +91,8 @@ async function run() {
       ipcMain.handle('hardware:status', () => ({ systemMemoryBytes: 32 * 1024 ** 3, adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU', memoryBytes: 2 ** 32 - 1 }] }));
       ipcMain.handle('mineru:runtime', () => ({ cuda: false }));
       ipcMain.handle('setup:status', () => ({
-        busy: Boolean(state.pending), hardware: { systemMemoryBytes: 32 * 1024 ** 3, adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU' }] },
+        busy: Boolean(state.pending), hardware: { systemMemoryBytes: 64 * 1024 ** 3,
+          adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU', dedicatedMemoryBytes: 8 * 1024 ** 3 }] },
         ollama: { installed: state.runtimeReady, running: state.runtimeReady, models: state.installed },
         mineru: { installed: state.mineruReady, compatible: state.mineruReady, executable: fixture.managedMineru, version: 'MinerU test fixture',
           ...(state.parserIssue && { kitExecutable: 'mineru-kit.exe' }),
@@ -229,6 +230,8 @@ async function run() {
     await onboarding().getByText('Ollama is ready', { exact: true }).waitFor();
     await next(2);
     await waitFor(() => savedSettings().onboardingPage === 2, 'translation step persistence');
+    await onboarding().getByText('Starting suggestion: TranslateGemma 4B', { exact: true }).waitFor();
+    await onboarding().getByText(/Mock AMD GPU \(AMD, 8 GiB dedicated\)/).waitFor();
     await restart(2);
     assert.equal(savedSettings().onboardingCompletedVersion, 0, 'Closing the application retains unfinished onboarding');
     assert.equal(await page.locator('.onboarding-model-card').count(), 3);

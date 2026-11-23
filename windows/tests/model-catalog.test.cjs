@@ -30,4 +30,12 @@ test('memory suggestions use system RAM and never mistake Windows adapter memory
   assert.equal(suggestedTranslationModel({ systemMemoryBytes: 16 * 1024 ** 3 }).id, 'translategemma:4b');
   assert.equal(suggestedTranslationModel({ systemMemoryBytes: 32 * 1024 ** 3 }).id, 'translategemma:12b');
   assert.equal(suggestedTranslationModel({ systemMemoryBytes: 64 * 1024 ** 3 }).id, 'translategemma:27b');
+  const card = (vendor, gib) => ({ vendor, dedicatedMemoryBytes: gib * 1024 ** 3 });
+  const suggest = (ram, ...adapters) => suggestedTranslationModel({ systemMemoryBytes: ram * 1024 ** 3, adapters }).id;
+  assert.equal(suggest(64, card('AMD', 0.5), card('AMD', 16)), 'translategemma:12b');
+  assert.equal(suggest(64, card('NVIDIA', 8), card('NVIDIA', 8)), 'translategemma:4b');
+  assert.equal(suggest(64, card('NVIDIA', 24)), 'translategemma:27b');
+  assert.equal(suggest(12, card('NVIDIA', 24)), 'translategemma:4b');
+  assert.equal(suggest(64, card('Intel', 0.5)), 'translategemma:4b');
+  assert.equal(suggest(64, { vendor: 'AMD', memoryBytes: 2 ** 32 - 1 }), 'translategemma:27b');
 });

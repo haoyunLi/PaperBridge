@@ -1,8 +1,26 @@
 import React from 'react';
 import { Check, Download } from 'lucide-react';
 import { hasOllamaModel } from '../electron/ollama-models.mjs';
-import { isCatalogModelSelected } from './modelCatalog.mjs';
+import { fitsModelEstimate, isCatalogModelSelected, largestDedicatedAdapter, suggestedTranslationModel } from './modelCatalog.mjs';
+import { describeAdapter } from './hardwareDisplay.mjs';
 import './model-recommendations.css';
+
+export function ModelMemoryGuide({ hardware, className }) {
+  const memory = Number(hardware?.systemMemoryBytes) / 1024 ** 3;
+  const adapter = largestDedicatedAdapter(hardware);
+  const model = suggestedTranslationModel(hardware, adapter);
+  let guidance = 'This estimate uses system RAM and allows room for Windows and the model runtime.';
+  if (adapter) {
+    const sizing = fitsModelEstimate(model, adapter) ? 'The estimate leaves 20% of dedicated memory for context and runtime.'
+      : 'Even the smallest model may need to use system RAM.';
+    guidance = `Based on system RAM and ${describeAdapter(adapter)}. ${sizing}`;
+  }
+  return <div className={className}>
+    <strong>{Number.isFinite(memory) && memory > 0 ? `This PC: ${Math.round(memory)} GiB system RAM` : 'System memory is not available'}</strong>
+    <span>Starting suggestion: {model.title}</span>
+    <p>{guidance} Ollama reports GPU use after loading the model.</p>
+  </div>;
+}
 
 export function ModelCard({ model, installed, selected, active, disabled, onAction }) {
   return <article className={`model-card onboarding-model-card ${selected ? 'selected' : ''}`} data-model-id={model.id}>

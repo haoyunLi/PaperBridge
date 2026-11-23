@@ -1,9 +1,9 @@
 import { isMineruReady } from './hardwareDisplay.mjs';
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BookOpen, Check, Download, FileText, HardDrive, Languages, LockKeyhole, RefreshCw, Settings2, Sparkles, Square } from 'lucide-react';
-import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, modelSettingsPatch, isCatalogModelSelected, suggestedTranslationModel } from './modelCatalog.mjs';
+import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, modelSettingsPatch, isCatalogModelSelected } from './modelCatalog.mjs';
 import { hasOllamaModel } from '../electron/ollama-models.mjs';
-import { ModelCard } from './ModelRecommendations.jsx';
+import { ModelCard, ModelMemoryGuide } from './ModelRecommendations.jsx';
 import './onboarding.css';
 
 const api = window.paperBridge;
@@ -56,8 +56,6 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
   const modelProgress = operation?.kind !== 'model' || pullProgress?.model === operation.id ? pullProgress : null;
   const candidateProgress = operation?.kind === 'model' || externalPull ? modelProgress : progress;
   const currentProgress = terminal(candidateProgress?.phase) ? null : candidateProgress;
-  const suggested = suggestedTranslationModel(diagnosis?.hardware);
-  const systemMemoryGiB = Number(diagnosis?.hardware?.systemMemoryBytes) / 1024 ** 3;
   const selectedTranslationReady = hasOllamaModel(knownModels, settings.translationModel);
   const assistantReady = ['summaryModel', 'explainModel', 'quickLookupModel'].every(key => hasOllamaModel(knownModels, settings[key]));
 
@@ -186,7 +184,7 @@ export default function Onboarding({ settings, onSettings, onFinish, onOpenSetup
           <a href="https://ollama.com/download/windows" target="_blank" rel="noreferrer">Official Windows download</a>
         </div><Callout title="Already installed?">Start Ollama, then refresh this page. PaperBridge connects only to localhost, 127.0.0.1, or ::1. GPU drivers remain managed by Windows and your graphics vendor.</Callout></>}
       {page === 2 && <><Heading eyebrow="TRANSLATION MODEL" title="Choose a TranslateGemma size.">Select an installed model or download one. Choosing a translation model also updates assistant roles that followed the previous translation model.</Heading>
-        <div className="onboarding-memory"><strong>{Number.isFinite(systemMemoryGiB) && systemMemoryGiB > 0 ? `This PC: ${Math.round(systemMemoryGiB)} GiB system RAM` : 'System memory is not available'}</strong><span>Starting suggestion: {suggested.title}</span><p>This RAM-based suggestion is a starting point. Downloads need additional runtime and context memory; system RAM is separate from GPU VRAM. Ollama decides how much can run on the GPU.</p></div>
+        <ModelMemoryGuide className="onboarding-memory" hardware={diagnosis?.hardware} />
         {renderModels(TRANSLATION_MODELS)}<p className="onboarding-footnote">Approximate download sizes checked {MODEL_CATALOG_VERIFIED_AT}; shared model files can reduce a download. Start Ollama before downloading. You can choose another model later.</p></>}
       {page === 3 && <><Heading eyebrow="OPTIONAL · STRUCTURED PDF READING" title="Turn PDFs into structured papers.">MinerU extracts reading order, figures, tables, formulas and text from image-only pages. The original PDF remains available.</Heading>
         <Callout title="Recommended for academic papers">Structured extraction helps with multi-column layouts and bilingual exports. Extraction quality still depends on the source PDF, especially for scanned equations and low-resolution pages.</Callout>

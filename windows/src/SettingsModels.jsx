@@ -1,19 +1,15 @@
 import React, { useId } from 'react';
-import ModelRecommendations from './ModelRecommendations.jsx';
-import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT, suggestedTranslationModel } from './modelCatalog.mjs';
+import ModelRecommendations, { ModelMemoryGuide } from './ModelRecommendations.jsx';
+import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT } from './modelCatalog.mjs';
 import './settings-models.css';
 
 export default function SettingsModels({ settings, models = [], hardware, busy = false, pullProgress, onUse, onDownload }) {
   const id = useId();
-  const memoryGiB = Number(hardware?.systemMemoryBytes) / 1024 ** 3;
-  const suggested = suggestedTranslationModel(hardware);
   const downloading = pullProgress?.phase === 'pulling';
   const cardProps = { settings, models, busy: Boolean(busy || downloading), activeModel: downloading ? pullProgress.model : null, onUse, onDownload };
 
   return <div className="settings-models">
-    <div className="settings-model-memory"><strong>{Number.isFinite(memoryGiB) && memoryGiB > 0 ? `This PC: ${Math.round(memoryGiB)} GiB system RAM` : 'System memory is not available'}</strong><span>Starting suggestion: {suggested.title}</span>
-      <p>This suggestion uses system RAM, which is separate from GPU VRAM. Allow additional memory for Windows, model runtime and context. Ollama decides how much can run on the GPU.</p>
-    </div>
+    <ModelMemoryGuide className="settings-model-memory" hardware={hardware} />
     <section className="settings-model-group" aria-labelledby={`${id}-translation`} data-model-role="translation">
       <header><h3 id={`${id}-translation`}>Translation models</h3><span>Required for translation</span></header>
       <p>Choose one TranslateGemma size. Selecting it updates assistant roles that followed the previous translation model or whose model is missing. Other installed assistant selections are kept.</p>

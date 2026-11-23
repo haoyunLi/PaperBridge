@@ -50,10 +50,24 @@ export function isCatalogModelSelected(settings, selected, installedModels = [])
     : ['summaryModel', 'explainModel', 'quickLookupModel'].every(key => modelKey(settings[key]) === modelKey(selected.id));
 }
 
-// Conservative starting points, not an inference about GPU fit or performance.
-// AdapterRAM on Windows can be truncated, so it is deliberately not used here.
-export function suggestedTranslationModel(hardware) {
+export function largestDedicatedAdapter(hardware) {
+  return (hardware?.adapters || []).reduce((largest, adapter) => {
+    const bytes = adapter?.dedicatedMemoryBytes;
+    if (!['AMD', 'NVIDIA', 'Intel'].includes(adapter?.vendor) || !Number.isSafeInteger(bytes) || bytes <= 0) return largest;
+    return !largest || bytes > largest.dedicatedMemoryBytes ? adapter : largest;
+  }, null);
+}
+
+// Download sizes are decimal GB. Reserve one fifth of one adapter's dedicated
+// memory for context and runtime. Never use the truncated WMI AdapterRAM value.
+export function fitsModelEstimate(model, adapter) {
+  return Boolean(adapter && model.downloadGB * 1e9 <= adapter.dedicatedMemoryBytes * 0.8);
+}
+
+export function suggestedTranslationModel(hardware, adapter = largestDedicatedAdapter(hardware)) {
   const bytes = Number(hardware?.systemMemoryBytes);
   const gib = Number.isFinite(bytes) && bytes > 0 ? bytes / 1024 ** 3 : 0;
-  return TRANSLATION_MODELS[gib >= 48 ? 2 : gib >= 24 ? 1 : 0];
+  const index = gib >= 48 ? 2 : gib >= 24 ? 1 : 0;
+  if (!adapter) return TRANSLATION_MODELS[index];
+  return TRANSLATION_MODELS.slice(0, index + 1).findLast(model => fitsModelEstimate(model, adapter)) || TRANSLATION_MODELS[0];
 }

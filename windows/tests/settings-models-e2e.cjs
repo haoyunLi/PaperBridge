@@ -87,8 +87,9 @@ async function run() {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('hardware:status');
-      ipcMain.handle('hardware:status', () => ({ systemMemoryBytes: 32 * 1024 ** 3,
-        adapters: [{ vendor: 'AMD', name: 'Mock AMD GPU', memoryBytes: 2 ** 32 - 1 }], cudaVersion: null }));
+      ipcMain.handle('hardware:status', () => ({ systemMemoryBytes: 64 * 1024 ** 3,
+        adapters: [{ vendor: 'AMD', name: 'Integrated graphics', dedicatedMemoryBytes: 512 * 1024 ** 2 },
+          { vendor: 'AMD', name: 'Mock AMD GPU', dedicatedMemoryBytes: 16 * 1024 ** 3 }], cudaVersion: null }));
       ipcMain.removeHandler('mineru:status');
       ipcMain.handle('mineru:status', () => ({ compatible: false, installed: false, reason: 'No parser installed in this test fixture.' }));
     });
@@ -144,8 +145,9 @@ async function run() {
     assert.equal(await page.locator('.settings-models .model-card').count(), 9);
     assert.equal(await page.locator('[data-model-role="translation"] .model-card').count(), 3);
     assert.equal(await page.locator('[data-model-role="assistant"] .model-card').count(), 6);
-    await page.getByText('This PC: 32 GiB system RAM', { exact: true }).waitFor();
+    await page.getByText('This PC: 64 GiB system RAM', { exact: true }).waitFor();
     await page.getByText('Starting suggestion: TranslateGemma 12B', { exact: true }).waitFor();
+    await page.locator('.settings-model-memory').getByText(/Mock AMD GPU \(AMD, 16 GiB dedicated\)/).waitFor();
     assert.equal(await card('translategemma:4b').getByRole('button', { name: 'Selected', exact: true }).isDisabled(), true);
     const links = await page.locator('.settings-models .model-card a').evaluateAll(items => items.map(item => item.href));
     assert.equal(links.length, 9);
@@ -269,7 +271,7 @@ async function run() {
     assert.deepEqual(assistants(paperB.taskSettings), Array(3).fill(endpointBModel));
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(artifacts, 'settings-models-actions.json'), JSON.stringify({ pulls: pulls.map(pull => pull.payload), viewports, zoom, settings: saved() }, null, 2));
-    console.log('Settings recommendations passed: nine cards, conservative RAM suggestion, official links, cancellation across tabs, retry, download/use task roles, specialist retention, independent quick lookup, restart persistence, late completion isolation across papers/endpoints, and tab navigation at 980x620 with 100%/150% Electron zoom.');
+    console.log('Settings recommendations passed: nine cards, RAM and dedicated GPU memory suggestion, official links, cancellation across tabs, retry, download/use task roles, specialist retention, independent quick lookup, restart persistence, late completion isolation across papers/endpoints, and tab navigation at 980x620 with 100%/150% Electron zoom.');
   } finally {
     if (page && !page.isClosed()) await page.screenshot({ path: path.join(artifacts, 'settings-models-final.png') }).catch(() => {});
     await app?.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.webContents.setZoomFactor(1)).catch(() => {});
