@@ -17,6 +17,8 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
+Version 0.2.78 lets you select, translate and annotate long passages, including quotations spanning PDF pages. The inspector shows the first eight lines and saves the entire quotation. Reflow at Full Sentences keeps Japanese and Chinese opening quotation marks with the statement they introduce and retains French closing guillemets with the quoted sentence.
+
 Version 0.2.77 can recover older PDF notes when their quotation occurs once on the saved page. An ambiguous quotation stays marked for review. Regenerating a summary from the Windows menu refreshes older saved text, and exported analysis carries the same warning shown in the reader after a paragraph edit. If a CUDA operation fails during preflight, the legacy MinerU parser uses its CPU pipeline for that import.
 
 The 0.2.76 build restores the reader after a startup retry on Windows short paths. It also keeps code spans and nested figures intact during translation and opens saved supplementary PDFs in the default Windows viewer. You can read linked Markdown, text, CSV, TSV and images inside PaperBridge. Closing the supplement returns to your place in the paper. The portable Markdown bundle also keeps attachments linked inside HTML figures and filenames with parentheses.

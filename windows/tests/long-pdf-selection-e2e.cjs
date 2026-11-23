@@ -34,15 +34,49 @@ async function selectPassage(page, passage) {
   }, passage);
 }
 
+async function checkLiveTranslation(app, page, quote, model, baseURL, dir) {
+  await app.evaluate(() => {
+    const generate = global.fetch;
+    global.longSelectionRequests = [];
+    global.fetch = (url, options) => {
+      if (new URL(url).pathname === '/api/generate' && typeof options?.body === 'string') {
+        global.longSelectionRequests.push(JSON.parse(options.body).prompt);
+      }
+      return generate(url, options);
+    };
+  });
+  const inspector = page.locator('.inspector');
+  const translate = inspector.getByRole('button', { name: 'Translate', exact: true });
+  const started = Date.now();
+  await translate.click();
+  await inspector.getByText('Selection translated.', { exact: true }).waitFor({ timeout: 180000 });
+  const translation = await inspector.locator('.inspector-result.translate p').innerText();
+  const prompts = await app.evaluate(() => global.longSelectionRequests);
+  assert.equal(prompts.length, 1);
+  assert.ok(prompts[0].includes('<<<PAPERBRIDGE_SELECTION_TRANSLATE_ONLY>>>\n' + quote + '\n<<<END_PAPERBRIDGE_SELECTION>>>'));
+  assert.match(translation, /\p{Script=Han}/u);
+  const active = (await (await fetch(baseURL + '/api/ps')).json()).models.find(entry => entry.name === model || entry.model === model);
+  assert.ok(active?.size_vram > 0);
+  await translate.click();
+  await inspector.getByText('Using cached quick lookup.', { exact: true }).waitFor();
+  assert.equal(await app.evaluate(() => global.longSelectionRequests.length), 1);
+  fs.writeFileSync(path.join(dir, 'translation.json'), JSON.stringify({ model, vram: active.size_vram,
+    seconds: (Date.now() - started) / 1000, source: quote, translation }, null, 2));
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
   fs.mkdirSync(artifacts, { recursive: true });
   const dir = fs.mkdtempSync(path.join(artifacts, 'long-pdf-notes-'));
   const pdf = path.join(__dirname, 'mac-parity', 'good-enough', 'article.pdf');
+  const live = process.argv.includes('--live-translation');
+  const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
+  const baseURL = live ? process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434' : 'http://127.0.0.1:9';
   const env = { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: dir };
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ...defaults, pdfExtractionMode: 'pdfOnly',
-    inspectorOpen: true, onboardingCompletedVersion: 1, autoCheckUpdates: false, ollamaBaseURL: 'http://127.0.0.1:9' }));
+    inspectorOpen: true, onboardingCompletedVersion: 1, autoCheckUpdates: false, ollamaBaseURL: baseURL,
+    sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', quickLookupModel: model }));
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ ...(exe && { executablePath: exe }), cwd: root, env,
     args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(dir, 'profile')] });
@@ -67,6 +101,7 @@ async function run() {
         const line = Number.parseFloat(getComputedStyle(element).lineHeight);
         return element.clientHeight <= 8 * line + 1 && element.scrollHeight > element.clientHeight;
       }), 'The full quotation should fit behind the eight-line inspector preview');
+      if (live && item === passages[0]) await checkLiveTranslation(app, page, quote, model, baseURL, dir);
       await inspector.locator('.highlight.amber').click();
       await page.getByLabel('Note for selected passage').fill(item.name);
       await page.getByRole('button', { name: 'Save note', exact: true }).click();

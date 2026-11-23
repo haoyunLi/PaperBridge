@@ -669,6 +669,13 @@ test('safe splitting and reflow recognize closing quotes and CJK sentences while
   assert.deepEqual(pieces.flatMap(block => block.translationHighlights), [{ ...chinese.translationHighlights[0], needsReview: true }]);
   assert.deepEqual(splitBlockNearMiddle({ text: '作者解释机制。研究结果一致！' }).map(block => block.text), ['作者解释机制。', '研究结果一致！']);
   assert.equal(splitBlockNearMiddle({ text: 'Dr. Smith measured the outcome.' }).length, 1);
+  assert.deepEqual(reflowBlock({ text: '「低温だ。」とても長い測定だった。' }, 6).map(block => block.text),
+    ['「低温だ。」', 'とても長い測定だった。']);
+  const reported = '「低温か？」と研究者は尋ねた。';
+  assert.deepEqual(reflowBlock({ text: reported }, 6).map(block => block.text), [reported]);
+  const quotedResult = '«\u202fLes résultats sont stables.\u202f»';
+  const nextSentence = 'Une seconde étude les confirme.';
+  assert.deepEqual(reflowBlock({ text: quotedResult + ' ' + nextSentence }, 35).map(block => block.text), [quotedResult, nextSentence]);
 });
 
 test('merging repairs a hyphenated word and preserves annotations with verified positions', async () => {

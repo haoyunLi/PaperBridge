@@ -70,6 +70,12 @@ async function run() {
       translation: heading ? `章节 ${number}` : `段落 ${number} 的已存译文。` + '阅读位置和选中段落分别保留。'.repeat([12, 13].includes(number) ? 1 : 8),
       bookmark: false, highlights: [], translationHighlights: [], notes: [] };
   });
+  const firstQuote = '「第一组记录了' + '传感器的温度、湿度和测量时间，'.repeat(42) + '并核对了原始记录。」';
+  const secondQuote = '「第二组独立重复了' + '同一条件下的采样及仪器校准，'.repeat(42) + '所得结果一致。」';
+  const markedWords = '「第二组独立重复了';
+  const quotedBlock = blocks.at(-1);
+  quotedBlock.text = firstQuote + secondQuote;
+  quotedBlock.notes = [{ id: 'quoted-source', kind: 'source', text: markedWords, offset: firstQuote.length, body: 'Follow-up measurement' }];
   const paper = { id, name: 'Independent paragraph selection', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
     blocks, taskSettings: settings, selectedParagraphID: 1, inspectorOpen: true,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -156,7 +162,8 @@ async function run() {
     } finally { app = null; }
   };
   const launch = async (paperId = id) => {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);
@@ -381,6 +388,20 @@ async function run() {
     assert.ok(Math.abs(afterMergeUndoOffset - beforeMergeOffset) < 2,
       `Merge Undo offset ${afterMergeUndoOffset} must restore the action-time offset ${beforeMergeOffset}`);
     assert.deepEqual(errors, []);
+    stage('Reflow keeps each quoted statement and its saved annotation together');
+    await page.locator('#block-24').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reflow at Full Sentences', exact: true }).click();
+    await waitFor(() => readPaper().blocks.length === 25, 'two separately quoted sentences reflowed');
+    const tail = readPaper().blocks.slice(-2);
+    assert.deepEqual(tail.map(block => block.text), [firstQuote, secondQuote]);
+    assert.equal(tail[1].notes[0].text, markedWords);
+    assert.equal(tail[1].notes[0].offset, 0);
+    assert.ok(!tail[1].notes[0].needsReview);
+    await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await waitFor(() => readPaper().blocks.length === 24, 'original quoted paragraph restored');
+    const restored = readPaper().blocks.at(-1);
+    assert.equal(restored.text, firstQuote + secondQuote);
+    assert.deepEqual(restored.notes, quotedBlock.notes);
     assert.equal(generationRequests, 0, 'Selecting an explanation target must not request model generation');
   } catch (error) {
     fail(error);

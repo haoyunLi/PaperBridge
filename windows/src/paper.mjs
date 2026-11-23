@@ -244,16 +244,30 @@ export function splitBlockAt(block, cut) {
 }
 
 const sentenceSegmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
-const sentenceEnding = /[.!?。！？…]["'”’»）)\]】]*$/u;
+const japaneseWords = new Intl.Segmenter('ja', { granularity: 'word' });
+const sentenceEnding = /[.!?。！？…][\p{Pe}\p{Pf}"']*$/u;
 const academicAbbreviation = /\b(?:figs?|eqs?|secs?|chaps?|refs?|nos?|vols?|vs|cf|approx|dept|univ|dr|prof|e\.g|i\.e|et al)\.$/i;
 
 function sentenceBoundaries(text) {
   const end = text.trimEnd().length;
   const boundaries = [];
   for (const { index, segment } of sentenceSegmenter.segment(text)) {
-    const sentence = segment.trimEnd();
-    const cut = index + sentence.length;
-    if (cut < end && sentenceEnding.test(sentence) && !academicAbbreviation.test(sentence)) boundaries.push(cut);
+    // ICU can include the next opening quotation mark after a completed quoted sentence.
+    const sentence = segment.trimEnd().replace(/[「『]+$/u, '').trimEnd();
+    if (!sentenceEnding.test(sentence) || academicAbbreviation.test(sentence)) continue;
+    let cut = index + sentence.length;
+    if (/[」』]$/u.test(sentence) && /^[とっ]/u.test(text[cut] || '')) {
+      const word = japaneseWords.segment(text.slice(cut, cut + 32)).containing(0)?.segment;
+      if (word === 'と' || word === 'という' || word === 'って') continue;
+    }
+    // French typography leaves a space before the closing guillemet. ICU may
+    // return that mark as the first character of the following sentence.
+    const closer = /^[\p{Zs}\t]+([»›])(?=\s|$)/u.exec(text.slice(cut));
+    if (closer) {
+      const opener = closer[1] === '»' ? '«' : '‹';
+      if (text.lastIndexOf(opener, cut) > text.lastIndexOf(closer[1], cut)) cut += closer[0].length;
+    }
+    if (cut < end) boundaries.push(cut);
   }
   return boundaries;
 }

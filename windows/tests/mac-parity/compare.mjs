@@ -273,8 +273,19 @@ for (const [index, { name, left, right, windowsText, marks = [] }] of fixtures.m
   } else assert.equal(actual, reference.merges[index], name);
 }
 assert.equal(reference.reflows.length, fixtures.reflows.length);
-for (const [index, { name, text, target }] of fixtures.reflows.entries()) {
-  assert.deepEqual(reflowBlock({ text }, target).map(block => block.text), reference.reflows[index], name);
+for (const [index, { name, text, target, windowsParagraphs }] of fixtures.reflows.entries()) {
+  const actual = reflowBlock({ text }, target).map(block => block.text);
+  const native = reference.reflows[index];
+  if (windowsParagraphs) {
+    // The tokenizers can assign a quote mark or adjacent space to different
+    // paragraphs. Keep the original marks and phrase on the same Windows line.
+    const words = part => part.replace(/[「『»› ]/gu, '');
+    const joined = paragraphs => paragraphs.join('').replaceAll(' ', '');
+    assert.deepEqual(actual, windowsParagraphs, name);
+    assert.equal(joined(actual), joined([text]), name + ' original punctuation and wording');
+    assert.equal(joined(native), joined([text]), name + ' native source');
+    assert.deepEqual(actual.map(words), native.map(words), name + ' sentence groups');
+  } else assert.deepEqual(actual, native, name);
 }
 
 assert.equal(reference.pageBoundaries.length, fixtures.pageBoundaries.length);

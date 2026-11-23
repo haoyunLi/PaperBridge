@@ -101,7 +101,8 @@ async function run() {
     assert.equal(await page.locator('.inspector-quote-text').textContent(), note.quote ?? note.text);
   };
   const launch = async () => {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first window', app.firstWindow(), 30000); page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
