@@ -109,6 +109,12 @@ jobs:
             Set-Content -LiteralPath "release/$name.sha256" -Value "$hash  $name" -Encoding ascii
           }
           "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Verify the packaged Edit menu and Windows keyboard layouts
+        shell: pwsh
+        run: |
+          $env:PAPERBRIDGE_MAC_REFERENCE = "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
+          $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
+          npm run test:edit-menu-e2e
       - name: Verify onboarding and desktop setup workflows
         timeout-minutes: 20
         shell: pwsh

@@ -22,6 +22,7 @@ public static class MenuKeyboardFixture {
     [StructLayout(LayoutKind.Sequential)]
     struct Input { public uint type; public Data data; }
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll")] static extern IntPtr GetKeyboardLayout(uint thread);
     [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr LoadKeyboardLayout(string id, uint flags);
@@ -44,8 +45,16 @@ public static class MenuKeyboardFixture {
     public static void Type(IntPtr window, uint process, string id) {
         uint owner;
         uint thread = GetWindowThreadProcessId(window, out owner);
-        if (thread == 0 || owner != process || GetForegroundWindow() != window)
-            throw new Exception("The isolated test app must own the foreground window.");
+        if (thread == 0 || owner != process)
+            throw new Exception("The test window belongs to PID " + owner + ", expected " + process + ".");
+        if (GetForegroundWindow() != window) SetForegroundWindow(window);
+        for (int i = 0; i < 30 && GetForegroundWindow() != window; i++) Thread.Sleep(30);
+        if (GetForegroundWindow() != window) {
+            uint foregroundOwner;
+            IntPtr foreground = GetForegroundWindow();
+            GetWindowThreadProcessId(foreground, out foregroundOwner);
+            throw new Exception("The test window " + window + " could not receive foreground input. Foreground: " + foreground + ", PID " + foregroundOwner + ".");
+        }
         IntPtr original = GetKeyboardLayout(thread);
         IntPtr layout = LoadKeyboardLayout(id, 0);
         if ((layout.ToInt64() & 0xffff) != Convert.ToInt32(id.Substring(4), 16))

@@ -360,7 +360,9 @@ async function run() {
     await openWorkspaceView(page, 'Full Translation');
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
     await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'ok', addressId);
-    const addressesInDraft = await page.locator('[data-view-scope="fullTranslation"] a[href]').evaluateAll(links =>
+    const draftLinks = page.locator('[data-view-scope="fullTranslation"] a[href]');
+    await draftLinks.nth(2).waitFor({ state: 'visible' });
+    const addressesInDraft = await draftLinks.evaluateAll(links =>
       links.map(link => link.getAttribute('href')));
     assert.deepEqual(addressesInDraft, [addresses[0], 'http://' + addresses[1], 'mailto:' + addresses[2]]);
     const addressRequests = excerpts.slice(addressOffset);
