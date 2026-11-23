@@ -548,6 +548,24 @@
       ]
     },
     {
+      "name": "literal listings and multilingual extraction hints",
+      "blocks": [
+        {
+          "text": "TEMP_DIR = ./temp_zip_files\necho \"Packaging zip files required by analysis tool. . .\"\n./src/make-zip-files.py $(TEMP_DIR) *.dat",
+          "sourceMarkdown": "```\nTEMP_DIR = ./temp_zip_files\necho \"Packaging zip files required by analysis tool. . .\"\n./src/make-zip-files.py $(TEMP_DIR) *.dat\n```"
+        },
+        {
+          "text": "model αwhere we"
+        },
+        {
+          "text": "model α, where we"
+        },
+        {
+          "text": "The calibration used repeated readings. äβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβ measured frag-"
+        }
+      ]
+    },
+    {
       "name": "empty",
       "blocks": []
     }

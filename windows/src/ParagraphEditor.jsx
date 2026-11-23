@@ -84,10 +84,10 @@ export default function ParagraphEditor({ edit, onChange, onCancel, onSave, busy
         <span className="paragraph-editor-icon" aria-hidden="true"><ListChecks size={28} /></span>
         <div>
           <h2 id={titleId}>Repair Paragraph {edit.id}</h2>
-          <p id={instructionsId}>Fix extraction errors directly. Insert a blank line wherever this text should become a new paragraph.</p>
+          <p id={instructionsId}>{edit.listing ? 'Keep commands on separate lines. Insert a blank line to split the listing into two blocks.' : 'Fix extraction errors directly. Insert a blank line wherever this text should become a new paragraph.'}</p>
         </div>
       </header>
-      <textarea ref={textarea} aria-label="Paragraph source" aria-describedby={instructionsId} value={text}
+      <textarea ref={textarea} className={edit.listing ? 'code-listing-editor' : undefined} aria-label="Paragraph source" aria-describedby={instructionsId} value={text}
         spellCheck={false} onChange={event => onChange(event.target.value)}
         onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} />
       <footer className="paragraph-editor-footer">

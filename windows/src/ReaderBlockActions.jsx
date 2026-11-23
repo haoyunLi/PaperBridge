@@ -1,3 +1,4 @@
+import { isPdfListing } from './text.mjs';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { Bookmark, CircleEllipsis, Lightbulb, RotateCw } from 'lucide-react';
 import './reader-block-actions.css';
@@ -154,7 +155,7 @@ export default function ReaderBlockActions({ block, busy, structured, canMergePr
       {!heading && <div role="separator" />}
       <button type="button" role="menuitem" tabIndex={-1} disabled={Boolean(structureDisabled || !canMergePrevious)} onClick={() => choose(onMergePrevious)}>Merge with Previous</button>
       <button type="button" role="menuitem" tabIndex={-1} disabled={Boolean(structureDisabled || !canMergeNext)} onClick={() => choose(onMergeNext)}>Merge with Next</button>
-      {!heading && <button type="button" role="menuitem" tabIndex={-1} disabled={structureDisabled} onClick={() => choose(onReflow)}>Reflow at Full Sentences</button>}
+      {!heading && <button type="button" role="menuitem" tabIndex={-1} disabled={structureDisabled || isPdfListing(block)} onClick={() => choose(onReflow)}>Reflow at Full Sentences</button>}
     </div>
   </div>;
 }

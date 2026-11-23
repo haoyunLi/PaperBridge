@@ -34,6 +34,7 @@
   overflow: auto;
   scrollbar-gutter: stable;
 }
+.paragraph-editor textarea.code-listing-editor { font-family: Consolas, monospace; white-space: pre; overflow: auto; }
 .paragraph-editor textarea:focus-visible { outline: 2px solid #0a59d6; outline-offset: 1px; }
 .paragraph-editor-footer { display: flex; align-items: center; gap: 14px; }
 .paragraph-editor-details { flex: 1; min-width: 0; color: #56606c; font-size: 12px; }

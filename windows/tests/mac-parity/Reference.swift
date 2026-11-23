@@ -111,7 +111,7 @@ struct Reference {
                  "paragraphID": $0.paragraphID, "excerpt": $0.excerpt]
             }
             let issues: [[String: Any]] = PaperReadingAnalysis.qualityIssues(in: paper).map {
-                ["id": $0.paragraphID, "reason": $0.reason]
+                ["id": $0.paragraphID, "reason": $0.reason, "excerpt": String(paragraphs[$0.paragraphID - 1].suffix(160))]
             }
             return ["name": fixture.name, "sections": ranges, "overview": PaperReadingAnalysis.overviewParagraphIDs(in: sections),
                     "guide": guide, "issues": issues]
@@ -235,6 +235,7 @@ struct Reference {
         let journalDraft = try nativeJournalDraft(fixtures: fixtureURL.deletingLastPathComponent())
         let navigation = try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent())
         let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource,
+                                     "selectionEdges": try nativeSelectionEdges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "richAnnotationRanges": try nativeRichAnnotationRanges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "attachmentLinks": try nativeAttachmentLinks(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "pdfJournal": try nativePDFJournal(fixtures: fixtureURL.deletingLastPathComponent()),

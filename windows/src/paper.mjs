@@ -1,4 +1,4 @@
-import { sourceExcerpts, isHeading, joinPdfText } from './text.mjs';
+import { sourceExcerpts, isHeading, isPdfListing, pdfListingMarkdown, joinPdfText } from './text.mjs';
 import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { analysisSourceText, markdownBlockKind, savedResourceLayoutIssue } from './academicMarkdown.mjs';
@@ -23,21 +23,30 @@ export function translationRangeIds(blocks, requestedIds = null, excluded = refe
   return blocks.filter(block => (!requested || requested.has(block.id)) && (block.status !== 'ok' || block.id === retryId) && !block.resource && !excluded.has(block.id)).map(block => block.id);
 }
 
+function qualityExcerpt(text) {
+  if (text.length <= 160) return text;
+  const segments = graphemes.segment(text);
+  let start = text.length;
+  for (let count = 0; count < 160 && start > 0; count++) start = segments.containing(start - 1).index;
+  return text.slice(start);
+}
+
 export function qualityIssues(blocks, excluded = new Set()) {
   return blocks.flatMap(block => {
-    const value = String(block.text || '').trim();
+    const original = String(block.text || '');
+    const value = original.trim();
     if (block.heading || excluded.has(block.id)) return [];
     const layoutIssue = savedResourceLayoutIssue(block);
-    if (layoutIssue) return [{ id: block.id, reason: layoutIssue, excerpt: Array.from(value).slice(-160).join(''), reextract: true }];
-    if (!value || block.resource) return [];
+    if (layoutIssue) return [{ id: block.id, reason: layoutIssue, excerpt: qualityExcerpt(original), reextract: true }];
+    if (!value || block.resource || isPdfListing(block)) return [];
     const markdownKind = markdownBlockKind(block);
     if (markdownKind && markdownKind !== 'paragraph') return [];
     let reason = '';
     if (/[A-Za-z]{2,}[-‐]\s*$/.test(value)) reason = 'Possible cut-off word at the end. Compare with the next block and original page.';
-    else if (/\b(?:in case of|where we|such as|given by|defined as)\s*$/i.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';
+    else if (/(?<![\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\u200C\u200D])(?:in case of|where we|such as|given by|defined as)\s*$/iu.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';
     else if (/^[\p{Nd}\p{White_Space}.,()[\]+=×÷−*/^_]+$/u.test(value)) reason = 'Possible detached number, equation fragment, or plot label. Check the original before merging.';
     else if (value.length > 100 && !/[.!?。！？:：;；]["'”’）)\]]*\s*$/.test(value) && countCharacters(value, 101) > 100) reason = 'No sentence-ending punctuation was found. This can be valid near a formula; check the source.';
-    return reason && !detectedSectionTitle(value) ? [{ id: block.id, reason, excerpt: Array.from(value).slice(-160).join('') }] : [];
+    return reason && !detectedSectionTitle(value) ? [{ id: block.id, reason, excerpt: qualityExcerpt(original) }] : [];
   });
 }
 
@@ -220,9 +229,10 @@ function moveSourceAnnotation(item, text, offset) {
   return { ...saved, offset, ...(Number.isInteger(displayOffset) && { displayOffset: offset }), needsReview: false };
 }
 
-export function splitBlockAt(block, cut) {
-  const leftText = block.text.slice(0, cut).trimEnd();
-  const rightText = block.text.slice(cut).trimStart();
+export function splitBlockAt(block, cut, separatorLength = 0) {
+  const listing = isPdfListing(block);
+  const leftText = listing ? block.text.slice(0, cut) : block.text.slice(0, cut).trimEnd();
+  const rightText = listing ? block.text.slice(cut + separatorLength) : block.text.slice(cut).trimStart();
   const rightStart = block.text.length - rightText.length;
   function divide(items) {
     const left = []; const right = [];
@@ -238,8 +248,8 @@ export function splitBlockAt(block, cut) {
   const translationNotes = (block.notes || []).filter(item => item.kind === 'translation').map(forReview);
   const { pdfFootnoteMarker, ...rightBlock } = block;
   return [
-    { ...block, text: leftText, heading: isHeading(leftText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: (block.translationHighlights || []).map(forReview), status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
-    { ...rightBlock, text: rightText, heading: isHeading(rightText), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
+    { ...block, text: leftText, heading: !listing && isHeading(leftText), ...(listing && { sourceMarkdown: pdfListingMarkdown(leftText) }), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: (block.translationHighlights || []).map(forReview), status: 'pending', highlights: leftHighlights, notes: [...leftNotes, ...translationNotes] },
+    { ...rightBlock, text: rightText, heading: !listing && isHeading(rightText), ...(listing && { sourceMarkdown: pdfListingMarkdown(rightText) }), translation: '', translationMarkdown: null, translationLanguage: null, translationHighlights: [], status: 'pending', highlights: rightHighlights, notes: rightNotes }
   ];
 }
 
@@ -307,6 +317,7 @@ function rewriteParagraphSpacing(block, edits) {
 }
 
 export function reflowBlock(block, targetChars = 900) {
+  if (isPdfListing(block)) return [block];
   const { text } = block;
   if (text.length <= targetChars || countCharacters(text, targetChars + 1) <= targetChars) return [block];
   const edits = [];
@@ -355,12 +366,16 @@ function normalizeMergeSpacing(block) {
 }
 
 export function mergeBlocks(first, second) {
-  const left = normalizeMergeSpacing(first), right = normalizeMergeSpacing(second);
-  const text = joinPdfText(left.text, right.text);
+  const listing = isPdfListing(first) || isPdfListing(second);
+  const left = listing ? first : normalizeMergeSpacing(first);
+  const right = listing ? second : normalizeMergeSpacing(second);
+  const text = listing ? left.text + '\n' + right.text : joinPdfText(left.text, right.text);
+  const endPage = Math.max(left.endPage || left.page || 0, right.endPage || right.page || 0);
   const rightStart = text.length - right.text.length;
   const move = (item, source, start) => matchesQuote(source, item.text, item.offset) ? moveSourceAnnotation(item, text, start + item.offset) : forReview(item);
   const moveNote = (item, source, start) => item.kind === 'translation' ? forReview(item) : move(item, source, start);
-  return { ...left, text, heading: isHeading(text), translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
+  return { ...left, text, heading: !listing && isHeading(text), ...(listing && { sourceMarkdown: pdfListingMarkdown(text) }),
+    ...(left.page && endPage > left.page && { endPage }), translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending', bookmark: left.bookmark || right.bookmark,
     highlights: [...(left.highlights || []).map(item => move(item, left.text, 0)), ...(right.highlights || []).map(item => move(item, right.text, rightStart))],
     translationHighlights: [...(left.translationHighlights || []), ...(right.translationHighlights || [])].map(forReview),
     notes: [...(left.notes || []).map(item => moveNote(item, left.text, 0)), ...(right.notes || []).map(item => moveNote(item, right.text, rightStart))]
@@ -368,7 +383,8 @@ export function mergeBlocks(first, second) {
 }
 
 export function editedBlock(block, newText) {
-  const text = String(newText).trim();
+  const listing = isPdfListing(block);
+  const text = listing ? String(newText) : String(newText).trim();
   const retained = uniqueOffset(text, block.text);
   function relocate(item) {
     const original = matchesQuote(block.text, item.text, item.offset) ? item.offset : uniqueOffset(block.text, item.text);
@@ -376,7 +392,8 @@ export function editedBlock(block, newText) {
     const offset = retained === null ? uniqueOffset(text, item.text) : retained + original;
     return moveSourceAnnotation(item, text, offset);
   }
-  return { ...block, text, heading: isHeading(text), translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending',
+  return { ...block, text, heading: !listing && isHeading(text), ...(listing && { sourceMarkdown: pdfListingMarkdown(text) }),
+    translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending',
     translationHighlights: (block.translationHighlights || []).map(forReview),
     highlights: (block.highlights || []).map(relocate),
     notes: (block.notes || []).map(item => item.kind === 'translation' ? forReview(item) : relocate(item))
@@ -385,17 +402,19 @@ export function editedBlock(block, newText) {
 
 export function editedParagraphs(block, draft) {
   if (draft === block.text) return [block];
+  const listing = isPdfListing(block);
   const paragraphs = draft.replace(/\r\n?/g, '\n').split(/\n(?:[ \t]*\n)+/)
-    .map(text => text.replace(/\s*\n\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim())
-    .filter(Boolean);
+    .map(text => listing ? text : text.replace(/\s*\n\s*/g, ' ').replace(/[ \t]{2,}/g, ' ').trim())
+    .filter(text => text.trim());
   if (!paragraphs.length) return [];
   if (paragraphs.length === 1 && paragraphs[0] === block.text) return [block];
 
   const blocks = [];
   // Match annotations before splitting so a blank line replacing a space keeps repeated quotes at their original offsets.
-  let remaining = editedBlock(block, paragraphs.join(' '));
+  const separator = listing ? '\n\n' : ' ';
+  let remaining = editedBlock(block, paragraphs.join(separator));
   for (const paragraph of paragraphs.slice(0, -1)) {
-    const [first, rest] = splitBlockAt(remaining, paragraph.length);
+    const [first, rest] = splitBlockAt(remaining, paragraph.length, separator.length);
     blocks.push(first);
     remaining = rest;
   }

@@ -137,6 +137,19 @@ function groupPdfListings(lines) {
   return output;
 }
 
+export function pdfListingMarkdown(text) {
+  let length = 3;
+  for (const [run] of text.matchAll(/`+/g)) length = Math.max(length, run.length + 1);
+  const fence = '`'.repeat(length);
+  return fence + '\n' + text + '\n' + fence;
+}
+
+export function isPdfListing(block) {
+  if (typeof block?.sourceMarkdown !== 'string' || !block.sourceMarkdown.startsWith('```') || typeof block.text !== 'string') return false;
+  const fence = block.sourceMarkdown.split('\n', 1)[0];
+  return /^`{3,}$/.test(fence) && block.sourceMarkdown === fence + '\n' + block.text + '\n' + fence;
+}
+
 export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = false) {
   const sorted = lines.map(line => ({ ...line, text: normalizeExtractedLine(line.text) })).filter(line => line.text);
   if (!preserveOrder) sorted.sort((a, b) => b.y - a.y || a.x - b.x);
@@ -150,8 +163,7 @@ export function blocksFromLines(lines, pageNumber, startId = 1, preserveOrder = 
     if (text) {
       const block = { id: startId + blocks.length, text, page: pageNumber, heading: isHeading(raw), translation: '', status: 'pending', bookmark: false, highlights: [], notes: [] };
       if (listing) {
-        const fence = '`'.repeat(Math.max(3, ...Array.from(text.matchAll(/`+/g), match => match[0].length + 1)));
-        block.sourceMarkdown = fence + '\n' + text + '\n' + fence;
+        block.sourceMarkdown = pdfListingMarkdown(text);
         block.heading = false;
       }
       if (group[0].raisedNoteMarker) block.pdfFootnoteMarker = group[0].raisedNoteMarker;

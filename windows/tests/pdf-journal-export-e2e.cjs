@@ -39,6 +39,67 @@ async function run() {
     const code = (await script.textContent()).trimEnd().split('\n');
     assert.equal(code.length, 8);
     assert.equal(code[3], './src/make-zip-files.py $(TEMP_DIR) *.dat');
+    if (process.argv.includes('--paper-code')) {
+      await openWorkspaceView(page, 'Paper');
+      const modes = page.getByRole('combobox', { name: 'Paper display mode' });
+      for (const mode of ['bilingual', 'translation']) {
+        await modes.selectOption(mode);
+        const listing = page.locator('.document-preview pre code').filter({ hasText: 'make-zip-files.py' });
+        assert.equal(await listing.count(), 1, mode + ' must display the selectable PDF code as a listing');
+        assert.deepEqual((await listing.textContent()).trimEnd().split('\n'), code);
+        const layout = await listing.evaluate(element => {
+          const first = document.createRange(), last = document.createRange();
+          const node = element.firstChild;
+          first.setStart(node, 0); first.setEnd(node, 1);
+          last.setStart(node, node.textContent.lastIndexOf('\n', node.length - 2) + 1);
+          last.setEnd(node, last.startOffset + 1);
+          return { height: first.getBoundingClientRect().height, delta: last.getBoundingClientRect().y - first.getBoundingClientRect().y };
+        });
+        assert.ok(layout.height > 0 && layout.delta >= layout.height * 6, mode + ' must show all eight code lines separately');
+      }
+      const listing = page.locator('.document-preview pre code').filter({ hasText: 'make-zip-files.py' });
+      await listing.evaluate(element => {
+        const node = element.firstChild;
+        const at = node.textContent.indexOf('*.dat');
+        const range = document.createRange(); range.setStart(node, at); range.setEnd(node, at + 5);
+        const selection = getSelection(); selection.removeAllRanges(); selection.addRange(range);
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      });
+      assert.equal(await page.locator('.inspector blockquote').textContent(), '*.dat');
+      await page.locator('.inspector textarea').fill('Check all matching data files');
+      await page.getByRole('button', { name: 'Save note', exact: true }).click();
+      await page.waitForFunction(async id => (await window.paperBridge.loadPaper(id)).blocks.some(block =>
+        block.notes?.some(note => note.scope === 'paper' && note.text === '*.dat' && note.body === 'Check all matching data files')), id);
+      await openWorkspaceView(page, 'Reader');
+      const savedNote = page.locator('.annotation-row').filter({ hasText: 'Check all matching data files' });
+      await savedNote.locator('.annotation-navigate').click();
+      await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Paper' && getSelection().toString() === '*.dat');
+      assert.equal(await page.locator('.inspector textarea').inputValue(), 'Check all matching data files');
+      await openWorkspaceView(page, 'Reader');
+      const listings = page.locator('article.block').filter({ has: page.locator('.source-text pre code') });
+      assert.equal(await listings.count(), 4);
+      assert.equal(await listings.locator('.quality-warning').count(), 0, 'Prose punctuation warnings do not apply to code');
+      const sourceBlock = page.locator('article.block').filter({ has: script });
+      const originalBlock = read().blocks.find(block => block.text.includes('./src/make-zip-files.py'));
+      const edited = originalBlock.text.replace('make-zip-files.py', 'make-archive.py');
+      await sourceBlock.locator('.reader-actions-trigger').click();
+      await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
+      const editor = page.getByRole('textbox', { name: 'Paragraph source', exact: true });
+      assert.equal(await editor.inputValue(), originalBlock.text);
+      await editor.fill(edited);
+      await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+      await page.waitForFunction(async ({ id, edited }) => (await window.paperBridge.loadPaper(id)).blocks.some(block => block.text === edited), { id, edited });
+      assert.equal((await page.locator('.source-text pre code').filter({ hasText: 'make-archive.py' }).textContent()).trimEnd(), edited);
+      const editedBlock = read().blocks.find(block => block.id === originalBlock.id);
+      assert.ok(editedBlock.sourceMarkdown.includes(edited));
+      assert.ok(editedBlock.notes.some(note => note.body === 'Check all matching data files' && !note.needsReview));
+      await openWorkspaceView(page, 'Paper');
+      assert.equal((await page.locator('.document-preview pre code').filter({ hasText: 'make-archive.py' }).textContent()).trimEnd(), edited);
+      await openWorkspaceView(page, 'Reader');
+      await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
+      await script.waitFor();
+      assert.equal((await script.textContent()).trimEnd(), originalBlock.text);
+    }
     const tree = page.locator('.source-text pre code').filter({ hasText: 'birds_count_table.csv' });
     assert.match(await tree.textContent(), /\n\| {2,}\|/);
     assert.doesNotMatch(await tree.textContent(), /machine-readable metadata/);

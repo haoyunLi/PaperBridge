@@ -11,8 +11,8 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel } from './pdfAnchors.mjs';
-import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
-import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, pdfFootnoteMarker } from './text.mjs';
+import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
+import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, isPdfListing, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, onlyProtectedMarkup, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
 import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
@@ -220,16 +220,16 @@ function afterReadingLayout(host, restore) {
     else requestAnimationFrame(restore);
   });
 }
-function domRangeIn(root, range, visibleOnly = false) {
+function domRangeIn(root, range, { visibleOnly = false, trimEdges = false } = {}) {
   if (!root || !range || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
   if (visibleOnly && (hiddenSelectionText(range.startContainer) || hiddenSelectionText(range.endContainer))) return null;
   const raw = domText(range.cloneContents(), visibleOnly);
-  const text = raw.trim();
-  if (!text) return null;
+  if (!raw.trim()) return null;
+  const text = trimEdges ? raw.trim() : raw;
   const before = document.createRange();
   before.selectNodeContents(root);
   before.setEnd(range.startContainer, range.startOffset);
-  const offset = domText(before.cloneContents(), visibleOnly).length + raw.length - raw.trimStart().length;
+  const offset = domText(before.cloneContents(), visibleOnly).length + (trimEdges ? raw.length - raw.trimStart().length : 0);
   const rect = range.getBoundingClientRect();
   return { text, offset, quote: visibleOnly ? tableSelectionQuote(range, text) : undefined, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
 }
@@ -240,7 +240,7 @@ function tableSelectionQuote(range, text) {
   const first = cellAt(range.startContainer);
   const last = cellAt(range.endContainer);
   if (!first || !last || first === last || first.closest('table') !== last.closest('table')) return undefined;
-  const quote = window.getSelection()?.toString().trim();
+  const quote = window.getSelection()?.toString();
   if (!quote || quote === text || quote.replace(/\s/g, '') !== text.replace(/\s/g, '')) return undefined;
   return quote;
 }
@@ -482,7 +482,7 @@ function capturePdfRange(host, range) {
     if (page === first) fragment.setStart(range.startContainer, range.startOffset);
     if (page === last) fragment.setEnd(range.endContainer, range.endOffset);
     if (!fragment.toString().trim()) continue;
-    const captured = domRangeIn(root, fragment);
+    const captured = domRangeIn(root, fragment, { trimEdges: true });
     if (!captured || captured.context.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return null;
     parts.push({ ...pdfSelectionContent(root, fragment, captured.text, captured.offset, captured.context), page });
   }
@@ -881,16 +881,17 @@ function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
   useRichAnnotations(host, blocks, articleAnnotations);
   const passages = useMemo(() => blocks.map(block => {
     const visible = paperPassageVisibility(block, displayMode, referenceIDs);
+    const markdown = paperUsesMarkdown(block, sourceMode, structured);
     return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
       {visible.source && <>
-        <BlockPassage block={block} kind="source" scope="paper" structured={structured}
+        <BlockPassage block={block} kind="source" scope="paper" structured={markdown}
           className={visible.unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
       </>}
-      {visible.translation && <><BlockPassage block={block} kind="translation" scope="paper" structured={structured}
+      {visible.translation && <><BlockPassage block={block} kind="translation" scope="paper" structured={markdown}
           className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>}
       {visible.showMissing && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>}
     </section>;
-  }), [blocks, displayMode, referenceIDs, structured]);
+  }), [blocks, displayMode, referenceIDs, sourceMode, structured]);
   return <article ref={host} data-view-scope="paperArticle" data-source-mode={sourceMode} data-display-mode={displayMode} className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"
     onMouseUp={event => onSelect(event.currentTarget, 'paper')}>
     {passages}
@@ -2957,7 +2958,7 @@ function App() {
     const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
     const element = start?.closest('[data-block-id]');
     const rich = Boolean(element?.querySelector('[data-markdown-host]'));
-    const captured = domRangeIn(element, range, rich);
+    const captured = domRangeIn(element, range, { visibleOnly: rich });
     if (!captured) return;
     const block = paperRef.current?.blocks.find(item => item.id === Number(element.dataset.blockId));
     const kind = element.dataset.kind || 'source';
@@ -3243,7 +3244,7 @@ function App() {
     const block = current.blocks.find(block => block.id === id);
     if (!block || block.resource) return;
     selectParagraph(id);
-    editRef.current = { paperId: current.id, id, text: block.text };
+    editRef.current = { paperId: current.id, id, text: block.text, listing: isPdfListing(block) };
     setEdit(editRef.current);
     setModal('paragraphEdit');
   }
@@ -3292,13 +3293,13 @@ function App() {
       const element = side?.closest('[data-paper-block-id]');
       const block = paperRef.current?.blocks.find(item => item.id === Number(element?.dataset.paperBlockId));
       const rich = Boolean(side?.querySelector('[data-markdown-host]'));
-      const within = domRangeIn(side, range, rich);
+      const within = domRangeIn(side, range, { visibleOnly: rich });
       if (block && within) {
         captured = within;
         id = block.id;
         offsets = textSelectionOffsets(within, anchorText(block, kind), rich && blockMarkdown(block, kind));
       } else {
-        captured = domRangeIn(host, range, true);
+        captured = domRangeIn(host, range, { visibleOnly: true });
         if (captured) {
           scope = 'paperArticle';
           const source = paperArticleSource(paper);
@@ -3306,7 +3307,7 @@ function App() {
         }
       }
     } else {
-      captured = domRangeIn(host, range, true);
+      captured = domRangeIn(host, range, { visibleOnly: true });
       const source = viewText(paperRef.current, scope);
       if (captured) offsets = textSelectionOffsets(captured, source, source);
     }

@@ -95,6 +95,7 @@
 .summary-panels .summary-card.translated{background:#fde6df}
 .summary-panels .summary-card > small{margin:0}
 .summary-panels .summary-card > [data-markdown-host]{min-width:0;min-height:20px}
+.summary-card [data-markdown-host] :is(p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th) { white-space: pre-wrap; }
 .summary-panels .summary-card > [data-markdown-host] > :first-child{margin-top:0}
 .summary-panels .summary-card > [data-markdown-host] > :last-child{margin-bottom:0}
 .evidence-claim{border-top:1px solid #e9e0d6;padding:4px 0}

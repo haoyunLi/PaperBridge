@@ -693,6 +693,30 @@ test('merging repairs a hyphenated word and preserves annotations with verified 
   assert.deepEqual(merged.translationHighlights.map(item => [item.id, item.needsReview]), [['left', true], ['right', true]]);
 });
 
+test('PDF code repair preserves commands, indentation and notes when splitting or merging listings', async () => {
+  const { editedParagraphs, mergeBlocks, reflowBlock } = await import('../src/paper.mjs');
+  const { pdfListingMarkdown } = await import('../src/text.mjs');
+  const text = 'echo start\n  read data\n    save FILE';
+  const block = { id: 3, page: 2, text, sourceMarkdown: pdfListingMarkdown(text), translation: 'old',
+    notes: [{ text: 'FILE', offset: text.indexOf('FILE'), body: 'Keep the filename' }] };
+  const [fixed] = editedParagraphs(block, '  ' + text.replace('start', 'begin'));
+  assert.equal(fixed.text, '  echo begin\n  read data\n    save FILE');
+  assert.equal(fixed.sourceMarkdown, pdfListingMarkdown(fixed.text));
+  assert.equal(fixed.notes[0].offset, fixed.text.indexOf('FILE'));
+  const [first, second] = editedParagraphs(fixed, fixed.text.replace('\n    save', '\n\n    save'));
+  assert.equal(first.text, '  echo begin\n  read data');
+  assert.equal(second.text, '    save FILE');
+  assert.equal(second.notes[0].offset, 9);
+  assert.equal(second.sourceMarkdown, pdfListingMarkdown(second.text));
+  const merged = mergeBlocks(first, { ...second, page: 3 });
+  assert.equal(merged.text, fixed.text);
+  assert.equal(merged.sourceMarkdown, pdfListingMarkdown(fixed.text));
+  assert.equal(merged.endPage, 3);
+  assert.equal(merged.notes[0].offset, fixed.text.indexOf('FILE'));
+  assert.equal(reflowBlock(merged, 2)[0], merged);
+  assert.deepEqual(editedParagraphs(fixed, ' \n\t\n'), []);
+});
+
 test('saving a manual edit splits at blank lines and moves exact annotations into their new blocks', async () => {
   const { editedParagraphs } = await import('../src/paper.mjs');
   const original = { id: 2, text: 'First sentence. Second sentence.', translation: 'old', status: 'ok', bookmark: true,

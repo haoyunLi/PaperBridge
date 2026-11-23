@@ -130,7 +130,7 @@ for (const [index, fixture] of papers.entries()) {
     sections,
     overview: overviewSectionIds(sections),
     guide: readingMap(blocks, sections),
-    issues: qualityIssues(blocks).map(({ id, reason }) => ({ id, reason }))
+    issues: qualityIssues(blocks).map(({ id, reason, excerpt }) => ({ id, reason, excerpt }))
   };
   assert.deepEqual(actual, reference.papers[index], fixture.name);
 }

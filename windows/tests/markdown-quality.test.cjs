@@ -193,3 +193,19 @@ test('normal paragraph diagnostics and explicit reference exclusions remain inta
   assert.match(issues[0].reason, /sentence-ending punctuation/);
   assert.match(issues[1].reason, /detached number/);
 });
+
+test('quality hints retain full graphemes in the source excerpt and exclude literal code listings', async () => {
+  const { pdfListingMarkdown } = await import('../src/text.mjs');
+  const { qualityIssues } = await paper;
+  const tail = 'e\u0301'.repeat(155) + 'frag-';
+  const source = '앞부분 ' + '研究'.repeat(35) + tail;
+  const listing = 'make all\n  echo ' + 'result '.repeat(26) + '\n  save result';
+  const issues = qualityIssues([
+    { id: 1, text: source },
+    { id: 2, text: listing, sourceMarkdown: pdfListingMarkdown(listing) },
+    { id: 3, text: 'model αwhere we' },
+    { id: 4, text: 'model α, where we' }
+  ]);
+  assert.deepEqual(issues.map(issue => issue.id), [1, 4]);
+  assert.equal(issues[0].excerpt, tail);
+});
