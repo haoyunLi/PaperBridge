@@ -29,5 +29,21 @@ func nativeLegacyParagraphAnchors(paragraphs: [String], checksum: String) throws
     model.reflowParagraph(start + 1)
     let reflowed = snapshot()
     model.undoParagraphEdit()
-    return ["before": before, "merged": merged, "reflowed": reflowed, "undo": snapshot()]
+    let undone = snapshot()
+    guard let editor = model.paragraphResults.first(where: { $0.original == "Editor: Juanjo Bazán" }) else {
+        throw CocoaError(.fileReadCorruptFile)
+    }
+    let surname = "Bazán", saved = (editor.original as NSString).range(of: surname)
+    model.captureTextSelection(ReaderTextSelection(paragraphID: editor.id, side: .original, text: surname,
+        context: editor.original, rangeLocation: saved.location, rangeLength: saved.length))
+    model.applyHighlight(.coral)
+    model.saveSelectionNote("Handling editor")
+    let replacement = editor.original.decomposedStringWithCanonicalMapping + " (handling editor)"
+    model.beginEditingParagraph(editor.id)
+    model.paragraphEditorText = replacement
+    model.saveParagraphEdit()
+    guard let note = model.annotations.first(where: { $0.note == "Handling editor" }),
+          let range = note.resolvedRange(in: replacement) else { throw CocoaError(.fileReadCorruptFile) }
+    let editorRange = ["offset": range.location, "length": range.length]
+    return ["before": before, "merged": merged, "reflowed": reflowed, "undo": undone, "editorRange": editorRange]
 }

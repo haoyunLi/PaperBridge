@@ -46,6 +46,12 @@ async function run() {
       (block.notes ||= []).push({ ...anchor, id: 'old-note-' + i, body: 'Legacy note on ' + sample.quote });
       (block.highlights ||= []).push({ ...anchor, id: 'old-color-' + i, color: 'amber' });
     }
+    const editor = blocks.find(block => block.text === 'Editor: Juanjo Bazán');
+    assert.ok(editor);
+    const surname = 'Bazán', offset = editor.text.indexOf(surname);
+    const editorAnchor = { scope: 'reader', kind: 'source', text: surname, offset };
+    (editor.notes ||= []).push({ ...editorAnchor, id: 'editor-note', body: 'Handling editor' });
+    (editor.highlights ||= []).push({ ...editorAnchor, id: 'editor-mark', color: 'coral' });
     paper.inspectorOpen = true;
     fs.writeFileSync(paperFile, JSON.stringify(paper));
     app = await launch(); page = await app.firstWindow();
@@ -90,6 +96,39 @@ async function run() {
       if (reference) assert.deepEqual(result, reference[stage], 'Native range recovery after ' + stage);
       return result;
     }
+    async function editByline() {
+      const revised = editor.text.normalize('NFD') + ' (handling editor)';
+      const area = page.locator('#block-' + editor.id);
+      await area.locator('.reader-actions-trigger').click();
+      await page.getByRole('menuitem', { name: /^Edit or Split(?:\.\.\.)?$/ }).click();
+      await page.getByRole('textbox', { name: 'Paragraph source', exact: true }).fill(revised);
+      await page.getByRole('dialog').getByRole('button', { name: 'Save', exact: true }).click();
+      await page.waitForFunction(async ({ id, editorId, revised }) => (await window.paperBridge.loadPaper(id)).blocks
+        .some(block => block.id === editorId && block.text === revised), { id, editorId: editor.id, revised });
+    }
+    async function verifyByline(form) {
+      const saved = read().blocks.find(block => block.id === editor.id);
+      const note = saved.notes.find(item => item.id === 'editor-note');
+      const mark = saved.highlights.find(item => item.id === 'editor-mark');
+      const rendered = surname.normalize(form);
+      assert.ok(!note.needsReview && !mark.needsReview, 'The journal editor’s name must remain attached when an accent changes encoding');
+      assert.equal(note.quote ?? note.text, surname);
+      assert.equal(note.text, rendered);
+      assert.equal(mark.text, rendered);
+      assert.equal(note.offset, saved.text.indexOf(rendered));
+      await page.locator('.annotation-row').filter({ hasText: 'Handling editor' }).locator('.annotation-navigate').click();
+      await page.waitForFunction(text => getSelection()?.toString() === text, rendered);
+      assert.equal(await page.locator('#block-' + editor.id + ' .source-text mark').innerText(), rendered);
+      const range = { offset: note.offset, length: note.text.length };
+      if (form === 'NFD' && reference) assert.deepEqual(range, reference.editorRange);
+      return range;
+    }
+    await editByline();
+    const editorRange = await verifyByline('NFD');
+    await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await page.waitForFunction(async ({ id, editorId, original }) => (await window.paperBridge.loadPaper(id)).blocks
+      .some(block => block.id === editorId && block.text === original), { id, editorId: editor.id, original: editor.text });
+    await verifyByline('NFC');
     const before = await check('before');
     await action('Merge with Next'); await waitCount(blocks.length - 1);
     const merged = await check('merged');
@@ -102,7 +141,10 @@ async function run() {
     await waitCount(blocks.length - 1); await check('undo');
     await app.close(); app = await launch(); page = await app.firstWindow();
     await openWorkspaceView(page, 'Reader'); assert.deepEqual(await check('merged'), merged);
-    console.log(JSON.stringify({ dir, before, merged, reflowed, undoAndRestart: true, native: Boolean(reference) }));
+    await editByline();
+    await app.close(); app = await launch(); page = await app.firstWindow();
+    await openWorkspaceView(page, 'Reader'); await verifyByline('NFD');
+    console.log(JSON.stringify({ dir, before, merged, reflowed, editorRange, undoAndRestart: true, native: Boolean(reference) }));
   } finally { await app.close(); }
 }
 

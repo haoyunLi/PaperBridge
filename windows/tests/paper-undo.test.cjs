@@ -183,6 +183,24 @@ test('undoing a split restores old anchors and translations while retaining late
   assert.equal(restored.position.block, 2);
 });
 
+test('editing Unicode quotations preserves their original visible text and rejects ambiguous or changed spellings', async () => {
+  const { editedBlock } = await paperHelpers;
+  const name = 'Bazán';
+  const text = 'Editor: ' + name;
+  const original = { text, notes: [{ id: 'name', kind: 'source', text: name, offset: 8 }] };
+  const revised = editedBlock(original, text.normalize('NFD') + ' (handling editor)');
+  assert.equal(revised.notes[0].quote, name);
+  assert.equal(revised.notes[0].text, name.normalize('NFD'));
+  assert.equal(revised.notes[0].offset, 8);
+  assert.equal(revised.notes[0].needsReview, false);
+  const composed = editedBlock(revised, text);
+  assert.equal(composed.notes[0].text, name);
+  assert.equal(composed.notes[0].quote, name);
+  assert.equal(composed.notes[0].needsReview, false);
+  assert.equal(editedBlock(original, name + ' and ' + name.normalize('NFD')).notes[0].needsReview, true);
+  assert.equal(editedBlock(original, 'Editor: Bazàn').notes[0].needsReview, true);
+});
+
 test('undoing an edit restores reviewed highlights and respects later explicit deletion of retained notes', async () => {
   const { createUndoEntry, applyUndoEntry } = await undo;
   const { editedBlock } = await paperHelpers;

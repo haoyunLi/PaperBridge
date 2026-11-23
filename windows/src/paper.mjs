@@ -122,13 +122,18 @@ export function summaryQuoteMatch(text, quote, { unique = false } = {}) {
     if (!unique) break;
   }
   if (match < 0) return null;
-  const end = match + needle.length;
+  return originalQuoteRange(text, normalized, match, match + needle.length);
+}
+
+// Map both ends back to the stored UTF-16 text when an accent occupies multiple code units.
+function originalQuoteRange(text, normalized, match, end) {
   if (normalized === text) return { text: text.slice(match, end), offset: match };
-  let normalizedOffset = 0, offset = 0;
+  let normalizedOffset = 0, offset = -1;
   for (const { segment, index } of graphemes.segment(text)) {
     if (normalizedOffset === match) offset = index;
     normalizedOffset += segment.normalize('NFC').length;
-    if (normalizedOffset === end) return { text: text.slice(offset, index + segment.length), offset };
+    if (normalizedOffset === end && offset >= 0) return { text: text.slice(offset, index + segment.length), offset };
+    if (normalizedOffset >= end) break;
   }
   return null;
 }
@@ -224,7 +229,7 @@ function uniqueOffset(text, quote) {
 }
 
 function sourceAnnotationOffset(item, source) {
-  if (item.needsReview) return null;
+  if (item?.needsReview || typeof item?.text !== 'string' || !item.text) return null;
   return matchesQuote(source, item.text, item.offset) ? item.offset : uniqueOffset(source, item.text);
 }
 
@@ -395,16 +400,24 @@ export function mergeBlocks(first, second) {
 export function editedBlock(block, newText) {
   const listing = isPdfListing(block);
   const text = listing ? String(newText) : String(newText).trim();
-  const retained = uniqueOffset(text, block.text);
-  const slice = retained === null ? uniqueOffset(block.text, text) : null;
+  const source = block.text.normalize('NFC'), target = text.normalize('NFC');
+  const retained = uniqueOffset(target, source);
+  const slice = retained === null ? uniqueOffset(source, target) : null;
   function relocate(item) {
-    const original = sourceAnnotationOffset(item, block.text);
-    if (original === null) return forReview(item);
-    if (retained !== null) return moveSourceAnnotation(item, text, retained + original);
-    if (slice !== null && original >= slice && original + item.text.length <= slice + text.length) {
-      return moveSourceAnnotation(item, text, original - slice);
-    }
-    return moveSourceAnnotation(item, text, uniqueOffset(text, item.text));
+    const rawOffset = sourceAnnotationOffset(item, block.text);
+    if (rawOffset === null) return forReview(item);
+    const quote = item.text.normalize('NFC');
+    const original = source === block.text ? rawOffset : block.text.slice(0, rawOffset).normalize('NFC').length;
+    if (!matchesQuote(source, quote, original)) return forReview(item);
+    let start;
+    if (retained !== null) start = retained + original;
+    else if (slice !== null && original >= slice && original + quote.length <= slice + target.length) start = original - slice;
+    else start = uniqueOffset(target, quote);
+    if (start === null) return forReview(item);
+    const range = originalQuoteRange(text, target, start, start + quote.length);
+    if (!range || range.text.normalize('NFC') !== quote) return forReview(item);
+    const anchor = range.text === item.text ? item : { ...item, text: range.text, quote: item.quote ?? item.text };
+    return moveSourceAnnotation(anchor, text, range.offset);
   }
   return { ...block, text, heading: !listing && isHeading(text), ...(listing && { sourceMarkdown: pdfListingMarkdown(text) }),
     translation: '', translationMarkdown: null, translationLanguage: null, status: 'pending',
