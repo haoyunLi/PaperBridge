@@ -17,7 +17,7 @@ import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOf
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, isPdfListing, pdfFootnoteMarker } from './text.mjs';
 import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, onlyProtectedMarkup, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
 import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
-import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, pythonImportBeforeListing, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
 import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
 import { referenceCoverageVersion, reviewSavedReferenceCoverage } from './references.mjs';
 import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
@@ -2420,7 +2420,7 @@ function App() {
   }
   function retryBlock(id) {
     if (!paperRef.current || busy || taskRef.current) return;
-    if (translationSetup && id !== authorByline?.id) { openTaskSetup(translationSetup); return; }
+    if (translationSetup && !verbatimTranslationIDs.has(id)) { openTaskSetup(translationSetup); return; }
     void translateBlocks([id], { retryId: id });
   }
   async function translateBlocks(ids, { sharedFull = false, retryId = null } = {}) {
@@ -2449,7 +2449,7 @@ function App() {
     try {
       const config = settingsRef.current;
       const translationModel = activeAIModel(config, 'translation');
-      const needsModel = config.sourceLanguage !== config.targetLanguage && queue.some(block => block.id !== authorByline?.id);
+      const needsModel = config.sourceLanguage !== config.targetLanguage && queue.some(block => !verbatimTranslationIDs.has(block.id));
       if (!await prepareTaskAI(config, needsModel ? ['translation'] : [], token)) return;
       for (let index = 0; index < total; index++) {
         if (token.cancelled) break;
@@ -2462,7 +2462,7 @@ function App() {
           const source = block.sourceMarkdown || block.text.slice(marker.length);
           const protectedBlock = protectStructuredMarkdown(source, { boundLinks: Boolean(block.sourceMarkdown) });
           let output = block.sourceMarkdown || block.text;
-          if (config.sourceLanguage !== config.targetLanguage && block.id !== authorByline?.id) {
+          if (config.sourceLanguage !== config.targetLanguage && !verbatimTranslationIDs.has(block.id)) {
             const parts = chunkText(protectedBlock.text, Number(config.maxParagraphChars) || 1800);
             const translated = [];
             const promptForPart = block.sourceMarkdown || protectedBlock.tokens.length ? markdownTranslationPrompt : translationPrompt;
@@ -3455,6 +3455,14 @@ function App() {
   const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
   const outline = useMemo(() => documentOutline(paper), [paper]);
   const authorByline = useMemo(() => findNumberedAuthorBlock(paper?.blocks || [], settings || {}, glossary), [paper?.blocks, settings, glossary]);
+  const verbatimTranslationIDs = useMemo(() => {
+    const ids = new Set(authorByline ? [authorByline.id] : []);
+    const blocks = paper?.blocks || [];
+    for (const [i, block] of blocks.entries()) {
+      if (pythonImportBeforeListing(block, blocks[i + 1])) ids.add(block.id);
+    }
+    return ids;
+  }, [paper?.blocks, authorByline]);
   const blockIndexes = useMemo(() => new Map(paper?.blocks.map((block, index) => [block.id, index])), [paper?.blocks]);
   const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
   const unfinishedTranslationIds = useMemo(() => translationRangeIds(paper?.blocks || [], null, referenceIDs), [paper?.blocks, referenceIDs]);
@@ -3708,7 +3716,7 @@ function App() {
             : block.heading ? block.status === 'failed' && <p className="heading-failure">{block.error || 'Heading translation failed. Retry when ready.'}</p>
               : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
-                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && block.id !== authorByline?.id ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
+                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && !verbatimTranslationIDs.has(block.id) ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
           return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span aria-label={`Block ${block.id}${block.page ? `, page ${block.page}` : ''}`}><span className="reader-block-number">{String(block.id).padStart(2, '0')}</span>{block.page && <span className="reader-block-page">PAGE {block.page}</span>}{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
           {issue && <ReaderQualityWarning issue={issue} onReextract={reextractAsNew} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;

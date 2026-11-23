@@ -9,6 +9,21 @@ export function usesSharedMarkdown(paper) {
   return paper?.sourceMode === 'mineru' && paper.blocks.some(block => block.sourceMarkdown);
 }
 
+// Some PDF parsers place a syntax-highlighted import immediately before its
+// Python listing. Preserve its keywords and module names in the translated code.
+export function pythonImportBeforeListing(block, next) {
+  const source = block?.sourceMarkdown?.trim();
+  if (!source || !next?.resource || !/^(?:`{3,}|~{3,})[ \t]*(?:python3?|py)[ \t]*\r?\n/i.test(next.sourceMarkdown || '')) return false;
+  const statement = source.replace(/(\*\*|__)(from|import|as)\1/g, '$2');
+  if (statement === source || /[\r\n]/.test(statement)) return false;
+  const imported = /^(?:from\s+(\.*[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*|\.+)\s+)?import\s+(.+)$/u.exec(statement);
+  if (!imported) return false;
+  if (imported[1] && imported[2] === '*') return true;
+  const name = imported[1] ? /^[A-Za-z_]\w*(?:\s+as\s+[A-Za-z_]\w*)?$/u
+    : /^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*(?:\s+as\s+[A-Za-z_]\w*)?$/u;
+  return imported[2].split(',').every(part => name.test(part.trim()));
+}
+
 export function protectStructuredMarkdown(markdown, { boundLinks = true } = {}) {
   if (!mayContainIndentedOrNestedCode(markdown) && !markdown.includes('](') && !/[`<@]|~{3}|\]:|https?:\/\/|\bwww\./i.test(markdown)) return protectMarkdown(markdown);
   const ranges = [];

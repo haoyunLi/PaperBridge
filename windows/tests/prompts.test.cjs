@@ -1,6 +1,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
+test('a highlighted Python import is preserved only when it introduces a Python listing', async () => {
+  const { pythonImportBeforeListing } = await import('../src/academicMarkdown.mjs');
+  const listing = { resource: true, sourceMarkdown: '~~~python\nprint(Reader)\n~~~' };
+  const check = (sourceMarkdown, next = listing) => pythonImportBeforeListing({ sourceMarkdown }, next);
+  assert.ok(check('**from** tabbed.reading **import** Reader'));
+  assert.ok(check('__import__ package.io __as__ io, sys'));
+  assert.ok(check('**from** . import *'));
+  assert.equal(check('**from** the paper **import** new results'), false);
+  assert.equal(check('**from** tabbed **import** io.Reader'), false);
+  assert.equal(check('**from** tabbed **import** Reader', { ...listing, sourceMarkdown: '~~~text\nReader\n~~~' }), false);
+  assert.equal(check('**from** tabbed **import** Reader', null), false);
+  assert.equal(check('from tabbed import Reader'), false);
+});
+
 test('Markdown translation tokens preserve formulas and figure references', async () => {
   const { protectMarkdown, restoreMarkdown } = await import('../src/prompts.mjs');
   const original = 'The formula $E=mc^2$ appears beside ![plot](data:image/png;base64,AAAA).';
