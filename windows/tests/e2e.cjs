@@ -140,7 +140,7 @@ async function run() {
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.locator('.inspector.inspector-drawer').waitFor();
     const menuLabels = await app.evaluate(({ Menu }) => Menu.getApplicationMenu().items.map(item => item.label));
-    assert.deepEqual(menuLabels, ['File', 'Paper', 'Selection', 'View', 'Help']);
+    assert.deepEqual(menuLabels, ['File', 'Edit', 'Paper', 'Selection', 'View', 'Help']);
     await page.keyboard.press('Control+1');
     await page.waitForFunction(() => document.querySelector('.tabs button.active')?.textContent === 'Overview');
     await page.keyboard.press('Control+f');
