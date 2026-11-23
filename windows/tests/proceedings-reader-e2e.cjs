@@ -64,6 +64,18 @@ async function run() {
       await page.locator('#block-' + columns.id).getByText(word, { exact: false }).first().waitFor();
       report.columnContinuation = columns.id;
     }
+    let weights;
+    if (native.hiddenDimension && native.weightsDimension) {
+      const flatten = value => value.replace(/[\\^_{}]/g, '').replaceAll('ℝ', 'R');
+      const definitions = blocks.find(b => b.page === 4 && b.text.includes('special [CLS] token as C ∈'));
+      assert.ok(definitions.text.includes('the i^{th} input token as T_{i} ∈ ℝ^{H}'));
+      assert.ok(flatten(definitions.text).includes(native.ordinal + ' input token as ' + native.indexedVector));
+      weights = blocks.find(b => b.page === 5 && b.text.includes('final hidden vector C ∈ ℝ^{H}'));
+      assert.ok(weights.text.includes('classification layer weights W ∈ ℝ^{K×H}'));
+      assert.ok(flatten(weights.text).includes('C ∈ ' + native.hiddenDimension));
+      assert.ok(flatten(weights.text).includes('W ∈ ' + native.weightsDimension));
+      report.weightDefinitions = weights.id;
+    }
     if (process.argv.includes('--live')) {
       await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
       const translated = row.locator('.translation-text.done');
@@ -89,6 +101,15 @@ async function run() {
         assert.match(report.columnTranslation, /预训练/);
         assert.match(report.columnTranslation, /下游/);
       }
+      if (weights) {
+        const row = page.locator('#block-' + weights.id);
+        await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+        const result = row.locator('.translation-text.done');
+        await result.waitFor({ timeout: 150000 });
+        report.weightsTranslation = await result.innerText();
+        assert.match(report.weightsTranslation, /标签/);
+        assert.ok(report.weightsTranslation.includes('C ∈ ℝ^{H}') && report.weightsTranslation.includes('W ∈ ℝ^{K×H}'));
+      }
       const running = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
       report.vram = running.models.find(m => m.name === 'translategemma:4b')?.size_vram;
       assert.ok(report.vram > 0);
@@ -97,6 +118,7 @@ async function run() {
       assert.equal(await page.locator('#block-' + paragraph.id + ' .translation-text.done').innerText(), report.translation);
       if (figureBody) assert.equal(await page.locator('#block-' + figureBody.id + ' .translation-text.done').innerText(), report.figureBodyTranslation);
       if (columns) assert.equal(await page.locator('#block-' + columns.id + ' .translation-text.done').innerText(), report.columnTranslation);
+      if (weights) assert.equal(await page.locator('#block-' + weights.id + ' .translation-text.done').innerText(), report.weightsTranslation);
     }
     console.log(JSON.stringify(report));
   } finally { await app.close(); }

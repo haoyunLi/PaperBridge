@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## BERT 双栏论文的正文与公式
+
+同一份 ACL 出版的 16 页 BERT 论文经过 Windows PDF 文字层导入。第三页的跨栏插图原先截断了第二页的 `language model-ing`，图注的最后一行也出现在正文里。修复后，读者能在一个段落内选中完整句子，两栏之间的 `mini-mal` 也合为一个词。RX 7800 XT 用 TranslateGemma 4B 译出了预训练架构与最终下游架构之间的差异。第五页的隐藏向量和分类层权重在实际译文里分别保留为 `C ∈ ℝ^{H}` 和 `W ∈ ℝ^{K×H}`，关闭再打开阅读器后译文一致。四篇既有回归论文合计 811 个文字块的逐块内容与本次修复前一致。[ACL 论文](https://aclanthology.org/N19-1423/) · [Mac 原生 PDFKit 的图注、栏边界和公式选区](https://github.com/haoyunLi/PaperBridge/actions/runs/45137884416)
+
 ## 结构化论文中可运行的 Python 代码
 
 在同一篇 *Tabbed* 论文上，两端用相同的 TranslateGemma 4B 权重处理许可证、正文、Python 导入语句和小标题。Mac 与 RX 7800 XT 的许可证译文及链接、小标题逐字一致。类型转换段落均为中文，具体措辞有所不同。Mac 和 Windows 0.2.89 都把 Python 的 `from`、`import` 译成了中文。Windows 修复后保留紧接 Python 代码块之前的合法导入语句。这行可在模型服务离线时重新生成，其余已保存译文不受影响。[Mac 真实模型对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45132517461) · [论文及材料来源](tests/mac-parity/tabbed/LICENSE.md)

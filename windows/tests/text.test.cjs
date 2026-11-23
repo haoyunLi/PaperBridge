@@ -289,6 +289,24 @@ test('a first-page proceedings imprint stays with the byline and out of a contin
   assert.ok(text(lines.slice(0, -1)).at(-1).startsWith('Proceedings of'));
 });
 
+test('TeX vector dimensions, indexed variables and ordinals stay attached only at their printed offsets', async () => {
+  const { recoverMathScripts } = await import('../src/pdfLayout.mjs');
+  const glyph = (str, x, y, height, fontName) => ({ str, width: 5, height, fontName, transform: [height, 0, 0, height, x, y] });
+  const items = [glyph('i', 10, 50, 10, 'var'), glyph('th', 15, 54, 7, 'roman'),
+    glyph('T', 30, 50, 10, 'var'), glyph('i', 35, 48, 7, 'var'), glyph('∈', 43, 50, 10, 'symbols'),
+    glyph('R', 53, 50, 10, 'space'), glyph('K', 58, 54, 7, 'var'), glyph('×', 63, 54, 7, 'symbols'),
+    glyph('H', 68, 54, 7, 'var'), glyph('.', 76, 50, 10, 'text')];
+  const fonts = new Map(Object.entries({ space: 'ABCDEF+MSBM10', var: 'CMMI10', symbols: 'CMSY8', roman: 'CMR8', text: 'Times' })
+    .map(([key, name]) => [key, { name }]));
+  const page = { getOperatorList: async () => {}, commonObjs: fonts };
+  const recovered = await recoverMathScripts(page, { items });
+  assert.deepEqual(recovered.items.map(i => i.str).filter(Boolean), ['i^{th}', 'T_{i}', '∈', 'ℝ^{K×H}', '.']);
+  const ordinary = items.map(i => ({ ...i, fontName: 'text' }));
+  assert.deepEqual((await recoverMathScripts(page, { items: ordinary })).items, ordinary);
+  const gap = items.slice(4, 7).map((i, j) => j === 2 ? { ...i, transform: [7, 0, 0, 7, 82, 54] } : i);
+  assert.deepEqual((await recoverMathScripts(page, { items: gap })).items, gap);
+});
+
 test('only an isolated full-width opening figure lets a body paragraph resume past its caption', async () => {
   const { openingFigure } = await import('../src/pdfLayout.mjs');
   const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');

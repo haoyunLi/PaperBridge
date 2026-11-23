@@ -109,6 +109,60 @@ export async function recoverInlineSummations(page, content) {
   return { ...content, items: corrected };
 }
 
+// TeX exports these attached scripts as separate runs. Use the embedded math
+// fonts and the printed offsets so they stay next to their base, even when
+// a neighboring column has a text baseline at the height of the superscript.
+export async function recoverMathScripts(page, content) {
+  const { items } = content;
+  const candidates = [];
+  let previous = '';
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const text = item.str?.trim();
+    if (!text) continue;
+    const script = items[i + 1];
+    if (script?.height > 0) {
+      if (text === 'R' && previous.endsWith('∈')) candidates.push({ i, kind: 'dimension' });
+      else if (/^[a-z]$/u.test(text) && script.str === 'th') candidates.push({ i, kind: 'ordinal' });
+      else if (/^[A-Z]$/u.test(text) && /^[a-z]$/u.test(script.str) &&
+          (items[i + 2]?.str?.trim() || items[i + 3]?.str?.trim()) === '∈') candidates.push({ i, kind: 'indexedVector' });
+    }
+    previous = text;
+  }
+  if (!candidates.length) return content;
+  try { await page.getOperatorList(); } catch { return content; }
+  const corrected = items.slice();
+  const font = item => page.commonObjs.has(item.fontName) ? page.commonObjs.get(item.fontName)?.name || '' : '';
+  for (const { i, kind } of candidates) {
+    const base = items[i], first = items[i + 1], h = base.height;
+    const lift = first.transform[5] - base.transform[5], gap = first.transform[4] - base.transform[4] - base.width;
+    if (first.height < h * 0.5 || first.height >= h * 0.86 || gap < -h * 0.13 || gap > h * 0.25) continue;
+    if (kind === 'indexedVector' ? lift > -h * 0.06 || lift < -h * 0.5 : lift < h * 0.18 || lift > h * 0.7) continue;
+    if (kind !== 'dimension') {
+      const scriptFont = kind === 'ordinal' ? /^(?:[A-Z]{6}\+)?CMR\d+$/u : /^(?:[A-Z]{6}\+)?CMMI\d+$/u;
+      if (!/^(?:[A-Z]{6}\+)?CMMI\d+$/u.test(font(base)) || !scriptFont.test(font(first))) continue;
+      const suffix = kind === 'ordinal' ? '^{th}' : '_{' + first.str + '}';
+      corrected[i] = { ...base, str: base.str + suffix, width: first.transform[4] + first.width - base.transform[4] };
+      corrected[i + 1] = { ...first, str: '' };
+      continue;
+    }
+    if (!/^(?:[A-Z]{6}\+)?MSBM\d+$/u.test(font(base))) continue;
+    let j = i + 1, end = base.transform[4] + base.width, exponent = '';
+    while (j < items.length && items[j].str?.trim() && Math.abs(items[j].transform[5] - first.transform[5]) < h * 0.1) {
+      const script = items[j], gap = script.transform[4] - end;
+      if (Math.abs(script.height - first.height) > h * 0.1 || gap < -h * 0.13 || gap > h * 0.25 ||
+          !/^(?:[A-Z]{6}\+)?CM(?:MI|SY|R)\d+$/u.test(font(script))) { exponent = ''; break; }
+      exponent += script.str;
+      end = script.transform[4] + script.width;
+      j++;
+    }
+    if (!/^[A-Z](?:×(?:[A-Z]|\d+))*$/u.test(exponent)) continue;
+    corrected[i] = { ...base, str: 'ℝ^{' + exponent + '}', width: end - base.transform[4] };
+    for (let k = i + 1; k < j; k++) corrected[k] = { ...items[k], str: '' };
+  }
+  return { ...content, items: corrected };
+}
+
 function startsFootnote(marker, body, pageHeight) {
   return marker && body && body.y < pageHeight * 0.18 && /^(?:\p{Nd}{1,3}|[*†‡])$/u.test(marker.text.trim()) &&
     /^\s*\p{L}/u.test(body.text) && marker.height < body.height * 0.9 &&
