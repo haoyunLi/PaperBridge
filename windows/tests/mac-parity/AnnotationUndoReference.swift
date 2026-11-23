@@ -19,6 +19,22 @@ func nativeAnnotationUndo(paragraphs: [String], checksum: String) throws -> [Str
                                                    rangeLocation: 0, rangeLength: (quote as NSString).length))
     model.saveSelectionNote("Check this passage")
     guard let saved = model.annotations.first else { throw CocoaError(.fileReadCorruptFile) }
+    let colors = PaperHighlightColor.allCases.map { color -> String in
+        model.applyHighlight(color)
+        guard let active = model.activeSelectionAnnotation, active.id == saved.id,
+              active.note == saved.note else { return "" }
+        return active.highlightColor?.displayName ?? ""
+    }
+    model.removeSelectionHighlight()
+    let noteAfterClearing = model.activeSelectionAnnotation?.id == saved.id && model.activeSelectionAnnotation?.highlightColor == nil
+    model.undoAnnotationChange()
+    let restoredColor = model.activeSelectionAnnotation?.highlightColor?.displayName ?? ""
+    model.persistWorkspace()
+    store.flush()
+    let reopenedMark = PaperReaderViewModel(workspaceStore: store).annotations.first { $0.id == saved.id }
+    guard noteAfterClearing, reopenedMark?.note == saved.note, reopenedMark?.highlightColor?.displayName == restoredColor else {
+        throw CocoaError(.fileReadCorruptFile)
+    }
     model.removeAnnotation(id: saved.id)
     model.toggleBookmark(for: 2)
     model.undoAnnotationChange()
@@ -36,6 +52,7 @@ func nativeAnnotationUndo(paragraphs: [String], checksum: String) throws -> [Str
     store.flush()
     let reopened = PaperReaderViewModel(workspaceStore: store)
     return [
+        "highlightColors": colors, "restoredColor": restoredColor,
         "noteRestored": noteRestored, "bookmarkKept": bookmarkKept,
         "shiftedQuote": saved.resolvedRange(in: "🔎 " + title)?.location ?? -1,
         "ambiguousQuote": saved.resolvedRange(in: "🔎 " + quote + " " + quote)?.location ?? -1,

@@ -50,6 +50,18 @@ test('a shifted plain-text note and a highlight at its current offset stay toget
   assert.equal(textAnchorAvailable({ ...saved, needsReview: true }, text, false), false);
 });
 
+test('raw and rendered offsets preserve overlapping occurrences in formula and code annotations', async () => {
+  const { matchingTextOffset, markdownAnnotationOffset } = await import('../src/markdownAnchors.mjs');
+  const rendered = 'Calibration AAAA.';
+  const raw = 'Calibration **AAAA**.';
+  const quote = 'AAA';
+  const middle = rendered.indexOf(quote) + 1;
+  assert.equal(matchingTextOffset(rendered, raw, quote, middle), raw.indexOf(quote) + 1);
+  assert.equal(markdownAnnotationOffset(rendered, { text: quote, offset: raw.indexOf(quote) + 1 }, raw), middle);
+  assert.equal(matchingTextOffset(rendered, 'Calibration **AAA**.', quote, rendered.indexOf(quote)), null,
+    'Removing an overlapping occurrence changes which passage a stored offset can identify');
+});
+
 function freeze(value) {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.freeze(value);

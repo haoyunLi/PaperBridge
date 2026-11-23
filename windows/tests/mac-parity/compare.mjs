@@ -187,6 +187,8 @@ const published = reference.publishedPaper;
   const afterSplit = recordUndoEntry(history, structure);
   const laterDeletion = { ...split, blocks: [{ ...split.blocks[0], notes: [] }, ...split.blocks.slice(1)] };
   const result = applyUndoEntry(laterDeletion, structure);
+  // The desktop test compares highlightColors and restoredColor by operating the Inspector.
+  const { highlightColors, restoredColor, ...annotationUndo } = published.annotationUndo;
   assert.deepEqual({
     noteRestored: restored.blocks[0].notes[0]?.body === note.body, bookmarkKept: restored.blocks[1].bookmark,
     shiftedQuote: markdownAnnotationOffset('🔎 ' + blocks[0].text, note) ?? -1,
@@ -195,7 +197,7 @@ const published = reference.publishedPaper;
     splitCount: split.blocks.length, annotationUndoAfterSplit: afterSplit.some(entry => entry.type === 'annotations'),
     restoredSources: result.blocks.every((block, i) => block.text === published.paragraphs[i]) && result.blocks.length === published.paragraphs.length,
     laterDeletionKept: !result.blocks[0].notes.length, reopenedBookmark: result.blocks[1].bookmark
-  }, published.annotationUndo);
+  }, annotationUndo);
 }
 const publishedBytes = readFileSync(new URL('./emcee-v3.pdf', import.meta.url));
 assert.equal(createHash('sha256').update(publishedBytes).digest('hex'), published.sha256);

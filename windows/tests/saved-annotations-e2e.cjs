@@ -316,6 +316,46 @@ async function run() {
     assert.equal(await editor().inputValue(), beta.body);
     await close(); await launch(); await count(10);
     assert.deepEqual(await stableKeys(), beforeCreationKeys, 'Creation-time order also remains stable after restart');
+    if (process.argv.includes('--highlight-colors')) {
+      stage('Recolor exact quotes, clear only their highlights, undo and reopen');
+      const reference = process.env.PAPERBRIDGE_MAC_REFERENCE &&
+        JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8')).publishedPaper.annotationUndo;
+      const colors = ['Amber', 'Cobalt', 'Coral'];
+      if (reference) {
+        assert.deepEqual(reference.highlightColors, colors);
+        assert.equal(reference.restoredColor, 'Coral');
+      }
+      const primary = page.locator('.inspector-primary');
+      const subjects = [beta, translated, view, targetView, full, pdf, paperPdf];
+      for (const note of subjects) {
+        await open(note);
+        const entry = row(note.body);
+        let markId;
+        for (const color of colors) {
+          const action = primary.getByRole('button', { name: color + ' highlight', exact: true });
+          await action.click();
+          await waitFor(async () => await action.getAttribute('aria-pressed') === 'true' &&
+            (await entry.locator('.annotation-colors').textContent()).includes(color), note.body + ' uses ' + color);
+          const removal = entry.locator('button[title="Remove highlight only"]');
+          assert.equal(await removal.count(), 1);
+          const id = await removal.getAttribute('aria-label');
+          if (markId) assert.equal(id, markId, 'Recoloring must keep the same highlight record');
+          markId = id;
+        }
+        await primary.getByRole('button', { name: 'Remove Highlight', exact: true }).click();
+        await waitFor(async () => !await entry.locator('.annotation-colors').count() ||
+          !(await entry.locator('.annotation-colors').textContent()).trim(), 'Clear highlight for ' + note.body);
+        assert.equal(await editor().inputValue(), note.body);
+        await undo();
+        await waitFor(async () => (await entry.locator('.annotation-colors').textContent()).includes('Coral'), 'Undo for ' + note.body);
+        assert.equal(await entry.getByRole('button', { name: markId, exact: true }).count(), 1);
+      }
+      await close(); await launch(); await count(10);
+      for (const note of subjects) {
+        await open(note);
+        assert.equal(await page.locator('.inspector-primary').getByRole('button', { name: 'Coral highlight', exact: true }).getAttribute('aria-pressed'), 'true');
+      }
+    }
     assert.equal(generationRequests, 0); assert.deepEqual(errors, []);
   } catch (error) {
     fail(error);

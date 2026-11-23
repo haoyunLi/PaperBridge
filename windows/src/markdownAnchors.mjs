@@ -123,8 +123,8 @@ export function matchingTextOffset(from, to, text, offset) {
   // Formatting can hide raw occurrences or introduce new ones.
   while (fromAt >= 0 && toAt >= 0) {
     if (fromAt === offset) match = toAt;
-    fromAt = from.indexOf(text, fromAt + text.length);
-    toAt = to.indexOf(text, toAt + text.length);
+    fromAt = from.indexOf(text, fromAt + 1);
+    toAt = to.indexOf(text, toAt + 1);
   }
   return fromAt < 0 && toAt < 0 ? match : null;
 }
