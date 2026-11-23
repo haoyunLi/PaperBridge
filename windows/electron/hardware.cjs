@@ -3,6 +3,7 @@ const { promisify } = require('node:util');
 const path = require('node:path');
 const os = require('node:os');
 const { detectMineruExecutable, mineru4Environment, mineruPython } = require('./mineru-discovery.cjs');
+const { modelStorageSpace } = require('./ollama-installation.cjs');
 const run = promisify(execFile);
 
 function vendorOf(name, pciVendor) {
@@ -93,7 +94,7 @@ async function graphicsStatus() {
     } catch { /* Driver inventory still works when the full report is unavailable. */ }
   }
   return { adapters: mergeAdapterInventory(controllers, cudaDriver), cudaDriver, cudaVersion,
-    systemMemoryBytes: os.totalmem(), detectedAt: new Date().toISOString() };
+    systemMemoryBytes: os.totalmem(), modelStorage: await modelStorageSpace(), detectedAt: new Date().toISOString() };
 }
 
 async function mineruRuntime(executable, toolsRoot, { found, signal, backend = 'auto' } = {}) {

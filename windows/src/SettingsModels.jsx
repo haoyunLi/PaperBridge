@@ -1,15 +1,17 @@
 import React, { useId } from 'react';
 import ModelRecommendations, { ModelMemoryGuide } from './ModelRecommendations.jsx';
 import { TRANSLATION_MODELS, ASSISTANT_MODELS, MODEL_CATALOG_VERIFIED_AT } from './modelCatalog.mjs';
+import { usesWindowsOllamaEndpoint } from '../electron/ollama-models.mjs';
 import './settings-models.css';
 
 export default function SettingsModels({ settings, models = [], hardware, busy = false, pullProgress, onUse, onDownload }) {
   const id = useId();
   const downloading = pullProgress?.phase === 'pulling';
-  const cardProps = { settings, models, busy: Boolean(busy || downloading), activeModel: downloading ? pullProgress.model : null, onUse, onDownload };
+  const storage = usesWindowsOllamaEndpoint(settings.ollamaBaseURL) ? hardware?.modelStorage : null;
+  const cardProps = { settings, models, storage, busy: Boolean(busy || downloading), activeModel: downloading ? pullProgress.model : null, onUse, onDownload };
 
   return <div className="settings-models">
-    <ModelMemoryGuide className="settings-model-memory" hardware={hardware} />
+    <ModelMemoryGuide className="settings-model-memory" hardware={hardware} storage={storage} />
     <section className="settings-model-group" aria-labelledby={`${id}-translation`} data-model-role="translation">
       <header><h3 id={`${id}-translation`}>Translation models</h3><span>Required for translation</span></header>
       <p>Choose one TranslateGemma size. Selecting it updates assistant roles that followed the previous translation model or whose model is missing. Other installed assistant selections are kept.</p>

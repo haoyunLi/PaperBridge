@@ -110,8 +110,17 @@ async function run() {
     installed = true;
     pulls[3].response.end('{"status":"writing manifest"}');
     await page.waitForFunction(() => window.__modelPullEvents.filter(event => event.phase === 'done').length === 2);
+    installed = false;
+    await waitFor(() => download.isEnabled(), 'download control after inventory confirmation');
+    await download.click();
+    await waitFor(() => pulls.length === 5, 'model drive out of space');
+    const writeError = String.raw`max retries exceeded: write C:\Ollama\models\blobs\sha256-example-partial: There is not enough space on the disk.`;
+    pulls[4].response.end(JSON.stringify({ error: writeError }) + '\n');
+    await page.getByRole('alert').filter({ hasText: 'The Ollama model drive (C:) is full.' }).first().waitFor();
+    await page.waitForFunction(() => window.__modelPullEvents.some(event => event.phase === 'error' && /retry to resume/.test(event.status)));
+    await waitFor(() => download.isEnabled(), 'allow retry when space becomes available');
     const phases = await page.evaluate(() => window.__modelPullEvents.filter(event => ['done', 'cancelled', 'error'].includes(event.phase)).map(event => event.phase));
-    assert.deepEqual(phases, ['cancelled', 'done', 'error', 'done']);
+    assert.deepEqual(phases, ['cancelled', 'done', 'error', 'done', 'error']);
     assert.equal(await page.getByRole('button', { name: 'Cancel download', exact: true }).count(), 0);
     await page.screenshot({ path: path.join(artifacts, 'model-download-retried.png') });
     console.log('Model download UI cancellation closed the Ollama stream, rejected concurrent downloads/setup, ignored late completion, and successfully retried.');

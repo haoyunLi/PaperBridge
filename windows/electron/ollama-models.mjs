@@ -1,3 +1,5 @@
+export const usesWindowsOllamaEndpoint = url => /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):11434\/?$/i.test(url);
+
 // Both the setup wizard and the model selectors consume Ollama's /api/tags response.
 export async function readOllamaModelList(response) {
   let payload;

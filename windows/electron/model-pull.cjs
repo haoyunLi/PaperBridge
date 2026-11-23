@@ -1,14 +1,22 @@
 const { ollamaRequest } = require('./ollama-http.cjs');
 const { readOllamaModelList, hasOllamaModel } = require('./ollama-models.mjs');
 
+function downloadError(cause) {
+  if (!/not enough space on the disk|disk (?:is )?full|no space left on device|ENOSPC|磁盘(?:上的)?空间不足|磁盘已满/i.test(cause.message)) return cause;
+  const drive = cause.message.match(/\b([a-z]):[\\/]/i)?.[1]?.toUpperCase();
+  return new Error('The Ollama model drive' + (drive ? ' (' + drive + ':)' : '') +
+    ' is full. Free disk space and retry to resume the download, or choose an installed model.');
+}
+
 async function pullOllamaModel(baseURL, model, signal, update) {
   if (!/^[\w./:-]{2,100}$/.test(model)) throw new Error('Invalid model name.');
-  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal });
+  const response = await ollamaRequest(baseURL, 'api/pull', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model, stream: true }), signal })
+    .catch(cause => { throw downloadError(cause); });
   let buffer = '', completed = false;
   function progressLine(line) {
     if (!line.trim()) return;
     const event = JSON.parse(line);
-    if (event.error) throw new Error(event.error);
+    if (event.error) throw downloadError(new Error(event.error));
     if (event.status?.toLowerCase() === 'success') completed = true;
     update(event);
   }

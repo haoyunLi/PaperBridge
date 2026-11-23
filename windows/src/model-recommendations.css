@@ -14,4 +14,5 @@
 .model-card-meta>a{font-size:11px;color:#0a59d6;text-underline-offset:3px}
 .model-card>.button{font-size:11px;flex:none;margin-top:2px}
 .model-card button:focus-visible,.model-card a:focus-visible{outline:2px solid #0a59d6;outline-offset:3px}
+.model-card .model-space-warning { display: block; color: #87430d; font-weight: 600; }
 @media(max-width:1050px){.model-card{flex-wrap:wrap}.model-card>.button{margin-left:auto}}

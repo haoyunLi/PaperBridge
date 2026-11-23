@@ -1,4 +1,4 @@
-import { missingOllamaModels } from '../electron/ollama-models.mjs';
+import { missingOllamaModels, usesWindowsOllamaEndpoint } from '../electron/ollama-models.mjs';
 
 const roleKeys = Object.freeze({
   translation: ['translationModel', 'openAITranslationModel'],
@@ -43,7 +43,7 @@ export function aiTaskSetupIssue(settings, roles, { models = [], ollamaStatus, c
   const required = [...new Set(roles.map(role => activeAIModel(settings, role)))];
   if (required.includes('')) return { destination: 'models', message: `Choose a local model for ${taskName(roles.find(role => !activeAIModel(settings, role)))}.` };
   if (ollamaStatus === 'unavailable') {
-    if (!/^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):11434\/?$/i.test(settings.ollamaBaseURL)) {
+    if (!usesWindowsOllamaEndpoint(settings.ollamaBaseURL)) {
       return { destination: 'models', message: 'The configured Ollama endpoint is unavailable. Check the Ollama URL and refresh models.' };
     }
     return { destination: 'setup', models: required, message: 'Start or install Ollama to run this task.' };

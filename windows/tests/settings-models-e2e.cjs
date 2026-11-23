@@ -89,7 +89,7 @@ async function run() {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await app.evaluate(({ ipcMain }) => {
       ipcMain.removeHandler('hardware:status');
-      ipcMain.handle('hardware:status', () => ({ systemMemoryBytes: 64 * 1024 ** 3,
+      ipcMain.handle('hardware:status', () => ({ systemMemoryBytes: 64 * 1024 ** 3, modelStorage: { drive: 'T:', freeBytes: 155648 },
         adapters: [{ vendor: 'AMD', name: 'Integrated graphics', dedicatedMemoryBytes: 512 * 1024 ** 2 },
           { vendor: 'AMD', name: 'Mock AMD GPU', dedicatedMemoryBytes: 16 * 1024 ** 3 }], cudaVersion: null }));
       ipcMain.removeHandler('mineru:status');
@@ -147,6 +147,7 @@ async function run() {
     assert.equal(await page.locator('.settings-models .model-card').count(), 9);
     assert.equal(await page.locator('[data-model-role="translation"] .model-card').count(), 3);
     assert.equal(await page.locator('[data-model-role="assistant"] .model-card').count(), 6);
+    assert.equal(await page.locator('.model-space-warning').count(), 0, 'A custom endpoint may use another model drive');
     await page.getByText('This PC: 64 GiB system RAM', { exact: true }).waitFor();
     await page.getByText('Starting suggestion: TranslateGemma 12B', { exact: true }).waitFor();
     await page.locator('.settings-model-memory').getByText(/Mock AMD GPU \(AMD, 16 GiB dedicated\)/).waitFor();
@@ -280,6 +281,22 @@ async function run() {
     const paperB = storedPapers.find(paper => paper.blocks.some(block => block.text === 'Settings model task B.'));
     assert.deepEqual(assistants(paperA.taskSettings), Array(3).fill('gemma3:4b'));
     assert.deepEqual(assistants(paperB.taskSettings), Array(3).fill(endpointBModel));
+    // Direct Windows Ollama has a known model volume. Exercise the default address
+    // with deterministic inventory so the test never requests or downloads local models.
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('ollama:models');
+      ipcMain.handle('ollama:models', () => ['translategemma:4b']);
+    });
+    await page.getByLabel('Ollama URL').fill('http://localhost:11434');
+    await page.getByRole('button', { name: 'Refresh models', exact: true }).click();
+    await page.getByLabel('Translation model').locator('option').filter({ hasText: 'translategemma:4b' }).waitFor({ state: 'attached' });
+    await clickTab('Local AI');
+    await page.getByText('Windows model drive T: · 155,648 bytes free at last check', { exact: true }).waitFor();
+    assert.equal(await card('translategemma:4b').locator('.model-space-warning').count(), 0);
+    for (const model of ['translategemma:12b', 'translategemma:27b']) {
+      await card(model).locator('.model-space-warning').waitFor();
+      assert.equal(await card(model).getByRole('button', { name: 'Download & use' }).isEnabled(), true);
+    }
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(artifacts, 'settings-models-actions.json'), JSON.stringify({ pulls: pulls.map(pull => pull.payload), viewports, zoom, settings: saved() }, null, 2));
     console.log('Settings recommendations passed: nine cards, RAM and dedicated GPU memory suggestion, official links, cancellation across tabs, retry, download/use task roles, specialist retention, independent quick lookup, restart persistence, late completion isolation across papers/endpoints, and tab navigation at 980x620 with 100%/150% Electron zoom.');

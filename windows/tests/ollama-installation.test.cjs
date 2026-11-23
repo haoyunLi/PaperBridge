@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { ollamaLaunch, ollamaPath, localOllamaURL } = require('../electron/ollama-installation.cjs');
+const { modelStorageSpace, ollamaLaunch, ollamaPath, localOllamaURL } = require('../electron/ollama-installation.cjs');
 const { SetupManager } = require('../electron/setup.cjs');
 
 test('Ollama discovery supports the desktop installer, standalone CLI and registered custom folder', async t => {
@@ -27,6 +27,21 @@ test('Ollama discovery supports the desktop installer, standalone CLI and regist
   const companion = path.join(standard, 'ollama.exe');
   fs.writeFileSync(companion, '');
   assert.deepEqual(ollamaLaunch(desktop, 'http://localhost:11518'), { executable: companion, args: ['serve'], host: 'http://localhost:11518' });
+});
+
+test('the model drive reports available space before the folder exists and skips unknown volumes', { skip: process.platform !== 'win32' }, async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-model-drive-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const folder = path.join(root, 'future model library', 'models');
+  const volume = await modelStorageSpace(folder);
+  const existing = await modelStorageSpace(root);
+  assert.equal(volume.drive, path.parse(fs.realpathSync(root)).root.slice(0, 2).toUpperCase());
+  assert.ok(Number.isSafeInteger(volume.freeBytes) && volume.freeBytes >= 0);
+  assert.equal(existing.drive, volume.drive);
+  assert.equal((await modelStorageSpace('', root)).drive, volume.drive);
+  assert.equal(fs.existsSync(folder), false);
+  assert.equal(await modelStorageSpace('relative-folder'), null);
+  assert.equal(await modelStorageSpace(String.raw`\\example.invalid\models`), null);
 });
 
 test('custom loopback endpoints append the API below the configured prefix and preserve TLS', async () => {

@@ -1,4 +1,4 @@
-function formatMemory(bytes) {
+export function formatMemory(bytes) {
   if (bytes < 1024 ** 2) return `${bytes.toLocaleString('en-US')} bytes`;
   if (bytes < 1024 ** 3) return `${Number((bytes / 1024 ** 2).toFixed(1))} MiB`;
   return `${Number((bytes / 1024 ** 3).toFixed(1))} GiB`;

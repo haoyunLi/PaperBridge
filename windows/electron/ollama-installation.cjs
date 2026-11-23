@@ -1,9 +1,29 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 
 const exec = promisify(execFile);
+
+// Query the existing folder or its closest parent before a first model is installed.
+async function modelStorageSpace(configured = process.env.OLLAMA_MODELS, home = os.homedir()) {
+  let folder = configured?.trim() || path.join(home, '.ollama', 'models');
+  if (!/^[A-Za-z]:[\\/]/.test(folder)) return null;
+  for (;;) {
+    try {
+      const resolved = await fs.promises.realpath(folder);
+      if (!/^[A-Za-z]:[\\/]/.test(resolved)) return null;
+      const stats = await fs.promises.statfs(resolved);
+      const freeBytes = stats.bavail * stats.bsize;
+      return Number.isSafeInteger(freeBytes) && freeBytes >= 0 ? { drive: resolved.slice(0, 2).toUpperCase(), freeBytes } : null;
+    } catch (error) {
+      const parent = path.dirname(folder);
+      if (error.code !== 'ENOENT' || parent === folder) return null;
+      folder = parent;
+    }
+  }
+}
 
 function localOllamaURL(value, endpoint) {
   const url = new URL(value || 'http://localhost:11434');
@@ -63,4 +83,4 @@ function ollamaLaunch(file, baseURL) {
     : { executable: file, args: [], host: null };
 }
 
-module.exports = { localOllamaURL, localServerEndpoint, ollamaLaunch, ollamaPath };
+module.exports = { modelStorageSpace, localOllamaURL, localServerEndpoint, ollamaLaunch, ollamaPath };
