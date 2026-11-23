@@ -26,6 +26,22 @@ async function run() {
       })]);
     } finally { clearTimeout(timer); }
   }
+  async function closeReader(app) {
+    const pid = await app.evaluate(() => process.pid);
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      setImmediate(() => window.close());
+    });
+    // On Windows the installed Ollama tray process outlives the reader. Wait
+    // for PaperBridge's actual OS process, independently of test-driver pipes.
+    const deadline = Date.now() + 75000;
+    while (Date.now() < deadline) {
+      try { process.kill(pid, 0); }
+      catch (error) { if (error.code === 'ESRCH') return pid; throw error; }
+      await new Promise(resolve => setTimeout(resolve, 150));
+    }
+    throw new Error('PaperBridge process ' + pid + ' did not exit after its window closed');
+  }
   const url = 'http://127.0.0.1:11434', model = 'translategemma:4b';
   const json = async route => (await fetch(url + route, { signal: AbortSignal.timeout(3500) })).json();
   assert.equal(await json('/api/version').then(() => true, () => false), false);
@@ -112,13 +128,18 @@ async function run() {
     const settings = JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json')));
     assert.equal(settings.translationModel, model);
     checkpoint('closing the reader after its first translation');
-    await within(app.close(), 75000, 'Closing the translated reader');
+    report.closedReaderPID = await closeReader(app);
+    assert.equal((await json('/api/version')).version, report.ollama);
     checkpoint('reopening the translated reader');
     app = await launch(); page = await app.firstWindow({ timeout: 60000 });
     page.setDefaultTimeout(45000);
+    report.reopenedReaderPID = await app.evaluate(() => process.pid);
+    assert.notEqual(report.reopenedReaderPID, report.closedReaderPID);
     await openWorkspaceView(page, 'Reader');
     assert.equal(await page.locator('#block-1 .translation-text.done').innerText(), report.translation);
-    report.reopened = true; report.stage = 'complete';
+    report.reopened = true;
+    await closeReader(app);
+    report.stage = 'complete';
   } catch (error) {
     report.error = error.message.slice(0, 1200);
     if (page && !page.isClosed()) {
@@ -134,7 +155,9 @@ async function run() {
     // test's disposable reader needs to exit so Actions can collect its report.
     if (report.error) {
       await within(app.evaluate(({ app }) => { setImmediate(() => app.exit(1)); }), 5000, 'Closing the failed test reader').catch(() => {});
-    } else await within(app.close(), 75000, 'Closing the reopened reader');
+    }
   }
 }
-run().catch(error => { console.error(error); process.exitCode = 1; });
+// All reports are written synchronously. The runner owns the independently
+// installed local service after this verification program finishes.
+run().then(() => process.exit(0), error => { console.error(error); process.exit(1); });
