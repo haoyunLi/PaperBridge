@@ -57,8 +57,13 @@ function switchParagraphOutputs(paper, previous, next) {
       notes: (block.notes || []).filter(note => note.kind === 'translation')
     })) };
     const saved = variantFor(variants.translations, sourceMode, translationKey(next)) || [];
+    const savedBySource = new Map();
+    for (const item of saved) {
+      const key = JSON.stringify(item.source);
+      if (!savedBySource.has(key)) savedBySource.set(key, item);
+    }
     result.blocks = paper.blocks.map(block => {
-      const match = saved.find(item => same(item.source, sourceOf(block)));
+      const match = savedBySource.get(JSON.stringify(sourceOf(block)));
       return { ...block, translation: match?.translation || '', translationMarkdown: match?.translationMarkdown || null,
         translationLanguage: normalizeOutputLanguage(match?.translationLanguage),
         status: match?.status || 'pending', error: match?.error || '', translationHighlights: match?.highlights || [],
