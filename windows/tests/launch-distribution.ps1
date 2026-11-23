@@ -1,6 +1,6 @@
 # Test the actual GUI executable from an unrelated working directory, without
 # a debugging port, Electron CLI, development server, or launch arguments.
-param([Parameter(Mandatory)][string] $Executable, [switch] $CheckRelaunch)
+param([Parameter(Mandatory)][string] $Executable, [switch] $CheckRelaunch, [switch] $CheckExtractionWindow)
 $ErrorActionPreference = 'Stop'
 $binary = (Resolve-Path -LiteralPath $Executable).Path
 $root = Join-Path ([IO.Path]::GetTempPath()) ('PaperBridge smoke ' + [guid]::NewGuid().ToString('N'))
@@ -31,7 +31,27 @@ try {
         [Environment]::SetEnvironmentVariable($name, $testEnvironment[$name])
     }
     $launchDirectory = [IO.Path]::GetTempPath()
+    $desktop = [System.Windows.Automation.AutomationElement]::RootElement
+    $launchTime = [Diagnostics.Stopwatch]::StartNew()
     $launcher = Start-Process -FilePath $binary -WorkingDirectory $launchDirectory -PassThru
+    if ($CheckExtractionWindow) {
+        $owner = [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $launcher.Id)
+        $observed = @{}
+        $extractionWindow = $false
+        do {
+            foreach ($element in $desktop.FindAll([System.Windows.Automation.TreeScope]::Children, $owner)) {
+                try { $info = $element.Current; $rect = $info.BoundingRectangle } catch [System.Windows.Automation.ElementNotAvailableException] { continue }
+                $observed[$info.ClassName] = "$($rect.Width) x $($rect.Height)"
+                if ($info.ClassName -eq 'NSISBGImage' -and !$info.IsOffscreen -and $rect.Width -ge 250 -and $rect.Height -ge 60 -and [math]::Abs($rect.Width / $rect.Height - 400 / 96) -lt 0.2) {
+                    $extractionWindow = $true
+                    Write-Output "Portable showed its extraction window after $($launchTime.ElapsedMilliseconds) ms ($($observed[$info.ClassName]), $($info.ClassName))"
+                    break
+                }
+            }
+            if (!$extractionWindow) { Start-Sleep -Milliseconds 25 }
+        } while (!$extractionWindow -and !$launcher.HasExited -and $launchTime.Elapsed.TotalSeconds -lt 12)
+        if (!$extractionWindow) { throw "Portable extraction window was missing. Launcher windows: $($observed | ConvertTo-Json -Compress)" }
+    }
     $owned = @($launcher.Id)
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     $ready = $false
@@ -78,6 +98,7 @@ try {
         if (!$ready) { Start-Sleep -Milliseconds 350 }
     } while (!$ready -and [DateTime]::UtcNow -lt $deadline)
     if (!$ready) { throw "The process started but the first-launch guide did not appear: $binary" }
+    Write-Output "First-launch guide ready after $($launchTime.ElapsedMilliseconds) ms"
     if ($CheckRelaunch) {
         if (!('PaperBridgeSmoke.WindowState' -as [type])) {
             Add-Type -Namespace PaperBridgeSmoke -Name WindowState -MemberDefinition @'
