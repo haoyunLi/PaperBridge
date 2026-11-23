@@ -19,14 +19,26 @@ func nativeHTMLEquations(fixtures: URL) throws -> [[String: Any]] {
     let deadline = Date().addingTimeInterval(25)
     while view.isLoading && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
     let script = """
+        const deadline = performance.now() + 8000;
+        while (!window.MathJax?.startup?.promise && performance.now() < deadline) {
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
         await MathJax.startup.promise;
-        return Array.from(MathJax.startup.document.math, item => ({
+        const equations = Array.from(MathJax.startup.document.math, item => ({
           tex: item.math, display: item.display, in: item.typesetRoot.closest('td,th,caption,figcaption')?.localName || ''
         }));
+        return {equations, rendered: document.querySelectorAll('mjx-container').length,
+          text: document.querySelector('article')?.textContent.slice(0, 400) || ''};
         """
     var result: Result<Any, Error>?
     view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result = $0 }
     while result == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.04)) }
-    guard let result, let formulas = try result.get() as? [[String: Any]], formulas.count == 5 else { throw CocoaError(.fileReadCorruptFile) }
+    guard let result, let observation = try result.get() as? [String: Any],
+          let formulas = observation["equations"] as? [[String: Any]] else {
+        throw NSError(domain: "HTMLMathReference", code: 1, userInfo: [NSLocalizedDescriptionKey: "The native equation preview did not return an observation."])
+    }
+    let evidence = try JSONSerialization.data(withJSONObject: observation, options: [.sortedKeys])
+    FileHandle.standardError.write(evidence)
+    FileHandle.standardError.write(Data("\n".utf8))
     return formulas
 }
