@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.89 的论文图表、选区和更新
+
+在《Attention Is All You Need》的同一份 PDF 上核对了 Windows 与 macOS PDFKit。Windows 跳过印刷区域以外的五个标题，保留十行坐标轴标签及三处图注。第 14–15 页的八处同词笔记均能在重启、缩放后回到对应印刷位置。旧版保存的可见标注可以恢复，指向隐藏图题的旧标注仍可在列表中查看。RX 7800 XT 实测也验证了按用户保存的术语重译图注，正确表达“六层中的第五层”。[Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45124348109) · [Windows 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45124989187/job/137530614117)
+
+两份 EXE 先以预发布形式上传，独立 Windows 验证公开文件的构建证明和启动后，再更新下载入口。此期间，旧客户端的两个检查入口均继续提供 0.2.88。发布后原 0.2.88 的安装版及便携版均发现 0.2.89，下载各自对应的 EXE。安装版覆盖升级后保留原论文、高亮、笔记和阅读外观。[公开发布与更新](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.89)
+
 ## 0.2.88 的构建证明、论文翻译与覆盖升级（2026-11-23）
 
 GitHub 为 Setup 和 Portable 签发了构建来源证明。独立 Windows 从公开链接下载后，校验两份 EXE 对应的源码提交、标签及工作流，打开两种程序并离线读取论文。Edge 在本机从首页下载的文件保留互联网来源标记。原 0.2.87 用户可以从应用内发现更新。实测分别下载对应版本，覆盖安装后保留论文、高亮、笔记与阅读外观。此版没有 Authenticode 发布者签名。[公开下载与来源验证](https://github.com/haoyunLi/PaperBridge/actions/runs/45121877225) · [发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.88)
