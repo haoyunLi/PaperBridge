@@ -1,0 +1,27 @@
+[
+  {
+    "name": "Software links",
+    "start": "Review",
+    "end": "Archive"
+  },
+  {
+    "name": "License and affiliation",
+    "start": "CC BY 4.0",
+    "end": "Baylor College of Medicine"
+  },
+  {
+    "name": "Code into caption",
+    "start": "1174.9490 exploring",
+    "end": "Figure 1: The first 12 lines"
+  },
+  {
+    "name": "Python into heading",
+    "start": "result = reader.read()",
+    "end": "Iterative Reading"
+  },
+  {
+    "name": "Inside Python listing",
+    "start": "with open(",
+    "end": "reader = Reader(infile)"
+  }
+]
