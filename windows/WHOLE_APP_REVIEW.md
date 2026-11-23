@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.88 的构建证明、论文翻译与覆盖升级（2026-11-23）
+
+GitHub 为 Setup 和 Portable 签发了构建来源证明。独立 Windows 从公开链接下载后，校验两份 EXE 对应的源码提交、标签及工作流，打开两种程序并离线读取论文。Edge 在本机从首页下载的文件保留互联网来源标记。原 0.2.87 用户可以从应用内发现更新。实测分别下载对应版本，覆盖安装后保留论文、高亮、笔记与阅读外观。此版没有 Authenticode 发布者签名。[公开下载与来源验证](https://github.com/haoyunLi/PaperBridge/actions/runs/45121877225) · [发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.88)
+
+公开 EXE 在 RX 7800 XT 上读取并翻译了求和脚注，跨页句子正确衔接。在另一篇真实期刊论文中，三段原文产生四次本地翻译请求和一批连贯译文。使用相同模型的 Mac 对照包含相同的软件名称、步骤和数据处理含义。30 个原生长段重排结果与 Windows 逐字一致。对真实阅读存档的两处长段执行拆分、撤销和重启后，笔记和相邻译文均保留。[Mac 本地模型运行](https://github.com/haoyunLi/PaperBridge/actions/runs/45118307078) · [Mac PDFKit 跨页对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45120169987)
+
 ## 0.2.87 公开下载、更新和原生菜单（2026-11-23）
 
 Edge 从 GitHub 首页下载 0.2.87 的安装版和便携版，两份 EXE 的 SHA-256 都与发布页一致，互联网来源标记得到保留。0.2.85 的两个版本均检测到新版并下载了各自对应的文件。覆盖安装后重开原论文，阅读外观、高亮和笔记均保留。[独立 Windows 公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137511128787) · [Windows 0.2.87 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.87)
