@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.79 本地模型建议、解析环境与译文链接（2026-11-22）
+
+同一台 RX 7800 XT 此前只按 63 GiB 系统内存推荐了 27B。公开版在引导与设置页都读取到 16 GiB 独立显存，建议 12B 并保留当前 4B。标准 Python 的全局 pip 安装也会检查所属的解释器。首选 MinerU 模式遇到已确认损坏的解析环境后使用 PDF 文字层，要求 MinerU 的模式会保留当前论文和书签。
+
+本机两个已安装模型分别翻译了含网址和邮箱的段落。应用保护了完整地址，修复了中文句号被拼进网址的问题；新旧版对照、导出及重开后的三个链接均已核对。从 0.2.78 安装升级到 0.2.79 后，已有论文、笔记和阅读设置均可恢复。[发布包](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.79) · [独立 Windows 下载测试](https://github.com/haoyunLi/PaperBridge/actions/runs/45097877047/job/137445243303) · [更新清单与首页下载](https://github.com/haoyunLi/PaperBridge/actions/runs/45097877047/job/137446020255)
+
 ## 0.2.78 长引文、跨页笔记和按句重排（2026-11-22）
 
 在 20 页的 *Good enough practices in scientific computing* 上选取第 2 页的长引文，以及从第 2 页延伸到第 3 页的引文。Mac PDFKit 与 Windows 公开版都保留了完整选区、页序和笔记。Windows 可以在检查器内预览、翻译和导出全文，重新打开后仍可跳回高亮。用 RX 7800 XT 和 TranslateGemma 4B 翻译其中 3,313 个字符，用时 5.97 秒；重复翻译使用缓存。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45095379801/job/137433929093)
