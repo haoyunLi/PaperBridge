@@ -847,7 +847,18 @@
     {
       "name": "Japanese quote and citation",
       "text": "「この差は有意か？」と研究者は尋ねた。図2に結果を示す。試験を二度繰り返した。",
-      "target": 19
+      "target": 19,
+      "keepJapaneseQuotationSpacing": true
+    },
+    {
+      "name": "separate Japanese quotations",
+      "text": "「二つの試料を比較した。」「どちらの測定値も一致した。」その後、第三の試験を行った。",
+      "target": 14
+    },
+    {
+      "name": "separate Chinese quoted statements",
+      "text": "「第一组已经完成测量。」「第二组需要复核。」接下来，我们检查了全部数据。",
+      "target": 13
     },
     {
       "name": "numbered citation after a sentence",
