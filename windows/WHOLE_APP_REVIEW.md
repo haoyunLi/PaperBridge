@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 0.2.85 离线公式、资源导出与真实模型重试（2026-11-22）
+
+用同一份校准记录核对了表题、表头、表格数据和图注里的五个公式。Windows 便携版在 Paper、Reader 和全文翻译里使用自带字体，并保留图注代码里的字面示例。公开程序还能把两份真实附件打包到新目录，代码块中的四行示例文件名、缩进与 Mac 导出一致。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45113226495/job/137490080057)
+
+公开的 Setup 和 Portable 均未签名。两份文件的 SHA-256 与 GitHub 匹配，0.2.84 能发现新版，覆盖安装保留论文、外观和标注。在 RX 7800 XT 上，TranslateGemma 4B 有一次遗漏了代码占位符，程序保留了原文并显示重试。只重试这一段后，三段译文可以完整导出，另外两段的已有译文逐字保留。Qwen3 4B 也完成了本地测试。[独立 Windows 公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45113226495/job/137493246511) · [Windows 0.2.85 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.85)
+
 ## 0.2.84 旧笔记、AMD 本地环境与覆盖升级（2026-11-22）
 
 emcee 期刊论文里的笔记在原段合并或重排后仍能跳到唯一的原句。旧偏移上的重复词保留待复核。把作者姓氏 Bazán 的重音从单字符改成组合字符后，重开仍可选中完整姓名，导出保留保存时的引文。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45111249591/job/137483860845)
