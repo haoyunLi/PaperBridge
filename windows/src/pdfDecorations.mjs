@@ -55,14 +55,18 @@ function isStandaloneEquation(text) {
     && text.split(/\s+/u).length <= 16;
 }
 
-export function stitchPageBlocks(blocks) {
+export function stitchPageBlocks(blocks, openingFigureIDs) {
   const result = [];
   let lastPage;
   for (const block of blocks) {
+    if (openingFigureIDs?.has(block.id)) {
+      result.push({ ...block });
+      continue;
+    }
     let index = result.length - 1;
     const newPage = lastPage === block.page - 1;
     // Printed notes stay on their own page while body text can continue on the next.
-    if (newPage) while (index >= 0 && result[index].pdfFootnoteMarker) index--;
+    if (newPage) while (index >= 0 && (result[index].pdfFootnoteMarker || openingFigureIDs?.has(result[index].id))) index--;
     const previous = result[index];
     lastPage = block.page;
     const left = previous?.text?.trim() || '';

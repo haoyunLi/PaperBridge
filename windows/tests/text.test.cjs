@@ -289,6 +289,29 @@ test('a first-page proceedings imprint stays with the byline and out of a contin
   assert.ok(text(lines.slice(0, -1)).at(-1).startsWith('Proceedings of'));
 });
 
+test('only an isolated full-width opening figure lets a body paragraph resume past its caption', async () => {
+  const { openingFigure } = await import('../src/pdfLayout.mjs');
+  const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
+  const line = (text, lane, x, y) => ({ text, lane, x, y, width: 240, height: 10 });
+  const diagram = line('Training', 'left', 50, 730);
+  const caption = line('Figure 1: Comparison of objec-', 'spanning', 50, 660);
+  const tail = line('tives.', 'left', 50, 648);
+  const body = [line('ing and encoding across several methods.', 'left', 50, 620),
+    line('Models can be compared across measures.', 'right', 330, 620)];
+  const opening = openingFigure([diagram, caption, tail, ...body], 800);
+  assert.deepEqual(opening.body, body);
+  assert.equal(opening.figure.at(-1).text, 'Figure 1: Comparison of objectives.');
+  const blocks = stitchPageBlocks([{ id: 1, page: 2, text: 'Left-to-right language model-' },
+    ...opening.figure.map((row, i) => ({ id: i + 2, page: 3, text: row.text })),
+    { id: 4, page: 3, text: body[0].text }], new Set([2, 3]));
+  assert.deepEqual(blocks.map(b => b.text), ['Left-to-right language modeling and encoding across several methods.',
+    diagram.text, opening.figure.at(-1).text]);
+  assert.equal(blocks[0].endPage, 3);
+  assert.equal(openingFigure([{ ...diagram, text: 'Previous body paragraph at normal size' }, caption, tail, ...body], 800), null);
+  assert.equal(openingFigure([diagram, caption, tail, body[0]], 800), null);
+  assert.equal(openingFigure([diagram, { ...caption, lane: 'left' }, tail, ...body], 800), null);
+});
+
 test('PDF reading order separates narrow-gutter columns around spanning text and retains PDF spaces', async () => {
   const { pageLines, pdfReadingGroups } = await import('../src/pdfLayout.mjs');
   const item = (str, x, y, width, vertical = false) => ({

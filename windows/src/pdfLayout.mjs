@@ -364,6 +364,31 @@ export function pageLines(content, [left, bottom, right, top]) {
   });
 }
 
+// A full-width figure can precede the continuation of the previous page's
+// sentence. Both body columns must restart below a separated, printed caption.
+export function openingFigure(lines, height) {
+  const start = lines.findIndex(line => line.lane === 'spanning' && line.y > height * 0.48 &&
+    /^(?:Figure|Fig\.)\s+\d+[.:]/iu.test(line.text));
+  if (start < 1) return null;
+  const caption = lines[start];
+  const diagram = lines.slice(0, start);
+  if (diagram.some(line => line.height >= caption.height * 0.92 && hasProse(line.text))) return null;
+  let end = start + 1;
+  while (end < lines.length) {
+    const line = lines[end], gap = lines[end - 1].y - line.y;
+    if (gap <= 0 || gap > caption.height * 1.5 || Math.abs(line.height - caption.height) > caption.height * 0.08 ||
+        Math.abs(line.x - caption.x) > caption.height || line.lane === 'right' ||
+        lines[end + 1]?.y === line.y) break;
+    end++;
+  }
+  const first = lines[end], other = lines[end + 1];
+  if (!first || !other || first.lane !== 'left' || other.lane !== 'right' ||
+      Math.abs(first.y - other.y) > first.height * 0.5 || lines[end - 1].y - first.y < first.height * 1.6 ||
+      !hasProse(first.text) || !hasProse(other.text)) return null;
+  const text = lines.slice(start, end).map(line => line.text).reduce(joinPdfText);
+  return { figure: [...diagram, { ...caption, text, independent: true }], body: lines.slice(end) };
+}
+
 function publicationFrontMatter(lines) {
   const groups = [];
   let previous;

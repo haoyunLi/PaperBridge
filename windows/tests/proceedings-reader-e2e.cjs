@@ -43,6 +43,19 @@ async function run() {
     const row = page.locator('#block-' + paragraph.id);
     await row.getByText(join, { exact: false }).first().waitFor();
     const report = { workspace: dir, title: blocks[0].id, byline: blocks[1].id, notice: notice.id, paragraph: paragraph.id };
+    let figureBody;
+    if (native.afterFigure && native.beforeFigurePage && native.captionEnd) {
+      const figureJoin = native.beforeFigurePage.replace(/-$/, '') + native.afterFigure;
+      figureBody = blocks.find(block => block.text.includes(figureJoin));
+      assert.ok(figureBody && figureBody.page === 2 && figureBody.endPage === 3);
+      const caption = blocks.find(block => block.page === 3 && block.text.startsWith('Figure 1:'));
+      assert.ok(caption && caption.text.endsWith(native.captionEnd));
+      assert.ok(blocks.some(block => block.page === 3 && block.text === 'Pre-training Fine-Tuning'));
+      assert.doesNotMatch(figureBody.text, /Overall pre-training|questions\/answers/);
+      await page.locator('#block-' + figureBody.id).getByText(figureJoin, { exact: false }).first().waitFor();
+      report.figureContinuation = figureBody.id;
+      report.figureCaption = caption.id;
+    }
     if (process.argv.includes('--live')) {
       await row.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
       const translated = row.locator('.translation-text.done');
@@ -50,12 +63,22 @@ async function run() {
       report.translation = await translated.innerText();
       assert.match(report.translation, /MLM|掩[码蔽膜]|屏蔽|遮[蔽罩]/);
       assert.ok(!/NAACL|计算语言学协会|明尼[苏索]/i.test(report.translation));
+      if (figureBody) {
+        const continuation = page.locator('#block-' + figureBody.id);
+        await continuation.getByRole('button', { name: 'Translate Paragraph', exact: true }).click();
+        const result = continuation.locator('.translation-text.done');
+        await result.waitFor({ timeout: 150000 });
+        report.figureBodyTranslation = await result.innerText();
+        assert.match(report.figureBodyTranslation, /左(?:向|到|至)右/);
+        assert.doesNotMatch(report.figureBodyTranslation, /分隔符|特殊标记|问题[和与]答案/);
+      }
       const running = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
       report.vram = running.models.find(m => m.name === 'translategemma:4b')?.size_vram;
       assert.ok(report.vram > 0);
       await app.close(); app = await launch(); page = await app.firstWindow();
       await openWorkspaceView(page, 'Reader');
       assert.equal(await page.locator('#block-' + paragraph.id + ' .translation-text.done').innerText(), report.translation);
+      if (figureBody) assert.equal(await page.locator('#block-' + figureBody.id + ' .translation-text.done').innerText(), report.figureBodyTranslation);
     }
     console.log(JSON.stringify(report));
   } finally { await app.close(); }

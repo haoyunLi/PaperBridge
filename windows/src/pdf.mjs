@@ -3,7 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
 import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
-import { pageLines, pdfReadingGroups, recoverCodeAsterisks, recoverInlineSummations } from './pdfLayout.mjs';
+import { openingFigure, pageLines, pdfReadingGroups, recoverCodeAsterisks, recoverInlineSummations } from './pdfLayout.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -61,9 +61,18 @@ export async function extractPdf(pdf, onPage, checkActive) {
   }
   const cleaned = filterRepeatedPageDecorations(pages);
   const blocks = [];
+  const openingFigureIDs = new Set();
   for (const page of cleaned) {
     const { pageNumber, lines } = page;
-    for (const group of pdfReadingGroups(lines, page)) {
+    const opening = pageNumber > 1 && openingFigure(lines, page.height);
+    if (opening) {
+      for (const group of pdfReadingGroups(opening.figure)) {
+        const figureBlocks = blocksFromLines(group, pageNumber, blocks.length + 1, true);
+        for (const block of figureBlocks) openingFigureIDs.add(block.id);
+        blocks.push(...figureBlocks);
+      }
+    }
+    for (const group of pdfReadingGroups(opening ? opening.body : lines, page)) {
       blocks.push(...blocksFromLines(group, pageNumber, blocks.length + 1, true));
     }
   }
@@ -71,7 +80,7 @@ export async function extractPdf(pdf, onPage, checkActive) {
   // passes after page stitching. Each pass is non-overlapping, not a fixed point.
   // Only newly extracted text is normalized; saved blocks/annotation offsets
   // and the original PDF bytes are never sent through this import pipeline.
-  return stitchPageBlocks(blocks).map(block => block.sourceMarkdown ? block : {
+  return stitchPageBlocks(blocks, openingFigureIDs).map(block => block.sourceMarkdown ? block : {
     ...block, text: finishExtractedPdfText(block.text)
   });
 }
