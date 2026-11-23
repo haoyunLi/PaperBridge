@@ -11,7 +11,9 @@ async function run() {
   const root = path.resolve(__dirname, '..'), artifacts = path.join(root, 'test-artifacts');
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(process.env.RUNNER_TEMP, 'paperbridge-first-use-'));
-  const report = { release: process.env.PAPERBRIDGE_CLEAN_RELEASE, stage: 'fresh installation' };
+  const largerModel = process.env.GITHUB_REF_NAME?.endsWith('-12b');
+  const model = largerModel ? 'translategemma:12b' : 'translategemma:4b';
+  const report = { release: process.env.PAPERBRIDGE_CLEAN_RELEASE, model, stage: 'fresh installation' };
   const reportFile = path.join(artifacts, 'clean-ollama-report.json');
   function checkpoint(stage) {
     report.stage = stage;
@@ -42,7 +44,7 @@ async function run() {
     }
     throw new Error('PaperBridge process ' + pid + ' did not exit after its window closed');
   }
-  const url = 'http://127.0.0.1:11434', model = 'translategemma:4b';
+  const url = 'http://127.0.0.1:11434';
   const json = async route => (await fetch(url + route, { signal: AbortSignal.timeout(3500) })).json();
   assert.equal(await json('/api/version').then(() => true, () => false), false);
   const launch = () => electron.launch({ executablePath: process.env.PAPERBRIDGE_TEST_EXECUTABLE, cwd: root,
@@ -108,7 +110,7 @@ async function run() {
     await page.getByRole('tab', { name: 'Models', exact: true }).click();
     await page.getByRole('button', { name: 'Cancel download', exact: true }).waitFor({ state: 'hidden', timeout: 15 * 60000 });
     const weights = (await json('/api/tags')).models.find(m => m.name === model);
-    assert.ok(weights && weights.size > 1000000000);
+    assert.ok(weights && weights.size > (largerModel ? 7000000000 : 3000000000));
     report.weights = { name: model, size: weights.size, digest: weights.digest };
     await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     checkpoint('translating in the installed reader');
