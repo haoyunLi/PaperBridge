@@ -735,6 +735,26 @@
   ],
   "pageBoundaries": [
     {
+      "name": "proper name continuing the PLOS method",
+      "left": "Some data-cleaning tools, such as",
+      "right": "OpenRefine, provide a graphical user interface and keep track of each step in the process."
+    },
+    {
+      "name": "an independent dot-product equation on the next page",
+      "left": "The calibration used a scaled dot product",
+      "right": "q · k = q1k1 + q2k2"
+    },
+    {
+      "name": "an ordinary paragraph after a detached equation",
+      "left": "test voltage = current + voltage",
+      "right": "where this paragraph describes a separate measurement."
+    },
+    {
+      "name": "a closing square bracket at the beginning of a page",
+      "left": "We applied the correction for the long interval [sample 2",
+      "right": "] to the other measurement."
+    },
+    {
       "name": "hyphenated word across pages",
       "left": "The authors propose a reproducible metho-",
       "right": "dology for this experiment."
