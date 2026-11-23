@@ -17,6 +17,8 @@ This folder contains a Windows desktop port of PaperBridge. It follows the macOS
 
 The parity target is **the same functionality and available actions**. Windows layout adapts to its fonts, window size and display scaling; macOS pixel dimensions are a reference, not a requirement.
 
+Version 0.2.82 preserves fixed-pitch listings in the Paper preview and paragraph editor. Edits, paragraph splits and Undo keep command lines and indentation. Reader and Overview notes preserve the full selected text, including leading and trailing spaces.
+
 Version 0.2.81 checks saved Reader and Paper quotations before showing their navigation and export status. Auto-detect can also locate MinerU in standard per-user Python directories.
 
 Version 0.2.80 keeps PDF code samples on their original lines and preserves indentation in fixed-pitch listings. Pasted-text and PDF translations protect web and email addresses. Local AI setup also looks for another working MinerU installation when an earlier one fails its runtime check.
