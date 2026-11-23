@@ -16,11 +16,15 @@ import { createHash } from 'node:crypto';
 import { markdownAnnotationOffset } from '../../src/markdownAnchors.mjs';
 import { filteredReaderBlocks } from '../../src/textSearch.mjs';
 import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
-import { protectMarkdown, restoreMarkdown } from '../../src/prompts.mjs';
+import { protectMarkdown, restoreMarkdown, translationPrompt } from '../../src/prompts.mjs';
 import { parsedMarkdownBlocks } from '../../src/academicMarkdown.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+assert.equal(reference.translationPrompts.length, 11);
+for (const { source, target, prompt } of reference.translationPrompts) {
+  assert.equal(translationPrompt('The sensor reading has stabilized.', source, target), prompt, target + ' paragraph prompt');
+}
 const bundleFixture = JSON.parse(readFileSync(new URL('./bundle-fixture.json', import.meta.url), 'utf8'));
 const work = mkdtempSync(path.join(os.tmpdir(), 'paperbridge-native-bundle-'));
 try {

@@ -234,7 +234,11 @@ struct Reference {
         let ranges = try nativeTranslationRanges(fixtures: fixtureURL.deletingLastPathComponent())
         let journalDraft = try nativeJournalDraft(fixtures: fixtureURL.deletingLastPathComponent())
         let navigation = try nativeMarkdownNavigation(fixtures: fixtureURL.deletingLastPathComponent())
-        let output: [String: Any] = ["markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource, "deepResource": navigation.deep,
+        let translationPrompts = ReaderLanguage.allCases.map { language in
+            ["source": ReaderLanguage.english.displayName, "target": language.displayName,
+             "prompt": PromptLibrary.translationPrompt(for: "The sensor reading has stabilized.", from: .english, to: language)]
+        }
+        let output: [String: Any] = ["translationPrompts": translationPrompts, "markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource, "deepResource": navigation.deep,
                                      "retainedSlice": try nativeRetainedSlice(paragraphs: body, checksum: checksum),
                                      "legacyParagraphAnchors": try nativeLegacyParagraphAnchors(paragraphs: body, checksum: checksum),
                                      "longBibliographies": try nativeLongBibliographies(fixtures: fixtureURL.deletingLastPathComponent()),

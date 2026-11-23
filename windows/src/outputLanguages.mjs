@@ -1,8 +1,9 @@
 import { structuredBlockSource } from '../electron/markdown-code-context.mjs';
 import { referenceBlockIds } from './references.mjs';
 
-const supportedLanguages = new Set(['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean',
-  'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian']);
+export const languageCodes = Object.freeze({ English: 'en', 'Simplified Chinese': 'zh-Hans', 'Traditional Chinese': 'zh-Hant',
+  Japanese: 'ja', Korean: 'ko', French: 'fr', German: 'de', Spanish: 'es', Italian: 'it', Portuguese: 'pt', Russian: 'ru' });
+const supportedLanguages = new Set(Object.keys(languageCodes));
 const owns = (value, key) => Boolean(value && Object.hasOwn(value, key));
 const hasTranslation = block => {
   const value = block?.translationMarkdown || block?.translation;

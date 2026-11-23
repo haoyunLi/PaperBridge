@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 同一模型在 Mac 与 RX 7800 XT 上的逐段翻译（2026-11-22）
+
+用 Mac 1.10.0 的原生阅读器代码和 Windows 阅读器翻译 PLOS 论文 *Good enough practices in scientific computing* 的第 54–56 段。两端均使用 Ollama 0.40.16、相同摘要指纹的 TranslateGemma 4B 及 500 字符段落上限。前两段分别请求一次，第三段分两次翻译并保存为一段。两端的全文翻译各完成一个批次。Mac 使用 Intel CPU；Windows 使用 RX 7800 XT，Ollama 报告占用 2,881,948,220 字节显存。[原生 Mac 翻译及结果文件](https://github.com/haoyunLi/PaperBridge/actions/runs/45118307078)
+
+第 54 段要求记录数据处理步骤。Windows 0.2.85 曾把其中一句译成「数据处理是分析过程的 integral 部分」。开发版采用 Mac 的普通段落翻译提示后，在同一台 AMD 电脑上译为「数据处理对于您的分析至关重要，与统计建模和推论一样」。第 56 段两端都保留软件名 OpenRefine 和保存区域边界坐标的操作。样本为三段英文到简体中文的技术写作，覆盖段落拆分、合回及上下文连译。
+
 ## 0.2.76 公开版的代码、公式与图注翻译（2026-11-22）
 
 在 RX 7800 XT 上把同一段仪器测量说明交给 `translategemma:4b`。0.2.74 把代码中的 `sample` 译成了「样本」，还改写了 HTML 属性中的 `threshold`。0.2.76 的译文逐字保留双反引号代码、公式、带引号的 HTML 属性以及包含括号的链接和图像路径。全文译稿导出到磁盘后可重开，Reader 中的代码和链接与源文相同。Ollama 报告模型使用 2,881,948,220 字节显存。另用公开便携版对扫描 PDF 实测，Auto 选中 RX 7800 XT 的 DirectML，识别出五个文字块。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.76)

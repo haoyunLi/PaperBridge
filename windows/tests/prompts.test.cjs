@@ -164,7 +164,7 @@ test('translation context requires a unique selection spanning complete sentence
 test('translation prompts treat short items as complete and never request more context', async () => {
   const { translationSystem, selectionTranslationSystem, translationPrompt, markdownTranslationPrompt } = await import('../src/prompts.mjs');
   for (const prompt of [translationSystem('Chinese'), selectionTranslationSystem('Chinese'), translationPrompt('Abstract', 'English', 'Chinese'), markdownTranslationPrompt('# Methods', 'English', 'Chinese')]) {
-    assert.match(prompt, /complete translation unit|complete academic item|complete academic Markdown item/);
+    assert.match(prompt, /complete translation unit|as a complete item|complete academic (?:Markdown )?item/);
     assert.match(prompt, /(?:Do not|never) ask for more context/i);
   }
 });

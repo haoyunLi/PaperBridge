@@ -4,10 +4,8 @@ import { parseMarkdown } from './markdownRendering.mjs';
 import { analysisAnnotations, annotationsMarkdown } from './annotationsMarkdown.mjs';
 import { referenceBlockIds, revalidateSummaryClaims, summaryNeedsTextRefresh, legacySummaryTextNotice, staleSummaryNotice } from './paper.mjs';
 import { connectedTranslationMarkdown } from './connectedTranslationExport.mjs';
-import { commonOutputLanguage, migrateOutputLanguages, normalizeOutputLanguage, readerOutputLanguage } from './outputLanguages.mjs';
+import { commonOutputLanguage, languageCodes, migrateOutputLanguages, normalizeOutputLanguage, readerOutputLanguage } from './outputLanguages.mjs';
 
-const languageCodes = Object.freeze({ English: 'en', 'Simplified Chinese': 'zh-Hans', 'Traditional Chinese': 'zh-Hant',
-  Japanese: 'ja', Korean: 'ko', French: 'fr', German: 'de', Spanish: 'es', Italian: 'it', Portuguese: 'pt', Russian: 'ru' });
 const knownLanguage = value => Object.hasOwn(languageCodes, value) ? value : null;
 const labeled = (label, language) => language ? `${label} (${language})` : label;
 const filenameFor = (kind, pair) => {
