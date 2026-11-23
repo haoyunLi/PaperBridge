@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 0.2.76 公开版的代码、公式与图注翻译（2026-11-22）
+
+在 RX 7800 XT 上把同一段仪器测量说明交给 `translategemma:4b`。0.2.74 把代码中的 `sample` 译成了「样本」，还改写了 HTML 属性中的 `threshold`。0.2.76 的译文逐字保留双反引号代码、公式、带引号的 HTML 属性以及包含括号的链接和图像路径。全文译稿导出到磁盘后可重开，Reader 中的代码和链接与源文相同。Ollama 报告模型使用 2,881,948,220 字节显存。另用公开便携版对扫描 PDF 实测，Auto 选中 RX 7800 XT 的 DirectML，识别出五个文字块。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.76)
+
 ## 0.2.72 公开程序再次验证扫描件翻译（2026-11-21）
 
 从 GitHub 下载 0.2.72 便携版，在 RX 7800 XT 上自动选择 ONNX DirectML。输入 PDF 没有可选文字，MinerU 识别出五段。用 `translategemma:4b` 进行单段和全文翻译，Ollama 报告模型使用 2,881,948,220 字节显存。样例正确保留了陶瓷样品、磁场与「从零提升到两特斯拉」。原文的多次试验被译成「并在多次试验中进行」，中文仍可改进。该样例用于检查识别、显卡与翻译链路。[该版本的发布文件](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.72)
