@@ -4,12 +4,12 @@
 
 | Edition | How to open it | Download |
 | --- | --- | --- |
-| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.83/PaperBridge-Windows-0.2.83-x64-Portable.exe) |
-| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.83/PaperBridge-Windows-0.2.83-x64-Setup.exe) |
+| Portable | Double-click the EXE to open PaperBridge without installing it. | [Download Portable](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.84/PaperBridge-Windows-0.2.84-x64-Portable.exe) |
+| Setup | Run the installer, then open PaperBridge from the Start menu. | [Download Setup](https://github.com/haoyunLi/PaperBridge/releases/download/windows-v0.2.84/PaperBridge-Windows-0.2.84-x64-Setup.exe) |
 
 You can open and annotate a PDF immediately. Choose **Local AI setup** to detect your hardware and install the components for translation or scanned PDFs. The app checks for updates automatically by default.
 
-Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.83 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.83) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
+Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**, check that the file came from the official release. On a PC that allows it, choose **More info → Run anyway**. For a missing window after that step, see the startup guide. [Windows 0.2.84 release and SHA-256 checksums](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.84) · [Windows startup guide](SIGNING.md#允许运行后没有看到窗口)
 
 ## Windows and macOS features
 
