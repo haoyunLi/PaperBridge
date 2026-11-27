@@ -1,13 +1,14 @@
 # macOS ↔ Windows 0.2 parity summary
 
-Windows 0.2.96 covers **107 of the 111 actions** in the macOS 1.9 mapping. Four remain partially verified. The separate macOS 1.9.1 and 1.10 comparisons cover another 12 and 21 actions, respectively. [Action-by-action mapping](FEATURE_MAPPING.md) · [1.9.1 additions](MAC_1_9_1_GAPS.md) · [1.10 additions](MAC_1_10_GAPS.md)
+Windows covers **108 of the 111 actions** in the macOS 1.9 mapping as of November 27, 2026. Three remain partially verified. The separate macOS 1.9.1 and 1.10 comparisons cover another 12 and 21 actions, respectively. [Action-by-action mapping](FEATURE_MAPPING.md) · [1.9.1 additions](MAC_1_9_1_GAPS.md) · [1.10 additions](MAC_1_10_GAPS.md)
 
 | Remaining action | Verified | Still open |
 | --- | --- | --- |
-| Translate with 27B | A stock Windows machine installed the model. After a generation timeout, it released the model and completed the same passage using an installed 4B model. [Test run](https://github.com/haoyunLi/PaperBridge/actions/runs/45172171617) | A completed 27B translation on a Windows PC with sufficient memory. |
 | Parse on an NVIDIA GPU | Setup checks driver capabilities and chooses a compatible runtime. The RX 7800 XT has completed real DirectML OCR. [Device results](AMD_DEVICE_TEST.md) | A complete import and runtime check on a physical NVIDIA GPU. |
 | Install an update and restart | An older installed reader downloaded the release, verified its provenance, saved notes and requested the standard Windows installer. [Update test](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199) | Unattended installation and restart across Windows publisher prompts. |
 | Distribute a publisher-signed Windows app | Both public unsigned EXEs open on the independent Windows test machine. [Download test](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) | An Authenticode-signed release. [Signing options](SIGNING.md) |
+
+The packaged 0.2.98 reader downloaded 27B on an RX 7800 XT, translated two paragraphs and restored both translations after restart. The installed 4B model translated the same text. [Side-by-side device results](AMD_DEVICE_TEST.md)
 
 ## Earlier Windows releases
 

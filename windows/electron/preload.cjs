@@ -3,6 +3,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   bootstrap: () => ipcRenderer.invoke('bootstrap'),
   updateMenuState: state => ipcRenderer.invoke('menu:update-state', state),
   checkUpdates: automatic => ipcRenderer.invoke('updates:check', automatic),
+  skipUpdate: tag => ipcRenderer.invoke('updates:skip', tag),
   revealUpdate: tag => ipcRenderer.invoke('updates:reveal', tag),
   openUpdateInstaller: tag => ipcRenderer.invoke('updates:install', tag),
   onUpdateFile: callback => {

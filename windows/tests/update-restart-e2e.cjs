@@ -220,7 +220,43 @@ async function run() {
     fs.writeFileSync(installer, 'x'.repeat(bytes.length));
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /no longer matches/);
     assert.equal(await app.evaluate(() => global.__installerRequests.length), 2);
-    console.log('Verified update downloads, explicit installer handoff, portable isolation, offline restart and changed-file rejection passed.');
+    await settings.getByRole('button', { name: 'Skip this version' }).click();
+    await settings.getByText(`Skipped Windows ${nextVersion}. You can still find it with Check now.`).waitFor();
+    assert.equal(JSON.parse(fs.readFileSync(cacheFile)).skippedTag, identity.tag);
+    await assert.rejects(page.evaluate(tag => window.paperBridge.skipUpdate(tag), 'windows-v99.0.0'), /current release/);
+    await page.getByLabel(/Check official Windows releases/).check();
+    await page.getByLabel(/Download new Windows releases in the background/).check();
+    await page.waitForFunction(async () => (await window.paperBridge.bootstrap()).settings.autoDownloadUpdates === true);
+    await app.close();
+    app = await launch(true);
+    page = await app.firstWindow();
+    await provideDownload(app);
+    await page.locator('.welcome').waitFor();
+    assert.equal((await page.evaluate(() => window.paperBridge.checkUpdates(true))).status, 'skipped');
+    assert.deepEqual(await app.evaluate(() => global.__fileRequests), []);
+    assert.equal(await page.locator('.update-banner').count(), 0);
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Check now', exact: true }).click();
+    await page.locator('.update-banner').getByText(`PaperBridge for Windows ${nextVersion} is available`).waitFor({ state: 'attached' });
+    assert.deepEqual(await app.evaluate(() => global.__fileRequests), [], 'Manual discovery of a skipped release needs an explicit download');
+    assert.equal((await page.evaluate(() => window.paperBridge.checkUpdates(true))).status, 'skipped');
+    await page.getByRole('dialog').getByRole('button', { name: 'Download portable update', exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll('[role="status"]')].some(item => item.textContent.includes('verify the GitHub build proof')));
+    assert.equal(await app.evaluate(() => global.__fileRequests.length), 1);
+    await app.close();
+    app = null;
+    // A subsequent release must still surface on startup.
+    fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile)), autoDownloadUpdates: false }));
+    const laterVersion = `${parts[0]}.${parts[1] + 1}.1`;
+    const nextCache = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+    const laterRelease = JSON.parse(JSON.stringify(nextCache.release).replaceAll(nextVersion, laterVersion));
+    fs.writeFileSync(cacheFile, JSON.stringify({ ...nextCache, release: laterRelease }));
+    app = await launch(true);
+    page = await app.firstWindow();
+    await page.locator('.update-banner').getByText(`PaperBridge for Windows ${laterVersion} is available`).waitFor();
+    assert.equal(JSON.parse(fs.readFileSync(cacheFile)).skippedTag, identity.tag);
+    console.log('Verified update downloads, installer handoff, offline restart, per-version skipping and explicit rediscovery passed.');
   } finally { await app?.close(); }
 }
 

@@ -145,6 +145,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
           {updates.onOpenInstaller && <button className="button blue" disabled={updates.installerBusy} onClick={updates.onOpenInstaller}>Open installer</button>}
           {updates.downloadLabel && updates.filePhase !== 'downloading' && <button className={updates.onOpenInstaller ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
           {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
+          {updates.availableVersion && <button className="button ghost" disabled={updates.installerBusy} onClick={updates.onSkip}>Skip this version</button>}
         </div>
         {updates.status && <p role="status">{updates.status}</p>}
         {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}

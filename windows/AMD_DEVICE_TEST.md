@@ -1,5 +1,18 @@
 # Windows AMD 真机回归
 
+## RX 7800 XT 上的 TranslateGemma 4B 和 27B
+
+2026-11-27 在这台 16 GiB RX 7800 XT、约 63 GiB 系统内存的电脑上，用打包的 Windows 0.2.98 阅读器把同一篇两段短文从英语译成简体中文。设置中的 **Download & use** 下载并选中了 27B。Ollama 0.40.16 通过 ROCm 将 63 层中的 53 层放到显卡上。两次生成期间，它报告的模型显存用量都是 14,833,145,610 字节，4B 对应为 2,881,948,220 字节。
+
+| 原文 | 4B 译文与耗时 | 27B 译文与耗时 |
+| --- | --- | --- |
+| The solar panel supplied power to the temperature sensor. The researchers recorded the temperature every hour. | 太阳能电池板为温度传感器供电。研究人员每小时记录一次温度。5.9 秒 | 太阳能电池板为温度传感器供电。研究人员每小时记录一次温度。23.9 秒 |
+| The efficiency increased from 12.5% to 14.8%. The study did not establish a causal relationship. | 效率从 12.5% 提高到 14.8%。 本研究未建立因果关系。1.0 秒 | 效率从 12.5% 提高到 14.8%。该研究并未确定因果关系。8.0 秒 |
+
+时间从点击段落翻译算到译文显示，每个模型的第一段包含加载时间。两种模型都保留了数字、百分号、否定含义和记录频率，关闭并重开应用后，两段译文均完整恢复。这是两段短文的实测。
+
+27B 的 Q4_K_M 权重共 17,358,650,268 字节，使用独立的 Ollama 端口和模型目录。实测结束后确认临时目录已删除，默认模型库仍只有原有的两个 4B 模型。在 `windows/` 下，已安装的 4B 可用 `node tests/live-large-model.cjs --installed-4b` 复测。临时 27B 测试需在 PowerShell 设置 `$env:PAPERBRIDGE_TEMPORARY_27B='1'`，再运行 `node tests/live-large-model.cjs`。两者均可用 `PAPERBRIDGE_TEST_EXECUTABLE` 指定打包的阅读器。[实测脚本](tests/live-large-model.cjs)
+
 ## 0.2.96 便携版首次启动
 
 本机在 125% 缩放下运行候选便携版，262 毫秒后出现原生解压提示，约 4 秒后显示完整的首次引导。再次打开 EXE 时，原有窗口从最小化状态恢复，76 份运行文件保留完整。时间为这台电脑的一次实测。

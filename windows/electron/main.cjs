@@ -117,6 +117,8 @@ function registerHandlers() {
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   let availableDownload = null;
+  let offeredUpdateTag = null;
+  const skippedUpdate = result => result.status === 'available' && store.updateCheckState()?.skippedTag === result.tag;
   let refreshedLegacyTag = null;
   const backgroundUpdatesEnabled = () => {
     const prefs = store.settings();
@@ -126,6 +128,7 @@ function registerHandlers() {
     const portable = Boolean(process.env.PORTABLE_EXECUTABLE_FILE);
     let result = await checkUpdates(automatic);
     if (result.status === 'skipped') return result;
+    if (automatic && skippedUpdate(result)) return { status: 'skipped', currentVersion: result.currentVersion };
     let candidate = updateDownload(result, portable);
     if (candidate && !candidate.file && result.fromCache && !result.stale && backgroundUpdatesEnabled() && refreshedLegacyTag !== result.tag) {
       refreshedLegacyTag = result.tag;
@@ -133,12 +136,23 @@ function registerHandlers() {
       // release evidence once when an existing user opts into background downloads.
       try { result = await checkUpdates(false); candidate = updateDownload(result, portable); } catch { /* Keep the browser download available offline. */ }
     }
+    // A skip can arrive while legacy release details are being refreshed.
+    const skipped = skippedUpdate(result);
+    if (automatic && skipped) return { status: 'skipped', currentVersion: result.currentVersion };
+    offeredUpdateTag = result.status === 'available' ? result.tag : null;
     availableDownload = candidate;
-    if (candidate && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
+    if (candidate && !skipped && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
     else if (!updateFiles.matches(candidate)) updateFiles.cancel();
     const canOpenInstaller = Boolean(app.isPackaged && !portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Setup.exe`);
     return { ...result, downloadLabel: candidate?.label, downloadInApp: Boolean(candidate?.file), canOpenInstaller,
       updateFile: updateFiles.state };
+  });
+  ipcMain.handle('updates:skip', (_event, tag) => {
+    if (!tag || tag !== offeredUpdateTag) throw new Error('Check for updates to find the current release.');
+    store.skipUpdate(tag);
+    if (updateFiles.state.tag === tag) updateFiles.cancel();
+    availableDownload = null;
+    offeredUpdateTag = null;
   });
   ipcMain.handle('updates:reveal', (_event, tag) => updateFiles.show(tag));
   ipcMain.handle('updates:install', (event, tag) => {
@@ -253,6 +267,8 @@ function registerHandlers() {
     revokeOpenAIConsent();
     updateFiles.cancel();
     availableDownload = null;
+    offeredUpdateTag = null;
+    refreshedLegacyTag = null;
     mineruJobs.cancel();
     pendingMineruResults.clear();
     store.clearData();

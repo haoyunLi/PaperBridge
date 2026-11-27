@@ -207,9 +207,15 @@ function createStore(root) {
       writeJson(path.join(root, 'settings.json'), { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) });
     },
     lastUpdateCheckAt() { return Number(readJson(path.join(root, 'updates.json'), {}).lastCheckAt || 0); },
-    saveUpdateCheckAt(value) { writeJson(path.join(root, 'updates.json'), { lastCheckAt: value }); },
+    saveUpdateCheckAt(value) { this.saveUpdateCheckState({ lastCheckAt: value }); },
     updateCheckState() { return readJson(path.join(root, 'updates.json'), {}); },
-    saveUpdateCheckState(value) { writeJson(path.join(root, 'updates.json'), value); },
+    saveUpdateCheckState(value) {
+      const { skippedTag } = this.updateCheckState() || {};
+      writeJson(path.join(root, 'updates.json'), { ...(skippedTag && { skippedTag }), ...value });
+    },
+    skipUpdate(tag) {
+      writeJson(path.join(root, 'updates.json'), { ...this.updateCheckState(), skippedTag: tag });
+    },
     glossary() {
       const saved = readJson(path.join(root, 'glossary.json'), []);
       return Array.isArray(saved) ? saved.filter(term => typeof term?.source === 'string' && typeof term?.target === 'string') : [];

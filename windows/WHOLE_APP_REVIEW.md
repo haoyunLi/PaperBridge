@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 2026-11-27 本机模型与更新提示
+
+Windows 0.2.98 在 RX 7800 XT 上用 4B、27B 翻译了同一篇英文短文。27B 使用独立的 17.4 GB 临时模型库，完成翻译、重开和清理。G08 计入对齐，111 项中还有 3 项部分对齐。[两种模型的逐段结果](AMD_DEVICE_TEST.md)
+
+Windows 0.2.99 的更新提示和 Settings → Updates 可以跳过单个版本。重新启动后不会自动提示或下载此版本，手动检查仍能找到它，下一版本会正常提示。[桌面回归](tests/update-restart-e2e.cjs)
+
 ## 0.2.96 的启动反馈与模型下载
 
 全新 Windows 打开 GitHub 上的便携版时，1.5 秒后看到原生解压提示，约 11.5 秒后显示首次引导。安装版也完成了启动与导入。旧客户端从同一发布页下载新版，核对构建证明、保存当前笔记，并请求 Windows 打开安装包。本机用 Edge 下载的两个文件与发布页及应用内更新清单中的大小和 SHA-256 一致。[发布与冷启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) · [更新与笔记验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199)
