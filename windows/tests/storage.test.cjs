@@ -3,8 +3,53 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { once } = require('node:events');
+const { createInterface } = require('node:readline');
 const { createStore, safeId, bootstrapSnapshot } = require('../electron/storage.cjs');
 const { vendorOf } = require('../electron/hardware.cjs');
+
+test('a Windows sharing violation preserves the paper and a brief lock clears within one save', { skip: process.platform !== 'win32', timeout: 20000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-save-lock-'));
+  const store = createStore(root);
+  const id = 'e'.repeat(64);
+  const original = { id, name: 'Field notes', blocks: [], position: { paragraph: 3 }, notes: ['original'] };
+  const edited = { ...original, position: { paragraph: 8 }, notes: ['edited'] };
+  const primary = path.join(root, 'papers', id + '.json');
+  let locker;
+  try {
+    store.savePaper(original);
+    // FileShare.Read permits reads but prevents Windows from replacing this file.
+    const script = [
+      '$ErrorActionPreference = "Stop"',
+      '$handle = [IO.File]::Open($env:PAPERBRIDGE_TEST_LOCK_FILE, "Open", "Read", "Read")',
+      'try { [Console]::WriteLine("locked"); [Console]::Out.Flush(); [void][Console]::ReadLine(); Start-Sleep -Milliseconds 80 } finally { $handle.Dispose() }'
+    ].join('\n');
+    locker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, env: { ...process.env, PAPERBRIDGE_TEST_LOCK_FILE: primary }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const closed = once(locker, 'close');
+    const output = createInterface({ input: locker.stdout });
+    const [line] = await Promise.race([once(output, 'line'), closed.then(([code]) => { throw Error('Lock helper exited: ' + code); })]);
+    assert.equal(line, 'locked');
+    const before = fs.readFileSync(primary, 'utf8');
+    assert.throws(() => store.savePaper(edited), error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code));
+    assert.equal(fs.readFileSync(primary, 'utf8'), before);
+    locker.stdin.end('\n');
+    store.savePaper(edited);
+    assert.equal((await closed)[0], 0);
+    assert.deepEqual(createStore(root).paper(id).position, edited.position);
+    assert.deepEqual(createStore(root).paper(id).notes, edited.notes);
+    assert.equal(fs.readFileSync(primary + '.backup', 'utf8'), before);
+  } finally {
+    if (locker?.pid && locker.exitCode === null && locker.signalCode === null) {
+      const stopped = once(locker, 'close');
+      locker.kill();
+      await stopped;
+    }
+    if (path.dirname(root) !== path.resolve(os.tmpdir()) || !path.basename(root).startsWith('paperbridge-save-lock-')) throw Error('Unexpected fixture path');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('workspace saves papers and can recover a damaged primary file', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-test-'));

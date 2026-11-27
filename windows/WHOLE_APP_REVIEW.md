@@ -4,7 +4,9 @@
 
 Windows 0.2.98 在 RX 7800 XT 上用 4B、27B 翻译了同一篇英文短文。27B 使用独立的 17.4 GB 临时模型库，完成翻译、重开和清理。G08 计入对齐，111 项中还有 3 项部分对齐。[两种模型的逐段结果](AMD_DEVICE_TEST.md)
 
-Windows 0.2.99 的更新提示和 Settings → Updates 可以跳过单个版本。重新启动后不会自动提示或下载此版本，手动检查仍能找到它，下一版本会正常提示。[桌面回归](tests/update-restart-e2e.cjs)
+Windows 0.2.100 的更新提示和 Settings → Updates 可以跳过单个版本。重新启动后不会自动提示或下载此版本，手动检查仍能找到它，下一版本会正常提示。下载到一半可以取消并重新下载，后台下载偏好会保留。使用键盘跳过时，设置中的焦点回到 Check now。[桌面回归](tests/update-restart-e2e.cjs)
+
+0.2.99 的发布检查遇到了 Windows 文件共享冲突，保存阅读位置时返回 EPERM。0.2.100 会在 270 毫秒内多次尝试原子替换。用另一个 Windows 进程锁住论文存档时，长时间占用会保留原文件并返回保存失败。短时占用解除后，一次保存即可写入新笔记和阅读位置，上一版仍在备份中。[触发问题的发布检查](https://github.com/haoyunLi/PaperBridge/actions/runs/46073610239/job/140756564428) · [实际文件锁回归](tests/storage.test.cjs)
 
 ## 0.2.96 的启动反馈与模型下载
 

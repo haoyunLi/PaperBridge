@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
     ipcRenderer.on('updates:file-state', listener);
     return () => ipcRenderer.removeListener('updates:file-state', listener);
   },
+  cancelUpdateDownload: tag => ipcRenderer.invoke('updates:cancel-download', tag),
   downloadUpdate: tag => ipcRenderer.invoke('updates:download', tag),
   openUpdateRelease: tag => ipcRenderer.invoke('updates:open-release', tag),
   openPaperAttachment: (id, href, from) => ipcRenderer.invoke('paper:attachment', { id, href, from }),

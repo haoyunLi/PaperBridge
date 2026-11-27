@@ -81,13 +81,16 @@ class UpdateDownload {
     this.notify(state);
   }
 
-  cancel() {
+  cancel(tag) {
+    // A user action applies only to the transfer still shown in the reader.
+    if (tag !== undefined && (this.state.phase !== 'downloading' || this.state.tag !== tag)) return false;
     this.controller?.abort();
     this.controller = null;
     this.active = null;
-    this.download = null;
+    if (tag === undefined) this.download = null;
     this.manual = false;
-    this.publish({ phase: 'idle' });
+    this.publish(tag === undefined ? { phase: 'idle' } : { tag, phase: 'cancelled' });
+    return true;
   }
 
   matches(download) {
@@ -100,7 +103,7 @@ class UpdateDownload {
     if (this.matches(download)) {
       if (manual) this.manual = true;
       if (this.active) return this.active;
-      if (this.state.phase === 'ready') return Promise.resolve();
+      if (this.state.phase === 'ready' || (!manual && this.state.phase === 'cancelled')) return Promise.resolve();
     }
     this.cancel();
     this.manual = manual;

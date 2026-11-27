@@ -161,6 +161,10 @@ function registerHandlers() {
         availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The installed reader needs a current verified Setup update.');
     return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
   });
+  ipcMain.handle('updates:cancel-download', (_event, tag) => {
+    if (!availableDownload || availableDownload.tag !== tag) return false;
+    return updateFiles.cancel(tag);
+  });
   ipcMain.handle('updates:download', (_event, tag) => {
     if (!availableDownload || availableDownload.tag !== tag) throw new Error('Check for updates to find the current download.');
     if (availableDownload.file) return updateFiles.prepare(availableDownload, { manual: true });

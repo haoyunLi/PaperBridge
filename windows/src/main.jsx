@@ -1099,10 +1099,11 @@ function App() {
   const fileMessage = filePhase === 'downloading' ? `Downloading Windows update · ${updateFile.percent}%`
     : filePhase === 'ready' && openedInstallerTag === updateInfo?.tag ? 'Follow the Windows setup wizard. If no window appears, choose Show downloaded update to find the installer in File Explorer.'
     : filePhase === 'ready' ? 'Download complete. SHA-256 and GitHub build proof verified.'
+    : filePhase === 'cancelled' ? 'Update download cancelled. You can download it again.'
     : filePhase === 'failed' ? updateFile.message
     : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
   const installAvailable = filePhase === 'ready' && updateInfo?.canOpenInstaller;
-  const updateButtonLabel = filePhase === 'ready' ? 'Show downloaded update' : updateInfo?.downloadLabel;
+  const updateButtonLabel = filePhase === 'downloading' ? 'Cancel download' : filePhase === 'ready' ? 'Show downloaded update' : updateInfo?.downloadLabel;
   const [deferredUpdateTag, setDeferredUpdateTag] = useState('');
   const showUpdateBanner = updateInfo?.status === 'available' && updateInfo.tag !== deferredUpdateTag;
   const [updateStatus, setUpdateStatus] = useState('');
@@ -1602,10 +1603,12 @@ function App() {
     } catch (cause) { if (!automatic) setUpdateStatus(cause.message); }
     finally { if (!automatic) setCheckingUpdates(false); }
   }
-  async function skipUpdate() {
+  async function skipUpdate(event, nextFocus = sidebarToggleRef.current) {
     if (!updateInfo?.tag) return;
+    const trigger = event.currentTarget;
     try {
       await api.skipUpdate(updateInfo.tag);
+      if (document.activeElement === trigger) nextFocus?.focus({ preventScroll: true });
       setUpdateInfo(current => current?.tag === updateInfo.tag ? null : current);
       setUpdateStatus(`Skipped Windows ${updateInfo.latestVersion}. You can still find it with Check now.`);
     } catch (cause) { setError(cause.message); }
@@ -1613,7 +1616,8 @@ function App() {
   async function downloadUpdate() {
     if (!updateInfo?.downloadLabel) return;
     try {
-      if (filePhase === 'ready') await api.revealUpdate(updateInfo.tag);
+      if (filePhase === 'downloading') await api.cancelUpdateDownload(updateInfo.tag);
+      else if (filePhase === 'ready') await api.revealUpdate(updateInfo.tag);
       else await api.downloadUpdate(updateInfo.tag);
     }
     catch (cause) { setError(cause.message); }
@@ -3708,9 +3712,9 @@ function App() {
         {showUpdateBanner && <div className="update-banner" role="status">
           <div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong>{fileMessage && <div role="status">{openingInstaller ? updateStatus : fileMessage}</div>}</div>
           {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={openUpdateInstaller}>Open installer</button>}
-          {updateButtonLabel && filePhase !== 'downloading' && <button className={installAvailable ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
+          {updateButtonLabel && <button className={installAvailable || filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
           <button className="button outline" onClick={openUpdateRelease}>View release</button>
-          <button className="button ghost" onClick={() => setDeferredUpdateTag(updateInfo.tag)}>Later</button>
+          <button className="button ghost" onClick={() => { sidebarToggleRef.current?.focus({ preventScroll: true }); setDeferredUpdateTag(updateInfo.tag); }}>Later</button>
           <button className="button ghost" disabled={openingInstaller} onClick={skipUpdate}>Skip this version</button>
         </div>}
         {busy && <TaskProgress busy={busy} progress={progress} status={status} />}

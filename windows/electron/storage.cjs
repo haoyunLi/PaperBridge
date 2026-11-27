@@ -52,6 +52,21 @@ function fileRevision(fd) {
   } catch { return null; }
 }
 
+const renameRetryClock = new Int32Array(new SharedArrayBuffer(4));
+function replaceJsonFile(staged, target) {
+  // Windows readers can briefly deny FILE_SHARE_DELETE. Retry the same atomic
+  // rename so the previous complete file stays readable throughout the save.
+  const delays = [10, 20, 40, 80, 120];
+  for (let attempt = 0; ; attempt++) {
+    try { fs.renameSync(staged, target); return; }
+    catch (error) {
+      if (process.platform !== 'win32' || attempt === delays.length ||
+          !['EPERM', 'EACCES', 'EBUSY'].includes(error.code)) throw error;
+      Atomics.wait(renameRetryClock, 0, 0, delays[attempt]);
+    }
+  }
+}
+
 function writeJson(file, value, { validBackup, captureRevision = false } = {}) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.${process.pid}.tmp`;
@@ -66,11 +81,11 @@ function writeJson(file, value, { validBackup, captureRevision = false } = {}) {
           const backup = `${file}.backup`;
           const pending = `${backup}.${process.pid}.tmp`;
           fs.writeFileSync(pending, prior);
-          fs.renameSync(pending, backup);
+          replaceJsonFile(pending, backup);
         }
       } catch { /* retain older backup */ }
     }
-    fs.renameSync(temporary, file);
+    replaceJsonFile(temporary, file);
     // Stat our own handle so a concurrent replacement cannot stamp a different paper.
     return captureRevision ? fileRevision(fd) : null;
   } finally { fs.closeSync(fd); }

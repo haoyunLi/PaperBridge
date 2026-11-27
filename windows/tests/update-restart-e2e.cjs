@@ -131,9 +131,11 @@ async function run() {
         global.__fileRequests.push(url);
         const item = new (process.getBuiltinModule('node:events').EventEmitter)();
         item.getURLChain = () => [url];
+        item.cancel = () => item.emit('done', {}, 'cancelled');
         item.getReceivedBytes = () => Buffer.byteLength(bytes);
         item.setSavePath = file => { item.destination = file; };
         partition.emit('will-download', { preventDefault() { throw new Error('Unexpected fixture URL'); } }, item);
+        if (global.__holdUpdateTransfer) { global.__transferStarted(); return; }
         setImmediate(() => {
           process.getBuiltinModule('node:fs').writeFileSync(item.destination, bytes);
           item.emit('updated');
@@ -150,7 +152,26 @@ async function run() {
     await page.getByRole('button', { name: 'Check now', exact: true }).click();
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent === 'Check now' && !button.disabled));
     assert.deepEqual(await app.evaluate(() => global.__fileRequests), []);
+    const updateSettings = page.getByRole('dialog');
+    await app.evaluate(() => {
+      global.__holdUpdateTransfer = true;
+      global.__waitingForTransfer = new Promise(resolve => { global.__transferStarted = resolve; });
+    });
+    await updateSettings.getByRole('button', { name: 'Download portable update' }).click();
+    const cancelDownload = updateSettings.getByRole('button', { name: 'Cancel download', exact: true });
+    await cancelDownload.waitFor();
+    await app.evaluate(() => global.__waitingForTransfer);
+    assert.equal(await page.evaluate(() => window.paperBridge.cancelUpdateDownload('windows-v99.0.0')), false);
+    await cancelDownload.focus();
+    await page.keyboard.press('Enter');
+    await updateSettings.getByText('Update download cancelled. You can download it again.').waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Download portable update');
     await background.check();
+    const afterCancel = await page.evaluate(() => window.paperBridge.checkUpdates(true));
+    assert.equal(afterCancel.updateFile.phase, 'cancelled');
+    assert.equal(await app.evaluate(() => global.__fileRequests.length), 1);
+    await app.evaluate(() => { global.__holdUpdateTransfer = false; });
+    await updateSettings.getByRole('button', { name: 'Download portable update' }).click();
     await page.getByText(/Could not verify the GitHub build proof/).last().waitFor();
     assert.equal(fs.existsSync(path.join(workspace, 'update-downloads', identity.portableName)), false);
     assert.equal(await page.getByRole('button', { name: 'Show downloaded update' }).count(), 0);
@@ -220,8 +241,10 @@ async function run() {
     fs.writeFileSync(installer, 'x'.repeat(bytes.length));
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /no longer matches/);
     assert.equal(await app.evaluate(() => global.__installerRequests.length), 2);
-    await settings.getByRole('button', { name: 'Skip this version' }).click();
+    await settings.getByRole('button', { name: 'Skip this version' }).focus();
+    await page.keyboard.press('Enter');
     await settings.getByText(`Skipped Windows ${nextVersion}. You can still find it with Check now.`).waitFor();
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), 'Check now');
     assert.equal(JSON.parse(fs.readFileSync(cacheFile)).skippedTag, identity.tag);
     await assert.rejects(page.evaluate(tag => window.paperBridge.skipUpdate(tag), 'windows-v99.0.0'), /current release/);
     await page.getByLabel(/Check official Windows releases/).check();

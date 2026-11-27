@@ -27,6 +27,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
   const [checkingParser, setCheckingParser] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [parserError, setParserError] = useState('');
+  const checkUpdateButton = useRef(null);
   const mounted = useRef(true);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -141,11 +142,11 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>
         <label className="settings-checkbox"><input type="checkbox" disabled={settings.autoCheckUpdates === false} checked={settings.autoDownloadUpdates === true} onChange={event => onSettings({ autoDownloadUpdates: event.target.checked })} />Download new Windows releases in the background</label>
         <div className="row">
-          <button className="button outline" disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
+          <button className="button outline" ref={checkUpdateButton} disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
           {updates.onOpenInstaller && <button className="button blue" disabled={updates.installerBusy} onClick={updates.onOpenInstaller}>Open installer</button>}
-          {updates.downloadLabel && updates.filePhase !== 'downloading' && <button className={updates.onOpenInstaller ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
+          {updates.downloadLabel && <button className={updates.onOpenInstaller || updates.filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
           {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
-          {updates.availableVersion && <button className="button ghost" disabled={updates.installerBusy} onClick={updates.onSkip}>Skip this version</button>}
+          {updates.availableVersion && <button className="button ghost" disabled={updates.installerBusy} onClick={event => updates.onSkip(event, checkUpdateButton.current)}>Skip this version</button>}
         </div>
         {updates.status && <p role="status">{updates.status}</p>}
         {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}
