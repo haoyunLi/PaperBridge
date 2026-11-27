@@ -13,6 +13,8 @@
 
 27B 的 Q4_K_M 权重共 17,358,650,268 字节，使用独立的 Ollama 端口和模型目录。实测结束后确认临时目录已删除，默认模型库仍只有原有的两个 4B 模型。在 `windows/` 下，已安装的 4B 可用 `node tests/live-large-model.cjs --installed-4b` 复测。临时 27B 测试需在 PowerShell 设置 `$env:PAPERBRIDGE_TEMPORARY_27B='1'`，再运行 `node tests/live-large-model.cjs`。两者均可用 `PAPERBRIDGE_TEST_EXECUTABLE` 指定打包的阅读器。[实测脚本](tests/live-large-model.cjs)
 
+重新从 GitHub 下载 0.2.101 便携版后，同机用 4B 复测了这两段，耗时分别为 7.0 秒和 0.85 秒，重开后译文完整。这个版本还用 MinerU 的 DirectML 后端从纯图像扫描件识别出 5 段，用 4B 生成中文译文和全文译稿。Ollama 报告了 2,881,948,220 字节的 4B 显存分配。[发布与下载校验](https://github.com/haoyunLi/PaperBridge/actions/runs/46076632056)
+
 ## 0.2.96 便携版首次启动
 
 本机在 125% 缩放下运行候选便携版，262 毫秒后出现原生解压提示，约 4 秒后显示完整的首次引导。再次打开 EXE 时，原有窗口从最小化状态恢复，76 份运行文件保留完整。时间为这台电脑的一次实测。
