@@ -20,6 +20,8 @@ foreach ($file in $files) {
 
 ## 允许运行后没有看到窗口
 
+在旧便携版中，如果临时目录很深，解包程序可能在显示阅读器前停住。0.2.101 修复了在本机复现的这个问题。发布验证会在带有空格与中文的深层临时目录中从公开便携包打开并显示一篇 PDF。[启动复查](WHOLE_APP_REVIEW.md)
+
 想先读一篇论文，可以在仓库首页选择 **Download Windows portable (.exe)**。确认下载的文件名以 `-x64-Portable.exe` 结尾，然后从文件资源管理器打开。首次引导里选 **Skip setup** 即可导入 PDF。若选择的是 `-x64-Setup.exe`，请先完成安装，再到开始菜单打开 **PaperBridge**。再次打开已启动的阅读器会把原窗口带到前台。请使用 0.2.36 或更新的便携版，较早版本重复打开时可能清理第一个窗口仍在使用的临时资源。[Windows 下载入口](https://github.com/haoyunLi/PaperBridge#windows-download-preview)
 
 从 0.2.42 起，如果窗口一直停在 **Opening PaperBridge…**，展开 **Trouble opening PaperBridge?** 后，点 **Try again** 可重新加载阅读器。这个入口在主界面脚本读取失败时也能使用。如果阅读器进程意外退出，Windows 对话框会显示原因和退出码。选 **Reopen reader** 可恢复最后保存的论文和标注，选 **Close PaperBridge** 可退出。仍未保存的编辑取决于上一次保存时间。

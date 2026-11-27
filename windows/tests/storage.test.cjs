@@ -23,7 +23,7 @@ test('a Windows sharing violation preserves the paper and a brief lock clears wi
     const script = [
       '$ErrorActionPreference = "Stop"',
       '$handle = [IO.File]::Open($env:PAPERBRIDGE_TEST_LOCK_FILE, "Open", "Read", "Read")',
-      'try { [Console]::WriteLine("locked"); [Console]::Out.Flush(); [void][Console]::ReadLine(); Start-Sleep -Milliseconds 80 } finally { $handle.Dispose() }'
+      'try { [Console]::WriteLine("locked"); [Console]::Out.Flush(); [void][Console]::ReadLine(); [Console]::WriteLine("releasing"); [Console]::Out.Flush(); [Threading.Thread]::Sleep(80) } finally { $handle.Dispose() }'
     ].join('\n');
     locker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
       { windowsHide: true, env: { ...process.env, PAPERBRIDGE_TEST_LOCK_FILE: primary }, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -34,7 +34,9 @@ test('a Windows sharing violation preserves the paper and a brief lock clears wi
     const before = fs.readFileSync(primary, 'utf8');
     assert.throws(() => store.savePaper(edited), error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code));
     assert.equal(fs.readFileSync(primary, 'utf8'), before);
+    const releasing = once(output, 'line');
     locker.stdin.end('\n');
+    assert.deepEqual(await releasing, ['releasing']);
     store.savePaper(edited);
     assert.equal((await closed)[0], 0);
     assert.deepEqual(createStore(root).paper(id).position, edited.position);

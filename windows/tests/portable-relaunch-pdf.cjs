@@ -16,14 +16,10 @@ async function run() {
   await fs.mkdir(artifacts, { recursive: true });
   const workspace = await fs.mkdtemp(path.join(artifacts, 'portable-relaunch-'));
   const profile = path.join(workspace, 'profile');
-  const temporaryDirectory = path.join(workspace, 'Portable extraction');
-  await fs.mkdir(temporaryDirectory);
-  const shortDirectory = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-    '[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); (New-Object -ComObject Scripting.FileSystemObject).GetFolder($env:PAPERBRIDGE_TEST_TEMP).ShortPath'], {
-    env: { ...process.env, PAPERBRIDGE_TEST_TEMP: temporaryDirectory }, windowsHide: true, encoding: 'utf8'
-  }).trim();
-  assert.equal(await fs.realpath(shortDirectory), await fs.realpath(temporaryDirectory));
-  const env = { ...process.env, TEMP: shortDirectory, TMP: shortDirectory, PAPERBRIDGE_WORKSPACE: workspace, PAPERBRIDGE_TOOLS_ROOT: path.join(workspace, 'tools') };
+  let temporaryDirectory = path.join(workspace, 'Portable extraction');
+  while (temporaryDirectory.length < 182) temporaryDirectory = path.join(temporaryDirectory, 'Research 文档');
+  await fs.mkdir(temporaryDirectory, { recursive: true });
+  const env = { ...process.env, TEMP: temporaryDirectory, TMP: temporaryDirectory, PAPERBRIDGE_WORKSPACE: workspace, PAPERBRIDGE_TOOLS_ROOT: path.join(workspace, 'tools') };
   await fs.writeFile(path.join(workspace, 'settings.json'), JSON.stringify({
     pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false, ollamaBaseURL: 'http://127.0.0.1:9'
   }));
@@ -54,6 +50,15 @@ async function run() {
       if (!port) await delay(150);
     }
     assert.ok(port > 0, 'Expected a debugging port from the isolated reader');
+    const folders = await fs.readdir(temporaryDirectory, { withFileTypes: true });
+    const unpacked = folders.find(item => item.isDirectory() && /^ns.*\.tmp$/i.test(item.name));
+    assert.ok(unpacked, 'Expected an extraction directory owned by this portable launch');
+    const resources = path.join(temporaryDirectory, unpacked.name, 'app', 'resources');
+    const nodeCanvas = path.join(resources, 'app.asar.unpacked', 'node_modules', '@napi-rs', 'canvas-win32-x64-msvc', 'skia.win32-x64-msvc.node');
+    assert.ok(nodeCanvas.length > 260, 'Exercise the path where older packages stopped extracting');
+    // PDF.js renders in Chromium. Its optional Node canvas binary has no role in the reader.
+    await assert.rejects(fs.access(nodeCanvas), { code: 'ENOENT' });
+    assert.ok((await fs.stat(path.join(resources, 'app.asar'))).size > 0);
     browser = await chromium.connectOverCDP('http://127.0.0.1:' + port);
     const context = browser.contexts()[0];
     const page = context.pages()[0] || await context.waitForEvent('page');

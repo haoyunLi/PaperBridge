@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.100",
+  "version": "0.2.101",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -120,6 +120,8 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "!node_modules/@napi-rs/canvas/**",
+      "!node_modules/@napi-rs/canvas-*/**",
       "package.json"
     ],
     "win": {
