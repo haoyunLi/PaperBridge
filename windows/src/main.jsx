@@ -1477,6 +1477,7 @@ function App() {
   const mainScrollRef = useRef(null);
   const scrollSaveTimer = useRef(null);
   const readerResize = useRef(null);
+  const appearanceScroll = useRef(null);
   const restoringScroll = useRef(false);
   const pendingReadingRestorations = useRef(new Set());
   const [readingLayoutState, setReadingLayoutState] = useState({ paperId: null, busy: false });
@@ -1802,6 +1803,10 @@ function App() {
       parserPreferenceEdits.current[key] = (parserPreferenceEdits.current[key] || 0) + 1;
     }
     if (readingSettingsChanged && taskRef.current) cancelTask();
+    if (tab === 'Reader' && paperRef.current && !pendingImport && !restoringScroll.current &&
+        ['fontSize', 'readingWidth', 'lineHeight', 'lineSpacing'].some(key => Object.hasOwn(change, key) && change[key] !== previous[key])) {
+      appearanceScroll.current = { paperId: paperRef.current.id, generation: readingRestoration.current, search, origin: captureReaderSearchOrigin() };
+    }
     const next = { ...previous, ...change };
     if (change.aiProvider !== undefined && change.aiProvider !== previous.aiProvider) {
       api.setOpenAIConsent(false).catch(() => {});
@@ -2503,6 +2508,16 @@ function App() {
     if (paper && !pendingImport && !viewNavigation && !blockNavigation) return restoreMainScroll();
     publishReadingRestorationState();
   }, [tab, paper?.id, tab === 'Paper' ? displayMode : null, Boolean(pendingImport)]);
+  useLayoutEffect(() => {
+    const request = appearanceScroll.current;
+    appearanceScroll.current = null;
+    if (!request || tab !== 'Reader' || request.paperId !== paper?.id || request.search !== search ||
+        request.generation !== readingRestoration.current || !mainScrollRef.current) return;
+    clearTimeout(scrollSaveTimer.current);
+    restoreReaderSearchOrigin(request.origin);
+    if (search) searchScroll.current = mainScrollRef.current.scrollTop;
+    else persistRestoredReaderPosition();
+  }, [settings?.fontSize, settings?.readingWidth, settings?.lineHeight, settings?.lineSpacing, paper?.id, tab, search]);
   useLayoutEffect(() => {
     const host = mainScrollRef.current;
     if (tab !== 'Reader' || !host || !paper?.id || search || pendingImport) return;

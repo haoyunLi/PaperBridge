@@ -187,7 +187,10 @@ async function run() {
     await page.getByRole('heading', { name: legacy.name, exact: true }).waitFor();
     await direction('English', 'Chinese', legacyId);
     assert.equal(await to().locator('option:checked').textContent(), 'Chinese', 'legacy language must not display the first standard option');
-    assert.deepEqual(readPaper(legacyId).blocks, legacy.blocks, 'displaying an old language must preserve its saved output');
+    const savedLegacyBlocks = readPaper(legacyId).blocks;
+    assert.ok(savedLegacyBlocks.every(block => block.translationLanguage == null), 'An unsupported legacy language must retain unknown provenance');
+    assert.deepEqual(savedLegacyBlocks.map(({ translationLanguage, ...block }) => block), legacy.blocks,
+      'Displaying an old language must preserve its saved text, translations and annotations');
     for (const control of [from(), to()]) assert.equal(await control.locator('option').evaluateAll(options =>
       options.filter(option => option.value === 'Chinese').length), 1, 'legacy option appears once on each side');
     await swap().click();

@@ -238,6 +238,22 @@ async function run() {
     const relativeTop = (block = 12) => page.locator(`#block-${block}`).evaluate(el => el.getBoundingClientRect().top - el.closest('.main-scroll').getBoundingClientRect().top);
     const originalTop = await relativeTop();
     if (process.argv.includes('--resize-reader')) {
+      stage('Changing reading appearance keeps the current paragraph and its offset');
+      await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+      const appearance = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
+      for (const [name, key] of [['Reader font size', 'End'], ['Line spacing', 'End'], ['Reading width', 'Home']]) {
+        const slider = appearance.getByRole('slider', { name, exact: true });
+        await slider.press(key);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const top = await relativeTop();
+        console.log(JSON.stringify({ name, value: await slider.inputValue(), visible: await firstVisible(), top, originalTop }));
+        assert.equal(await firstVisible(), 12);
+        assert.ok(Math.abs(top - originalTop) < 2, name);
+        await selected(2);
+      }
+      await appearance.getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await position(12);
       stage('Window reflow keeps the same top paragraph and within-paragraph reading offset');
       for (const width of [1016, 1500]) {
         await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 900), width);
@@ -348,6 +364,25 @@ async function run() {
     await position(12); await selected(20); await explainTarget(20);
     await switchTab('Overview'); await switchTab('Reader');
     await position(12); await selected(20);
+
+    if (restartScale) {
+      stage('Changing appearance during a search keeps the filtered and unfiltered reading positions independent');
+      await search.fill('Passage');
+      await page.waitForFunction(() => !document.querySelector('#block-1') && document.querySelector('#block-15'));
+      await wheelTo(15, true);
+      const filteredTop = await relativeTop(15);
+      await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+      const appearance = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
+      await appearance.getByRole('slider', { name: 'Reading width', exact: true }).press('Home');
+      await page.waitForFunction(() => document.querySelector('.reader-list')?.style.getPropertyValue('--reader-width') === '640px');
+      assert.equal(await firstVisible(), 15);
+      assert.ok(Math.abs(await relativeTop(15) - filteredTop) < 2);
+      assert.equal(readPaper().position.readerSearchOrigin.block, 12);
+      await appearance.getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+      await position(12); await selected(20);
+    }
 
     stage('Reader keyboard selection starts at the viewport, then preserves an existing caret');
     await evaluate(() => { window.getSelection().removeAllRanges(); document.querySelector('.reader-list').focus({ preventScroll: true }); });
