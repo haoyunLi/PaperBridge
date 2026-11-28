@@ -203,13 +203,17 @@ struct Reference {
         let pageBoundaries = fixtures.pageBoundaries.map { TextProcessing.stitchPageParagraphs([[$0.left], [$0.right]]) }
         let pdfURL = fixtureURL.deletingLastPathComponent().appendingPathComponent("column-footnote.pdf")
         let pdfBytes = try Data(contentsOf: pdfURL)
-        let calibrationBytes = try Data(contentsOf: fixtureURL.deletingLastPathComponent().appendingPathComponent("cjk-calibration.pdf"))
-        guard let calibrationPDF = PDFDocument(data: calibrationBytes) else { throw CocoaError(.fileReadCorruptFile) }
-        let calibration: [String: Any] = [
-            "sha256": SHA256.hash(data: calibrationBytes).map { String(format: "%02x", $0) }.joined(),
-            "pages": (0..<calibrationPDF.pageCount).map { calibrationPDF.page(at: $0)?.string ?? "" },
-            "reader": try PDFTextExtractor().extractText(from: calibrationBytes)
-        ]
+        func paperText(_ filename: String) throws -> [String: Any] {
+            let bytes = try Data(contentsOf: fixtureURL.deletingLastPathComponent().appendingPathComponent(filename))
+            guard let document = PDFDocument(data: bytes) else { throw CocoaError(.fileReadCorruptFile) }
+            return [
+                "sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(),
+                "pages": (0..<document.pageCount).map { document.page(at: $0)?.string ?? "" },
+                "reader": try PDFTextExtractor().extractText(from: bytes)
+            ]
+        }
+        let calibration = try paperText("cjk-calibration.pdf")
+        let mixedCalibration = try paperText("mixed-cid-record.pdf")
         let columnPDF = try PDFTextExtractor().extractText(from: pdfBytes)
         let pdfHash = SHA256.hash(data: pdfBytes).map { String(format: "%02x", $0) }.joined()
         // PaperReaderViewModel.visibleParagraphResults searches each side separately.
@@ -270,7 +274,7 @@ struct Reference {
                                      "rgbPanelControl": try nativeRasterSwatches(pdf: fixtureURL.deletingLastPathComponent().appendingPathComponent("rgb-panel-control.pdf")),
                                      "faxCalibration": try nativeRasterSwatches(pdf: fixtureURL.deletingLastPathComponent().appendingPathComponent("fax-calibration.pdf")), "importModes": importModes, "tableSelectionQuote": try nativeTableSelectionQuote(), "journalPreviewQuotes": try nativeJournalPreviewSelections(fixtures: fixtureURL.deletingLastPathComponent()), "terminology": terminology, "library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
                                     "resourceBoundaries": resourceBoundaries, "scientificNotation": fixtures.scientificNotation.compactMap { AcademicMarkdownProcessor.parse($0).first?.analysisText },
-                                    "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "cjkCalibration": calibration, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
+                                    "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "cjkCalibration": calibration, "mixedCalibration": mixedCalibration, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]
         let data = try JSONSerialization.data(withJSONObject: output, options: [.sortedKeys])
         try data.write(to: URL(fileURLWithPath: CommandLine.arguments[2]))
