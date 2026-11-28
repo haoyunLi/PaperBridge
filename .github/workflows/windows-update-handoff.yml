@@ -51,6 +51,13 @@ jobs:
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
       - name: Deliver the verified Setup to Windows
         run: node tests/public-installed-update.cjs
+      - name: Finish the visible public installer and observe the upgraded reader
+        if: startsWith(github.ref, 'refs/tags/windows-handoff-check-')
+        shell: powershell
+        run: ./tests/finish-update-wizard.ps1
+      - name: Read the pre-upgrade bookmark and note in the installed update
+        if: startsWith(github.ref, 'refs/tags/windows-handoff-check-')
+        run: node tests/public-installed-update.cjs --verify-restored
       - uses: actions/upload-artifact@v4
         if: always()
         with:

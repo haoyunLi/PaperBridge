@@ -5,7 +5,9 @@ const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const { _electron: electron } = require('playwright-core');
-const { openPasteText, loadPastedText, revealSidebarSource } = require('./sidebar-controls.cjs');
+const { openPasteText, loadPastedText, revealSidebarSource, openWorkspaceView } = require('./sidebar-controls.cjs');
+
+const note = 'Keep this note while opening the verified Windows installer.';
 
 async function run() {
   assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted');
@@ -21,6 +23,20 @@ async function run() {
   try {
     let page = await app.firstWindow();
     page.setDefaultTimeout(20000);
+    if (process.argv.includes('--verify-restored')) {
+      const previous = JSON.parse(fs.readFileSync(reportFile, 'utf8').replace(/^\uFEFF/, ''));
+      assert.ok(previous.wizard?.readerPid && previous.wizard.readerPid !== previous.oldPID);
+      const version = await app.evaluate(({ app }) => app.getVersion());
+      assert.equal(version, previous.to);
+      await page.waitForFunction(id => document.querySelector('.main-scroll')?.dataset.readingPaperId === id, previous.paper);
+      await openWorkspaceView(page, 'Reader');
+      const row = page.locator('.reader-list article').filter({ hasText: 'Keep this bookmarked paragraph' });
+      await row.locator('.block-notes').getByText(note, { exact: false }).waitFor();
+      assert.equal(await row.locator('button[aria-pressed="true"][title*="bookmark" i]').count(), 1);
+      Object.assign(report, previous);
+      checkpoint('reopened the upgraded installation and read the original note and bookmark in Reader');
+      return;
+    }
     checkpoint('opened the installed reader');
     const actual = await app.evaluate(({ app }) => ({ version: app.getVersion(), pid: process.pid }));
     assert.equal(actual.version, report.from);
@@ -38,7 +54,6 @@ async function run() {
       const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
       source.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     });
-    const note = 'Keep this note while opening the verified Windows installer.';
     await page.locator('.inspector textarea').fill(note);
     await page.getByRole('button', { name: 'Save note', exact: true }).click();
     await row.locator('.block-notes').getByText(note, { exact: false }).waitFor();
@@ -78,8 +93,13 @@ async function run() {
     }, trace);
     await settings.getByRole('button', { name: 'Open installer', exact: true }).click();
     const deadline = Date.now() + 15000;
-    while (!fs.existsSync(trace) && Date.now() < deadline) await delay(100);
-    const opened = JSON.parse(fs.readFileSync(trace, 'utf8'));
+    let opened;
+    do {
+      if (fs.existsSync(trace)) opened = JSON.parse(fs.readFileSync(trace, 'utf8'));
+      if (typeof opened?.error === 'string') break;
+      await delay(100);
+    } while (Date.now() < deadline);
+    assert.equal(opened?.error, '', 'Windows did not confirm the shell handoff');
     assert.equal(path.resolve(opened.given).toLowerCase(), file.toLowerCase());
     assert.ok(!opened.error, opened.error);
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
