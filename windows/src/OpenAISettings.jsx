@@ -6,6 +6,14 @@ function Detail({ children }) { return <p className="settings-detail">{children}
 export default function OpenAISettings({ settings, onSettings, locked, tools }) {
   const [key, setKey] = useState('');
   useEffect(() => { tools.onKeyStatus(); return () => setKey(''); }, []);
+  const keyLocked = locked || tools.saving || tools.refreshing;
+  function submitKey(event) {
+    event.preventDefault();
+    const value = key.trim();
+    if (keyLocked || !value) return;
+    setKey('');
+    void tools.onSaveKey(value);
+  }
   const modelKeys = [
     ['openAITranslationModel', 'Translation'], ['openAISummaryModel', 'Summary'],
     ['openAIExplainModel', 'Paragraph explanation'], ['openAIQuickLookupModel', 'Quick lookup']
@@ -15,10 +23,15 @@ export default function OpenAISettings({ settings, onSettings, locked, tools }) 
     {(tools.error || tools.status) && <p className={tools.error ? 'settings-error' : 'settings-status'} role={tools.error ? 'alert' : 'status'}>{tools.error || tools.status}</p>}
     <section className="settings-section"><h3>OpenAI API key</h3>
       <p><KeyRound size={15} /> {tools.hasKey ? 'Key saved for this Windows account' : 'No saved API key'}</p>
-      <fieldset disabled={locked || tools.saving}>
-        <label>New OpenAI API key<input type="password" autoComplete="off" value={key} placeholder="sk-…" onChange={event => setKey(event.target.value)} /></label>
-        <div className="row"><button className="button blue" disabled={!key.trim()} onClick={async () => { if (await tools.onSaveKey(key)) setKey(''); }}>{tools.hasKey ? 'Replace saved key' : 'Save key'}</button><button className="button danger" disabled={!tools.hasKey} onClick={() => { setKey(''); tools.onRemoveKey(); }}><Trash2 size={14} />Remove key</button></div>
-      </fieldset>
+      <form onSubmit={submitKey}>
+        <fieldset disabled={keyLocked}>
+          <label>New OpenAI API key<input type="password" autoComplete="off" value={key} placeholder="sk-…" onChange={event => setKey(event.target.value)} /></label>
+          <div className="row">
+            <button type="submit" className="button blue" disabled={!key.trim()}>{tools.hasKey ? 'Replace saved key' : 'Save key'}</button>
+            <button type="button" className="button danger" disabled={!tools.hasKey} onClick={() => { setKey(''); tools.onRemoveKey(); }}><Trash2 size={14} />Remove key</button>
+          </div>
+        </fieldset>
+      </form>
       <Detail>Encrypted with Windows DPAPI through Electron safeStorage, never written to settings, paper workspaces, or exports. Saving a key does not send paper text or test a model. <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer">Manage API keys</a>.</Detail>
     </section>
     <section className="settings-section"><h3>Permission for this session</h3>
@@ -27,7 +40,7 @@ export default function OpenAISettings({ settings, onSettings, locked, tools }) 
       <Detail>Permission is never restored after an app restart. Turning it off cancels active OpenAI work and stops later batches, but cannot recall text already sent. PaperBridge never falls back to OpenAI automatically.</Detail>
     </section>
     <section className="settings-section"><h3>OpenAI task models</h3>
-      <button className="button outline" disabled={locked || !tools.hasKey || tools.refreshing} onClick={tools.onRefresh}><RefreshCw size={15} />{tools.refreshing ? 'Refreshing…' : 'Refresh available models'}</button>
+      <button className="button outline" disabled={locked || tools.saving || !tools.hasKey || tools.refreshing} onClick={tools.onRefresh}><RefreshCw size={15} />{tools.refreshing ? 'Refreshing…' : 'Refresh available models'}</button>
       <Detail>Refresh calls GET /v1/models only: no inference and no paper text. The list does not guarantee Responses API support or pricing. Choose an accessible text model or enter an ID manually; no paid model is selected automatically.</Detail>
       <fieldset disabled={locked}><div className="settings-grid">{modelKeys.map(([name, label]) => <label key={name}>{label}<select aria-label={`${label} available models`} value={settings[name]} onChange={event => onSettings({ [name]: event.target.value })}><option value="">Choose a model</option>{options(settings[name]).map(model => <option key={model}>{model}</option>)}</select><input aria-label={`${label} model ID`} value={settings[name]} placeholder="Manual model ID" onChange={event => onSettings({ [name]: event.target.value })} /></label>)}</div>
         <button className="button outline" disabled={!settings.openAITranslationModel.trim()} onClick={() => onSettings({ openAISummaryModel: settings.openAITranslationModel.trim(), openAIExplainModel: settings.openAITranslationModel.trim(), openAIQuickLookupModel: settings.openAITranslationModel.trim() })}>Use translation model for all tasks</button>

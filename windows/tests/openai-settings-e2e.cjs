@@ -16,10 +16,8 @@ async function waitFor(predicate, label, timeout = 10000) {
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
-  const workspace = path.join(artifacts, 'openai-settings-workspace');
-  if (!workspace.startsWith(artifacts + path.sep)) throw new Error('Unexpected OpenAI test workspace');
-  fs.rmSync(workspace, { recursive: true, force: true });
-  fs.mkdirSync(workspace, { recursive: true });
+  fs.mkdirSync(artifacts, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'openai-settings-'));
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ onboardingCompletedVersion: 1, autoCheckUpdates: false }));
   const keyFile = path.join(workspace, 'openai-key.bin');
   const apiKey = 'paperbridge-e2e-api-key-placeholder';
@@ -27,7 +25,8 @@ async function run() {
   let page;
 
   async function launch() {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     await page.locator('.header').waitFor({ timeout: 20000 });
   }
@@ -40,12 +39,35 @@ async function run() {
     await launch();
     await openModels();
     await page.getByLabel('AI provider').selectOption('openai');
-    await page.getByLabel('New OpenAI API key').fill(apiKey);
-    await page.getByRole('button', { name: 'Save key', exact: true }).click();
+    const input = page.getByLabel('New OpenAI API key');
+    await input.fill('invalid fixture with spaces');
+    await input.press('Enter');
+    await page.getByRole('alert').filter({ hasText: 'without spaces or line breaks' }).waitFor();
+    assert.equal(await input.inputValue(), '', 'Failed submissions also clear the password field');
+    assert.equal(fs.existsSync(keyFile), false);
+    await input.fill(apiKey);
+    await input.press('Enter');
     await page.getByText('Key saved for this Windows account', { exact: true }).waitFor();
     assert.equal(await page.getByLabel('New OpenAI API key').inputValue(), '');
     assert.equal(fs.existsSync(keyFile), true);
     assert.equal(fs.readFileSync(keyFile).includes(Buffer.from(apiKey)), false, 'The API key must not be stored as plaintext');
+    await app.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler('openai:models');
+      ipcMain.handle('openai:models', () => new Promise(resolve => { globalThis.finishModelList = () => resolve(['fixture-discovered-model']); }));
+    });
+    await input.fill('replacement-fixture');
+    await page.getByRole('button', { name: 'Refresh available models', exact: true }).click();
+    await page.getByRole('button', { name: 'Refreshing…', exact: true }).waitFor();
+    assert.ok(await input.isDisabled());
+    assert.ok(await page.getByRole('button', { name: 'Replace saved key', exact: true }).isDisabled());
+    assert.ok(await page.getByRole('button', { name: 'Remove key', exact: true }).isDisabled());
+    await waitFor(() => app.evaluate(() => typeof globalThis.finishModelList === 'function'), 'fixture model list request');
+    await app.evaluate(() => globalThis.finishModelList());
+    await page.getByRole('status').filter({ hasText: 'Found 1 model IDs' }).waitFor();
+    await page.getByRole('button', { name: 'Replace saved key', exact: true }).click();
+    await page.getByRole('status').filter({ hasText: 'Key saved with Windows credential encryption' }).waitFor();
+    assert.equal(await input.inputValue(), '');
+    assert.equal(await page.getByRole('option', { name: 'fixture-discovered-model' }).count(), 0);
     await page.getByLabel('I allow this text to be sent to OpenAI for this session').check();
     await page.getByText('OpenAI text access is enabled for this app session.', { exact: true }).waitFor();
     assert.equal(await page.locator('.service').textContent(), '● OpenAI Online');

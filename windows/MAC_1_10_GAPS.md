@@ -7,10 +7,10 @@
 | ID | macOS 1.10 新增行为 | Windows 对应 | 状态 | 自动化证据与剩余边界 |
 | --- | --- | --- | --- | --- |
 | M110-01 | Ollama 默认，可显式选择 OpenAI Online | Models 中提供 Ollama / OpenAI provider；从不自动切换或云端降级 | 对齐 | `ai-settings.test.cjs`、`openai-settings-e2e.cjs`。 |
-| M110-02 | API key 不进入 workspace/settings/export | key 由 Electron `safeStorage` 使用 Windows DPAPI 加密到独立文件；设置保存显式剔除 key/consent 字段 | 对齐 | `openai.test.cjs`检查加密、删除与明文隔离；Electron 真机检查密文文件。 |
+| M110-02 | API key 不进入 workspace/settings/export | key 由 Electron `safeStorage` 使用 Windows DPAPI 加密到独立文件；设置保存显式剔除 key/consent 字段 | 对齐 | `openai.test.cjs`检查加密、删除与明文隔离；Electron 真机检查密文文件。在打包版用 Enter 保存、替换测试密钥，验证报错后清空密码框。 |
 | M110-03 | 每个 app session 单独同意在线发送 | 首次启动与重启均为 Paused；有 key 后才能启用，切换 provider、替换/删除 key 会撤销。任务可直接打开 Models | 对齐 | Electron 验证启用、重启关闭及从暂停任务进入 Models，授权仍待手动选择。 |
 | M110-04 | 撤销授权停止当前请求和后续批次 | 主进程 revision + AbortController 取消所有在线请求；renderer 同时取消当前任务 | 对齐 | 延迟多批次 Electron 回归在首个请求等待时撤销授权，验证仅发送 1 次、后续批次不启动、迟到结果不保存。已发送文本不能撤回。 |
-| M110-05 | 显式 GET `/v1/models`，不自动选付费模型 | Refresh Available Models 只取 ID，也允许手输；四个字段默认空 | 对齐 | 单元验证 GET 无 body/论文文本；UI 不自动选择模型。模型列表不代表能力或价格。 |
+| M110-05 | 显式 GET `/v1/models`，不自动选付费模型 | Refresh Available Models 只取 ID，也允许手输；四个字段默认空 | 对齐 | 单元验证 GET 无 body/论文文本；UI 不自动选择模型。刷新中锁定密钥编辑与删除，完成后可更换；打包版用本地模型列表服务验证。模型列表不代表能力或价格。 |
 | M110-06 | 翻译/摘要/解释/Quick Lookup 四套在线模型 | OpenAI 与 Ollama 各自保存四套独立角色；空字段报错、不回退本地模型 | 对齐 | 单元与 Electron 验证 Translation Model for All Tasks 和无 fallback。 |
 | M110-07 | Responses API、`store:false`、重定向阻断与严格结果解析 | 固定官方 HTTPS `/v1/responses`；`store:false`、`stream:false`；拒绝 3xx、非 completed、refusal、partial、空/畸形响应 | 对齐 | `openai.test.cjs`验证请求体、输出解码、凭据/服务错误脱敏。未用真实付费 key。 |
 | M110-08 | PDF 文件和图像不上传 | OpenAI IPC 只接收已提取的 prompt/system 字符串；PDF/MinerU 资源仍在本地 | 对齐 | 主进程 API 无 PDF/文件参数；隐私文案列明实际文字边界。 |

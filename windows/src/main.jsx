@@ -1912,7 +1912,8 @@ function App() {
     setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
     try {
       await api.saveOpenAIKey(value);
-      setOpenAIState(current => ({ ...current, hasKey: true, consent: false, models: [], saving: false, status: 'Key saved with Windows credential encryption. Refresh models to check access.', error: '' }));
+      openAIRefreshId.current = null;
+      setOpenAIState(current => ({ ...current, hasKey: true, consent: false, models: [], refreshing: false, saving: false, status: 'Key saved with Windows credential encryption. Refresh models to check access.', error: '' }));
       return true;
     } catch (cause) { setOpenAIState(current => ({ ...current, saving: false, error: cause.message })); return false; }
   }
@@ -1920,7 +1921,8 @@ function App() {
     setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
     try {
       await api.removeOpenAIKey();
-      setOpenAIState(current => ({ ...current, hasKey: false, consent: false, models: [], saving: false, status: 'API key removed.', error: '' }));
+      openAIRefreshId.current = null;
+      setOpenAIState(current => ({ ...current, hasKey: false, consent: false, models: [], refreshing: false, saving: false, status: 'API key removed.', error: '' }));
     } catch (cause) { setOpenAIState(current => ({ ...current, saving: false, error: cause.message })); }
   }
   async function setOpenAIConsent(enabled) {
