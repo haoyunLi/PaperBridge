@@ -1347,6 +1347,7 @@ function App() {
   const settingsRef = useRef(null);
   const parserPreferenceEdits = useRef({});
   const settingsSaveChain = useRef(Promise.resolve());
+  const lastSettingsWrite = useRef(null);
   const modelRefreshId = useRef(0);
   const [appVersion, setAppVersion] = useState('');
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -1412,6 +1413,7 @@ function App() {
   const openAIRefreshId = useRef(null);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [closeFailure, setCloseFailure] = useState('');
   const attachment = usePaperAttachment(paperRef, modal, setModal, setError);
   const [workspaceSave, setWorkspaceSave] = useState({ status: 'idle', error: null });
   const [busy, setBusy] = useState(null);
@@ -1804,6 +1806,19 @@ function App() {
     return true;
   };
   const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
+  function persistSettings(snapshot) {
+    if (lastSettingsWrite.current?.snapshot === snapshot) return lastSettingsWrite.current.write;
+    const write = settingsSaveChain.current.then(() => api.saveSettings(snapshot));
+    const entry = { snapshot, write };
+    lastSettingsWrite.current = entry;
+    settingsSaveChain.current = write.catch(error => {
+      if (lastSettingsWrite.current === entry) {
+        lastSettingsWrite.current = null;
+        setError(error.message);
+      }
+    });
+    return write;
+  }
   const updateSettings = change => {
     const previous = settingsRef.current;
     const changedKeys = Object.keys(change).filter(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
@@ -1854,9 +1869,7 @@ function App() {
     finishingOnboarding.current = true; setOnboardingFinishing(true); setOnboardingSaveError('');
     try {
       updateSettings({ onboardingCompletedVersion: ONBOARDING_VERSION });
-      const saved = settingsRef.current;
-      settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(saved));
-      await settingsSaveChain.current;
+      await persistSettings(settingsRef.current);
       handleOnboardingBusy(false);
       if (action === 'setup') openSetup();
       else setModal('');
@@ -2312,7 +2325,7 @@ function App() {
     const update = () => setImportElapsed(Math.max(0, Math.floor((Date.now() - pendingImport.startedAt) / 1000)));
     update(); const timer = setInterval(update, 1000); return () => clearInterval(timer);
   }, [pendingImport?.startedAt]);
-  useEffect(() => { if (ready && settings) settingsSaveChain.current = settingsSaveChain.current.catch(() => {}).then(() => api.saveSettings(settings)).catch(err => setError(err.message)); }, [settings, ready]);
+  useEffect(() => { if (ready && settings && settings === settingsRef.current) void persistSettings(settings); }, [settings, ready]);
   useLayoutEffect(() => {
     const dialog = modalRef.current;
     if (!modal || !dialog) return;
@@ -2518,15 +2531,26 @@ function App() {
         commitPaper(current => ({ ...current, position }), { deferUndo: true });
       }
     }
-    return finishNoteEditing();
+    if (!await finishNoteEditing()) return false;
+    let snapshot;
+    do {
+      snapshot = settingsRef.current;
+      if (snapshot) {
+        try { await persistSettings(snapshot); }
+        catch (error) { throw new Error(`Could not save the latest settings. ${error.message}`); }
+      }
+    } while (snapshot !== settingsRef.current);
+    return true;
   }
   useEffect(() => api.onPrepareClose(async () => {
-    if (await saveReadingStateBeforeClose()) api.closeReady();
-    else {
-      setError('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
-      setUpdateAction(null);
-      api.closeCancelled();
+    try {
+      if (await saveReadingStateBeforeClose()) { api.closeReady(); return; }
+      setCloseFailure('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
+    } catch (error) {
+      setCloseFailure(`PaperBridge kept this window open. ${error.message} Close again to retry.`);
     }
+    setUpdateAction(null);
+    api.closeCancelled();
   }), [tab, displayMode, pageNumber, search, pendingImport]);
   useLayoutEffect(() => {
     if (paper && !pendingImport && !viewNavigation && !blockNavigation) return restoreMainScroll();
@@ -4252,7 +4276,8 @@ function App() {
         </div>
       </div>}
       </header>
-      {(error || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
+      {(error || closeFailure || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
+        {!modal && closeFailure && <Notice tone="error" onClose={() => setCloseFailure('')}>{closeFailure}</Notice>}
         {error && <Notice tone="error" onClose={() => setError('')}>{settings.aiProvider === 'ollama' && (isOllamaMemoryError(error) || isOllamaGenerationConnectionError(error)) ? <>
           {isOllamaMemoryError(error) ? 'Ollama reported insufficient memory to run the selected model.' : <>
             The local model stopped responding during this task. <button className="button outline" disabled={Boolean(busy)} onClick={() => openSetup()}>Check local AI</button>
@@ -4388,6 +4413,7 @@ function App() {
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); dismissModal(); } }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+      {closeFailure && <div role="alert"><Notice tone="error" onClose={() => setCloseFailure('')}>{closeFailure}</Notice></div>}
       {modal === 'pdfComment' && pdfComment && <>
         <p className="muted">Page {pdfComment.page}{pdfComment.author && <> · {pdfComment.author}</>}</p>
         <p className="pdf-comment-body" dir="auto">{pdfComment.body}</p>

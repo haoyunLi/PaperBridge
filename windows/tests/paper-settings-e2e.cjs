@@ -433,6 +433,45 @@ async function run() {
     assert.equal(readSettings().pdfExtractionMode, 'pdfOnly');
     assert.equal(readPaper(textA).blocks[1].translation, original.translation);
 
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    const autoCheck = page.getByLabel(/Check official Windows releases/);
+    const wanted = !await autoCheck.isChecked();
+    await app.evaluate(({ ipcMain }, wanted) => {
+      const save = ipcMain._invokeHandlers.get('settings:save');
+      global.__closePref = { mode: 'fail', attempts: 0 };
+      ipcMain.removeHandler('settings:save');
+      ipcMain.handle('settings:save', async (event, prefs) => {
+        const test = global.__closePref;
+        if (prefs.autoCheckUpdates === wanted) {
+          test.attempts++;
+          if (test.mode === 'fail') throw new Error('Test settings file is unavailable');
+          if (test.mode === 'hold') await new Promise(resolve => { test.release = resolve; });
+        }
+        return save(event, prefs);
+      });
+    }, wanted);
+    await autoCheck.setChecked(wanted);
+    await waitFor(() => app.evaluate(() => global.__closePref.attempts > 0), 'first settings save attempted');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await page.getByRole('dialog').getByRole('alert').filter({ hasText: /Could not save the latest settings/ }).waitFor();
+    assert.equal(await autoCheck.isChecked(), wanted);
+    assert.equal(readSettings().autoCheckUpdates, !wanted);
+    assert.ok(await app.evaluate(() => global.__closePref.attempts >= 2));
+    await app.evaluate(() => { global.__closePref.mode = 'hold'; });
+    const closed = app.waitForEvent('close', { timeout: 20000 });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await waitFor(() => app.evaluate(() => Boolean(global.__closePref.release)), 'retry waiting for settings storage');
+    assert.equal(await page.getByRole('dialog').isVisible(), true);
+    assert.equal(readSettings().autoCheckUpdates, !wanted);
+    await app.evaluate(() => { global.__closePref.mode = 'save'; global.__closePref.release(); });
+    await closed; app = null;
+    assert.equal(readSettings().autoCheckUpdates, wanted);
+    app = await launch(); page = await app.firstWindow();
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    assert.equal(await page.getByLabel(/Check official Windows releases/).isChecked(), wanted);
+
     console.log('Paper task settings and explanations restored after destination load despite a matching paste draft; additive appearance persists globally, legacy proportional spacing survives unrelated saves and restart, and explicit conversion/reset preserve paper work.');
   } catch (error) {
     if (page && !page.isClosed()) {

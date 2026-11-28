@@ -20,6 +20,7 @@ async function run() {
   store.savePaper({ id, name, type: 'text', sourceMode: 'text', extraction: 'Pasted text', position: { tab: 'Reader' },
     blocks: [{ id: 1, text: 'The sample was cooled to 77 K.', translation: '样品被冷却至77 K。', bookmark: true }] });
   const app = await electron.launch({ executablePath, args, env, cwd: root });
+  let closed = false;
   try {
     const page = await app.firstWindow();
     await page.getByRole('heading', { name, exact: true }).waitFor();
@@ -67,7 +68,51 @@ async function run() {
       assert.ok(partlyVisible.visible);
       await execFile(executablePath, args, { cwd: root, env, windowsHide: true, timeout: 20000 });
       assert.deepEqual((await snapshot()).bounds, partlyVisible.bounds, 'Preserve the position of a reachable frame');
+
+      // The second executable sends its real version through Electron's instance lock.
+      // Report an earlier version from the first process to exercise an update boundary.
+      const version = await app.evaluate(({ app, BrowserWindow, dialog }) => {
+        const running = app.getVersion();
+        app.getVersion = () => '0.0.1';
+        global.__otherLaunches = [];
+        dialog.showMessageBox = (owner, options) => {
+          global.__otherLaunches.push({ owned: owner === BrowserWindow.getAllWindows()[0], ...options });
+          return new Promise(resolve => { global.__answerOtherLaunch = response => resolve({ response }); });
+        };
+        return running;
+      });
+      const launchAgain = () => execFile(executablePath, args, { cwd: root, env, windowsHide: true, timeout: 20000 });
+      const prompt = n => app.evaluate(async (_electron, n) => {
+        const deadline = Date.now() + 5000;
+        while (global.__otherLaunches.length < n && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 30));
+        return global.__otherLaunches[n - 1];
+      }, n);
+      await launchAgain();
+      const question = await prompt(1);
+      assert.equal(question?.owned, true);
+      assert.equal(question.message, 'PaperBridge 0.0.1 is running.');
+      assert.ok(question.detail.includes('You opened version ' + version + '.'));
+      assert.deepEqual(question.buttons, ['Keep reading', 'Save and close']);
+      assert.equal(question.defaultId, 0); assert.equal(question.cancelId, 0);
+      await launchAgain();
+      assert.equal(await app.evaluate(() => global.__otherLaunches.length), 1);
+      await app.evaluate(() => global.__answerOtherLaunch(0));
+      assert.equal((await snapshot()).windows, 1);
+      const note = 'A note saved before switching to the other version.';
+      await page.locator('#block-1 .source-text').evaluate(node => {
+        const range = document.createRange(); range.selectNodeContents(node);
+        const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+        node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      });
+      await page.getByLabel('Note for selected passage').fill(note);
+      await launchAgain();
+      assert.ok(await prompt(2));
+      const finished = app.waitForEvent('close', { timeout: 20000 });
+      await app.evaluate(() => global.__answerOtherLaunch(1));
+      await finished; closed = true;
+      assert.ok(store.paper(id).blocks[0].bookmark);
+      assert.ok(store.paper(id).blocks[0].notes.some(record => record.body === note));
     }
-  } finally { await app.close(); }
+  } finally { if (!closed) await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -53,6 +53,8 @@ let closeReady = false;
 let closeRequested = false;
 let quitAfterClose = false;
 let portableUpdateToReveal = null;
+let pendingLaunchVersion = '';
+let showingLaunchVersion = false;
 let closeTimer = null;
 const requests = new Map();
 const openAIRequests = new Map();
@@ -85,14 +87,14 @@ function finishClose() {
   else if (window && !window.isDestroyed()) window.close();
 }
 
-function requestRendererClose(quitting = false) {
+function requestRendererClose(quitting = false, { waitForSave = false } = {}) {
   quitAfterClose ||= quitting;
   if (closeRequested || !window || window.isDestroyed()) return;
   if (window.webContents.isCrashed()) { finishClose(); return; }
   closeRequested = true;
   window.webContents.send('paperbridge:prepare-close');
   // An update must wait for the reader to confirm that pending edits reached disk.
-  if (!portableUpdateToReveal) closeTimer = setTimeout(finishClose, 10_000);
+  if (!waitForSave) closeTimer = setTimeout(finishClose, 10_000);
 }
 
 function cancelRendererClose() {
@@ -185,7 +187,7 @@ function registerHandlers() {
     const filename = await updateFiles.verifiedFile(tag);
     if (availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The available update changed.');
     portableUpdateToReveal = filename;
-    requestRendererClose(true);
+    requestRendererClose(true, { waitForSave: true });
   });
   ipcMain.handle('updates:cancel-download', (_event, tag) => {
     if (!availableDownload || availableDownload.tag !== tag) return false;
@@ -660,16 +662,41 @@ function showStartupError(error) {
   app.exit(1);
 }
 
+async function explainDifferentLaunch() {
+  const owner = window;
+  if (!pendingLaunchVersion || showingLaunchVersion || !owner || owner.isDestroyed() ||
+      owner.webContents.isLoadingMainFrame() || closeRequested || closeReady) return;
+  const launched = pendingLaunchVersion;
+  pendingLaunchVersion = '';
+  showingLaunchVersion = true;
+  try {
+    const { response } = await dialog.showMessageBox(owner, {
+      type: 'info', title: 'PaperBridge is already open',
+      message: `PaperBridge ${app.getVersion()} is running.`,
+      detail: `You opened version ${launched}. To use that version, save and close this reader, then open the other file again.`,
+      buttons: ['Keep reading', 'Save and close'], defaultId: 0, cancelId: 0, noLink: true
+    });
+    if (response === 1 && owner === window && !owner.isDestroyed()) requestRendererClose(true, { waitForSave: true });
+  } catch (error) {
+    if (!owner.isDestroyed()) console.warn('Could not show the version of the second launch:', error.message);
+  } finally { showingLaunchVersion = false; }
+}
+
 // A second Explorer launch should bring the existing reader back to the front.
-if (app.isPackaged && !app.requestSingleInstanceLock()) {
+if (app.isPackaged && !app.requestSingleInstanceLock({ version: app.getVersion() })) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, _argv, _directory, data) => {
+    const version = data?.version;
+    if (!showingLaunchVersion && typeof version === 'string' && /^\d{1,6}\.\d{1,6}\.\d{1,6}$/.test(version) && version !== app.getVersion()) {
+      pendingLaunchVersion = version;
+    }
     if (!window || window.isDestroyed()) return;
     if (window.isMinimized()) window.restore();
     window.show();
     recoverWindowPosition(window, screen);
     window.focus();
+    void explainDifferentLaunch();
   });
   app.whenReady().then(startApp).catch(showStartupError);
 }
@@ -694,6 +721,7 @@ async function startApp() {
   });
   registerHandlers();
   await createWindow();
+  await explainDifferentLaunch();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow().catch(showStartupError); });
 }
 function openPortableUpdateFolder() {

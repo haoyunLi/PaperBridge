@@ -6,6 +6,8 @@ PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Porta
 
 如果双击新的便携版后，屏幕又回到原来的论文窗口，请打开 Settings → Updates 查看正在运行的版本。旧便携版仍然打开时，Windows 会将这次启动交给原窗口。先正常关闭旧版，再从文件资源管理器打开刚下载的 Portable.exe。从 0.2.140 起，应用内下载完成后也可选 **Close and show portable update**，让旧版保存并退出，再双击选中的新版。
 
+从 0.2.142 起，两个都能报告版本号的 PaperBridge 同时启动时，已有窗口会告诉你正在运行的版本和刚打开的版本。选 **Keep reading** 可继续当前工作，选 **Save and close** 后再双击另一份文件即可切换。重复打开同一版本仍会返回已有窗口。
+
 ### 怎样核对下载的文件
 
 从同一 GitHub Release 下载所选的 EXE 和同名的 `.exe.sha256` 文件，放在同一文件夹。在该文件夹打开 PowerShell，运行下列命令。每份安装版或便携版都会显示文件名和核对结果，`Match` 为 `True` 表示内容与发布页相符。
