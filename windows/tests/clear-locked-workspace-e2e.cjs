@@ -59,6 +59,22 @@ async function run() {
     await page.getByRole('heading', { name: papers[0].name, exact: true }).waitFor();
     assert.equal(store.list().length, 2);
     assert.equal(store.glossary()[0].target, 'calibration lamp');
+    // A slow disk can deliver a paper selected in Recent Papers after the user has cleared the library.
+    await app.evaluate(({ ipcMain }, id) => {
+      const load = ipcMain._invokeHandlers.get('paper:load');
+      ipcMain.removeHandler('paper:load');
+      ipcMain.handle('paper:load', async (event, paperId) => {
+        const value = await load(event, paperId);
+        if (paperId === id) await new Promise(resolve => { globalThis.__releasePaperRead = resolve; });
+        return value;
+      });
+    }, papers[1].id);
+    await page.locator('.recent-papers').getByText(papers[1].name, { exact: true }).click();
+    await app.evaluate(async () => {
+      const deadline = Date.now() + 5000;
+      while (!globalThis.__releasePaperRead && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 15));
+      if (!globalThis.__releasePaperRead) throw new Error('The second paper was not read before the clear operation');
+    });
     const retry = await confirmation();
     assert.equal(await retry.getByRole('checkbox').isChecked(), false);
     await app.evaluate(({ ipcMain }) => {
@@ -94,6 +110,10 @@ async function run() {
     });
     await page.locator('.welcome').waitFor();
     assert.equal(wroteAfterClear, false, 'A delayed viewport save cannot recreate a cleared paper');
+    await app.evaluate(() => { globalThis.__releasePaperRead(); });
+    await page.waitForTimeout(600);
+    assert.equal(await page.locator('.welcome').isVisible(), true, 'A previously requested paper cannot reopen after clearing');
+    assert.equal(papers.some(p => fs.existsSync(p.file)), false, 'A late read cannot write a cleared paper back to disk');
     assert.deepEqual(store.list(), []);
     assert.equal(fs.existsSync(attachment), false);
     assert.equal(fs.existsSync(preview), false);
@@ -101,7 +121,14 @@ async function run() {
       assert.deepEqual(fs.readFileSync(store.pdfPath(p.id)), p.bytes);
       assert.deepEqual(fs.readFileSync(p.original), p.bytes);
     }
-    console.log('After reopening both workspaces, clearing with the default kept both archived PDFs and both source files.');
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    await page.locator('.welcome').waitFor();
+    assert.deepEqual(store.list(), []);
+    assert.equal(store.lastPaperId(), null);
+    assert.equal(papers.some(p => fs.existsSync(p.file)), false);
+    console.log('Clearing kept both archived PDFs and both source files; a late read did not restore a cleared paper or bookmark after restart.');
   } finally { await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

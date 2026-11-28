@@ -1790,15 +1790,17 @@ function App() {
     }
   }
   const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
-    if (editRef.current && !fromImport) return false;
+    if (clearingWorkspace.current || (editRef.current && !fromImport)) return false;
     if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
     const request = ++paperLoadRequest.current;
-    if (!await finishNoteEditing()) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
+    const saved = await finishNoteEditing();
+    if (request !== paperLoadRequest.current) return false;
+    if (!saved) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
     let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
     if (token) requireActiveTask(token);
+    if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
     if (fromImport && loaded?.id === paperRef.current?.id) loaded = paperRef.current;
     if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained; try importing the original again.');
-    if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
     // Capture the saved output's language before missing task settings are filled
     // from the current global configuration. Unknown historical output stays so.
     loaded = restoreStructuredTranslations(reviewSavedReferenceCoverage(migrateOutputLanguages(loaded)));
@@ -3588,6 +3590,7 @@ function App() {
   async function clearSavedData(includeArchivedPdfs) {
     if (taskRef.current || clearingWorkspace.current) return;
     clearingWorkspace.current = true;
+    paperLoadRequest.current++;
     try {
       invalidateReadingScroll();
       if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
