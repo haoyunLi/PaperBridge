@@ -76,8 +76,4 @@ async function createPageArchive(root, pdfFile, { expectedFingerprint, isCurrent
   } catch { return null; }
 }
 
-function clearPageArchives(root) {
-  fs.rmSync(cacheRoot(root), { recursive: true, force: true });
-}
-
-module.exports = { createPageArchive, clearPageArchives, validPageImage };
+module.exports = { createPageArchive, validPageImage };

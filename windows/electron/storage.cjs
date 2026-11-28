@@ -4,8 +4,7 @@ const { trimLibraryText } = require('./library-metadata.mjs');
 const { savedStyleGuide } = require('./translation-style.mjs');
 const readingAppearanceDefaults = require('./reading-appearance.json');
 const { normalizeReadingAppearance } = require('./reading-appearance.mjs');
-const { clearSavedMineruResults } = require('./mineru-resources.cjs');
-const { clearPageArchives } = require('./pdf-page-archive.cjs');
+const { clearWorkspaceFiles, recoverWorkspaceFiles } = require('./workspace-clear.cjs');
 const { ArchiveCleanup } = require('./archive-cleanup.cjs');
 
 const defaults = {
@@ -165,6 +164,7 @@ function libraryEntryFromPaper(paper, existing, revision) {
 }
 
 function createStore(root) {
+  let recovery = recoverWorkspaceFiles(root);
   const papersDir = path.join(root, 'papers');
   const pdfDir = path.join(root, 'pdfs');
   const archiveCleanup = new ArchiveCleanup(root, pdfDir, papersDir);
@@ -284,23 +284,14 @@ function createStore(root) {
       return librarySnapshot().library;
     },
     clearData(includeArchivedPdfs = false) {
-      clearPageArchives(root);
-      clearSavedMineruResults(root);
-      const savedFiles = [
-        [papersDir, /^[a-f0-9]{64}\.json(?:\.backup)?(?:\.\d+\.tmp)?$/],
-        [root, /^(?:settings|glossary|updates|last-paper|library-index)\.json(?:\.backup)?(?:\.\d+\.tmp)?$/]
-      ];
-      for (const [dir, pattern] of savedFiles) {
-        if (!fs.existsSync(dir)) continue;
-        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-          if (!item.isDirectory() && pattern.test(item.name)) fs.unlinkSync(path.join(dir, item.name));
-        }
-      }
-      return includeArchivedPdfs === true ? archiveCleanup.remove() : archiveCleanup.keepAll();
+      const workspaceCleanupWarning = clearWorkspaceFiles(root);
+      recovery = { restoreWarning: '', cleanupWarning: workspaceCleanupWarning };
+      const result = includeArchivedPdfs === true ? archiveCleanup.remove() : archiveCleanup.keepAll();
+      return workspaceCleanupWarning ? { ...result, workspaceCleanupWarning } : result;
     },
     pendingArchivedPdfs: () => archiveCleanup.pending().length,
     retryArchiveCleanup: () => archiveCleanup.remove({ retry: true }),
-    libraryPersistenceWarning() { return libraryPersistenceWarning; },
+    libraryPersistenceWarning() { return [recovery.restoreWarning, recovery.cleanupWarning, libraryPersistenceWarning].filter(Boolean).join(' '); },
     librarySnapshot,
     list: () => librarySnapshot().library
   };

@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.119",
+  "version": "0.2.120",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -24,6 +24,7 @@
     "test:vertical-pdf-e2e": "node tests/vertical-pdf-e2e.cjs",
     "test:bidi-pdf-e2e": "node tests/bidi-pdf-e2e.cjs",
     "test:rotated-pdf-e2e": "node tests/rotated-pdf-e2e.cjs",
+    "test:clear-locked-workspace-e2e": "node tests/clear-locked-workspace-e2e.cjs",
     "test:archive-cleanup-e2e": "node tests/archive-cleanup-e2e.cjs",
     "test:writing-direction-e2e": "node tests/writing-direction-e2e.cjs",
     "test:paragraph-editor-e2e": "node tests/paragraph-editor-e2e.cjs && node tests/retained-slice-e2e.cjs && node tests/legacy-paragraph-anchors-e2e.cjs",

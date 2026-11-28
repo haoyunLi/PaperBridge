@@ -1043,9 +1043,11 @@ function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, setL
 function ClearDataConfirmation({ onRemove, onCancel }) {
   const [includeArchivedPdfs, setIncludeArchivedPdfs] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState('');
   async function confirm() {
-    setRemoving(true);
+    setRemoving(true); setError('');
     try { await onRemove(includeArchivedPdfs); }
+    catch (cause) { setError(cause.message); }
     finally { setRemoving(false); }
   }
   return <>
@@ -1053,6 +1055,7 @@ function ClearDataConfirmation({ onRemove, onCancel }) {
     <label className="settings-checkbox"><input type="checkbox" disabled={removing} checked={includeArchivedPdfs}
       onChange={event => setIncludeArchivedPdfs(event.target.checked)} /> Also remove archived PDF copies from PaperBridge</label>
     <p>PDFs outside the PaperBridge archive stay at their original locations. The OpenAI API key can be removed under Models. Text already sent online cannot be recalled.</p>
+    {error && <p role="alert" className="notice error">{error}</p>}
     <div className="row"><button className="button danger" disabled={removing} onClick={confirm}>{removing ? 'Removing…' : 'Remove saved data'}</button>
       <button className="button outline" onClick={onCancel}>Cancel</button></div>
   </>;
@@ -3303,10 +3306,13 @@ function App() {
       setStatus(includeArchivedPdfs
         ? `Removed saved workspaces and ${result.archivedPdfsRemoved} archived PDF ${result.archivedPdfsRemoved === 1 ? 'copy' : 'copies'}.`
         : 'Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
-      setError(result?.pdfCleanupError ? 'Workspace data was cleared. ' + (result.pendingArchivedPdfs
+      const pdfWarning = result?.pdfCleanupError ? 'Workspace data was cleared. ' + (result.pendingArchivedPdfs
         ? 'Some archived files could not be removed. Close any PDF viewer using them, then retry in Settings → Local Data.'
-        : result.pdfCleanupError) : '');
-    } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
+        : result.pdfCleanupError) : '';
+      setError([pdfWarning, result?.workspaceCleanupWarning].filter(Boolean).join(' '));
+    } catch (cause) {
+      throw new Error('Could not clear saved data. ' + cause.message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
+    }
   }
   async function retryArchiveCleanup() {
     if (taskRef.current || archiveCleanup.busy) return;
