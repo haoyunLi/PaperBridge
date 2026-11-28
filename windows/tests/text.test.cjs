@@ -501,6 +501,20 @@ test('repeated PDF running heads and page footers leave the first header and all
   ]);
 });
 
+test('margin filtering retains a sparse page’s numbered observations and still removes genuine running matter', async () => {
+  const { filterRepeatedPageDecorations } = await import('../src/pdfDecorations.mjs');
+  const line = (text, y) => ({ text, y, height: 12 });
+  const pages = [1, 2, 3].map(n => ({ height: 800, lines: [
+    line('Observations in 2026', 770), line('Observation ' + n + ' recorded a voltage of 1.25 V.', 710), line('Page ' + n + ' of 3', 30)
+  ] }));
+  assert.deepEqual(filterRepeatedPageDecorations(pages).map(p => p.lines.map(l => l.text)), [
+    ['Observations in 2026', 'Observation 1 recorded a voltage of 1.25 V.'],
+    ['Observation 2 recorded a voltage of 1.25 V.'], ['Observation 3 recorded a voltage of 1.25 V.']
+  ]);
+  const onlyFolio = pages.map((page, index) => ({ ...page, lines: [line('Page ' + (index + 1), 30)] }));
+  assert.ok(filterRepeatedPageDecorations(onlyFolio).every(page => !page.lines.length));
+});
+
 test('PDF page stitching repairs an interrupted word but keeps complete sentences separate', async () => {
   const { stitchPageBlocks } = await import('../src/pdfDecorations.mjs');
   const blocks = stitchPageBlocks([

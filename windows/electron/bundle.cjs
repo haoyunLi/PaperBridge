@@ -3,6 +3,8 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
+// Keep the generated Markdown index usable even with an abnormally large PDF page count.
+const maximumOmittedPageHeadings = 10000;
 const facsimileHeadings = new Map([
   ['original', 'Extracted source text'],
   ['translated', 'Translation of selectable text'],
@@ -123,7 +125,17 @@ function writeBundleFacsimile({ folder, facsimileDocuments, renderedPages }, pag
   const pages = [];
   for (let page = 1; page <= limit; page++) {
     if (renderedPages.has(page)) pages.push(`## Page ${page}\n\n![Original PDF page ${page}](pages/${pageImageName(page)})`);
-    else if (!stopped) pages.push(`## Page ${page}\n\n> Preview unavailable. Open the exact original PDF above.`);
+    else if (!stopped) pages.push(`## Page ${page}\n\n> Preview unavailable. [Open page ${page} in the original PDF](original.pdf#page=${page}).`);
+  }
+  if (!stopped && pageCount > limit) {
+    const lastHeading = Math.min(pageCount, limit + maximumOmittedPageHeadings);
+    for (let page = limit + 1; page <= lastHeading; page++) {
+      pages.push(`## Page ${page}\n\n> PNG omitted for this long document. [Open page ${page} in the original PDF](original.pdf#page=${page}).`);
+    }
+    if (lastHeading < pageCount) {
+      const first = lastHeading + 1;
+      pages.push(`## Pages ${first}–${pageCount}\n\n> Continue in the original PDF from [page ${first}](original.pdf#page=${first}) to [page ${pageCount}](original.pdf#page=${pageCount}).`);
+    }
   }
   const facsimile = ['# Original PDF facsimile', `> ${notice.join(' ')}`, '[Open the exact original PDF](original.pdf)', ...pages].join('\n\n');
   fs.writeFileSync(path.join(folder, 'Original Pages.md'), `${facsimile}\n`, 'utf8');

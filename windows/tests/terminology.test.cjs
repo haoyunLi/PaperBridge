@@ -40,6 +40,15 @@ test('saved terminology uses full, accent-sensitive matches and preserves approv
   assert.deepEqual(upsertGlossaryTerm([street, reverse], entry('STRASSE', 'new')), [reverse, entry('STRASSE', 'new')]);
 });
 
+test('pasted zero-width padding does not create invisible or duplicate terms', async () => {
+  const { upsertGlossaryTerm, matchingGlossaryTerms, canSaveTermSource } = await import('../src/terminology.mjs');
+  const previous = entry('\u200BAttention\u200B', 'old');
+  assert.equal(canSaveTermSource('\u200B'), false);
+  assert.throws(() => upsertGlossaryTerm([], entry('word', '\u200B')), /short phrase/);
+  assert.deepEqual(matchingGlossaryTerms([previous], 'attention', 'English', 'Simplified Chinese'), [previous]);
+  assert.deepEqual(upsertGlossaryTerm([previous], entry('\u200Battention', 'new\u200B')), [entry('attention', 'new')]);
+});
+
 test('all translation prompts serialize terminology as JSON data', async () => {
   const {
     translationPrompt, markdownTranslationPrompt, connectedTranslationPrompt, selectionTranslationPrompt, strictSelectionTranslationPrompt

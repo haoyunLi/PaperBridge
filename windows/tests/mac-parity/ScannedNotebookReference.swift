@@ -3,6 +3,35 @@ import CryptoKit
 import PDFKit
 import SwiftUI
 
+@MainActor
+func nativeLongFacsimile(pdf: URL) throws -> [String: Any] {
+    let bytes = try Data(contentsOf: pdf)
+    let checksum = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let service = PDFVisualArchiveService(workspaceRootOverride: directory)
+    let archive = try service.archive(pdfData: bytes, checksum: checksum)
+    let saved = try Data(contentsOf: archive.originalPDFURL)
+    guard saved == bytes, let document = PDFDocument(data: saved), document.pageCount > 0,
+          let text = document.page(at: document.pageCount - 1)?.string else {
+        throw NSError(domain: "LongFacsimile", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot read the archived last page"])
+    }
+    let headings = archive.markdown.components(separatedBy: "\n").filter { $0.hasPrefix("## Page ") }
+    guard archive.pageCount == 125, archive.omittedPageCount == 5 else {
+        throw NSError(domain: "LongFacsimile", code: 3, userInfo: [NSLocalizedDescriptionKey: "Unexpected archive page limit"])
+    }
+    for number in 121...125 {
+        guard archive.markdown.contains("## Page \(number)\n\n> Page PNG omitted") else {
+            throw NSError(domain: "LongFacsimile", code: 2, userInfo: [NSLocalizedDescriptionKey: "Missing numbered omitted page"])
+        }
+    }
+    let readerText = try PDFTextExtractor().extractText(from: bytes)
+    let observations = (1...125).filter { readerText.contains("Observation \($0) in the printed notebook.") }
+    return ["readerObservations": observations.count, "sha256": checksum, "total": archive.pageCount, "rendered": archive.renderedPageCount,
+            "omitted": archive.omittedPageCount, "headings": headings.count,
+            "lastText": text.trimmingCharacters(in: .whitespacesAndNewlines)]
+}
+
 // Read a raster-only portrait/landscape notebook through PaperBridge's PDFKit
 // importer, PDFDocumentView and library. Each printed page has a distinct swatch.
 @MainActor

@@ -103,7 +103,8 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
     onboardingCompletedVersion: 1, autoCheckUpdates: false, ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`
   }));
-  const launch = () => electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const launch = () => electron.launch({ executablePath, args: [...(executablePath ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   const dictionary = prompt => JSON.parse(prompt.split('\n').find(line => line.startsWith('[{"source":')));
   let app, page, stage = 'launch';
@@ -138,8 +139,10 @@ async function run() {
     await page.locator('#block-1 .source-text').waitFor();
     await selectText(page, '#block-1 .source-text', 'Self-attention');
     const draft = page.getByPlaceholder('Approved translation');
-    await draft.fill(' 自注意机制 ');
     const save = page.getByRole('button', { name: 'Save term', exact: true });
+    await draft.fill('\u200B');
+    assert.ok(await save.isDisabled(), 'Invisible padding cannot be saved as a preferred translation');
+    await draft.fill(' 自注意机制 ');
     await withWriteFailure(async saved => {
       assert.deepEqual(saved, initialTerms);
       await save.click();
@@ -185,6 +188,11 @@ async function run() {
     await remove.click();
     await termRow.waitFor({ state: 'detached' });
     assert.equal(readTerms().length, 3);
+    await page.getByRole('status').getByText('No matching terms. Try another word or translation.', { exact: true }).waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'Saved Terminology', exact: true }).click();
+    assert.equal(await page.getByRole('textbox', { name: 'Search saved terms' }).inputValue(), '');
+    assert.equal(await termRow.count(), 3, 'Reopening terminology shows all remaining terms');
     await closeApp();
     app = await launch();
     page = await bounded('reopened Electron window', app.firstWindow(), 30000);

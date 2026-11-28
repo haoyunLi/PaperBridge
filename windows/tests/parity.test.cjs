@@ -496,6 +496,7 @@ test('PDF facsimile bundles include only completed page images and preserve the 
     const full = fs.readFileSync(path.join(bundle.folder, 'paper_full_translation_fr.md'), 'utf8');
     assert.match(full, /first 120 of 125 pages/);
     assert.match(full, /Page export stopped/);
+    assert.doesNotMatch(full, /^## Page 121$/m, 'A stopped export lists only the completed previews');
     assert.match(full, /\(original\.pdf\)/);
     assert.deepEqual([...full.matchAll(/pages\/page-(\d+)\.png/g)].map(match => match[1]), ['001', '120']);
     assert.match(full, /# Full translation of selectable text\n\nSaved translated text\.\n$/);
@@ -505,6 +506,12 @@ test('PDF facsimile bundles include only completed page images and preserve the 
     writeBundleFacsimile({ ...structured, renderedPages: new Set() }, 1, false);
     assert.match(fs.readFileSync(path.join(structured.folder, 'Original Pages.md'), 'utf8'), /previews are unavailable/);
     assert.equal(fs.readFileSync(path.join(structured.folder, 'paper_full_translation_fr.md'), 'utf8'), 'Saved translated text.');
+    const manifest = path.join(structured.folder, 'Original Pages.md');
+    assert.match(fs.readFileSync(manifest, 'utf8'), /\(original\.pdf#page=1\)/);
+    writeBundleFacsimile({ ...structured, renderedPages: new Set() }, Number.MAX_SAFE_INTEGER, false);
+    const huge = fs.readFileSync(manifest, 'utf8');
+    assert.ok(huge.length < 2_000_000, 'Unusually large counts keep a bounded index and links to both ends');
+    assert.ok(huge.includes('(original.pdf#page=' + Number.MAX_SAFE_INTEGER + ')'));
   } finally {
     if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
     fs.rmSync(parent, { recursive: true, force: true });

@@ -18,7 +18,9 @@ export function filterRepeatedPageDecorations(pages) {
       const key = signature(line.text);
       if (seen.has(key)) continue;
       seen.add(key);
-      const entry = signatures.get(key) || { pages: new Set(), header: new Set(), footer: new Set(), firstPage: index };
+      const spelling = line.text.toLowerCase().replace(/\s+/g, ' ').trim();
+      const entry = signatures.get(key) || { pages: new Set(), header: new Set(), footer: new Set(), firstPage: index, spelling, varyingNumbers: false };
+      if (entry.spelling !== spelling) entry.varyingNumbers = true;
       entry.pages.add(index);
       entry[where].add(index);
       signatures.set(key, entry);
@@ -35,6 +37,7 @@ export function filterRepeatedPageDecorations(pages) {
         bottomLine = line;
       } else nextBaseline = Math.min(nextBaseline, line.y);
     }
+    const sparseProse = [];
     const lines = page.lines.filter(line => {
       const where = position(line, page.height);
       const text = line.text.trim();
@@ -43,9 +46,13 @@ export function filterRepeatedPageDecorations(pages) {
           /^(?:\p{Nd}{1,4}|\(\p{Nd}{1,4}\))$/u.test(text)) return false;
       const entry = signatures.get(signature(line.text));
       if (!entry || entry.pages.size < 2 || (entry.header.size < 2 && entry.footer.size < 2)) return true;
-      return where !== 'footer' && !(where === 'header' && index > entry.firstPage);
+      const keep = where !== 'footer' && !(where === 'header' && index > entry.firstPage);
+      // A sparse notebook can place its only observation inside the page margin.
+      // Keep changing measurements if removing running matter would erase the page.
+      if (!keep && entry.varyingNumbers && /\p{L}/u.test(text) && /[.!?。！？][”"')）]?$/u.test(text)) sparseProse.push(line);
+      return keep;
     });
-    return { ...page, lines };
+    return { ...page, lines: lines.length ? lines : sparseProse };
   });
 }
 
