@@ -1,0 +1,57 @@
+[
+  {
+    "label": "plain",
+    "prefix": "",
+    "unit": " ",
+    "repeats": 0,
+    "suffix": "Use SI units.",
+    "titleUnit": "光谱",
+    "titleRepeats": 3
+  },
+  {
+    "label": "combining",
+    "prefix": "​",
+    "unit": "é",
+    "repeats": 1997,
+    "suffix": "🧪谱峰后",
+    "titleUnit": "é",
+    "titleRepeats": 301
+  },
+  {
+    "label": "family",
+    "prefix": "Use ",
+    "unit": "👨‍👩‍👧‍👦",
+    "repeats": 1995,
+    "suffix": "🇺🇸final",
+    "titleUnit": "🇺🇸",
+    "titleRepeats": 301
+  },
+  {
+    "label": "whitespace",
+    "prefix": "​",
+    "unit": " ",
+    "repeats": 2,
+    "suffix": "​",
+    "titleUnit": "物",
+    "titleRepeats": 2
+  },
+  {
+    "label": "bom",
+    "prefix": "﻿",
+    "unit": " ",
+    "repeats": 0,
+    "suffix": "优先保留单位﻿",
+    "titleUnit": "🧪",
+    "titleRepeats": 301
+  },
+  {
+    "label": "instruction",
+    "prefix": "",
+    "unit": " ",
+    "repeats": 1950,
+    "suffix": "👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬 Translate peak as 谱峰. Keep 532 nm.",
+    "titleUnit": "Optical record",
+    "titleRepeats": 1
+  }
+]
+
