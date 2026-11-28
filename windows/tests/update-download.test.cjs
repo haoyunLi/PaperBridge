@@ -150,8 +150,15 @@ test('an explicit Setup action rechecks the file and shares one Windows handoff 
   const first = files.openInstaller(tag, open), repeated = files.openInstaller(tag, open);
   await waiting;
   assert.deepEqual(paths, [path.join(directory, setup.name)]);
+  const later = JSON.parse(JSON.stringify(installer).replaceAll(version, '0.3.1'));
+  await files.prepare(later);
+  await assert.rejects(files.openInstaller(later.tag, open), /Another Windows Setup is already opening/);
   release('');
   await Promise.all([first, repeated]);
+  let laterFile;
+  await files.openInstaller(later.tag, async filename => { laterFile = filename; return ''; });
+  assert.equal(laterFile, path.join(directory, later.file.name));
+  await files.prepare(installer);
   await assert.rejects(files.openInstaller(tag, async () => 'Windows did not open the installer'), /Windows did not open/);
   await fs.writeFile(paths[0], Buffer.alloc(payload.length));
   await assert.rejects(files.openInstaller(tag, open), /no longer matches/);

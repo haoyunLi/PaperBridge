@@ -16,7 +16,8 @@ async function run() {
   assert.equal(process.platform, 'win32');
   const executablePath = path.resolve(process.env.PAPERBRIDGE_TEST_EXECUTABLE);
   const feed = JSON.parse(process.env.PAPERBRIDGE_VERIFIED_FEED);
-  const report = { from: '0.1.0', to: feed.version };
+  const onClose = process.env.PAPERBRIDGE_TEST_SETUP_ON_CLOSE === 'true';
+  const report = { from: '0.1.0', to: feed.version, onClose };
   const reportFile = path.join(__dirname, '..', 'test-artifacts', 'installed-update.json');
   fs.mkdirSync(path.dirname(reportFile), { recursive: true });
   const checkpoint = stage => { report.stage = stage; fs.writeFileSync(reportFile, JSON.stringify(report, null, 2)); console.log(stage); };
@@ -95,14 +96,23 @@ async function run() {
         });
       };
     }, trace);
-    await settings.getByRole('button', { name: 'Open installer', exact: true }).click();
+    const workspace = await app.evaluate(({ app }) => process.env.PAPERBRIDGE_WORKSPACE || process.getBuiltinModule('node:path').join(app.getPath('userData'), 'workspace'));
+    if (onClose) {
+      const schedule = settings.getByRole('checkbox', { name: /Setup when I close PaperBridge/ });
+      assert.equal(await schedule.isChecked(), false);
+      await schedule.check();
+      assert.equal(fs.existsSync(trace), false);
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    } else {
+      await settings.getByRole('button', { name: 'Open installer', exact: true }).click();
+    }
     const deadline = Date.now() + 15000;
     while (!fs.existsSync(trace) && Date.now() < deadline) await delay(100);
     const opened = JSON.parse(fs.readFileSync(trace, 'utf8'));
     report.shellStatus = Object.hasOwn(opened, 'error') ? 'returned' : 'waiting for the native window';
     assert.equal(path.resolve(opened.given).toLowerCase(), file.toLowerCase());
     assert.ok(!opened.error, opened.error);
-    const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
+    const saved = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', id + '.json'), 'utf8'));
     assert.ok(saved.blocks.some(block => block.bookmark && block.notes?.some(item => item.body === note)));
     checkpoint('handed the verified Internet download to the Windows shell with its bookmark and note saved');
     if (process.env.PAPERBRIDGE_VERIFY_WIZARD === 'true') {
@@ -113,12 +123,17 @@ async function run() {
         const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-File', script, '-ObservePublic'], { windowsHide: true, timeout: 210000 });
         console.log(stdout);
         Object.assign(report, JSON.parse(fs.readFileSync(reportFile, 'utf8').replace(/^\uFEFF/, '')));
-        if (report.wizard?.result === 'requires Windows user confirmation') {
-          const advice = settings.getByText(/Still waiting to open Setup|Follow the Windows setup wizard/);
+        if (onClose && report.wizard?.result === 'public installer visible') {
+          if (!page.isClosed()) await page.waitForEvent('close', { timeout: 20000 });
+          checkpoint('the saved reader closed after Windows opened the verified Setup');
+        } else if (report.wizard?.result === 'requires Windows user confirmation' && !page.isClosed()) {
+          const advice = onClose ? settings.getByText(/Waiting for Windows Setup. Check the taskbar/) : settings.getByText(/Still waiting to open Setup|Follow the Windows setup wizard/);
           await advice.waitFor();
           report.readerGuidance = await advice.innerText();
-          assert.match(report.readerGuidance, /Show downloaded update/);
-          assert.ok(await settings.getByRole('button', { name: 'Show downloaded update', exact: true }).isEnabled());
+          if (!onClose) {
+            assert.match(report.readerGuidance, /Show downloaded update/);
+            assert.ok(await settings.getByRole('button', { name: 'Show downloaded update', exact: true }).isEnabled());
+          }
           checkpoint('showed how to locate Setup while Windows was requesting confirmation');
         }
       } catch (error) {
@@ -127,6 +142,12 @@ async function run() {
         throw error;
       }
     }
-  } finally { if (app.process().exitCode === null) await app.close(); }
+  } finally {
+    if (app.process().exitCode === null) {
+      // This isolated runner never answers the Windows trust prompt. It may still own ShellExecute.
+      if (onClose) app.process().kill();
+      else await app.close();
+    }
+  }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

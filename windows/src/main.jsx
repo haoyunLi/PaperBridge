@@ -1362,6 +1362,13 @@ function App() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateFile, setUpdateFile] = useState(null);
   const [updateAction, setUpdateAction] = useState(null);
+  const [setupOnClose, setSetupOnClose] = useState('');
+  const setupOnCloseRef = useRef('');
+  const [setupWaitMessage, setSetupWaitMessage] = useState('');
+  function scheduleSetup(tag) {
+    setupOnCloseRef.current = tag;
+    setSetupOnClose(tag);
+  }
   const usingUpdate = Boolean(updateAction?.pending);
   const updateActionMessage = updateAction && updateAction.tag === updateInfo?.tag ? updateAction.message : '';
   const filePhase = updateInfo && updateInfo.tag === updateFile?.tag ? updateFile.phase : 'idle';
@@ -1370,6 +1377,10 @@ function App() {
     : filePhase === 'cancelled' ? 'Update download cancelled. You can download it again.'
     : filePhase === 'failed' ? updateFile.message
     : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
+  const readySetupTag = filePhase === 'ready' && updateInfo?.canOpenInstaller ? updateInfo.tag : '';
+  useLayoutEffect(() => {
+    if (setupOnCloseRef.current && setupOnCloseRef.current !== readySetupTag) scheduleSetup('');
+  }, [readySetupTag]);
   const updateActionAvailable = filePhase === 'ready' && (updateInfo?.canOpenInstaller || updateInfo?.canCloseForPortable);
   const updateActionLabel = updateInfo?.canCloseForPortable ? 'Close and show portable update' : 'Open installer';
   const updateButtonLabel = filePhase === 'downloading' ? 'Cancel download' : filePhase === 'ready' ? 'Show downloaded update' : updateInfo?.downloadLabel;
@@ -1990,6 +2001,7 @@ function App() {
         showAction('Closing PaperBridge. Open the selected update in File Explorer.');
         return;
       }
+      scheduleSetup('');
       showAction('Checking the installer and asking Windows to open it…');
       reminder = setTimeout(() => showAction('Still waiting to open Setup. Check the taskbar for a Windows confirmation, or choose Show downloaded update to find the installer in File Explorer.'), 8000);
       await api.openUpdateInstaller(tag);
@@ -2555,9 +2567,15 @@ function App() {
     }
   }
   useEffect(() => api.onPrepareClose(async () => {
+    let reminder;
     try {
       if (await saveReadingStateBeforeClose()) {
-        const issue = await api.closeReady();
+        const tag = setupOnCloseRef.current;
+        if (tag) {
+          scheduleSetup('');
+          reminder = setTimeout(() => setSetupWaitMessage('Waiting for Windows Setup. Check the taskbar for a confirmation.'), 8000);
+        }
+        const issue = await api.closeReady(tag);
         if (!issue) return;
         setCloseFailure(`PaperBridge kept this window open. ${issue}`);
       } else {
@@ -2565,6 +2583,9 @@ function App() {
       }
     } catch (error) {
       setCloseFailure(`PaperBridge kept this window open. ${error.message} Close again to retry.`);
+    } finally {
+      clearTimeout(reminder);
+      setSetupWaitMessage('');
     }
     setUpdateAction(null);
     api.closeCancelled();
@@ -4293,7 +4314,8 @@ function App() {
         </div>
       </div>}
       </header>
-      {(error || closeFailure || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
+      {(error || closeFailure || setupWaitMessage || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
+        {!modal && setupWaitMessage && <p role="status">{setupWaitMessage}</p>}
         {!modal && closeFailure && <Notice tone="error" onClose={() => setCloseFailure('')}>{closeFailure}</Notice>}
         {error && <Notice tone="error" onClose={() => setError('')}>{settings.aiProvider === 'ollama' && (isOllamaMemoryError(error) || isOllamaGenerationConnectionError(error)) ? <>
           {isOllamaMemoryError(error) ? 'Ollama reported insufficient memory to run the selected model.' : <>
@@ -4430,6 +4452,7 @@ function App() {
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); dismissModal(); } }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+      {setupWaitMessage && <p role="status">{setupWaitMessage}</p>}
       {closeFailure && <div role="alert"><Notice tone="error" onClose={() => setCloseFailure('')}>{closeFailure}</Notice></div>}
       {modal === 'pdfComment' && pdfComment && <>
         <p className="muted">Page {pdfComment.page}{pdfComment.author && <> · {pdfComment.author}</>}</p>
@@ -4446,7 +4469,7 @@ function App() {
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
-        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, portableHandoff: updateInfo?.canCloseForPortable, onUseUpdate: updateActionAvailable ? finishUpdateDownload : null, updateActionLabel, updateActionBusy: Boolean(busy || usingUpdate), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onSkip: skipUpdate, onCheck: () => checkForUpdates(false) }} />}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, portableHandoff: updateInfo?.canCloseForPortable, readySetupTag, setupOnClose, onScheduleSetup: scheduleSetup, onUseUpdate: updateActionAvailable ? finishUpdateDownload : null, updateActionLabel, updateActionBusy: Boolean(busy || usingUpdate), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onSkip: skipUpdate, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <SavedTerminology glossary={glossary} saving={glossarySaving} error={glossaryError} onRemove={removeTerm} />}
       {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} onEditLabel={editLibraryLabel} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={returnToLibrary} onCancel={returnToLibrary} />}

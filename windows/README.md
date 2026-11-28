@@ -13,6 +13,8 @@ Both downloads are unsigned. If SmartScreen shows **Windows protected your PC**,
 
 Updates appear at startup and can be checked manually under **Settings → Updates**. **Later** dismisses the current prompt. **Skip this version** also suppresses automatic prompts and background downloads for that release after restart. **Check now** can still find it. Future releases appear normally. During an in-app update, **Cancel download** stops the transfer. Select **Download** to retry in the same session.
 
+In the installed edition, once Setup has downloaded and passed verification, choose **Open installer** or select **Open Windows … Setup when I close PaperBridge**. The checkbox applies to the displayed version for this session. When you close the reader, PaperBridge saves your work, checks the file again and asks Windows to open the standard setup wizard.
+
 ## Windows and macOS features
 
 This folder contains a Windows desktop port of PaperBridge. It follows the macOS app's local-first workflow and visual language. The Windows code is under active development; see the [111-item macOS 1.9↔Windows feature mapping](FEATURE_MAPPING.md), [macOS 1.9.1 incremental gap report](MAC_1_9_1_GAPS.md), [macOS 1.10 incremental mapping](MAC_1_10_GAPS.md), [parity summary](PARITY.md), and [whole-app review](WHOLE_APP_REVIEW.md) for current differences before treating it as a 1:1 replacement.

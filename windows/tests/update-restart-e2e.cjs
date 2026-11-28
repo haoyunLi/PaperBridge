@@ -235,6 +235,7 @@ async function run() {
     await page.getByRole('tab', { name: 'Updates', exact: true }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Close and show portable update', exact: true }).waitFor();
     await page.getByText('PaperBridge saves your work and closes. Double-click the selected update in File Explorer.').waitFor();
+    assert.equal(await page.getByRole('checkbox', { name: /Setup when I close/ }).count(), 0);
     await page.keyboard.press('Escape');
     const revealReceipt = path.join(workspace, 'portable-reveal.json');
     await recordPortableSelection(app, revealReceipt, savedFile);
@@ -300,7 +301,7 @@ async function run() {
       shell.showItemInFolder = filename => { global.__revealedSetup = filename; };
       shell.openPath = async filename => {
         global.__installerRequests.push(filename);
-        if (global.__installerRequests.length === 1) await new Promise(resolve => { global.__finishShellRequest = resolve; });
+        if (global.__installerRequests.length === 1 || global.__holdSetupOnClose) await new Promise(resolve => { global.__finishShellRequest = resolve; });
         return global.__installerError || '';
       };
     });
@@ -316,10 +317,18 @@ async function run() {
     assert.deepEqual(await app.evaluate(() => global.__installerRequests), [], 'Downloading must never open the installer automatically');
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, false);
     const installer = path.join(workspace, 'update-downloads', identity.installerName);
+    const schedule = settings.getByRole('checkbox', { name: `Open Windows ${nextVersion} Setup when I close PaperBridge` });
+    assert.equal(await schedule.isChecked(), false);
+    await schedule.check();
+    await schedule.uncheck();
+    await schedule.check();
+    await page.evaluate(tag => window.paperBridge.closeReady(tag), identity.tag);
+    assert.deepEqual(await app.evaluate(() => global.__installerRequests), [], 'An unsolicited close acknowledgment cannot start Setup');
     await install.click();
     await settings.getByText('Checking the installer and asking Windows to open it…').waitFor();
     await settings.getByText(/Still waiting to open Setup\. Check the taskbar/).waitFor();
     assert.ok(await install.isDisabled());
+    assert.equal(await schedule.isChecked(), false, 'An explicit launch disarms the scheduled handoff');
     await settings.getByRole('button', { name: 'Show downloaded update', exact: true }).click();
     await expectRevealed(() => global.__revealedSetup, installer);
     await settings.getByRole('button', { name: 'Check now', exact: true }).click();
@@ -344,9 +353,23 @@ async function run() {
     assert.deepEqual(await app.evaluate(() => global.__installerRequests), [installer, installer, installer]);
     assert.equal(await page.getByText(/Windows blocked this installer/).count(), 0);
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), 'windows-v99.0.0'), /current verified Setup/);
+    const closeReader = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await app.evaluate(() => { global.__installerError = 'The Windows user cancelled Setup.'; global.__holdSetupOnClose = true; });
+    await schedule.check();
+    await closeReader();
+    await settings.getByText('Waiting for Windows Setup. Check the taskbar for a confirmation.').waitFor();
+    assert.equal(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isEnabled()), false);
+    await app.evaluate(() => { global.__holdSetupOnClose = false; global.__finishShellRequest(); });
+    await page.getByRole('alert').getByText(/Windows Setup did not open.*cancelled Setup/).waitFor();
+    assert.equal(await schedule.isChecked(), false);
+    assert.ok(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isEnabled()));
+    assert.equal(await app.evaluate(() => global.__installerRequests.length), 4);
+    await schedule.check();
     fs.writeFileSync(installer, 'x'.repeat(bytes.length));
-    await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /no longer matches/);
-    assert.equal(await app.evaluate(() => global.__installerRequests.length), 3);
+    await closeReader();
+    await page.getByRole('alert').getByText(/Windows Setup did not open.*no longer matches/).waitFor();
+    assert.equal(await app.evaluate(() => global.__installerRequests.length), 4, 'Changed bytes must never reach the shell');
+    assert.ok(store.paper(paperId).blocks[1].notes.some(note => note.body === noteText));
     await settings.getByRole('button', { name: 'Skip this version' }).focus();
     await page.keyboard.press('Enter');
     await settings.getByText(`Skipped Windows ${nextVersion}. You can still find it with Check now.`).waitFor();
@@ -386,7 +409,34 @@ async function run() {
     page = await app.firstWindow();
     await page.locator('.update-banner').getByText(`PaperBridge for Windows ${laterVersion} is available`).waitFor();
     assert.equal(JSON.parse(fs.readFileSync(cacheFile)).skippedTag, identity.tag);
-    console.log('Verified update downloads, installer handoff, offline restart, per-version skipping and explicit rediscovery passed.');
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    await provideDownload(app);
+    await useFixtureVerifier(app);
+    const receipt = path.join(workspace, 'setup-on-close.txt');
+    await app.evaluate(({ app, shell }, receipt) => {
+      if (!app.isPackaged) Object.defineProperty(app, 'isPackaged', { get: () => true });
+      shell.openPath = async filename => {
+        process.getBuiltinModule('fs').appendFileSync(receipt, filename);
+        return '';
+      };
+    }, receipt);
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await page.getByRole('button', { name: 'Check now', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Download installer', exact: true }).click();
+    const scheduleAfterRestart = page.getByRole('checkbox', { name: /Setup when I close/ });
+    assert.equal(await scheduleAfterRestart.isChecked(), false);
+    await scheduleAfterRestart.check();
+    await page.keyboard.press('Escape');
+    const installedClose = app.waitForEvent('close', { timeout: 20000 });
+    await closeReader();
+    await installedClose;
+    app = null;
+    assert.equal(fs.readFileSync(receipt, 'utf8'), installer);
+    assert.ok(store.paper(paperId).blocks[1].notes.some(note => note.body === noteText));
+    console.log('Verified update downloads, installer handoff now or on close, offline restart, per-version skipping and explicit rediscovery passed.');
   } finally { await app?.close(); }
 }
 

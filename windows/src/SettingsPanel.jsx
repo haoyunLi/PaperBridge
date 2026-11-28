@@ -162,6 +162,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         </div>
         {updates.status && <p role="status">{updates.status}</p>}
         {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}
+        {updates.readySetupTag && <label className="settings-checkbox"><input type="checkbox" checked={updates.setupOnClose === updates.readySetupTag} disabled={updates.updateActionBusy} onChange={event => updates.onScheduleSetup(event.target.checked ? updates.readySetupTag : '')} />Open Windows {updates.availableVersion} Setup when I close PaperBridge</label>}
         {updates.filePhase === 'ready' && updates.portableHandoff && <p>PaperBridge saves your work and closes. Double-click the selected update in File Explorer.</p>}
         {updates.filePhase === 'ready' && !updates.onUseUpdate && <p>Show the file in File Explorer, then close PaperBridge before opening the new version.</p>}
         {updates.downloadLabel && !updates.downloadInApp && <p>The download button opens GitHub in your browser.</p>}

@@ -170,12 +170,16 @@ class UpdateDownload {
   async openInstaller(tag, openPath) {
     const version = /^windows-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1];
     if (!version || this.download?.file?.name !== `PaperBridge-Windows-${version}-x64-Setup.exe`) throw new Error('A verified Setup update is required.');
-    if (this.openingInstaller) return this.openingInstaller;
-    this.openingInstaller = this.verifiedFile(tag).then(async filename => {
+    if (this.openingInstaller) {
+      if (this.openingInstaller.download === this.download) return this.openingInstaller.completion;
+      throw new Error('Another Windows Setup is already opening. Wait for Windows and try again.');
+    }
+    const completion = this.verifiedFile(tag).then(async filename => {
       const message = await openPath(filename);
       if (message) throw new Error(message);
     }).finally(() => { this.openingInstaller = null; });
-    return this.openingInstaller;
+    this.openingInstaller = { download: this.download, completion };
+    return completion;
   }
 
   async clean(currentVersion, runningPortable) {

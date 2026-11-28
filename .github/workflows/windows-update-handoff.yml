@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [public, wizard]
+        scenario: [public, on-close, wizard]
     defaults:
       run:
         shell: pwsh
@@ -55,9 +55,10 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Initial Setup failed with exit code $($p.ExitCode)" }
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
       - name: Observe the Internet-marked download in the Windows shell
-        if: matrix.scenario == 'public'
+        if: matrix.scenario != 'wizard'
         env:
           PAPERBRIDGE_VERIFY_WIZARD: 'true'
+          PAPERBRIDGE_TEST_SETUP_ON_CLOSE: ${{ matrix.scenario == 'on-close' }}
         run: node tests/public-installed-update.cjs
       - name: Retrieve the exact Setup from its release build
         if: matrix.scenario == 'wizard'

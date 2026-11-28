@@ -160,22 +160,41 @@ function registerHandlers() {
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   let availableDownload = null;
-  ipcMain.handle('app:close-ready', async event => {
+  function openCurrentInstaller(event, tag) {
+    const owner = window;
+    const isCurrent = () => owner && owner === window && !owner.isDestroyed() && app.isPackaged &&
+      !process.env.PORTABLE_EXECUTABLE_FILE && event.sender === owner.webContents &&
+      event.senderFrame === owner.webContents.mainFrame && event.senderFrame?.url.split('#')[0] === readerURL &&
+      availableDownload?.tag === tag && updateFiles.matches(availableDownload);
+    if (!isCurrent()) throw new Error('The installed reader needs a current verified Setup update.');
+    return updateFiles.openInstaller(tag, filename => {
+      if (!isCurrent()) throw new Error('The available update changed.');
+      return shell.openPath(filename);
+    });
+  }
+  ipcMain.handle('app:close-ready', async (event, setupTag) => {
     const owner = window;
     if (!owner || owner.isDestroyed() || event.sender !== owner.webContents ||
         event.senderFrame !== owner.webContents.mainFrame || !closeRequested) return;
     const pending = portableUpdateToReveal;
-    if (pending) {
-      // The user may have moved the download since clicking the update button.
+    if (pending || setupTag) {
+      // The download can change while the renderer is saving the last edits.
+      requireConfirmedClose = true;
+      clearClosePrompt();
       owner.setEnabled(false);
       try {
-        await updateFiles.verifiedFile(pending.tag);
-        if (pending !== portableUpdateToReveal || availableDownload?.tag !== pending.tag || !updateFiles.matches(availableDownload)) {
-          throw new Error('The available update changed.');
+        if (pending) {
+          await updateFiles.verifiedFile(pending.tag);
+          if (pending !== portableUpdateToReveal || availableDownload?.tag !== pending.tag || !updateFiles.matches(availableDownload)) {
+            throw new Error('The available update changed.');
+          }
+        } else {
+          await openCurrentInstaller(event, setupTag);
         }
       } catch (error) {
         cancelRendererClose();
-        return error.message + ' Check for updates and download it again.';
+        return pending ? error.message + ' Check for updates and download it again.'
+          : 'Windows Setup did not open. ' + error.message + ' You can close the reader again or retry from Updates.';
       } finally { if (!owner.isDestroyed()) owner.setEnabled(true); }
     }
     finishClose();
@@ -219,12 +238,7 @@ function registerHandlers() {
     offeredUpdateTag = null;
   });
   ipcMain.handle('updates:reveal', (_event, tag) => updateFiles.show(tag));
-  ipcMain.handle('updates:install', (event, tag) => {
-    if (!app.isPackaged || process.env.PORTABLE_EXECUTABLE_FILE || event.sender !== window?.webContents ||
-        event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url.split('#')[0] !== readerURL ||
-        availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The installed reader needs a current verified Setup update.');
-    return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
-  });
+  ipcMain.handle('updates:install', openCurrentInstaller);
   ipcMain.handle('updates:close-for-portable', async (event, tag) => {
     const version = /^windows-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1];
     const candidate = availableDownload;
