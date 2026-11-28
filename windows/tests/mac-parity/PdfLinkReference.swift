@@ -74,7 +74,7 @@ func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String
 
 @MainActor
 func nativePdfSelectAll(fixtures: URL, notebook: URL) throws -> [[String: Any]] {
-    try [("rotated-spectrometer.pdf", 4), ("good-enough/article.pdf", 20), (notebook.lastPathComponent, 125)].map { filename, pageCount in
+    try [("rotated-spectrometer.pdf", 4), ("good-enough/article.pdf", 20), ("mixed-spectrometer-log.pdf", 6), (notebook.lastPathComponent, 125)].map { filename, pageCount in
         let file = filename == notebook.lastPathComponent ? notebook : fixtures.appendingPathComponent(filename)
         let (window, view, document) = try showNativePdf(file, pages: pageCount)
         defer { window.orderOut(nil); window.contentView = nil }
@@ -82,7 +82,8 @@ func nativePdfSelectAll(fixtures: URL, notebook: URL) throws -> [[String: Any]] 
         guard let selection = view.currentSelection, let text = selection.string else { throw CocoaError(.fileReadCorruptFile) }
         var result: [String: Any] = ["file": filename, "sha256": SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined(),
             "pages": selection.pages.map { document.index(for: $0) + 1 }, "text": text,
-            "anchors": PDFDocumentView.anchors(for: selection, in: document).count]
+            "anchors": PDFDocumentView.anchors(for: selection, in: document).count,
+            "anchorPages": PDFDocumentView.anchors(for: selection, in: document).map { $0.pageIndex + 1 }]
         if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
             view.copy(nil)
             result["copied"] = NSPasteboard.general.string(forType: .string)
