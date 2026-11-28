@@ -40,6 +40,30 @@ test('match dedicated memory to each GPU without displaying the truncated WMI va
   assert.deepEqual(nvidiaDevices('No devices were found'), []);
 });
 
+test('device errors remain visible and only usable adapters contribute to the model suggestion', async () => {
+  const { mergeAdapterInventory } = require('../electron/hardware.cjs');
+  const { describeAdapter } = await import('../src/hardwareDisplay.mjs');
+  const { largestDedicatedAdapter, suggestedTranslationModel } = await import('../src/modelCatalog.mjs');
+  const gib = 1024 ** 3;
+  const controllers = [
+    { Name: 'NVIDIA T4', ConfigManagerErrorCode: 22, DedicatedBytes: 16 * gib },
+    { Name: 'AMD Radeon PRO', ConfigManagerErrorCode: 43, DedicatedBytes: 32 * gib },
+    { Name: 'AMD Radeon Graphics', ConfigManagerErrorCode: 0, DedicatedBytes: gib / 2 }
+  ];
+  const adapters = mergeAdapterInventory(controllers, []);
+  assert.match(describeAdapter(adapters[0]), /disabled · Windows Code 22/);
+  assert.match(describeAdapter(adapters[1]), /unavailable · Windows Code 43/);
+  const hardware = { adapters, systemMemoryBytes: 64 * gib };
+  assert.equal(largestDedicatedAdapter(hardware).name, 'AMD Radeon Graphics');
+  assert.equal(suggestedTranslationModel(hardware).id, 'translategemma:4b');
+  const driver = [{ name: 'NVIDIA T4', driver: 'fixture', memoryMiB: 15360 }];
+  const recovered = mergeAdapterInventory(controllers, driver);
+  assert.equal(recovered[0].problemCode, undefined);
+  const twins = mergeAdapterInventory([...controllers, { Name: 'T4', VendorID: '10DE' }], driver);
+  assert.equal(twins[0].problemCode, 22);
+  assert.equal(twins.at(-1).dedicatedMemoryBytes, 15 * gib);
+});
+
 test('old and new nvidia-smi report labels choose the matching CUDA wheel', () => {
   const { nvidiaSupportedCuda } = require('../electron/hardware.cjs');
   const hardware = { cudaDriver: [{ name: 'NVIDIA GPU' }] };

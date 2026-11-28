@@ -14,6 +14,10 @@ export function describeModelMemory({ sizeVram, size }) {
 }
 
 export function describeAdapter(adapter) {
+  if (adapter.problemCode) {
+    const status = adapter.problemCode === 22 ? 'disabled' : 'unavailable';
+    return `${adapter.name} (${adapter.vendor}, ${status} · Windows Code ${adapter.problemCode})`;
+  }
   const bytes = adapter.dedicatedMemoryBytes;
   if (!Number.isSafeInteger(bytes) || bytes <= 0) return `${adapter.name} (${adapter.vendor})`;
   const memory = bytes < 1024 ** 3 ? `${Math.round(bytes / 1024 ** 2)} MiB` : `${Number((bytes / 1024 ** 3).toFixed(1))} GiB`;

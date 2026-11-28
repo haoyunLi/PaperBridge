@@ -667,7 +667,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   }, [pdf, navigation?.id, statuses]);
 
   function handleScroll() {
-    onScrollSelection();
+    onScrollSelection(scroller.current);
     cancelAnimationFrame(scrollFrame.current);
     scrollFrame.current = requestAnimationFrame(() => {
       const host = scroller.current;
@@ -694,11 +694,14 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     const captured = capturePdfRange(scroller.current, selection?.rangeCount ? selection.getRangeAt(0) : null);
     if (captured) onSelect(captured);
   }
-  function jump(number) {
+  function jump(number, boundary) {
     clearTimeout(scrollTimer.current);
     cancelAnimationFrame(scrollFrame.current);
     window.getSelection()?.removeAllRanges();
-    onPage(number, 0, true);
+    const host = scroller.current;
+    const slot = boundary && host && pdfPageElement(host, number);
+    if (slot) host.scrollTop = boundary === 'End' ? host.scrollHeight : 0;
+    onPage(number, slot ? pdfOffsetAtFit(host, slot, zoom) : 0, true);
   }
   function changeZoom(value) {
     const next = pdfZoomPercent(value);
@@ -725,8 +728,14 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     host.addEventListener('wheel', onWheel, { passive: false });
     return () => host.removeEventListener('wheel', onWheel);
   }, [pdf]);
-  function zoomOnKey(event) {
-    if (!event.ctrlKey || event.altKey || event.metaKey) return;
+  function handlePdfShortcut(event) {
+    if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.nativeEvent.isComposing) return;
+    if (!event.shiftKey && pdf && scroller.current?.contains(event.target) && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault();
+      event.stopPropagation();
+      jump(event.key === 'Home' ? 1 : pdf.numPages, event.key);
+      return;
+    }
     const next = event.key === '+' || event.key === '=' ? zoom + pdfZoomStep
       : event.key === '-' ? zoom - pdfZoomStep : event.key === '0' ? pdfFitZoom : null;
     if (next == null) return;
@@ -740,7 +749,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
   const coverage = pageStatus === false ? ocrCoverageForPage(paper, currentPage) : null;
-  return <div className="pdf-panel" onKeyDown={zoomOnKey}>
+  return <div className="pdf-panel" onKeyDown={handlePdfShortcut}>
     <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} zoom={zoom} onZoom={changeZoom} />
     {pageStatus === false && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
       onReader={coverage || paper.blocks.length ? () => onReader(currentPage) : null} />}
@@ -1561,6 +1570,19 @@ function App() {
   function hideQuickSelection() {
     setSelection(current => current?.rect ? { ...current, rect: null } : current);
   }
+  function hideOffscreenLookup(host) {
+    if (!selectionRef.current?.rect) return;
+    const selected = window.getSelection();
+    if (host && selected?.rangeCount) {
+      const range = selected.getRangeAt(0);
+      if (host.contains(range.commonAncestorContainer)) {
+        const bounds = range.getBoundingClientRect(), viewport = host.getBoundingClientRect();
+        if (bounds.bottom > viewport.top && bounds.top < viewport.bottom &&
+            bounds.right > viewport.left && bounds.left < viewport.right) return;
+      }
+    }
+    hideQuickSelection();
+  }
   function dismissQuickSelection() {
     hideQuickSelection();
     if (quickTermOpen) {
@@ -1825,16 +1847,7 @@ function App() {
   const saveMainScroll = () => {
     if (restoringScroll.current || !paperRef.current) return;
     const generation = readingRestoration.current;
-    if (selectionRef.current?.rect) {
-      const host = mainScrollRef.current;
-      const selected = window.getSelection();
-      const range = selected?.rangeCount ? selected.getRangeAt(0) : null;
-      const bounds = range && host?.contains(range.commonAncestorContainer) && range.getBoundingClientRect();
-      const viewport = host?.getBoundingClientRect();
-      // Task progress and restored scroll positions can move a still-visible passage.
-      // Keep its fixed lookup card available until the passage scrolls out of view.
-      if (!bounds || !viewport || bounds.bottom <= viewport.top || bounds.top >= viewport.bottom) hideQuickSelection();
-    }
+    hideOffscreenLookup(mainScrollRef.current);
     clearTimeout(scrollSaveTimer.current);
     if (tab === 'Reader' && search) { searchScroll.current = mainScrollRef.current?.scrollTop || 0; return; }
     const id = paperRef.current.id;
@@ -3281,6 +3294,7 @@ function App() {
   }
   async function saveNote() {
     if (!selection) return;
+    if (saveQueue.current.state().status === 'error') await saveQueue.current.retry();
     const saved = await finishNoteEditing();
     setStatus(saved ? 'Note saved on this PC.' : 'The note is still in memory. Retry the failed save.');
   }
@@ -3902,7 +3916,7 @@ function App() {
             selected={selection?.scope === 'paperPdf' ? selection : null}
             navigation={pdfNavigation?.scope === 'paperPdf' ? pdfNavigation : null}
             onPage={(...args) => changePdfPage('paperPdf', ...args)}
-            onScrollSelection={hideQuickSelection}
+            onScrollSelection={hideOffscreenLookup}
             onSelect={anchor => selectPdf(anchor, 'paperPdf')}
             onNavigate={pdfNavigationReady}
             onNavigationFailure={pdfNavigationFailed}
@@ -3943,7 +3957,7 @@ function App() {
           selected={selection?.scope === 'pdf' ? selection : null}
           navigation={pdfNavigation?.scope !== 'paperPdf' ? pdfNavigation : null}
           onPage={(...args) => changePdfPage('pdf', ...args)}
-          onScrollSelection={hideQuickSelection}
+          onScrollSelection={hideOffscreenLookup}
           onSelect={anchor => selectPdf(anchor, 'pdf')}
           onNavigate={pdfNavigationReady}
           onNavigationFailure={pdfNavigationFailed}
@@ -3978,7 +3992,7 @@ function App() {
         </>}
       </div>
     </main>
-    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button id="inspector-undo-annotation" className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE · AUTO-SAVES</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><button className="button blue" onClick={saveNote}>Save note</button></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !trimLibraryText(termDraft)} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
+    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button id="inspector-undo-annotation" className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" aria-describedby="note-save-hint" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><div className="note-save-actions"><span id="note-save-hint" className={workspaceSave.status === 'error' ? 'error' : undefined}>{workspaceSave.status === 'error' ? 'Not saved to disk' : workspaceSave.status === 'saving' ? 'Saving note…' : 'Notes save automatically'}</span><button className="button blue" onClick={saveNote}>{workspaceSave.status === 'error' ? 'Retry note save' : 'Save note'}</button></div></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !trimLibraryText(termDraft)} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>

@@ -5,6 +5,7 @@ const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
+const { selectText } = require('./select-passage.cjs');
 const { longFacsimile } = require('./mac-parity/long-facsimile.cjs');
 
 async function run() {
@@ -39,7 +40,24 @@ async function run() {
     console.log('Imported 125 pages and 125 numbered observations.');
     await page.getByLabel('Paper display mode').selectOption('source');
     const scroll = page.getByLabel('Continuous original PDF');
-    await page.locator('.textLayer[data-page="1"]').waitFor();
+    const hideInspector = page.getByRole('button', { name: /^(Hide inspector|Close inspector drawer)$/ });
+    if (await hideInspector.isVisible()) await hideInspector.click();
+    const quick = page.getByRole('dialog', { name: 'Quick selection' });
+    for (const view of ['Original', 'Paper']) {
+      await openWorkspaceView(page, view);
+      await scroll.focus();
+      await page.keyboard.press('Control+Home');
+      const firstLine = '.textLayer[data-page="1"]';
+      await page.locator(firstLine).getByText('Observation 1 in the printed notebook.', { exact: true }).waitFor();
+      await selectText(page, firstLine, 'Observation 1');
+      await quick.waitFor({ timeout: 5000 });
+      await scroll.evaluate(host => { host.scrollTop += 20; });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await quick.isVisible(), true, view + ' must keep lookup open while the passage is on screen.');
+      await scroll.evaluate(host => { host.scrollTop += 2 * host.clientHeight; });
+      await quick.waitFor({ state: 'hidden', timeout: 5000 });
+    }
+    console.log('Original and Paper PDF lookup survive a small scroll, and dismiss when the passage leaves the viewport.');
     await scroll.focus();
     await page.keyboard.press('Control+End');
     const finalPage = () => page.locator('.textLayer[data-page="125"]').getByText(lastText, { exact: true }).waitFor({ timeout: 10000 });

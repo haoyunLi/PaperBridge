@@ -94,7 +94,8 @@ async function run() {
       ipcMain.removeHandler('hardware:status');
       ipcMain.handle('hardware:status', () => ({ systemMemoryBytes: 64 * 1024 ** 3, modelStorage: { drive: 'T:', freeBytes: 155648 },
         adapters: [{ vendor: 'AMD', name: 'Integrated graphics', dedicatedMemoryBytes: 512 * 1024 ** 2 },
-          { vendor: 'AMD', name: 'Mock AMD GPU', dedicatedMemoryBytes: 16 * 1024 ** 3 }], cudaVersion: null }));
+          { vendor: 'AMD', name: 'Mock AMD GPU', dedicatedMemoryBytes: 16 * 1024 ** 3 },
+          { vendor: 'NVIDIA', name: 'Disconnected workstation GPU', problemCode: 22, dedicatedMemoryBytes: 48 * 1024 ** 3 }], cudaVersion: null }));
       ipcMain.removeHandler('mineru:status');
       ipcMain.handle('mineru:status', () => ({ compatible: false, installed: false, reason: 'No parser installed in this test fixture.' }));
     });
@@ -154,6 +155,7 @@ async function run() {
     await page.getByText('This PC: 64 GiB system RAM', { exact: true }).waitFor();
     await page.getByText('Starting suggestion: TranslateGemma 12B', { exact: true }).waitFor();
     await page.locator('.settings-model-memory').getByText(/Mock AMD GPU \(AMD, 16 GiB dedicated\)/).waitFor();
+    assert.doesNotMatch(await page.locator('.settings-model-memory').innerText(), /Disconnected workstation GPU/);
     assert.equal(await card('translategemma:4b').getByRole('button', { name: 'Selected', exact: true }).isDisabled(), true);
     const links = await page.locator('.settings-models .model-card a').evaluateAll(items => items.map(item => item.href));
     assert.equal(links.length, 9);

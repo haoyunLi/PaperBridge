@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 术语、笔记保存和 PDF 键盘定位
+
+在 macOS 1.10.0 的原版阅读模型与 Windows 中依次保存 20 个术语并执行 10 组查询。核对了同方向替换、反向词条、重音与大小写、最长词优先、磁盘重开及删除。上限也按实际行为逐项比对，来源最多 160 个字素、译法最多 300 个、模型每次最多接收 24 对术语，500 条已满时仍可替换已有词条。[Mac 参考运行](https://github.com/haoyunLi/PaperBridge/actions/runs/46098753654) · [Windows 对照](tests/mac-parity/terminology.mjs)
+
+Windows 的检查器现在在笔记编辑处显示保存状态。实测时暂时占用测试工作区的论文目录，写入失败后看到 “Not saved to disk”；原笔记保留在磁盘，草稿继续显示。恢复该目录后，点击 “Retry note save”，退出再打开仍能读到草稿的完整内容。[笔记窗口测试](tests/note-autosave-e2e.cjs)
+
+在 125 页 PDF 的 Original 和 Paper 原页视图中，轻微滚动仍能查看所选原文的查词浮窗，选区离开阅读区域后收起。已有选区时 Ctrl+Home 和 Ctrl+End 能跳到整份 PDF 的首尾。在 RX 7800 XT 上翻译第 125 条并重开，页码、原文及译文均已恢复。[PDF 导航和导出](tests/long-facsimile-e2e.cjs)
+
 ## 清除本地工作区和归档副本
 
 Mac 的「清除所有保存数据」会移除应用归档的 PDF。Windows 的确认框增加了对应选项。取消后返回设置的 Local Data 页；保留或移除副本后，空白工作区会显示处理结果。用期刊论文在临时工作区验证了两个选项，外部源文件的字节一致。Windows 文件共享锁阻止删除归档时，工作区仍会重置，并提示可以重试。释放共享锁后能够删除剩余副本。[桌面操作](tests/pdf-drop-e2e.cjs) · [Windows 文件共享锁](tests/storage.test.cjs)

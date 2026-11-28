@@ -28,7 +28,7 @@ Get-CimInstance Win32_VideoController | ForEach-Object {
     if ($bytes -is [long] -and $bytes -gt 0) { $dedicated = $bytes }
   } catch {}
   $pci = if ($_.PNPDeviceID -match '^PCI\\VEN_([0-9A-F]{4})') { $Matches[1].ToUpperInvariant() }
-  [pscustomobject]@{ Name = $_.Name; VendorID = $pci; DriverVersion = $_.DriverVersion; AdapterRAM = $_.AdapterRAM; DedicatedBytes = $dedicated }
+  [pscustomobject]@{ Name = $_.Name; VendorID = $pci; ConfigManagerErrorCode = $_.ConfigManagerErrorCode; DriverVersion = $_.DriverVersion; AdapterRAM = $_.AdapterRAM; DedicatedBytes = $dedicated }
 } | ConvertTo-Json -Compress`;
 
 function nvidiaDevices(output) {
@@ -50,17 +50,22 @@ function nvidiaSupportedCuda(output) {
 function mergeAdapterInventory(controllers, devices) {
   const adapters = controllers.filter(item => item?.Name).map(item => {
     const dedicatedMemoryBytes = Number.isSafeInteger(item.DedicatedBytes) && item.DedicatedBytes > 0 ? item.DedicatedBytes : null;
+    const problemCode = item.ConfigManagerErrorCode;
     return { name: item.Name, vendor: vendorOf(item.Name, item.VendorID), driver: item.DriverVersion || '',
+      ...(Number.isInteger(problemCode) && problemCode > 0 && { problemCode }),
       dedicatedMemoryBytes, memoryBytes: dedicatedMemoryBytes || item.AdapterRAM || null };
   });
   const matched = new Set();
   const comparableName = name => name.toLowerCase().replace(/^nvidia\s+/, '');
   for (const device of devices || []) {
-    const adapter = adapters.find(item => !matched.has(item) && comparableName(item.name) === comparableName(device.name));
+    const candidates = adapters.filter(item => !matched.has(item) && comparableName(item.name) === comparableName(device.name));
+    const adapter = candidates.find(item => !item.problemCode) || candidates[0];
     const bytes = device.memoryMiB == null ? null : device.memoryMiB * 1024 ** 2;
     if (adapter) {
       matched.add(adapter);
       adapter.vendor = 'NVIDIA';
+      // A live nvidia-smi response takes precedence over an older Device Manager report.
+      delete adapter.problemCode;
       if (!adapter.driver) adapter.driver = device.driver;
       if (bytes) { adapter.dedicatedMemoryBytes = bytes; adapter.memoryBytes = bytes; }
     } else {

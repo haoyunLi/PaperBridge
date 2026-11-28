@@ -18,6 +18,20 @@
   font-weight: 600;
 }
 
+.note-save-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+#note-save-hint {
+  font-size: 12px;
+  color: #56606c;
+}
+#note-save-hint.error { color: #8a251d; }
+
 .workspace-status-rail {
   flex: none;
   max-height: min(42vh, 330px);

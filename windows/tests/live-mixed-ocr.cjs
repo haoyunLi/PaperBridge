@@ -8,6 +8,7 @@ const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
 const { mineruPython } = require('../electron/mineru-discovery.cjs');
 const { selectText } = require('./select-passage.cjs');
+const { observeLocalOllama } = require('./observe-local-ollama.cjs');
 const { longFacsimile } = require('./mac-parity/long-facsimile.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
 
@@ -20,8 +21,9 @@ async function run() {
   const file = path.join(dir, name);
   const first = path.join(dir, 'Selectable notebook.pdf');
   const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const observation = await observeLocalOllama(process.env.PAPERBRIDGE_LIVE_OLLAMA || defaults.ollamaBaseURL);
   fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ ...defaults, autoCheckUpdates: false,
-    onboardingCompletedVersion: 1, pdfExtractionMode: 'mineruPreferred', mineruBackend: 'auto',
+    onboardingCompletedVersion: 1, ollamaBaseURL: observation.url, pdfExtractionMode: 'mineruPreferred', mineruBackend: 'auto',
     mineruExecutable: process.env.PAPERBRIDGE_LIVE_MINERU || '' }));
   const launch = () => electron.launch({ cwd: root, executablePath, args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(dir, 'profile')],
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: dir } });
@@ -97,14 +99,42 @@ async function run() {
     await page.getByRole('dialog', { name: 'Saved Terminology' }).waitFor();
     await page.keyboard.press('Escape');
     assert.deepEqual(await inspector.locator('blockquote').allTextContents(), ['磁场'], 'Closing terminology must preserve the active passage.');
-    console.log(JSON.stringify({ reverseSelection: '磁场', reverse, selectionAfterEscape: true }));
+    await inspector.getByPlaceholder('Approved translation').fill('magnetic field (B)');
+    await inspector.getByRole('button', { name: 'Save term', exact: true }).click();
+    await inspector.getByText('Term saved for future translations.', { exact: true }).waitFor();
+    const approved = { source: '磁场', translation: 'magnetic field (B)' };
+    const countBefore = observation.calls.length;
+    await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+    await inspector.getByText('Selection translated.', { exact: true }).waitFor({ timeout: 90000 });
+    const guided = await inspector.locator('.inspector-result.translate p').innerText();
+    assert.match(guided, /magnetic field/i);
+    const requests = observation.calls.slice(countBefore);
+    assert.equal(requests.length, 1, 'Adding the reverse term changes the selected translation request');
+    const dictionary = requests[0].prompt.split('\n').find(line => line.startsWith('[{"source":'));
+    assert.deepEqual(JSON.parse(dictionary), [approved]);
+    await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+    await inspector.getByText('Using cached quick lookup.', { exact: true }).waitFor();
+    assert.equal(observation.calls.length, countBefore + 1);
+    await page.getByRole('button', { name: 'Saved Terminology', exact: true }).click();
+    const terminology = page.getByRole('dialog', { name: 'Saved Terminology' });
+    await terminology.getByRole('button', { name: 'Remove 磁场', exact: true }).click();
+    await terminology.locator('.term-row').waitFor({ state: 'detached' });
+    await page.keyboard.press('Escape');
+    await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+    await inspector.getByText('Using cached quick lookup.', { exact: true }).waitFor();
+    assert.equal(await inspector.locator('.inspector-result.translate p').innerText(), reverse);
+    assert.equal(observation.calls.length, countBefore + 1, 'Removing the term permits the original cached lookup');
+    assert.equal(stored().blocks.find(block => block.id === scanned.id).translation, translation);
+    console.log(JSON.stringify({ reverseSelection: '磁场', reverse, approved, guided, selectionAfterEscape: true, cacheReused: true }));
     assert.deepEqual(fs.readFileSync(path.join(dir, 'pdfs', id + '.pdf')), fs.readFileSync(file));
     console.log('Blank-page guidance, reading history, original bytes and saved translation verified after restart.');
   } catch (error) {
     const window = app.windows()[0];
     if (window) console.error(await window.locator('.selection-toolbar, .inspector:visible, [role="alert"]').allInnerTexts().catch(() => []));
     throw error;
-  } finally { await app.close(); }
+  } finally {
+    try { await app.close(); } finally { await observation.close(); }
+  }
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });

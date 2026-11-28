@@ -53,7 +53,7 @@ export function isCatalogModelSelected(settings, selected, installedModels = [])
 export function largestDedicatedAdapter(hardware) {
   return (hardware?.adapters || []).reduce((largest, adapter) => {
     const bytes = adapter?.dedicatedMemoryBytes;
-    if (!['AMD', 'NVIDIA', 'Intel'].includes(adapter?.vendor) || !Number.isSafeInteger(bytes) || bytes <= 0) return largest;
+    if (adapter?.problemCode || !['AMD', 'NVIDIA', 'Intel'].includes(adapter?.vendor) || !Number.isSafeInteger(bytes) || bytes <= 0) return largest;
     return !largest || bytes > largest.dedicatedMemoryBytes ? adapter : largest;
   }, null);
 }

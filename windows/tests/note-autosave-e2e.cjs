@@ -36,7 +36,8 @@ async function selectText(page, selector, quote) {
 }
 
 async function launch(root, workspace) {
-  const app = await electron.launch({ args: ['.', '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ executablePath, args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   const page = await app.firstWindow({ timeout: 20000 });
   page.setDefaultTimeout(15000);
   await page.bringToFront();
@@ -138,28 +139,45 @@ async function run() {
     ({ app, page } = await launch(root, workspace));
     await selectText(page, '#block-1 .source-text', 'Alpha passage');
     assert.equal(await page.getByPlaceholder('What should you remember?').inputValue(), 'flush this exact body on close');
-    await app.evaluate(({ ipcMain }) => {
-      const originalSave = ipcMain._invokeHandlers?.get('paper:save');
-      if (!originalSave) throw new Error('Could not capture the production paper save handler.');
-      global.__noteSaveAttempt = 0;
-      ipcMain.removeHandler('paper:save');
-      ipcMain.handle('paper:save', (_event, paper) => {
-        global.__noteSaveAttempt++;
-        if (global.__noteSaveAttempt === 1) throw new Error('simulated disk failure');
-        return originalSave(_event, paper);
-      });
-    });
-    await page.getByPlaceholder('What should you remember?').fill('retry keeps this exact note');
-    await page.locator('.save-status.error').waitFor({ timeout: 10000 });
-    assert.match(await page.locator('.save-status.error').innerText(), /simulated disk failure/);
-    await page.getByRole('button', { name: 'Retry save', exact: true }).click();
+    const papers = path.dirname(paperPath);
+    const moved = path.join(workspace, 'temporarily-unavailable-papers');
+    fs.renameSync(papers, moved);
+    fs.writeFileSync(papers, 'The note test temporarily occupies the papers directory.');
+    const editor = page.getByRole('textbox', { name: 'Note for selected passage' });
+    const hint = page.locator('#note-save-hint');
+    const retry = page.locator('.inspector').getByRole('button', { name: 'Retry note save', exact: true });
+    try {
+      await Promise.all([
+        hint.filter({ hasText: 'Saving note…' }).waitFor(),
+        editor.fill('retry keeps this exact note')
+      ]);
+      await page.locator('.save-status.error').waitFor({ timeout: 10000 });
+      await hint.filter({ hasText: 'Not saved to disk' }).waitFor();
+      await retry.click();
+      await page.locator('.save-status.error').waitFor();
+      assert.equal(await editor.inputValue(), 'retry keeps this exact note');
+      const disk = JSON.parse(fs.readFileSync(path.join(moved, path.basename(paperPath)), 'utf8'));
+      assert.ok(disk.blocks[0].notes.some(item => item.body === 'flush this exact body on close'));
+    } finally {
+      fs.unlinkSync(papers);
+      fs.renameSync(moved, papers);
+    }
+    await retry.click();
+    await hint.filter({ hasText: 'Notes save automatically' }).waitFor();
     await page.locator('.save-status.saved').waitFor();
     assert.equal(readPaper().blocks[0].notes.some(item => item.body === 'retry keeps this exact note'), true);
+    await app.close();
+    app = null;
+    ({ app, page } = await launch(root, workspace));
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    assert.equal(await page.getByRole('textbox', { name: 'Note for selected passage' }).inputValue(), 'retry keeps this exact note');
     await page.screenshot({ path: path.join(artifacts, 'note-autosave.png') });
     console.log('Note autosave checks passed: exact whitespace, review isolation, 350 ms debounce, session undo, selection flush, clear semantics, quit flush, sticky status and retry.');
   } catch (error) {
     progress(String(error.stack || error));
     await page?.screenshot({ path: path.join(workspace, 'failure.png'), timeout: 5000 }).catch(() => {});
+    const retry = page?.getByRole('button', { name: 'Retry save', exact: true });
+    if (await retry?.isVisible().catch(() => false)) await retry.click({ timeout: 3000 }).catch(() => {});
     throw error;
   } finally {
     await app?.close().catch(() => {});

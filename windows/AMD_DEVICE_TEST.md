@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 双 AMD 显卡与扫描译文中的反向术语
+
+0.2.107 的设置页在本机读到 RX 7800 XT 的 16 GiB 专用显存和 Radeon 核显的 512 MiB，系统内存约 63.1 GiB。起步建议为 TranslateGemma 12B。实际解析时 MinerU Auto 选择 RX 7800 XT 上的 DirectML，Ollama 报告正在运行的 TranslateGemma 4B 占用约 2.7 GiB 显存。另以模拟的设备管理器结果验证，禁用的 48 GiB 适配器不会挤掉可用的 16 GiB 适配器。两块实体显卡在测试期间均保持启用。[硬件回归](tests/setup.test.cjs) · [Windows 显卡状态定义](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/cim-videocontroller)
+
+在下述三页笔记上，先对扫描页译文中的「磁场」执行反查，4B 返回 “Magnetic field”。在检查器中将首选译法设为 “magnetic field (B)” 后，应用发出包含这一条词典记录的新请求，4B 返回了所指定的译法。立即重复查询复用了结果；删除该术语后再次查询，恢复了最初缓存的译法。两次复用均未向 Ollama 发起推理，已保存的整段中文译文仍与修改前逐字相同。[扫描选区与本机推理](tests/live-mixed-ocr.cjs)
+
 ## 同一份 PDF 中的文字页、扫描页与空白页
 
 三页实验笔记的第一页含可选中文字，第二页扫描了陶瓷样品的磁场测量记录，第三页为空白。MinerU Auto 在 RX 7800 XT 上选择 DirectML。PDF 文字层仅在第一页有记录，MinerU 返回六个有文字的块，其中五个位于第二页。由原页跳到 Reader 后，TranslateGemma 4B 译出「研究人员测量了陶瓷样品对变化的磁场反应。磁场从零提升到两特斯拉，并在多次试验中进行。」
