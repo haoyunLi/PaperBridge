@@ -17,7 +17,14 @@ async function run() {
   const source = path.join(workspace, 'input'), support = path.join(source, 'supplement');
   fs.mkdirSync(support, { recursive: true });
   fs.mkdirSync(path.join(source, 'images'));
-  fs.copyFileSync(path.join(fixtures, 'supplement-protocol.md'), path.join(support, 'protocol.md'));
+  const protocol = fs.readFileSync(path.join(fixtures, 'supplement-protocol.md'), 'utf8');
+  const repeatedMeasurements = [
+    '<details><summary>Instrument settings</summary><p>Detector gain 8</p></details>',
+    ...Array.from({ length: 22 }, (_, i) => 'Exposure ' + (i + 1) + ' measured for 5 seconds.'),
+    '[Repeat measurements](%E6%B8%A9%E5%BA%A6.csv?download=1)',
+    '[Next panel](panel.jpg)'
+  ].join('\n\n');
+  fs.writeFileSync(path.join(support, 'protocol.md'), protocol + '\n\n' + repeatedMeasurements);
   fs.copyFileSync(path.join(fixtures, 'landscape-swatches.pdf'), path.join(support, 'Reference pages.pdf'));
   fs.copyFileSync(path.join(fixtures, 'tabbed', 'images', 'page_2_chart_5.jpg'), path.join(source, 'images', 'panel.jpg'));
   fs.copyFileSync(path.join(source, 'images', 'panel.jpg'), path.join(support, 'panel.jpg'));
@@ -74,6 +81,31 @@ async function run() {
       assert.equal(await dialog.locator('pre').textContent(), csv);
       if (tab === 'Paper') await record('supplement-protocol.md', 'Measurements CSV', 'preview');
       await dialog.getByRole('button', { name: 'Back' }).click();
+      if (tab === 'Paper') {
+        const details = dialog.locator('details').filter({ hasText: 'Instrument settings' });
+        await details.locator('summary').click();
+        const repeat = dialog.getByRole('link', { name: 'Repeat measurements' });
+        await repeat.scrollIntoViewIfNeeded();
+        await repeat.focus();
+        const previousScroll = await repeat.evaluate(link => link.closest('.modal-body').scrollTop);
+        assert.ok(previousScroll > 0);
+        await repeat.press('Enter');
+        await dialog.getByRole('heading', { name: '温度.csv' }).waitFor();
+        await dialog.getByRole('button', { name: 'Back' }).click();
+        await repeat.waitFor();
+        await page.waitForFunction(() => document.activeElement?.matches('.paper-attachment a'));
+        const restored = await repeat.evaluate(link => ({
+          focus: document.activeElement.textContent, scroll: link.closest('.modal-body').scrollTop,
+          disclosed: link.closest('.paper-attachment').querySelector('details').open
+        }));
+        console.log(JSON.stringify({ previousScroll, ...restored }));
+        if (process.argv.includes('--observe-return')) return;
+        assert.equal(restored.focus, 'Repeat measurements');
+        assert.ok(Math.abs(restored.scroll - previousScroll) <= 1);
+        assert.equal(restored.disclosed, true);
+        await page.keyboard.press('Tab');
+        assert.equal(await dialog.getByRole('link', { name: 'Next panel' }).evaluate(link => link === document.activeElement), true);
+      }
       await dialog.getByRole('link', { name: 'Full-size panel' }).click();
       await dialog.getByRole('img', { name: 'panel.jpg' }).evaluate(img => img.decode());
       assert.equal(await dialog.getByRole('img', { name: 'panel.jpg' }).evaluate(img => img.naturalHeight), 418);

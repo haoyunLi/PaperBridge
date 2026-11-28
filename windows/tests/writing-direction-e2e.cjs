@@ -89,8 +89,11 @@ async function run() {
       assert.match(translation, /unchanged|constant|stable|did not change|same/i);
       console.log(JSON.stringify({ translation }));
     }
-    const source = page.locator('.reader-list .source-text').first();
-    await source.evaluate(node => node.scrollIntoView({ block: 'center' }));
+    const source = page.locator('.main-scroll[aria-busy="false"] .reader-list .source-text').first();
+    // Switching back to Reader restores its saved scroll after layout. Measure the
+    // glyphs only when the reader is ready and the passage can receive the mouse.
+    await source.hover();
+    await source.evaluate(node => node.scrollIntoView({ block: 'center', behavior: 'instant' }));
     const quote = 'מדידת האות';
     const drag = await source.evaluate((host, quote) => {
       const node = document.createTreeWalker(host, NodeFilter.SHOW_TEXT).nextNode();

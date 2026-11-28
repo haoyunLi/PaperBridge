@@ -1,6 +1,19 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { documentLinkTarget, revealMarkdownTarget } from './markdownLinks.mjs';
 
+function matchingLinks(panel, href) {
+  return [...panel.querySelectorAll('a[href]')].filter(link => link.getAttribute('href') === href);
+}
+
+function attachmentLocation(link, path, href) {
+  const panel = link.closest('[data-attachment-path]');
+  return {
+    path, href, occurrence: matchingLinks(panel, href).indexOf(link),
+    y: panel.closest('.modal-body').scrollTop,
+    disclosures: [...panel.querySelectorAll('details')].map(details => details.open)
+  };
+}
+
 export function usePaperAttachment(paperRef, modal, setModal, setError) {
   const [entry, setEntry] = useState(null);
   const [error, setAttachmentError] = useState('');
@@ -31,7 +44,7 @@ export function usePaperAttachment(paperRef, modal, setModal, setError) {
       if (next.kind === 'pdf') return;
       if (!from && !previous) trigger.current = link;
       if (previous) history.current.pop();
-      else if (from && entry) history.current.push({ path: entry.path, y: link.closest('.modal-body')?.scrollTop || 0, link: href });
+      else if (from && entry) history.current.push(attachmentLocation(link, entry.path, href));
       setEntry({ ...next, previous, owner });
       setModal('attachment');
     } catch (cause) {
@@ -73,9 +86,12 @@ export function PaperAttachment({ attachment, Markdown }) {
     const frame = requestAnimationFrame(() => {
       const scroll = panel.closest('.modal-body');
       if (entry.previous) {
-        scroll.scrollTop = entry.previous.y;
-        const link = [...panel.querySelectorAll('a[href]')].find(node => node.getAttribute('href') === entry.previous.link);
-        link?.focus({ preventScroll: true });
+        const { y, href, occurrence, disclosures } = entry.previous;
+        panel.querySelectorAll('details').forEach((details, index) => {
+          if (index < disclosures.length) details.open = disclosures[index];
+        });
+        scroll.scrollTop = y;
+        matchingLinks(panel, href)[occurrence]?.focus({ preventScroll: true });
       } else {
         scroll.scrollTop = 0;
         const host = panel.querySelector('[data-markdown-host]');

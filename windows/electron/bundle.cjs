@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes } = require('./markdown-assets.cjs');
+const { decodePaperText, rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
 // Keep the generated Markdown index usable even with an abnormally large PDF page count.
 const maximumOmittedPageHeadings = 10000;
@@ -115,7 +115,7 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
     }
   }
   for (const [relative, file] of pendingMarkdown) {
-    visitLocalAssets(fs.readFileSync(file, 'utf8'), relative, copyNamedAsset);
+    visitLocalAssets(decodePaperText(fs.readFileSync(file)), relative, copyNamedAsset);
   }
   if (originalPdf) fs.copyFileSync(pdfPath, path.join(folder, 'original.pdf'));
   return { folder, documents: documents.length, assets: assetNames.size, missingAssetPaths: [...missing].sort(), unscannedMarkdownPaths, originalPdf, facsimileDocuments };

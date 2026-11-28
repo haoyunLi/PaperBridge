@@ -83,6 +83,12 @@ function archivePathKey(relative) {
   return parts.length ? parts.join('/').toLowerCase() : null;
 }
 
+function decodePaperText(bytes) {
+  const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le'
+    : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : 'utf-8';
+  return new TextDecoder(encoding).decode(bytes);
+}
+
 function isMarkdownFile(relative) {
   return /\.(?:md|markdown)$/i.test(relative);
 }
@@ -108,4 +114,4 @@ function visitLocalAssets(markdown, fromMarkdown, visit) {
   }, { includeLinks: true });
 }
 
-module.exports = { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes };
+module.exports = { decodePaperText, rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes };

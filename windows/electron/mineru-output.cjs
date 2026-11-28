@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { pipeline } = require('node:stream/promises');
 const yauzl = require('yauzl');
-const { rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, maxMarkdownBytes } = require('./markdown-assets.cjs');
+const { decodePaperText, rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, maxMarkdownBytes } = require('./markdown-assets.cjs');
 
 const structuredOutput = 'structured_content.json';
 const maxMetadataBytes = maxMarkdownBytes;
@@ -63,7 +63,7 @@ async function unpackMineruArchive(archive, folder, checkActive) {
         if (key && entries.has(key)) selected.add(key);
       });
     }
-    selectReferences(await fs.promises.readFile(markdown, 'utf8'), source.fileName);
+    selectReferences(decodePaperText(await fs.promises.readFile(markdown)), source.fileName);
     // Preserve the standard full-size figures as well as attachments named by the document.
     for (const key of entries.keys()) if (/^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/.test(key)) selected.add(key);
     let selectedBytes = 0;
@@ -76,7 +76,7 @@ async function unpackMineruArchive(archive, folder, checkActive) {
       try {
         const file = await unpackEntry(zip, entry, folder, checkActive);
         if (isMarkdownFile(key) && entry.uncompressedSize <= maxMarkdownBytes) {
-          selectReferences(await fs.promises.readFile(file, 'utf8'), entry.fileName);
+          selectReferences(decodePaperText(await fs.promises.readFile(file)), entry.fileName);
         }
       } catch {
         // Optional unreadable files stay as missing links. Cancellation still stops the import.
@@ -131,7 +131,7 @@ function embedMineruImages(markdown, file, resourceRoot = path.dirname(file), op
 }
 
 function readMineruMarkdown(file, resourceRoot) {
-  return embedMineruImages(fs.readFileSync(file, 'utf8'), file, resourceRoot);
+  return embedMineruImages(decodePaperText(fs.readFileSync(file)), file, resourceRoot);
 }
 
 function readMineruPageHints(markdownFile) {

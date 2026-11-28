@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { archivePathKey, assetFile, isMarkdownFile, localAssetReference, maxMarkdownBytes } = require('./markdown-assets.cjs');
+const { archivePathKey, assetFile, decodePaperText, isMarkdownFile, localAssetReference, maxMarkdownBytes, mineruResultManifest } = require('./markdown-assets.cjs');
 const { imageTypes, maxImageBytes, readMineruMarkdown } = require('./mineru-output.cjs');
 const { findPaperMineruMarkdown } = require('./mineru-resources.cjs');
 
@@ -13,7 +13,7 @@ async function openPaperAttachment(root, paper, href, from, openPath) {
   if (!reference || !archivePathKey(reference.relative)) throw new Error('This link is outside the saved paper.');
   const directory = path.dirname(main);
   const asset = assetFile(directory, reference.relative);
-  if (!asset) throw new Error('This attachment is missing from the saved paper.');
+  if (!asset || path.basename(asset.file).toLowerCase() === mineruResultManifest) throw new Error('This attachment is missing from the saved paper.');
   const extension = path.extname(reference.relative).toLowerCase();
   if (extension !== path.extname(asset.file).toLowerCase()) throw new Error('This attachment has an unexpected file type.');
   if (extension === '.pdf') {
@@ -27,9 +27,9 @@ async function openPaperAttachment(root, paper, href, from, openPath) {
     return { ...info, kind: 'image', content: 'data:' + imageTypes[extension] + ';base64,' + fs.readFileSync(asset.file).toString('base64') };
   }
   const markdown = isMarkdownFile(reference.relative);
-  if (!markdown && !['.txt', '.csv', '.tsv'].includes(extension)) throw new Error('PaperBridge cannot preview this attachment type. Export the Markdown bundle to access the file.');
+  if (!markdown && !['.txt', '.csv', '.tsv', '.json'].includes(extension)) throw new Error('PaperBridge cannot preview this attachment type. Export the Markdown bundle to access the file.');
   if (asset.size > maxMarkdownBytes) throw new Error('This attachment exceeds the 64 MiB text preview limit.');
-  return { ...info, kind: markdown ? 'markdown' : 'text', content: markdown ? readMineruMarkdown(asset.file, directory) : fs.readFileSync(asset.file, 'utf8') };
+  return { ...info, kind: markdown ? 'markdown' : 'text', content: markdown ? readMineruMarkdown(asset.file, directory) : decodePaperText(fs.readFileSync(asset.file)) };
 }
 
 module.exports = { openPaperAttachment };

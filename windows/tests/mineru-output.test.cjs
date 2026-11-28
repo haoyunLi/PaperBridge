@@ -282,6 +282,19 @@ test('MinerU ZIP skips oversized optional files and removes an attachment interr
   assert.equal(fs.statSync(file('retry/data/result.csv')).size, 512 * 1024);
 });
 
+test('UTF-16 Markdown links retain their nested instrument data from a parser ZIP', async t => {
+  const file = fixture(t);
+  const protocol = Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('# 光源协议\n\n[Calibration](calibration.json)', 'utf16le').swap16()]);
+  const main = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('[Protocol](data/protocol.md)', 'utf16le')]);
+  const data = Buffer.from('{"wavelength_nm":532,"channel":"校准 α"}', 'utf8');
+  const zip = file('spectrometer.zip', archive([{ name: 'markdown.md', content: main },
+    { name: 'data/protocol.md', content: protocol }, { name: 'data/calibration.json', content: data }]));
+  const markdown = await unpackMineruArchive(zip, file('library'), () => {});
+  assert.match(readMineruMarkdown(markdown), /\[Protocol\]/);
+  assert.deepEqual(fs.readFileSync(file('library/data/protocol.md')), protocol);
+  assert.deepEqual(fs.readFileSync(file('library/data/calibration.json')), data);
+});
+
 test('MinerU ZIP refuses archive paths outside staging and ambiguous primary Markdown', async t => {
   const file = fixture(t);
   const escaped = file('escaped.zip', archive([
