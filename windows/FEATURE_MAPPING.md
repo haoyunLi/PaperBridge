@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+再次双击应用或恢复最小化窗口时，会找回落在所有显示器之外的阅读窗口。保留仍可拖动的跨屏窗口位置。[Windows 实机回归](tests/relaunch-visible-e2e.cjs)
+
 资料库保存或取消标签编辑后，保留搜索、滚动与条目焦点。支持中文输入法确认候选和 Enter 保存。[打包版交互验证](tests/library-edit-return-e2e.cjs)
 
 Windows 首次窗口适配显示器实际工作区。在 300% 和 400% 缩放下，长标题、翻页和重启恢复已用打包版验证。[高缩放验收](tests/scaled-startup-e2e.cjs)

@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 公开便携版自动更新
+
+在 RX 7800 XT 这台电脑上实际启动 GitHub 发布的 0.2.119 便携版，它自动发现 0.2.125。点击提示后，应用下载 123,905,821 字节，校验 SHA-256 和 GitHub 构建证明。Windows 保留互联网下载标记。打开下载好的 0.2.125 后，原论文、书签和中文译文仍在。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.125)
+
 ## 四页光谱仪记录的选区翻译
 
 0.2.126 全选四页原 PDF 后，RX 7800 XT 上的 TranslateGemma 4B 保留了两次读数 12、实验温度 298 K 与 77 K、波长 633 nm 和峰移 2 nm。默认译法把探测器的「12 counts」写成「12 次」。在同一份原文上选中 counts，保存首选译法「计数」，再次全选并翻译，首尾两处都改为「12计数」。Ollama 报告 2,881,948,220 字节模型显存。[真机选区与术语回归](tests/pdf-select-all-e2e.cjs)

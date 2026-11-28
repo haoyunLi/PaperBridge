@@ -73,9 +73,9 @@ func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String
 }
 
 @MainActor
-func nativePdfSelectAll(fixtures: URL) throws -> [[String: Any]] {
-    try [("rotated-spectrometer.pdf", 4), ("good-enough/article.pdf", 20)].map { filename, pageCount in
-        let file = fixtures.appendingPathComponent(filename)
+func nativePdfSelectAll(fixtures: URL, notebook: URL) throws -> [[String: Any]] {
+    try [("rotated-spectrometer.pdf", 4), ("good-enough/article.pdf", 20), (notebook.lastPathComponent, 125)].map { filename, pageCount in
+        let file = filename == notebook.lastPathComponent ? notebook : fixtures.appendingPathComponent(filename)
         let (window, view, document) = try showNativePdf(file, pages: pageCount)
         defer { window.orderOut(nil); window.contentView = nil }
         view.selectAll(nil)

@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage, session, 
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { initialWindowBounds, followDisplay } = require('./window-layout.cjs');
+const { initialWindowBounds, followDisplay, recoverWindowPosition } = require('./window-layout.cjs');
 const { externalPaperURL } = require('./paper-link.mjs');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
@@ -651,6 +651,7 @@ if (app.isPackaged && !app.requestSingleInstanceLock()) {
     if (!window || window.isDestroyed()) return;
     if (window.isMinimized()) window.restore();
     window.show();
+    recoverWindowPosition(window, screen);
     window.focus();
   });
   app.whenReady().then(startApp).catch(showStartupError);

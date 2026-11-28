@@ -121,6 +121,8 @@ jobs:
         run: |
           $env:PAPERBRIDGE_MAC_REFERENCE = "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
           $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
+          node tests/relaunch-visible-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:edit-menu-e2e
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/journal-reflow-e2e.cjs
