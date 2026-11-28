@@ -20,6 +20,8 @@ async function loopbackPort() {
 
 async function run() {
   const installed4B = process.argv.includes('--installed-4b');
+  const cpuOnly = process.argv.includes('--cpu-only');
+  if (cpuOnly && !installed4B) throw new Error('CPU fallback comparison requires --installed-4b.');
   const variant = installed4B ? '4b' : process.argv.includes('--temporary-12b') ? '12b' : '27b';
   if (!installed4B) {
     const permission = 'PAPERBRIDGE_TEMPORARY_' + variant.toUpperCase();
@@ -31,7 +33,7 @@ async function run() {
   const artifacts = path.join(root, 'test-artifacts');
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'large-model-reader-'));
-  const report = { model, stages: [], results: [] };
+  const report = { model, cpuOnly, stages: [], results: [] };
   const reportFile = path.join(workspace, 'report.json');
   const save = () => fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
   function stage(name) {
@@ -41,12 +43,14 @@ async function run() {
   }
 
   const tempRoot = fs.realpathSync(os.tmpdir());
-  const port = installed4B ? 11434 : await loopbackPort();
+  const useExistingServer = installed4B && !cpuOnly;
+  const port = useExistingServer ? 11434 : await loopbackPort();
   const modelStore = installed4B ? null : fs.mkdtempSync(path.join(tempRoot, temporaryPrefix));
   const baseURL = 'http://127.0.0.1:' + port;
   const log = fs.openSync(path.join(workspace, 'runtime.log'), 'w');
-  const server = installed4B ? null : spawn(process.env.PAPERBRIDGE_OLLAMA_EXE || 'ollama.exe', ['serve'], {
-    env: { ...process.env, OLLAMA_HOST: baseURL, OLLAMA_MODELS: modelStore },
+  const server = useExistingServer ? null : spawn(process.env.PAPERBRIDGE_OLLAMA_EXE || 'ollama.exe', ['serve'], {
+    env: { ...process.env, OLLAMA_HOST: baseURL, ...(modelStore && { OLLAMA_MODELS: modelStore }),
+      ...(cpuOnly && { CUDA_VISIBLE_DEVICES: '-1', HIP_VISIBLE_DEVICES: '-1', ROCR_VISIBLE_DEVICES: '-1', GGML_VK_VISIBLE_DEVICES: '-1' }) },
     windowsHide: true, stdio: ['ignore', log, log]
   });
   fs.closeSync(log);
@@ -130,7 +134,8 @@ async function run() {
       assert.ok(loaded?.size > 0);
       report.results.push({ source, translation, elapsedMs: Date.now() - start, runtimeBytes: loaded.size, vramBytes: loaded.size_vram });
       save();
-      assert.ok(loaded.size_vram > 0, 'Ollama did not report GPU allocation.');
+      if (cpuOnly) assert.equal(loaded.size_vram, 0, 'The isolated runtime must use only CPU memory.');
+      else assert.ok(loaded.size_vram > 0, 'Ollama did not report GPU allocation.');
       const expected = [
         [/太阳能/, /温度传感器/, /每(?:隔)?(?:一|1)?(?:个)?小时/],
         [/12\.5\s*[%％]/, /14\.8\s*[%％]/, /(?:未|不|没有|没能).*因果/],

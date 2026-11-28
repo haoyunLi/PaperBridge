@@ -168,7 +168,7 @@ async function run() {
       throw error;
     } finally { app = null; }
   };
-  const launch = async (paperId = id, restartScale = 0) => {
+  const launch = async (paperId = id, restartScale = 0, expectedBlock = 12) => {
     const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
     app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), ...(restartScale ? [`--force-device-scale-factor=${restartScale}`] : []), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
@@ -177,7 +177,7 @@ async function run() {
     page.on('pageerror', error => errors.push(error.message));
     await ready(paperId);
     if (restartScale) {
-      await position(12); await selected(2);
+      await position(expectedBlock); await selected(2);
       console.log(JSON.stringify({ restoredTop: await firstVisible(), startupWidth: await page.evaluate(() => innerWidth), selected: 2 }));
     }
     await bounded('native window size', app.evaluate(({ BrowserWindow }) => {
@@ -278,6 +278,18 @@ async function run() {
       const display = screen.getPrimaryDisplay();
       return Math.max(3, Math.ceil(display.size.width * display.scaleFactor / 640));
     });
+    if (restartScale) {
+      stage('Closing immediately after scrolling restores the latest paragraph on a different display');
+      await wheelTo(14, true);
+      const topAtClose = await relativeTop(14);
+      const lastSaved = readPaper().position.block;
+      await close(); await launch(id, restartScale, 14);
+      await position(14); await selected(2);
+      const reopenedTop = await relativeTop(14);
+      assert.ok(Math.abs(reopenedTop - topAtClose) < 2, JSON.stringify({ topAtClose, reopenedTop }));
+      console.log(JSON.stringify({ lastSaved, topAtClose, reopenedTop, reopenedBlock: 14 }));
+      await wheelTo(12);
+    }
     await close(); await launch(id, restartScale);
     await selected(2); await position(12); await explainTarget(2);
     const restoredTop = await relativeTop();
@@ -297,6 +309,17 @@ async function run() {
     await back.click(); await selected(2); await position(12);
 
     if (restartScale) {
+      stage('Back restores the offscreen reading location after a window width change');
+      await showSidebar();
+      await page.locator('.document-outline .outline-row[data-paragraph-id="19"]').click();
+      await selected(19); await position(19);
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1016, 900));
+      await position(19);
+      await back.click(); await position(12); await selected(2);
+      const backTop = await relativeTop();
+      assert.ok(Math.abs(originalTop - backTop) < 2, JSON.stringify({ originalTop, backTop }));
+      console.log(JSON.stringify({ originalTop, backTop, selected: 2, visible: 12 }));
+
       stage('Compact outline and bookmark jumps reveal the destination and return keyboard focus to the reader');
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(726, 680));
       await page.waitForFunction(() => matchMedia('(max-width: 800px)').matches);

@@ -61,8 +61,39 @@ async function run() {
     assert.equal(store.glossary()[0].target, 'calibration lamp');
     const retry = await confirmation();
     assert.equal(await retry.getByRole('checkbox').isChecked(), false);
+    await app.evaluate(({ ipcMain }) => {
+      const clear = ipcMain._invokeHandlers.get('paper:clear-data');
+      const save = ipcMain._invokeHandlers.get('paper:save');
+      ipcMain.removeHandler('paper:clear-data');
+      ipcMain.removeHandler('paper:save');
+      ipcMain.handle('paper:clear-data', async (...args) => {
+        const result = await clear(...args);
+        await new Promise(resolve => { globalThis.__releaseClear = resolve; });
+        return result;
+      });
+      ipcMain.handle('paper:save', (...args) => {
+        if (globalThis.__releaseClear) globalThis.__lateClearSave = true;
+        return save(...args);
+      });
+    });
     await retry.getByRole('button', { name: 'Remove saved data' }).click();
+    await page.waitForFunction(() => document.querySelector('[role="dialog"] button:disabled'));
+    await app.evaluate(async () => {
+      const deadline = Date.now() + 5000;
+      while (!globalThis.__releaseClear && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 15));
+      if (!globalThis.__releaseClear) throw new Error('Timed out waiting for the committed clear operation');
+    });
+    // A resize or native layout pass can emit a final scroll for the outgoing reader.
+    await page.locator('.main-scroll').evaluate(async host => {
+      host.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => setTimeout(resolve, 500));
+    });
+    const wroteAfterClear = await app.evaluate(() => {
+      globalThis.__releaseClear();
+      return Boolean(globalThis.__lateClearSave);
+    });
     await page.locator('.welcome').waitFor();
+    assert.equal(wroteAfterClear, false, 'A delayed viewport save cannot recreate a cleared paper');
     assert.deepEqual(store.list(), []);
     assert.equal(fs.existsSync(attachment), false);
     assert.equal(fs.existsSync(preview), false);

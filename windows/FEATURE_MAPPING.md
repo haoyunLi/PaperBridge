@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+本机用隔离的 Ollama 服务实测 GPU 不可用时的 CPU 翻译。三段英文逐段译为中文，显存分配均为零，重开后保留译文。[回退实测](WHOLE_APP_REVIEW.md#本机-cpu-翻译回退)
+
 窄窗口从目录或书签打开段落后会收起遮挡正文的侧栏，键盘可直接继续阅读。[章节与书签验收](tests/paragraph-selection-e2e.cjs)
 
 阅读器分别保存浏览位置和解释面板选中的段落。调整窗口或更换显示缩放后重开，可恢复到原段落内的阅读位置。[窗口和重开回归](tests/paragraph-selection-e2e.cjs)

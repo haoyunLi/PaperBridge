@@ -1469,6 +1469,7 @@ function App() {
   const translationQueueRef = useRef(null);
   const mineruPreflight = useRef(false);
   const saveQueue = useRef(null);
+  const clearingWorkspace = useRef(false);
   const readingHistory = useRef(null);
   const readingRestoration = useRef(0);
   const readingGeneration = readingRestoration.current;
@@ -1512,6 +1513,7 @@ function App() {
   }
   const commitPaper = (updater, { delay = 0, deferUndo = false, undoRange } = {}) => {
     const current = paperRef.current;
+    if (clearingWorkspace.current) return current;
     const next = typeof updater === 'function' ? updater(current) : updater;
     if (next === current) return current;
     if (pendingUndoSnapshot.current && !deferUndo) {
@@ -1567,6 +1569,13 @@ function App() {
       host.scrollTop += bounds.top - host.getBoundingClientRect().top - offset;
     } else host.scrollTop = typeof origin === 'number' ? origin : origin.scrollTop;
   }
+  function restoreReaderWidthChange(host, position, saved) {
+    const anchor = position?.readerViewport;
+    if (!host || !anchor || host.clientWidth === anchor.width || anchor.block !== position.block || anchor.scrollTop !== saved) return false;
+    restoreReaderSearchOrigin(anchor);
+    persistRestoredReaderPosition();
+    return true;
+  }
   function currentReadingLocation() {
     const current = paperRef.current;
     if (!current) return null;
@@ -1578,13 +1587,11 @@ function App() {
     const pdfHost = mainScrollRef.current?.querySelector('.pdf-continuous');
     const pdfPage = pdfPageElement(pdfHost, pageNumber);
     if (pdfPage) scrollByTab[pdfScrollKey(pdfHost.dataset.pdfScope, pageNumber)] = pdfOffsetAtFit(pdfHost, pdfPage, pdfZoomPercent(Number(pdfHost.dataset.pdfZoom)));
-    let block = current.position?.block || firstSelectableParagraphID(current.blocks) || 1;
-    if (tab === 'Reader' && !search && mainScrollRef.current) {
-      const top = mainScrollRef.current.getBoundingClientRect().top;
-      const visible = [...mainScrollRef.current.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12);
-      if (visible) block = Number(visible.id.replace('block-', ''));
-    }
+    const reader = tab === 'Reader' && !search ? captureReaderSearchOrigin() : null;
+    const readerViewport = reader && typeof reader === 'object' ? { ...reader, width: mainScrollRef.current.clientWidth } : null;
+    const block = readerViewport?.block || current.position?.block || firstSelectableParagraphID(current.blocks) || 1;
     return { paperId: current.id, sourceMode: paperArticleSource(current).mode, tab, displayMode, block,
+      ...(readerViewport && { readerViewport }),
       selectedParagraphID: resolveSelectedParagraphID(current),
       page: pageNumber, search, searchOrigin: searchOrigin.current, scrollByTab,
       ...(tab === 'Paper' && { paperAnchor: capturePreviewAnchor(mainScrollRef.current) }),
@@ -1661,6 +1668,7 @@ function App() {
         const key = scrollKey(location.tab, location.page);
         const saved = location.scrollByTab?.[key];
         const host = mainScrollRef.current;
+        if (location.tab === 'Reader' && !location.search && restoreReaderWidthChange(host, location, saved)) return;
         const anchor = location.tab === 'Paper' ? location.paperAnchor : location.fullTranslationAnchor;
         if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
         if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
@@ -2009,25 +2017,24 @@ function App() {
         const view = tab === 'Paper' ? paperModeViewport(position, sourceMode, displayMode) : null;
         const saved = view ? view.scrollTop : tab === 'Reader' && search && !clearSearch ? searchScroll.current : position?.scrollByTab?.[key];
         const origin = tab === 'Reader' && (!search || clearSearch) ? normalizeSearchOrigin(position?.readerSearchOrigin) : null;
-        const readerAnchor = position?.readerViewport;
         if (origin !== null) {
           restoreReaderSearchOrigin(origin);
           persistRestoredReaderPosition();
-        } else if (tab === 'Reader' && (!search || clearSearch) && host && readerAnchor &&
-            readerAnchor.block === position?.block && readerAnchor.scrollTop === saved && host.clientWidth !== readerAnchor.width) {
-          restoreReaderSearchOrigin(readerAnchor);
-          persistRestoredReaderPosition();
         } else {
+          if (tab === 'Reader' && (!search || clearSearch) && restoreReaderWidthChange(host, position, saved)) return;
           const anchor = tab === 'Full Translation' ? position?.fullTranslationAnchor : view?.anchor;
           if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
-          if (saved == null && tab === 'Reader') document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
+          if (saved == null && tab === 'Reader') {
+            document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
+            if ((!search || clearSearch) && host?.querySelector('[data-reading-list]')) persistRestoredReaderPosition();
+          }
         }
       } finally { finishReadingRestore(owner); }
     });
     return () => { cancelled = true; finishReadingRestore(owner); };
   };
   const saveMainScroll = () => {
-    if (restoringScroll.current || !paperRef.current) return;
+    if (clearingWorkspace.current || pendingImport || taskRef.current?.kind === 'pdfImport' || restoringScroll.current || !paperRef.current) return;
     const generation = readingRestoration.current;
     hideOffscreenLookup(mainScrollRef.current);
     clearTimeout(scrollSaveTimer.current);
@@ -2477,7 +2484,7 @@ function App() {
       const location = currentReadingLocation();
       const position = persistedReadingPosition(location, paperRef.current.position);
       const previous = paperRef.current.position || {};
-      const anchorField = tab === 'Full Translation' ? 'fullTranslationAnchor' : 'paperAnchor';
+      const anchorField = tab === 'Reader' ? 'readerViewport' : tab === 'Full Translation' ? 'fullTranslationAnchor' : 'paperAnchor';
       const anchorChanged = JSON.stringify(position[anchorField] ?? null) !== JSON.stringify(previous[anchorField] ?? null);
       if (anchorChanged || Object.entries(position.scrollByTab).some(([key, value]) => value !== (previous.scrollByTab?.[key] ?? 0))) {
         commitPaper(current => ({ ...current, position }), { deferUndo: true });
@@ -2493,12 +2500,12 @@ function App() {
     }
   }), [tab, displayMode, pageNumber, search, pendingImport]);
   useLayoutEffect(() => {
-    if (paper && !viewNavigation && !blockNavigation) return restoreMainScroll();
+    if (paper && !pendingImport && !viewNavigation && !blockNavigation) return restoreMainScroll();
     publishReadingRestorationState();
-  }, [tab, paper?.id, tab === 'Paper' ? displayMode : null]);
+  }, [tab, paper?.id, tab === 'Paper' ? displayMode : null, Boolean(pendingImport)]);
   useLayoutEffect(() => {
     const host = mainScrollRef.current;
-    if (tab !== 'Reader' || !host || !paper?.id || search) return;
+    if (tab !== 'Reader' || !host || !paper?.id || search || pendingImport) return;
     const watch = { width: host.clientWidth, anchor: null, generation: null };
     readerResize.current = watch;
     const observer = new ResizeObserver(() => {
@@ -2518,7 +2525,7 @@ function App() {
     });
     observer.observe(host);
     return () => { observer.disconnect(); readerResize.current = null; };
-  }, [tab, paper?.id, search]);
+  }, [tab, paper?.id, search, Boolean(pendingImport)]);
   useLayoutEffect(() => {
     if (blockNavigation?.recordType !== 'paragraph' || tab !== 'Reader') return;
     const host = mainScrollRef.current;
@@ -2635,6 +2642,17 @@ function App() {
     } catch (err) { if (!token.cancelled) setError(`Could not import ${file.name}: ${err.message}`); } finally { endTask(token); }
   }
   function startPdfImport(name, stage, token = startTask(`Opening ${name}…`)) {
+    const current = paperRef.current;
+    const host = mainScrollRef.current;
+    if (token.kind !== 'pdfImport' && current && !restoringScroll.current && host?.dataset.readingPaperId === current.id) {
+      const key = scrollKey();
+      const savedOffset = current.position?.scrollByTab?.[key] ?? 0;
+      if (host.scrollTop !== savedOffset) {
+        const location = currentReadingLocation();
+        commitPaper(paper => ({ ...paper, position: persistedReadingPosition(location, paper.position) }), { deferUndo: true });
+      }
+    }
+    invalidateReadingScroll();
     token.kind = 'pdfImport';
     setPendingImport({ name, startedAt: Date.now(), stage });
     return token;
@@ -3455,8 +3473,10 @@ function App() {
     finally { endTask(token); }
   }
   async function clearSavedData(includeArchivedPdfs) {
-    if (taskRef.current) return;
+    if (taskRef.current || clearingWorkspace.current) return;
+    clearingWorkspace.current = true;
     try {
+      invalidateReadingScroll();
       if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
       await settingsSaveChain.current;
       await glossarySave.current?.catch(() => {});
@@ -3467,10 +3487,11 @@ function App() {
       const result = await api.clearData(includeArchivedPdfs);
       setArchiveCleanup({ remaining: result?.pendingArchivedPdfs || 0 });
       setLookupCache(new Map());
-      const data = await api.bootstrap();
       resetReadingHistory();
       cancelParagraphEdit();
-      paperRef.current = null; setPaper(null); setLibrary([]); setLibraryPersistenceWarning(''); setGlossary([]); settingsRef.current = data.settings; setSettings(data.settings);
+      paperRef.current = null; setPaper(null); setLibrary([]); setLibraryPersistenceWarning(''); setGlossary([]);
+      const data = await api.bootstrap();
+      settingsRef.current = data.settings; setSettings(data.settings);
       modelRefreshId.current++;
       setModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
       void refreshModels(data.settings);
@@ -3486,6 +3507,8 @@ function App() {
       setError([pdfWarning, result?.workspaceCleanupWarning].filter(Boolean).join(' '));
     } catch (cause) {
       throw new Error('Could not clear saved data. ' + cause.message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
+    } finally {
+      clearingWorkspace.current = false;
     }
   }
   async function retryArchiveCleanup() {

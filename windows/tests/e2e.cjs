@@ -776,8 +776,9 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     await page.waitForFunction(async id => {
       const host = document.querySelector('.main-scroll');
+      const position = (await window.paperBridge.loadPaper(id))?.position;
       return host?.dataset.readingPaperId === id && host.getAttribute('aria-busy') === 'false'
-        && (await window.paperBridge.loadPaper(id))?.position?.tab === 'Reader';
+        && position?.tab === 'Reader' && Math.abs(position.scrollByTab?.Reader - host.scrollTop) < 2;
     }, pdfRecord.id);
     const originalPaperPath = path.join(workspace, 'papers', `${pdfRecord.id}.json`);
     const originalAssetPath = path.join(workspace, 'pdfs', `${pdfRecord.id}.pdf`);

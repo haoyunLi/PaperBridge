@@ -90,6 +90,20 @@ test('reading history distinguishes extraction sources and leaves blocked moves 
   assert.deepEqual(history.goForward(pdf), mineru);
 });
 
+test('an unfiltered Reader location carries its measured paragraph through history and saving', async () => {
+  const { createReadingHistory, normalizeReadingLocation, persistedReadingPosition } = await historyModule;
+  const viewport = { scrollTop: 1400, block: 14, offset: -24, width: 891 };
+  const recent = location(14, { readerViewport: viewport });
+  const history = createReadingHistory();
+  history.record(recent);
+  const restored = history.goBack(location(19));
+  assert.deepEqual(restored.readerViewport, viewport);
+  assert.deepEqual(persistedReadingPosition(restored).readerViewport, viewport);
+  assert.equal(persistedReadingPosition(location(19), { readerViewport: viewport }).readerViewport, undefined);
+  assert.equal(normalizeReadingLocation({ ...recent, readerViewport: { ...viewport, width: 0 } }).readerViewport, undefined);
+  assert.equal(normalizeReadingLocation({ ...recent, search: 'Results' }).readerViewport, undefined);
+});
+
 test('filtered history retains its viewport and paragraph origin without persisting filtered offsets', async () => {
   const { createReadingHistory, persistedReadingPosition } = await historyModule;
   const origin = { scrollTop: 1840, block: 12, offset: -37 };

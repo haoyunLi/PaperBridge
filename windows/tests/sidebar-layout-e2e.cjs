@@ -289,6 +289,10 @@ async function run() {
       await visibleWithinSidebar(destination);
       await destination.click();
       await waitFor(async () => await destination.getAttribute('aria-current') === 'location', 'outline destination becomes current');
+      if (zoom === 2) {
+        await sidebar.waitFor({ state: 'hidden' });
+        await mouseCenter(showSidebar, 'Show Document Sidebar');
+      }
       await sidebar.hover({ position: { x: 100, y: 100 } });
       await page.mouse.wheel(0, 100000);
       await waitFor(async () => await scroll.evaluate(host => host.scrollTop > 100 && host.scrollHeight - host.clientHeight - host.scrollTop <= 2), 'sidebar reaches its bottom');

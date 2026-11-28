@@ -9,6 +9,12 @@ export function normalizeSearchOrigin(value) {
   return { scrollTop: value.scrollTop, block: value.block, offset: value.offset };
 }
 
+function normalizeReaderViewport(value) {
+  const origin = normalizeSearchOrigin(value);
+  return origin && typeof origin === 'object' && Number.isFinite(value.width) && value.width > 0
+    ? { ...origin, width: value.width } : null;
+}
+
 // History retains the filtered viewport. Disk storage retains the place to return
 // to when the temporary search is dismissed or the application is reopened.
 export function persistedReadingPosition(location, previous = {}) {
@@ -23,7 +29,13 @@ export function persistedReadingPosition(location, previous = {}) {
     position.scrollByTab.Reader = typeof origin === 'number' ? origin : origin.scrollTop;
     position.readerSearchOrigin = origin;
     if (location.tab === 'Reader' && typeof origin === 'object') position.block = origin.block;
-  } else if (location.tab === 'Reader') delete position.readerSearchOrigin;
+  } else if (location.tab === 'Reader') {
+    delete position.readerSearchOrigin;
+    const readerViewport = normalizeReaderViewport(location.readerViewport ?? position.readerViewport);
+    if (readerViewport && readerViewport.block === position.block && readerViewport.scrollTop === position.scrollByTab.Reader) {
+      position.readerViewport = readerViewport;
+    } else delete position.readerViewport;
+  }
   if (location.tab === 'Paper' && location.sourceMode && Number.isFinite(position.scrollByTab.Paper)) {
     return storePaperViewport(position, location.sourceMode, location.displayMode, position.scrollByTab.Paper, location.paperAnchor ?? null);
   }
@@ -33,6 +45,7 @@ export function persistedReadingPosition(location, previous = {}) {
 export function normalizeReadingLocation(value = {}) {
   const search = typeof value.search === 'string' ? value.search : '';
   const searchOrigin = search ? normalizeSearchOrigin(value.searchOrigin) : null;
+  const readerViewport = value.tab === 'Reader' && !search ? normalizeReaderViewport(value.readerViewport) : null;
   const scrollByTab = Object.fromEntries(Object.entries(value.scrollByTab || {})
     .filter(([, offset]) => Number.isFinite(Number(offset)))
     .sort(([left], [right]) => left.localeCompare(right))
@@ -50,6 +63,7 @@ export function normalizeReadingLocation(value = {}) {
     page: Number.isInteger(value.page) && value.page > 0 ? value.page : 1,
     search,
     ...(searchOrigin !== null && { searchOrigin }),
+    ...(readerViewport && { readerViewport }),
     ...(value.tab === 'Paper' && value.paperAnchor && { paperAnchor: value.paperAnchor }),
     ...(value.tab === 'Full Translation' && value.fullTranslationAnchor && { fullTranslationAnchor: value.fullTranslationAnchor }),
     scrollByTab

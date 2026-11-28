@@ -32,7 +32,8 @@ async function run() {
   if (!workspace.startsWith(artifacts + path.sep)) throw new Error('Unexpected import test workspace');
   fs.rmSync(workspace, { recursive: true, force: true }); fs.mkdirSync(workspace, { recursive: true });
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: 'mineruOnly' }));
-  const app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   const page = await app.firstWindow();
   const drop = async (name, text) => page.evaluate(({ name, bytes }) => {
     const file = new File([new Uint8Array(bytes)], name, { type: 'application/pdf' });
@@ -57,7 +58,8 @@ async function run() {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await revealSidebarSource(page);
     await openPasteText(page);
-    await page.locator('.paste-area').fill('Abstract\n\nThe original saved paper must survive a cancelled import.');
+    const paragraphs = Array.from({ length: 20 }, (_, index) => `Section ${index + 1}. ` + 'A calibrated reading is recorded for this sample. '.repeat(8));
+    await page.locator('.paste-area').fill(['Abstract', 'The original saved paper must survive a cancelled import.', ...paragraphs].join('\n\n'));
     await loadPastedText(page, { view: 'Paper' });
     await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
     await openWorkspaceView(page, 'Reader');
@@ -65,6 +67,8 @@ async function run() {
     await waitFor(() => fs.readdirSync(path.join(workspace, 'papers')).some(name => name.endsWith('.json')), 'original paper save');
     const paperFile = path.join(workspace, 'papers', fs.readdirSync(path.join(workspace, 'papers')).find(name => name.endsWith('.json')));
     await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).blocks[0].bookmark === true, 'bookmark save');
+    await page.locator('#block-8').evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).position?.block === 8, 'paper scroll position saved before import');
     const before = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       globalThis.__mineruImports = [];
@@ -120,6 +124,12 @@ async function run() {
     assert.equal(await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).isVisible(), true);
     assert.equal(await app.evaluate(() => globalThis.__mineruImports.length), 1, 'The same held MinerU request remains active');
     const whileSidebarClosed = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    await page.locator('.main-scroll').evaluate(async host => {
+      host.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => setTimeout(resolve, 500));
+    });
+    assert.deepEqual(JSON.parse(fs.readFileSync(paperFile, 'utf8')).position, before.position,
+      'The import progress surface cannot replace the previous paper’s saved reading position');
     assert.equal(whileSidebarClosed.id, before.id);
     assert.deepEqual(whileSidebarClosed.blocks, before.blocks, 'Sidebar dismissal must preserve the old source, translation and bookmark data');
     assert.equal(whileSidebarClosed.blocks[0].bookmark, true);
@@ -127,6 +137,11 @@ async function run() {
 
     await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
     await page.locator('.import-progress-screen').waitFor({ state: 'detached' });
+    await page.waitForFunction(expected => {
+      const host = document.querySelector('.main-scroll'), block = document.getElementById('block-' + expected.block);
+      return host?.getAttribute('aria-busy') === 'false' && block &&
+        Math.abs(block.getBoundingClientRect().top - host.getBoundingClientRect().top - expected.offset) < 2;
+    }, before.position.readerViewport);
     await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Show Document Sidebar', exact: true }).click();
     await sidebar.waitFor({ state: 'visible' });
