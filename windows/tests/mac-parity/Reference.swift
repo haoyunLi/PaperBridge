@@ -264,6 +264,7 @@ struct Reference {
                                      "htmlEquations": try nativeEquations(fixtures: fixtureURL.deletingLastPathComponent(), document: "html-equations.md"),
                                      "texDelimiters": try nativeEquations(fixtures: fixtureURL.deletingLastPathComponent(), document: "tex-delimiters.md"),
                                      "overlappingHighlights": try nativeOverlappingHighlights(fixtures: fixtureURL.deletingLastPathComponent()),
+                                     "writingDirections": try nativeWritingDirections(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "selectionEdges": try nativeSelectionEdges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "richAnnotationRanges": try nativeRichAnnotationRanges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "attachmentLinks": try nativeAttachmentLinks(fixtures: fixtureURL.deletingLastPathComponent()),
