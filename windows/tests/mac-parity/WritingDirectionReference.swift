@@ -29,20 +29,22 @@ func nativeWritingDirections(fixtures: URL) throws -> [[String: Any]] {
         guard let view = textView(host), view.string == sample.text,
               let layout = view.layoutManager, let container = view.textContainer else { throw CocoaError(.fileReadCorruptFile) }
         layout.ensureLayout(for: container)
-        var positions: [(token: String, x: CGFloat)] = []
+        var positions: [(token: String, rect: NSRect)] = []
         for token in sample.tokens {
             let range = (sample.text as NSString).range(of: token)
             guard range.location != NSNotFound else { throw CocoaError(.fileReadCorruptFile) }
             let glyphs = layout.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
             let rect = layout.boundingRect(forGlyphRange: glyphs, in: container)
             guard rect.width > 0 else { throw CocoaError(.fileReadCorruptFile) }
-            positions.append((token, rect.midX))
+            positions.append((token, rect))
         }
-        let used = layout.lineFragmentUsedRect(forGlyphAt: 0, effectiveRange: nil)
         let line = layout.lineFragmentRect(forGlyphAt: 0, effectiveRange: nil)
-        let edge = used.midX > line.midX ? "right" : "left"
-        result.append(["text": sample.text, "tokensFromLeft": positions.sorted { $0.x < $1.x }.map { $0.token },
-                       "alignedEdge": edge])
+        guard let left = positions.map({ $0.rect.minX }).min(), let right = positions.map({ $0.rect.maxX }).max() else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let leftGap = left - line.minX, rightGap = line.maxX - right
+        result.append(["text": sample.text, "tokensFromLeft": positions.sorted { $0.rect.midX < $1.rect.midX }.map { $0.token },
+                       "alignedEdge": leftGap > rightGap ? "right" : "left", "leftGap": leftGap, "rightGap": rightGap])
     }
     return result
 }
