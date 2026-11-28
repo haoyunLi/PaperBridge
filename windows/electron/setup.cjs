@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const { stopWorker } = require('./stop-worker.cjs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, execFile } = require('node:child_process');
@@ -135,7 +136,6 @@ class SetupManager {
     this.pullModel = pullModel;
     this.emit = emit;
     this.controller = null;
-    this.child = null;
     this.lastProgress = null;
   }
 
@@ -158,7 +158,6 @@ class SetupManager {
 
   cancel() {
     this.controller?.abort();
-    this.child?.kill();
     return Boolean(this.controller);
   }
 
@@ -168,7 +167,9 @@ class SetupManager {
     this.send(phase, message);
     return new Promise((resolve, reject) => {
       const child = spawn(command, args, { shell: false, windowsHide: true, ...options });
-      this.child = child;
+      const stop = () => phase === 'mineru' || phase === 'models' ? stopWorker(child) : child.kill();
+      signal.addEventListener('abort', stop, { once: true });
+      if (signal.aborted) stop();
       let tail = '';
       let lastUpdate = 0;
       const collect = data => {
@@ -181,9 +182,9 @@ class SetupManager {
       };
       child.stdout?.on('data', collect);
       child.stderr?.on('data', collect);
-      child.once('error', error => { if (this.child === child) this.child = null; reject(error); });
+      child.once('error', error => { signal.removeEventListener('abort', stop); reject(error); });
       child.once('close', code => {
-        if (this.child === child) this.child = null;
+        signal.removeEventListener('abort', stop);
         if (signal.aborted) { const error = new Error('Setup cancelled. You can resume it later.'); error.name = 'AbortError'; reject(error); }
         else if (code === 0) resolve(tail.trim());
         else reject(new Error(`${path.basename(command)} exited ${code}: ${tail.trim().slice(-500)}`));
@@ -435,7 +436,7 @@ class SetupManager {
     } catch (error) {
       this.send(error.name === 'AbortError' ? 'cancelled' : 'error', error.message);
       throw error;
-    } finally { this.controller = null; this.child = null; }
+    } finally { this.controller = null; }
   }
 }
 

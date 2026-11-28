@@ -168,6 +168,7 @@ async function run() {
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
+    await ready(paperId);
     await bounded('native window size', app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
       window.webContents.setZoomFactor(1); window.setContentSize(1500, 900); window.show(); window.focus();
@@ -347,9 +348,15 @@ async function run() {
     search = page.getByRole('textbox', { name: 'Search original or translation', exact: true });
 
     stage('Split and structural Undo preserve an independently located viewport');
+    if (process.argv.includes('--compact-undo')) {
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1016, 705));
+      await page.waitForFunction(() => innerWidth <= 1020);
+    }
     await wheelTo(12);
-    const beforeEditOffset = await scroll();
+    const beforeMenu = await scroll();
     await page.locator('#block-13').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
+    // The pointer can reveal a partly visible action button before editing begins.
+    const beforeEditOffset = await scroll();
     await page.getByRole('menuitem', { name: 'Edit or Split...', exact: true }).click();
     const editor = page.getByRole('dialog', { name: 'Repair Paragraph 13', exact: true });
     await selected(13);
@@ -363,7 +370,9 @@ async function run() {
     await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
     await waitFor(() => readPaper().blocks.length === 24, 'structural undo saved');
     await selected(13); await position(12);
-    assert.ok(Math.abs(await scroll() - beforeEditOffset) < 2, 'Undo must restore the pre-edit viewport independently of selection');
+    const restoredOffset = await scroll();
+    console.log(JSON.stringify({ beforeMenu, beforeEditOffset, restoredOffset, viewport: await page.evaluate(() => [innerWidth, innerHeight]) }));
+    assert.ok(Math.abs(restoredOffset - beforeEditOffset) < 2, 'Undo must restore the pre-edit viewport independently of selection');
     assert.equal(readPaper().blocks[12].text, blocks[12].text);
 
     stage('Merge Undo restores the previous offscreen selection, not the merge target');
@@ -376,14 +385,14 @@ async function run() {
     await page.locator('#block-12').getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     // The menu trigger may need a few pixels of native reveal when paragraph 12
     // begins above the clipped viewport. Snapshot the actual action-time position.
-    const beforeMergeOffset = await scroll();
+    const beforeMergeOffset = await scroll(), beforeMergeBlock = await firstVisible();
     await page.getByRole('menuitem', { name: 'Merge with Next', exact: true }).click();
     await waitFor(() => readPaper().blocks.length === 23, 'paragraph merge saved');
-    await selected(12); await position(12);
+    await selected(12); await position(beforeMergeBlock);
     await wheelTo(20); await selected(12);
     await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
     await waitFor(() => readPaper().blocks.length === 24, 'merge undo saved');
-    await selected(2); await position(12); await explainTarget(2);
+    await selected(2); await position(beforeMergeBlock); await explainTarget(2);
     const afterMergeUndoOffset = await scroll();
     assert.ok(Math.abs(afterMergeUndoOffset - beforeMergeOffset) < 2,
       `Merge Undo offset ${afterMergeUndoOffset} must restore the action-time offset ${beforeMergeOffset}`);

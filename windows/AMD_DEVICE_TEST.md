@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 实际停止 20 页论文解析
+
+在读着另一篇带书签的论文时，拖入 20 页 PDF，用本机安装的 MinerU 开始解析并点击取消。0.2.132 中，这次作业的 mineru-kit.exe、conhost.exe 和 python.exe 均已退出。之前打开的论文继续显示，书签和输入 PDF 字节保留。[设备测试](tests/live-ocr-cancel.cjs)
+
 ## 隔着传真和空白页的光谱读数
 
 RX 7800 XT 上从 0.2.131 原文区选中第 2、5 页，184 个字符与 PDFKit 复制结果逐字一致。TranslateGemma 4B 在本地译出预热 10 分钟、三个独立实验和首尾两次 12 的读数。模型使用 2,881,948,220 字节显存，默认将 counts 译作“次”。扫描页和空白页没有混入这段原生选文。[选文、旧笔记和译文验证](tests/pdf-select-all-e2e.cjs)
