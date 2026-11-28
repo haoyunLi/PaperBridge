@@ -4,6 +4,8 @@ PaperBridge 提供 Windows x64 安装版（Setup）与免安装便携版（Porta
 
 如果看到的是 **Open File – Security Warning（打开文件－安全警告）**，先核对对话框里的文件名与刚从项目发布页下载的文件是否一致。信任该文件时，选 **Run（运行）**。Windows 等待这个选择期间，PaperBridge 主窗口还不会出现。切到该对话框即可查看。Setup 和 Portable 都可能出现这一步。
 
+如果双击新的便携版后，屏幕又回到原来的论文窗口，请打开 Settings → Updates 查看正在运行的版本。旧便携版仍然打开时，Windows 会将这次启动交给原窗口。先正常关闭旧版，再从文件资源管理器打开刚下载的 Portable.exe。从 0.2.140 起，应用内下载完成后也可选 **Close and show portable update**，让旧版保存并退出，再双击选中的新版。
+
 ### 怎样核对下载的文件
 
 从同一 GitHub Release 下载所选的 EXE 和同名的 `.exe.sha256` 文件，放在同一文件夹。在该文件夹打开 PowerShell，运行下列命令。每份安装版或便携版都会显示文件名和核对结果，`Match` 为 `True` 表示内容与发布页相符。

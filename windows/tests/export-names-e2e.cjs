@@ -25,10 +25,11 @@ async function run() {
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: dir } });
   try {
     const observe = process.argv.includes('--observe');
-    await app.evaluate(({ dialog }, { pdf, out, observe }) => {
+    await app.evaluate(({ dialog, shell }, { pdf, out, observe }) => {
       const path = process.getBuiltinModule('path');
       const fs = process.getBuiltinModule('fs');
       globalThis.exportNames = [];
+      shell.showItemInFolder = folder => { globalThis.revealedBundle = folder; };
       dialog.showOpenDialog = async (_owner, options) => ({ canceled: false, filePaths: [options.properties.includes('openDirectory') ? out : pdf] });
       dialog.showSaveDialog = async (_owner, { defaultPath }) => {
         const name = path.basename(defaultPath);
@@ -88,6 +89,7 @@ async function run() {
     assert.ok(folder?.name.endsWith('_PaperBridge') && folder.name.isWellFormed());
     await page.waitForFunction(() => !document.querySelector('.task-progress'));
     assert.deepEqual(fs.readFileSync(path.join(out, folder.name, 'original.pdf')), source);
+    assert.equal(await app.evaluate(() => globalThis.revealedBundle), path.join(out, folder.name));
     console.log('Saved each reading edition separately, preserved the bookmark in the notes edition, and exported the original bytes inside the named bundle.');
     // The user can type a longer name than the suggested one in the native Save dialog.
     const chosenDirectory = fs.mkdtempSync(path.join(dir, 'save-as-'));

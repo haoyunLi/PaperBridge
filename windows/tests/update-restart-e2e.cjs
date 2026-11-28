@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
-const { defaults } = require('../electron/storage.cjs');
+const { createStore, defaults } = require('../electron/storage.cjs');
+const { recordPortableSelection } = require('./portable-update-selection.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -201,7 +202,16 @@ async function run() {
     await page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag);
     await expectRevealed(() => global.__revealed, savedFile);
     await app.close(); app = null;
+    const store = createStore(workspace);
+    const paperId = 'a'.repeat(64);
+    store.savePaper({ id: paperId, name: 'Portable update field notes', type: 'text', extraction: 'Pasted text',
+      position: { tab: 'Reader', block: 1, page: 1 }, blocks: [
+        { id: 1, text: 'The sample was measured at 300 K.', translation: '样品测量温度为 300 K。', bookmark: true, status: 'ok' },
+        { id: 2, text: 'The control was measured separately.', status: 'idle' }
+      ] });
+    store.markPaperOpened(paperId);
     app = await launch(true);
+    await app.evaluate(({ app }) => { if (!app.isPackaged) Object.defineProperty(app, 'isPackaged', { get: () => true }); });
     await useFixtureVerifier(app);
     page = await app.firstWindow();
     const restartedDownload = page.locator('.update-banner');
@@ -212,10 +222,54 @@ async function run() {
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, true);
     await app.evaluate(({ shell }) => { shell.showItemInFolder = () => { throw new Error('Changed download must never be revealed'); }; });
     fs.writeFileSync(savedFile, 'x'.repeat(bytes.length));
-    await assert.rejects(page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag), /no longer matches/);
-    await page.locator('.update-banner').getByRole('button', { name: 'Download portable update' }).waitFor();
+    await assert.rejects(page.evaluate(tag => window.paperBridge.closeForPortableUpdate(tag), 'windows-v99.0.0'), /current verified Portable/);
+    await assert.rejects(page.evaluate(tag => window.paperBridge.closeForPortableUpdate(tag), identity.tag), /no longer matches/);
+    await assert.rejects(page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag), /No verified download/);
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /installed reader/);
-    await app.close(); app = null;
+    await provideDownload(app);
+    await restartedDownload.getByRole('button', { name: 'Download portable update' }).click();
+    const portableAction = restartedDownload.getByRole('button', { name: 'Close and show portable update', exact: true });
+    await portableAction.waitFor();
+    assert.equal(await restartedDownload.getByRole('button', { name: 'Open installer', exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Close and show portable update', exact: true }).waitFor();
+    await page.getByText('PaperBridge saves your work and closes. Double-click the selected update in File Explorer.').waitFor();
+    await page.keyboard.press('Escape');
+    const revealReceipt = path.join(workspace, 'portable-reveal.json');
+    await recordPortableSelection(app, revealReceipt, savedFile);
+    await app.evaluate(({ ipcMain }) => {
+      const write = ipcMain._invokeHandlers.get('paper:save');
+      global.__canSaveUpdateNote = false;
+      ipcMain.removeHandler('paper:save');
+      ipcMain.handle('paper:save', (...args) => {
+        if (!global.__canSaveUpdateNote) throw new Error('Test paper save is unavailable');
+        return write(...args);
+      });
+    });
+    const noteText = 'Checked the control before updating.';
+    await page.locator('#block-2 .source-text').evaluate(node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      node.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    await page.getByLabel('Note for selected passage').fill(noteText);
+    await portableAction.click();
+    await restartedDownload.getByText('Save the latest paper changes before continuing with the update.').waitFor();
+    assert.equal(fs.existsSync(revealReceipt), false);
+    assert.equal(await page.getByLabel('Note for selected passage').inputValue(), noteText);
+    await app.evaluate(() => { global.__canSaveUpdateNote = true; });
+    await page.getByRole('button', { name: 'Retry save', exact: true }).click();
+    const closed = app.waitForEvent('close', { timeout: 20000 });
+    await portableAction.click();
+    await closed; app = null;
+    assert.deepEqual(JSON.parse(fs.readFileSync(revealReceipt, 'utf8')), { filename: savedFile, stillOwnsProfile: false });
+    const savedPaper = store.paper(paperId);
+    assert.equal(savedPaper.blocks[0].bookmark, true);
+    assert.equal(savedPaper.blocks[0].translation, '样品测量温度为 300 K。');
+    assert.ok(savedPaper.blocks[1].notes.some(note => note.body === noteText));
+    // The user moves the portable file out of the cache before the later explicit redownload.
+    fs.renameSync(savedFile, path.join(workspace, identity.portableName));
     fs.writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(settingsFile, 'utf8')), autoCheckUpdates: false, autoDownloadUpdates: false }));
     app = await launch();
     page = await app.firstWindow();
@@ -238,6 +292,8 @@ async function run() {
     await settings.getByRole('button', { name: 'Download installer', exact: true }).click();
     const install = settings.getByRole('button', { name: 'Open installer', exact: true });
     await install.waitFor();
+    await assert.rejects(page.evaluate(tag => window.paperBridge.closeForPortableUpdate(tag), identity.tag), /current verified Portable/);
+    assert.equal(await settings.getByRole('button', { name: 'Close and show portable update', exact: true }).count(), 0);
     assert.deepEqual(await app.evaluate(() => global.__installerRequests), [], 'Downloading must never open the installer automatically');
     assert.equal(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).autoDownloadUpdates, false);
     const installer = path.join(workspace, 'update-downloads', identity.installerName);
@@ -285,7 +341,8 @@ async function run() {
     app = await launch(true);
     page = await app.firstWindow();
     await provideDownload(app);
-    await page.locator('.welcome').waitFor();
+    await page.getByRole('heading', { name: 'Portable update field notes', exact: true }).waitFor();
+    await page.locator('#block-2 .block-notes').getByText(noteText, { exact: false }).waitFor();
     assert.equal((await page.evaluate(() => window.paperBridge.checkUpdates(true))).status, 'skipped');
     assert.deepEqual(await app.evaluate(() => global.__fileRequests), []);
     assert.equal(await page.locator('.update-banner').count(), 0);

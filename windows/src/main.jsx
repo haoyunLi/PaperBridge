@@ -1351,16 +1351,17 @@ function App() {
   const [appVersion, setAppVersion] = useState('');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateFile, setUpdateFile] = useState(null);
-  const [installerAction, setInstallerAction] = useState(null);
-  const openingInstaller = Boolean(installerAction?.pending);
-  const installerMessage = installerAction && installerAction.tag === updateInfo?.tag ? installerAction.message : '';
+  const [updateAction, setUpdateAction] = useState(null);
+  const usingUpdate = Boolean(updateAction?.pending);
+  const updateActionMessage = updateAction && updateAction.tag === updateInfo?.tag ? updateAction.message : '';
   const filePhase = updateInfo && updateInfo.tag === updateFile?.tag ? updateFile.phase : 'idle';
   const fileMessage = filePhase === 'downloading' ? `Downloading Windows update · ${updateFile.percent}%`
-    : filePhase === 'ready' ? installerMessage || 'Download complete. SHA-256 and GitHub build proof verified.'
+    : filePhase === 'ready' ? updateActionMessage || 'Download complete. SHA-256 and GitHub build proof verified.'
     : filePhase === 'cancelled' ? 'Update download cancelled. You can download it again.'
     : filePhase === 'failed' ? updateFile.message
     : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
-  const installAvailable = filePhase === 'ready' && updateInfo?.canOpenInstaller;
+  const updateActionAvailable = filePhase === 'ready' && (updateInfo?.canOpenInstaller || updateInfo?.canCloseForPortable);
+  const updateActionLabel = updateInfo?.canCloseForPortable ? 'Close and show portable update' : 'Open installer';
   const updateButtonLabel = filePhase === 'downloading' ? 'Cancel download' : filePhase === 'ready' ? 'Show downloaded update' : updateInfo?.downloadLabel;
   const [deferredUpdateTag, setDeferredUpdateTag] = useState('');
   const showUpdateBanner = updateInfo?.status === 'available' && updateInfo.tag !== deferredUpdateTag;
@@ -1949,17 +1950,23 @@ function App() {
     }
     catch (cause) { setError(cause.message); }
   }
-  async function openUpdateInstaller() {
-    if (!installAvailable || busy || openingInstaller) return;
+  async function finishUpdateDownload() {
+    if (!updateActionAvailable || busy || usingUpdate) return;
     const tag = updateInfo.tag;
-    setError(current => current === installerAction?.message ? '' : current);
-    const showAction = (message, pending = true) => setInstallerAction({ tag, message, pending });
+    setError(current => current === updateAction?.message ? '' : current);
+    const showAction = (message, pending = true) => setUpdateAction({ tag, message, pending });
     let reminder;
     setUpdateStatus('');
     showAction('Saving the current reading position and notes…');
     try {
       await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
-      if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before opening the installer.');
+      if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before continuing with the update.');
+      if (updateInfo.canCloseForPortable) {
+        showAction('Checking the portable update before closing PaperBridge…');
+        await api.closeForPortableUpdate(tag);
+        showAction('Closing PaperBridge. Open the selected update in File Explorer.');
+        return;
+      }
       showAction('Checking the installer and asking Windows to open it…');
       reminder = setTimeout(() => showAction('Still waiting to open Setup. Check the taskbar for a Windows confirmation, or choose Show downloaded update to find the installer in File Explorer.'), 8000);
       await api.openUpdateInstaller(tag);
@@ -2509,6 +2516,7 @@ function App() {
     if (await saveReadingStateBeforeClose()) api.closeReady();
     else {
       setError('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
+      setUpdateAction(null);
       api.closeCancelled();
     }
   }), [tab, displayMode, pageNumber, search, pendingImport]);
@@ -4248,11 +4256,11 @@ function App() {
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {showUpdateBanner && <div className="update-banner" role="status">
           <div><strong>{updateInfo.stale ? `Previously found PaperBridge for Windows ${updateInfo.latestVersion}` : `PaperBridge for Windows ${updateInfo.latestVersion} is available`}</strong>{fileMessage && <div role="status">{fileMessage}</div>}</div>
-          {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={openUpdateInstaller}>Open installer</button>}
-          {updateButtonLabel && <button className={installAvailable || filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
+          {updateActionAvailable && <button className="button blue" disabled={Boolean(busy || usingUpdate)} onClick={finishUpdateDownload}>{updateActionLabel}</button>}
+          {updateButtonLabel && <button className={updateActionAvailable || filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
           <button className="button outline" onClick={openUpdateRelease}>View release</button>
           <button className="button ghost" onClick={() => { sidebarToggleRef.current?.focus({ preventScroll: true }); setDeferredUpdateTag(updateInfo.tag); }}>Later</button>
-          <button className="button ghost" disabled={openingInstaller} onClick={skipUpdate}>Skip this version</button>
+          <button className="button ghost" disabled={usingUpdate} onClick={skipUpdate}>Skip this version</button>
         </div>}
         {busy && <TaskProgress busy={busy} progress={progress} status={status} />}
         {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
@@ -4387,7 +4395,7 @@ function App() {
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
         openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
         hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
-        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, onOpenInstaller: installAvailable ? () => openUpdateInstaller() : null, installerBusy: Boolean(busy || openingInstaller), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onSkip: skipUpdate, onCheck: () => checkForUpdates(false) }} />}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, portableHandoff: updateInfo?.canCloseForPortable, onUseUpdate: updateActionAvailable ? finishUpdateDownload : null, updateActionLabel, updateActionBusy: Boolean(busy || usingUpdate), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onSkip: skipUpdate, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <SavedTerminology glossary={glossary} saving={glossarySaving} error={glossaryError} onRemove={removeTerm} />}
       {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} onEditLabel={editLibraryLabel} persistenceWarning={libraryPersistenceWarning} />}
       {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={returnToLibrary} onCancel={returnToLibrary} />}

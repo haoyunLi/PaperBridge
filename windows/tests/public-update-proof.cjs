@@ -6,6 +6,7 @@ const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { defaults } = require('../electron/storage.cjs');
+const { recordPortableSelection } = require('./portable-update-selection.cjs');
 
 async function run() {
   const [directory, version] = process.argv.slice(2);
@@ -37,6 +38,7 @@ async function run() {
           fs.writeFileSync(proofFile, JSON.stringify(proof));
         }
         const app = await launch();
+        let closedForUpdate = false;
         try {
           const page = await app.firstWindow();
           await page.locator('.welcome').waitFor();
@@ -69,6 +71,7 @@ async function run() {
           if (phase === 'changed') {
             assert.match(await status.innerText(), /Could not verify the GitHub build proof/);
             assert.equal(await settings.getByRole('button', { name: 'Open installer' }).count(), 0);
+            assert.equal(await settings.getByRole('button', { name: 'Close and show portable update' }).count(), 0);
             assert.equal(await settings.getByRole('button', { name: 'Show downloaded update' }).count(), 0);
             assert.equal(await app.evaluate(() => global.proofFetches), 1);
             continue;
@@ -77,7 +80,15 @@ async function run() {
           assert.equal(await app.evaluate(() => global.proofFetches), offline ? 0 : 1);
           assert.ok(fs.existsSync(path.join(cache, prefix + '-provenance.json')));
           assert.equal(await settings.getByRole('button', { name: 'Show downloaded update' }).count(), 1);
-        } finally { await app.close(); }
+          if (kind === 'Portable' && phase === 'offline' && executablePath) {
+            const receipt = path.join(dir, 'revealed-update.json');
+            await recordPortableSelection(app, receipt, path.join(cache, name));
+            await Promise.all([app.waitForEvent('close', { timeout: 30000 }),
+              settings.getByRole('button', { name: 'Close and show portable update', exact: true }).click()]);
+            closedForUpdate = true;
+            assert.deepEqual(JSON.parse(fs.readFileSync(receipt, 'utf8')), { filename: path.join(cache, name), stillOwnsProfile: false });
+          }
+        } finally { if (!closedForUpdate) await app.close(); }
       }
       console.log(kind + ' verified the public signed proof, reused it offline and rejected a changed statement.');
     }

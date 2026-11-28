@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   skipUpdate: tag => ipcRenderer.invoke('updates:skip', tag),
   revealUpdate: tag => ipcRenderer.invoke('updates:reveal', tag),
   openUpdateInstaller: tag => ipcRenderer.invoke('updates:install', tag),
+  closeForPortableUpdate: tag => ipcRenderer.invoke('updates:close-for-portable', tag),
   onUpdateFile: callback => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('updates:file-state', listener);

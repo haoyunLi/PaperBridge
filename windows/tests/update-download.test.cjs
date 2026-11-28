@@ -43,6 +43,23 @@ async function fixture(t, transfer, verifyProvenance = async () => {}) {
   return { directory, changes, shown, create };
 }
 
+test('a long Windows download directory keeps the Internet zone when the verified file is renamed', { skip: process.platform !== 'win32' }, async t => {
+  const { directory: root } = await fixture(t);
+  const directory = path.join(root, '更新, reader '.padEnd(Math.max(12, 199 - root.length), 'x'));
+  const stream = ':Zone.Identifier';
+  const zone = '[ZoneTransfer]\r\nZoneId=3\r\n';
+  const manager = new UpdateDownload({ directory, notify() {}, verifyProvenance: async () => {},
+    transfer: async (_download, filename) => {
+      await fs.writeFile(filename, payload);
+      // Model the path limit observed in the Windows Chromium download. Use a real NTFS stream.
+      if ((filename + stream).length < 260) await fs.writeFile(filename + stream, zone);
+    }
+  });
+  await manager.prepare(next);
+  assert.equal(manager.state.phase, 'ready', manager.state.message);
+  assert.equal(await fs.readFile(path.join(directory, portable.name) + stream, 'utf8'), zone);
+});
+
 test('prepare is shared, verifies before publication and reuses the exact file after restart', async t => {
   let calls = 0;
   const { directory, changes, shown, create } = await fixture(t, async (download, file, signal, progress) => {

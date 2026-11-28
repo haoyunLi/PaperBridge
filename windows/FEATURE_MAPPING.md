@@ -5,7 +5,7 @@
 | 剩余项目 | 已实测 | 仍待验证或完成 |
 | --- | --- | --- |
 | G10 独立解析与加速 | RX 7800 XT 的 DirectML 解析及 CPU 解析，自动检测、一键安装与修复。 | NVIDIA CUDA 及其他物理显卡上的安装和解析。 |
-| G14 应用内更新 | 发现新版、跳过、下载、校验并交给 Windows 启动安装。 | 与 Mac 同等的自动安装和重启体验。 |
+| G14 应用内更新 | 发现新版、跳过、下载、校验，安装版打开标准向导，便携版可保存阅读进度、退出并在文件资源管理器选中新版。 | 与 Mac 同等的自动安装和重启体验。 |
 | G15 Windows 分发与签名 | GitHub 下载、构建来源证明、SHA-256 校验，以及全新 Windows 的安装版和便携版启动。 | Windows 信任的发布者签名。 |
 
 翻译已在 RX 7800 XT 上实测 4B、12B 和 27B。4B 另在 CPU 回退时验证了数值、单位、否定和重开后的结果。[AMD 型号实测](AMD_DEVICE_TEST.md) · [CPU 对照](WHOLE_APP_REVIEW.md#本机-cpu-翻译回退) · [Windows 下载](README.md#download-for-windows-x64)

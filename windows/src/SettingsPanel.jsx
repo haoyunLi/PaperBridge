@@ -155,14 +155,15 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <label className="settings-checkbox"><input type="checkbox" disabled={settings.autoCheckUpdates === false} checked={settings.autoDownloadUpdates === true} onChange={event => onSettings({ autoDownloadUpdates: event.target.checked })} />Download new Windows releases in the background</label>
         <div className="row">
           <button className="button outline" ref={checkUpdateButton} disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
-          {updates.onOpenInstaller && <button className="button blue" disabled={updates.installerBusy} onClick={updates.onOpenInstaller}>Open installer</button>}
-          {updates.downloadLabel && <button className={updates.onOpenInstaller || updates.filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
+          {updates.onUseUpdate && <button className="button blue" disabled={updates.updateActionBusy} onClick={updates.onUseUpdate}>{updates.updateActionLabel}</button>}
+          {updates.downloadLabel && <button className={updates.onUseUpdate || updates.filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
           {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
-          {updates.availableVersion && <button className="button ghost" disabled={updates.installerBusy} onClick={event => updates.onSkip(event, checkUpdateButton.current)}>Skip this version</button>}
+          {updates.availableVersion && <button className="button ghost" disabled={updates.updateActionBusy} onClick={event => updates.onSkip(event, checkUpdateButton.current)}>Skip this version</button>}
         </div>
         {updates.status && <p role="status">{updates.status}</p>}
         {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}
-        {updates.filePhase === 'ready' && !updates.onOpenInstaller && <p>Show the file in File Explorer, then close PaperBridge before opening the new version.</p>}
+        {updates.filePhase === 'ready' && updates.portableHandoff && <p>PaperBridge saves your work and closes. Double-click the selected update in File Explorer.</p>}
+        {updates.filePhase === 'ready' && !updates.onUseUpdate && <p>Show the file in File Explorer, then close PaperBridge before opening the new version.</p>}
         {updates.downloadLabel && !updates.downloadInApp && <p>The download button opens GitHub in your browser.</p>}
       </Group><Group title="Update verification">
         <p>PaperBridge checks each in-app download against its SHA-256 checksum and the signed GitHub build record for the official Windows release. Windows may also ask you to confirm the publisher.</p>

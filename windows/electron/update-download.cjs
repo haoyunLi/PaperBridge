@@ -134,7 +134,8 @@ class UpdateDownload {
     signal.throwIfAborted();
     await fs.promises.mkdir(this.directory, { recursive: true });
     const temporary = await fs.promises.mkdtemp(path.join(this.directory, '.partial-'));
-    const staged = path.join(temporary, file.name);
+    // Keep space for Windows to attach the Internet zone stream before the verified file is renamed.
+    const staged = path.join(temporary, 'update.exe');
     try {
       signal.throwIfAborted();
       await this.transfer(download, staged, signal, received => {

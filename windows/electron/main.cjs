@@ -5,7 +5,7 @@ const { pathToFileURL } = require('node:url');
 const { initialWindowBounds, followDisplay, recoverWindowPosition } = require('./window-layout.cjs');
 const { externalPaperURL } = require('./paper-link.mjs');
 const os = require('node:os');
-const { spawn } = require('node:child_process');
+const childProcess = require('node:child_process');
 const { writeFileAtomically } = require('./atomic-file.cjs');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
@@ -52,6 +52,7 @@ let menuState = normalizeMenuState({});
 let closeReady = false;
 let closeRequested = false;
 let quitAfterClose = false;
+let portableUpdateToReveal = null;
 let closeTimer = null;
 const requests = new Map();
 const openAIRequests = new Map();
@@ -90,10 +91,12 @@ function requestRendererClose(quitting = false) {
   if (window.webContents.isCrashed()) { finishClose(); return; }
   closeRequested = true;
   window.webContents.send('paperbridge:prepare-close');
-  closeTimer = setTimeout(finishClose, 10_000);
+  // An update must wait for the reader to confirm that pending edits reached disk.
+  if (!portableUpdateToReveal) closeTimer = setTimeout(finishClose, 10_000);
 }
 
 function cancelRendererClose() {
+  portableUpdateToReveal = null;
   closeRequested = false;
   quitAfterClose = false;
   if (closeTimer) clearTimeout(closeTimer);
@@ -153,7 +156,8 @@ function registerHandlers() {
     if (candidate && !skipped && backgroundUpdatesEnabled()) void updateFiles.prepare(candidate);
     else if (!updateFiles.matches(candidate)) updateFiles.cancel();
     const canOpenInstaller = Boolean(app.isPackaged && !portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Setup.exe`);
-    return { ...result, downloadLabel: candidate?.label, downloadInApp: Boolean(candidate?.file), canOpenInstaller,
+    const canCloseForPortable = Boolean(app.isPackaged && portable && candidate?.file?.name === `PaperBridge-Windows-${result.latestVersion}-x64-Portable.exe`);
+    return { ...result, downloadLabel: candidate?.label, downloadInApp: Boolean(candidate?.file), canOpenInstaller, canCloseForPortable,
       updateFile: updateFiles.state };
   });
   ipcMain.handle('updates:skip', (_event, tag) => {
@@ -169,6 +173,19 @@ function registerHandlers() {
         event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url.split('#')[0] !== readerURL ||
         availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The installed reader needs a current verified Setup update.');
     return updateFiles.openInstaller(tag, filename => shell.openPath(filename));
+  });
+  ipcMain.handle('updates:close-for-portable', async (event, tag) => {
+    const version = /^windows-v(\d+\.\d+\.\d+)$/.exec(tag)?.[1];
+    const candidate = availableDownload;
+    if (!version || !app.isPackaged || !process.env.PORTABLE_EXECUTABLE_FILE || event.sender !== window?.webContents ||
+        event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url.split('#')[0] !== readerURL ||
+        candidate?.tag !== tag || candidate.file?.name !== `PaperBridge-Windows-${version}-x64-Portable.exe` || !updateFiles.matches(candidate)) {
+      throw new Error('The portable reader needs a current verified Portable update.');
+    }
+    const filename = await updateFiles.verifiedFile(tag);
+    if (availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The available update changed.');
+    portableUpdateToReveal = filename;
+    requestRendererClose(true);
   });
   ipcMain.handle('updates:cancel-download', (_event, tag) => {
     if (!availableDownload || availableDownload.tag !== tag) return false;
@@ -453,7 +470,7 @@ function registerHandlers() {
       fs.copyFileSync(pdf, stagedPdf);
       const invocation = mineruInvocation(detected, stagedPdf, output, backend, setupManager.toolsRoot, cpuFallback === true);
       await new Promise((resolve, reject) => {
-        const child = spawn(invocation.command, invocation.args, { shell: false, windowsHide: true, env: invocation.env });
+        const child = childProcess.spawn(invocation.command, invocation.args, { shell: false, windowsHide: true, env: invocation.env });
         mineruJobs.attach(job, child);
         let log = '';
         const appendLog = data => {
@@ -679,6 +696,27 @@ async function startApp() {
   await createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow().catch(showStartupError); });
 }
+function openPortableUpdateFolder() {
+  const filename = portableUpdateToReveal;
+  portableUpdateToReveal = null;
+  window?.hide();
+  app.releaseSingleInstanceLock();
+  // Explorer must own the selection request after the last reader window exits.
+  // Its /select syntax quotes the filename separately, including paths with spaces.
+  const explorerPath = path.join(process.env.SystemRoot || 'C:\\Windows', 'explorer.exe');
+  const reportFailure = error => {
+    dialog.showErrorBox('Open the portable update', `Open this downloaded file to continue:\n\n${filename}\n\n${error.message}`);
+    app.quit();
+  };
+  try {
+    const explorer = childProcess.spawn(explorerPath, [`/select,"${filename}"`], {
+      windowsVerbatimArguments: true, detached: true, stdio: 'ignore'
+    });
+    explorer.once('spawn', () => { explorer.unref(); app.quit(); });
+    explorer.once('error', reportFailure);
+  } catch (error) { reportFailure(error); }
+}
+
 app.on('before-quit', event => {
   if (window && !window.isDestroyed() && !closeReady) {
     event.preventDefault();
@@ -692,6 +730,11 @@ app.on('before-quit', event => {
       setupManager.cancel();
       void setupOperation.then(() => app.quit(), () => app.quit());
     }
+    return;
+  }
+  if (portableUpdateToReveal) {
+    event.preventDefault();
+    openPortableUpdateFolder();
     return;
   }
   updateFiles?.cancel();
