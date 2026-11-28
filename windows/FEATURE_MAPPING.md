@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+窄窗口重开论文时，正文标签可直接点击。Esc 可以收起手动打开的侧栏并保留搜索。另用同一份 125 页实验记录实测，两端原生复制文本逐字一致，Windows 可重开跨 125 页的笔记。[窄窗口](tests/overlapping-highlights-e2e.cjs) · [跨页笔记](tests/pdf-select-all-e2e.cjs)
+
 再次双击应用或恢复最小化窗口时，会找回落在所有显示器之外的阅读窗口。保留仍可拖动的跨屏窗口位置。[Windows 实机回归](tests/relaunch-visible-e2e.cjs)
 
 资料库保存或取消标签编辑后，保留搜索、滚动与条目焦点。支持中文输入法确认候选和 Enter 保存。[打包版交互验证](tests/library-edit-return-e2e.cjs)

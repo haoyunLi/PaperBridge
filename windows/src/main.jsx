@@ -1425,7 +1425,7 @@ function App() {
   const [quickTermOpen, setQuickTermOpen] = useState(false);
   const [inspector, setInspector] = useState(() => !window.matchMedia('(max-height: 480px)').matches);
   const [compactInspector, setCompactInspector] = useState(() => window.matchMedia('(max-width: 1399px)').matches);
-  const [sidebar, setSidebar] = useState(() => !window.matchMedia('(max-height: 480px) and (max-width: 800px)').matches);
+  const [sidebar, setSidebar] = useState(() => !window.matchMedia('(max-width: 800px)').matches);
   const [documentDetailsExpanded, setDocumentDetailsExpanded] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(workspacePanelWidths.sidebar.initial);
   const [inspectorWidth, setInspectorWidth] = useState(workspacePanelWidths.inspector.initial);
@@ -2078,6 +2078,11 @@ function App() {
     }
     setFocus(current => !current);
   }
+  function closeDocumentOverlay() {
+    setSidebar(false);
+    const target = pendingImport ? mainScrollRef.current?.querySelector('.import-progress-screen button') : sidebarToggleRef.current;
+    target?.focus({ preventScroll: true });
+  }
   function toggleDocumentSidebar() {
     if (focus) {
       setFocus(false);
@@ -2374,6 +2379,7 @@ function App() {
     if (editRef.current) { if (name === 'dismiss') cancelParagraphEdit(); return; }
     if (name === 'dismiss') {
       if (modal) dismissModal();
+      else if (sidebar && !focus && window.matchMedia('(max-width: 800px)').matches) closeDocumentOverlay();
       else if (selection?.rect && !inspector && !focus) dismissQuickSelection();
       else setSelection(null);
       return;
@@ -4062,11 +4068,7 @@ function App() {
     {inspector && !focus && !modal && !pendingImport && !compactInspector && <WorkspaceSplitter panel="inspector" width={inspectorWidth} onResize={setInspectorWidth} />}
     <aside id="document-sidebar" className="sidebar" inert={Boolean(modal)}>
       <div className="sidebar-overlay-bar"><span>Document</span><button type="button" aria-label="Close Document Sidebar" aria-controls="document-sidebar"
-        title={readingLayoutAvailable ? 'Close document sidebar · Ctrl+Alt+S' : 'Close document sidebar'} onClick={() => {
-          toggleDocumentSidebar();
-          const target = pendingImport ? mainScrollRef.current?.querySelector('.import-progress-screen button') : sidebarToggleRef.current;
-          target?.focus({ preventScroll: true });
-        }}><X size={16} /> Close</button></div>
+        title={readingLayoutAvailable ? 'Close document sidebar · Ctrl+Alt+S' : 'Close document sidebar'} onClick={closeDocumentOverlay}><X size={16} /> Close</button></div>
       <div className="sidebar-scroll">
         <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
         <button className="sidebar-library-button" title="Open library" disabled={Boolean(pendingImport)} onClick={() => setModal('library')}><Library size={16} /> Paper Library</button>

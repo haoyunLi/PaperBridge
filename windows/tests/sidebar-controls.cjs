@@ -46,18 +46,18 @@ async function loadPastedText(page, { view } = {}) {
 
 async function openWorkspaceView(page, view) {
   const button = page.locator('.header-tools .tabs').getByRole('button', { name: view, exact: true });
-  const sidebar = page.locator('.sidebar');
-  if (await sidebar.isVisible()) {
-    const [panel, target] = await Promise.all([sidebar.boundingBox(), button.boundingBox()]);
-    const center = target && { x: target.x + target.width / 2, y: target.y + target.height / 2 };
-    if (panel && center && center.x >= panel.x && center.x <= panel.x + panel.width &&
-        center.y >= panel.y && center.y <= panel.y + panel.height) {
-      // At narrow sizes the overlay can cover its own header switch too. A
-      // keyboard activation of the real button is supported UI, not force-click.
-      await page.getByRole('button', { name: 'Hide Document Sidebar', exact: true }).press('Enter');
-      await sidebar.waitFor({ state: 'hidden' });
+  await button.waitFor({ state: 'visible' });
+  const close = page.getByRole('button', { name: 'Close Document Sidebar', exact: true });
+  if (!await close.isVisible()) {
+    try {
+      await button.click({ timeout: 1500 });
+      return;
+    } catch {
+      // Windows can finish applying the native window size or zoom during the click.
+      // Recheck the visible drawer, then let Playwright perform its normal full wait.
     }
   }
+  if (await close.isVisible()) await close.click();
   await button.click();
 }
 

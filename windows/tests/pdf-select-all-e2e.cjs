@@ -5,6 +5,7 @@ const { createHash } = require('node:crypto');
 const { _electron: electron } = require('playwright-core');
 const { createStore, defaults } = require('../electron/storage.cjs');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
+const { longFacsimile } = require('./mac-parity/long-facsimile.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..'), artifacts = path.join(root, 'test-artifacts');
@@ -12,10 +13,14 @@ async function run() {
   const workspace = fs.mkdtempSync(path.join(artifacts, 'pdf-select-all-'));
   const store = createStore(workspace);
   store.saveSettings({ ...defaults, onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: 'pdfOnly', inspectorOpen: true, quickLookupModel: 'translategemma:4b', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' });
-  const file = process.argv.includes('--short') ? 'rotated-spectrometer.pdf' : 'good-enough/article.pdf';
-  const source = path.join(__dirname, 'mac-parity', file), id = createHash('sha256').update(fs.readFileSync(source)).digest('hex');
+  const notebook = process.argv.includes('--notebook');
+  const file = notebook ? 'long-facsimile.pdf' : process.argv.includes('--short') ? 'rotated-spectrometer.pdf' : 'good-enough/article.pdf';
+  const source = notebook ? path.join(workspace, file) : path.join(__dirname, 'mac-parity', file);
+  if (notebook) fs.writeFileSync(source, longFacsimile());
+  const id = createHash('sha256').update(fs.readFileSync(source)).digest('hex');
   const reference = process.env.PAPERBRIDGE_MAC_REFERENCE && JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE)).pdfSelectAll?.find(item => item.file === file);
-  const count = file.startsWith('rotated') ? 4 : 20;
+  const count = notebook ? 125 : file.startsWith('rotated') ? 4 : 20;
+  const earlyCopy = count > 4 && !process.argv.includes('--observe');
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ cwd: root, ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace } });
@@ -31,7 +36,7 @@ async function run() {
     await openWorkspaceView(page, 'Original');
     await page.locator('.textLayer[data-page="1"]').waitFor();
     await host().focus();
-    if (count === 20 && !process.argv.includes('--observe')) {
+    if (earlyCopy) {
       await page.evaluate(() => {
         window.__earlyCopy = null;
         if (!window.navigator.clipboard) throw Error('Missing clipboard support');
@@ -47,7 +52,7 @@ async function run() {
       assert.ok(await page.evaluate(() => getSelection().isCollapsed));
     }
     await host().press('Control+a');
-    if (count === 20 && !process.argv.includes('--observe')) await host().press('Control+c');
+    if (earlyCopy) await host().press('Control+c');
     if (process.argv.includes('--observe')) {
       console.log(await page.evaluate(() => {
         const host = document.querySelector('.pdf-continuous'), selection = getSelection();
@@ -66,7 +71,7 @@ async function run() {
       return host?.getAttribute('aria-busy') === 'false' && host.contains(selection.anchorNode) && host.contains(selection.focusNode) &&
         Number(selection.focusNode.parentElement?.closest('[data-pdf-page]')?.dataset.pdfPage) === count;
     }, count, { timeout: 60000 });
-    if (count === 20) await page.waitForFunction(() => window.__earlyCopy?.length > 30000, null, { timeout: 6000 });
+    if (earlyCopy) await page.waitForFunction(() => window.__earlyCopy?.length > 0, null, { timeout: 6000 });
     console.log('Selected PDF pages', count);
     const canvases = await host().locator('canvas').evaluateAll(nodes => nodes.filter(n => n.width > 1 && n.height > 1).length);
     assert.ok(canvases <= 5, 'Offscreen pages should not allocate full bitmap canvases');
@@ -78,14 +83,18 @@ async function run() {
     await page.waitForFunction(() => typeof window.__pdfCopy === 'string');
     const copied = await page.evaluate(() => window.__pdfCopy);
     fs.writeFileSync(path.join(workspace, 'copied-text.txt'), copied);
-    assert.ok(copied.length > (count === 4 ? 350 : 30000));
-    if (count === 20) {
+    assert.ok(copied.length > (count === 20 ? 30000 : 350));
+    if (count === 20) assert.match(copied, /20\s*\/\s*20/);
+    if (notebook) {
+      const lines = Array.from({ length: count }, (_, index) => 'Observation ' + (index + 1) + ' in the printed notebook.');
+      assert.deepEqual(copied.split(/\r?\n/).filter(Boolean), lines);
+    }
+    if (earlyCopy) {
       assert.equal(await page.evaluate(() => window.__earlyCopy), copied);
-      assert.match(copied, /20\s*\/\s*20/);
       await page.evaluate(() => { delete window.navigator.clipboard.write; });
     }
     assert.doesNotMatch(copied, /Research Inspector|Hide Document Sidebar|Exact original PDF · page/);
-    if (count === 4 && reference) {
+    if ((count === 4 || notebook) && reference) {
       assert.equal(copied.replace(/\r\n/g, '\n'), reference.copied.replace(/\r\n/g, '\n'));
     }
     if (process.env.GITHUB_ACTIONS === 'true') {

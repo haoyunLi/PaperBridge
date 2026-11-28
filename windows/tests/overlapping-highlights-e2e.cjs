@@ -104,7 +104,33 @@ async function run() {
       await page.emulateMedia({ forcedColors: 'none', colorScheme: null });
     }
     await app.close(); app = await launch(); page = await app.firstWindow();
-    await app.evaluate(({ BrowserWindow }) => { const window = BrowserWindow.getAllWindows()[0]; window.setContentSize(1450, 895); window.webContents.setZoomFactor(1.25); });
+    const compact = process.argv.includes('--compact');
+    await page.getByRole('heading', { name: 'Ensemble sampling', exact: true }).waitFor();
+    await app.evaluate(({ BrowserWindow }, compact) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      win.setContentSize(compact ? 980 : 1450, compact ? 760 : 895);
+      win.webContents.setZoomFactor(compact ? 1.35 : 1.25);
+    }, compact);
+    if (compact) {
+      await page.waitForFunction(() => innerWidth <= 800 && innerHeight > 480);
+      await page.reload();
+      await page.getByRole('heading', { name: 'Ensemble sampling', exact: true }).waitFor();
+      const sidebar = page.locator('#document-sidebar');
+      const state = await page.evaluate(() => ({ width: innerWidth, height: innerHeight, sidebar: getComputedStyle(document.querySelector('.sidebar')).display }));
+      console.log(JSON.stringify({ restored: state }));
+      if (process.argv.includes('--observe')) return;
+      assert.equal(await sidebar.isVisible(), false);
+      const toggle = page.getByRole('button', { name: 'Show Document Sidebar', exact: true });
+      await toggle.click();
+      const search = sidebar.getByRole('textbox', { name: 'Search papers or tags', exact: true });
+      await search.fill('Ensemble');
+      await search.press('Escape');
+      await sidebar.waitFor({ state: 'hidden' });
+      assert.equal(await toggle.evaluate(el => el === document.activeElement), true);
+      await toggle.click();
+      assert.equal(await search.inputValue(), 'Ensemble');
+      await sidebar.getByRole('button', { name: 'Close Document Sidebar' }).click();
+    }
     for (const [tab, selector] of Object.entries(surfaces)) {
       await openWorkspaceView(page, tab);
       const host = page.locator(selector);
@@ -114,7 +140,7 @@ async function run() {
       await page.waitForFunction(quote => getSelection().toString() === quote, sample.marks[2].quote);
       assert.equal(await page.locator('.inspector textarea').inputValue(), tab + ' overlap note');
     }
-    console.log(JSON.stringify({ dir, plainAndFormatted: true, states: Object.keys(expected), zoom: 1.25, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
+    console.log(JSON.stringify({ dir, plainAndFormatted: true, states: Object.keys(expected), zoom: compact ? 1.35 : 1.25, native: Boolean(process.env.PAPERBRIDGE_MAC_REFERENCE) }));
   } finally { await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
