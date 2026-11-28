@@ -149,7 +149,7 @@ function mineruInvocation(detected, pdf, output, backend, toolsRoot, cpuFallback
     return {
       command: detected.kitExecutable,
       args: ['parse', path.toNamespacedPath(pdf), '-o', archive, '--format', 'zip', '--pages', 'all', '--tier', 'basic', '--ocr-mode', 'auto'],
-      env: mineru4Environment(toolsRoot, backend)
+      env: mineru4Environment(toolsRoot, cpuFallback ? 'pipeline' : backend)
     };
   }
   const args = ['-p', pdf, '-o', output];

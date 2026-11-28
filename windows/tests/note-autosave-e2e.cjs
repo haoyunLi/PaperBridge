@@ -172,6 +172,39 @@ async function run() {
     await selectText(page, '#block-1 .source-text', 'Alpha passage');
     assert.equal(await page.getByRole('textbox', { name: 'Note for selected passage' }).inputValue(), 'retry keeps this exact note');
     await page.screenshot({ path: path.join(artifacts, 'note-autosave.png') });
+    progress('typing a last note while a preference is finishing on close');
+    const lastNote = 'One more observation while the reader is saving.';
+    await app.evaluate(({ ipcMain }, lastNote) => {
+      const settingsSave = ipcMain._invokeHandlers.get('settings:save');
+      const paperSave = ipcMain._invokeHandlers.get('paper:save');
+      ipcMain.removeHandler('settings:save');
+      ipcMain.removeHandler('paper:save');
+      ipcMain.handle('settings:save', async (event, value) => {
+        if (value.autoCheckUpdates) await new Promise(resolve => { global.releaseNoteTestSettings = resolve; });
+        return settingsSave(event, value);
+      });
+      ipcMain.handle('paper:save', async (event, snapshot) => {
+        if (snapshot.blocks[0].notes.some(item => item.body === lastNote)) await new Promise(resolve => setTimeout(resolve, 1000));
+        return paperSave(event, snapshot);
+      });
+    }, lastNote);
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await page.getByLabel(/Check official Windows releases/).check();
+    await waitFor(() => app.evaluate(() => Boolean(global.releaseNoteTestSettings)), 'settings write started');
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    await page.evaluate(() => {
+      window.closeStartedForNoteTest = new Promise(resolve => window.paperBridge.onPrepareClose(resolve));
+    });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await page.evaluate(() => window.closeStartedForNoteTest);
+    await page.getByRole('textbox', { name: 'Note for selected passage' }).fill(lastNote);
+    const lastClose = app.waitForEvent('close', { timeout: 15000 });
+    await app.evaluate(() => global.releaseNoteTestSettings());
+    await lastClose; app = null;
+    assert.ok(readPaper().blocks[0].notes.some(item => item.body === lastNote), 'close must save an edit received during a parallel settings write');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json'), 'utf8')).autoCheckUpdates, true);
     console.log('Note autosave checks passed: exact whitespace, review isolation, 350 ms debounce, session undo, selection flush, clear semantics, quit flush, sticky status and retry.');
   } catch (error) {
     progress(String(error.stack || error));

@@ -2513,11 +2513,6 @@ function App() {
     window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
   }, []);
   async function saveReadingStateBeforeClose() {
-    // Wait for an in-flight metadata write; a previously failed label draft can
-    // still be discarded by closing its editor or the application.
-    await libraryMetadataSaveChain.current.catch(() => {});
-    try { await glossarySave.current; }
-    catch { return false; }
     // The last scroll event or its debounced write may still be pending when the window closes.
     clearTimeout(scrollSaveTimer.current);
     const host = mainScrollRef.current;
@@ -2531,16 +2526,23 @@ function App() {
         commitPaper(current => ({ ...current, position }), { deferUndo: true });
       }
     }
-    if (!await finishNoteEditing()) return false;
-    let snapshot;
-    do {
-      snapshot = settingsRef.current;
-      if (snapshot) {
-        try { await persistSettings(snapshot); }
+    for (;;) {
+      const paper = paperRef.current;
+      const prefs = settingsRef.current;
+      const metadata = libraryMetadataSaveChain.current;
+      // A failed label draft can still be discarded by closing its editor.
+      await metadata.catch(() => {});
+      try { await glossarySave.current; }
+      catch { return false; }
+      if (!await finishNoteEditing()) return false;
+      if (prefs) {
+        try { await persistSettings(prefs); }
         catch (error) { throw new Error(`Could not save the latest settings. ${error.message}`); }
       }
-    } while (snapshot !== settingsRef.current);
-    return true;
+      // A slow write can leave time to type another note or change a preference.
+      if (paper === paperRef.current && prefs === settingsRef.current &&
+          metadata === libraryMetadataSaveChain.current && !glossarySave.current) return true;
+    }
   }
   useEffect(() => api.onPrepareClose(async () => {
     try {

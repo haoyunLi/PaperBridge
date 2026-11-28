@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## Auto 检测失败时保留扫描件 OCR
+
+在 RX 7800 XT 机器上，只模拟了 MinerU 的 Auto 设备报告失败。打包版随后用已安装的 MinerU 4.1.7 实际检查 CPU，并以 CPU 模式完成同一张校准扫描件的 OCR。正文包含“532 nm”和三次试验后峰位未变的句子，归档 PDF 与原文件逐字节一致。用户的后端仍为 Auto，下次检查会再次尝试显卡。手动选择 CPU 或 CPU 检查也失败的情况另有回归覆盖。[设备选择回归](tests/onnx-runtime.test.cjs)
+
 ## GitHub 便携版首次启动时识别双 AMD 显卡
 
 用 GitHub 0.2.140 便携版创建空白阅读配置，指向本机实测所用的已安装工具目录，未填写解析器命令路径。首次引导识别出已运行的 Ollama 和已安装的 TranslateGemma 4B，按 63 GiB 系统内存和 RX 7800 XT 的 16 GiB 独立显存建议 12B。高级设置同时列出 512 MiB 的 AMD 核显。重新检测后，MinerU 4.1.7 仍报告 DirectML 使用 RX 7800 XT。完成引导、退出并重开后，应用直接进入阅读工作区。[公开便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.140)

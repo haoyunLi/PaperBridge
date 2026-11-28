@@ -275,7 +275,8 @@ test('MinerU 4.1 needs its local kit and sends all PDF pages through ONNX with a
   assert.deepEqual(fallback.args, pipeline.args);
   assert.equal(fallback.env.MINERU_DEVICE_MODE, 'cpu', 'An unusable CUDA runtime must not choose CUDA again during parsing');
   assert.notEqual(fallback.env, process.env);
-  assert.equal(mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot, true).env.MINERU_MODEL_ONNX_DEVICE, 'auto');
+  assert.equal(mineruInvocation(modern, pdf, output, 'auto', paths.toolsRoot, true).env.MINERU_MODEL_ONNX_DEVICE, 'cpu',
+    'A verified ONNX CPU fallback must persist from the device check to the actual parser process');
 });
 
 test('MinerU 4 stages chart images in ordinary paths, including when TEMP is deeply nested', { skip: process.platform !== 'win32' }, t => {
