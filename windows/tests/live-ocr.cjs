@@ -20,7 +20,9 @@ async function run() {
   const ollamaBaseURL = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
   fs.mkdirSync(artifacts, { recursive: true });
   const workspace = fs.mkdtempSync(path.join(artifacts, 'live-ocr-workspace-'));
-  const source = path.join(workspace, 'scanned-ocr-input.pdf');
+  const fax = process.argv.includes('--fax');
+  const source = path.join(workspace, fax ? 'fax-calibration.pdf' : 'scanned-ocr-input.pdf');
+  const passage = fax ? 'The carbon film produced a peak' : 'Researchers measured how a ceramic sample reacted';
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
     mineruExecutable: process.env.PAPERBRIDGE_LIVE_MINERU || '', mineruBackend: expectDirectML ? 'auto' : 'pipeline',
     pdfExtractionMode: 'mineruPreferred', autoCheckUpdates: false, onboardingCompletedVersion: 1,
@@ -57,16 +59,20 @@ async function run() {
       assert.match(detected.runtime.description, /compatibility mode uses CPU/);
     }
     if (installMineru) assert.equal(detected.source, 'managed');
-    const python = await mineruPython(detected.executable);
-    assert.ok(python, 'The scan fixture needs the Python interpreter that owns the detected MinerU installation');
-    execFileSync(python, [path.join(__dirname, 'make-scanned-pdf.py'), source]);
+    if (fax) {
+      fs.copyFileSync(path.join(__dirname, 'mac-parity', 'fax-calibration.pdf'), source);
+    } else {
+      const python = await mineruPython(detected.executable);
+      assert.ok(python, 'The scan fixture needs the Python interpreter that owns the detected MinerU installation');
+      execFileSync(python, [path.join(__dirname, 'make-scanned-pdf.py'), source]);
+    }
     const started = performance.now();
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, source);
     await page.getByRole('button', { name: 'Open PDF' }).first().click();
     await page.waitForFunction(() => /Extracted \d+ blocks|MinerU failed:|No selectable text found/.test(document.body.innerText), null, { timeout: 600000 });
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     const readerText = (await page.locator('.block').allInnerTexts()).join('\n');
-    const ocrBlock = page.locator('.reader-list .block').filter({ hasText: 'Researchers measured how a ceramic sample reacted' });
+    const ocrBlock = page.locator('.reader-list .block').filter({ hasText: passage });
     await ocrBlock.getByRole('button', { name: 'Paragraph actions', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Translate This Paragraph', exact: true }).click();
     const translated = ocrBlock.locator('.translation-text.done');
@@ -79,7 +85,7 @@ async function run() {
     assert.ok(active, 'Ollama did not report the translated model as loaded');
     await page.getByRole('button', { name: 'Original', exact: true }).click();
     await page.locator('.scan-notice').getByRole('button', { name: 'Open OCR Reader' }).click();
-    await page.getByText('Researchers measured how a ceramic sample reacted', { exact: false }).first().waitFor();
+    await page.getByText(passage, { exact: false }).first().waitFor();
     const fullStarted = performance.now();
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
@@ -94,6 +100,12 @@ async function run() {
     }, path.basename(paperFile, '.json'));
     const paper = JSON.parse(fs.readFileSync(path.join(workspace, 'papers', paperFile), 'utf8'));
     assert.ok(paper.connectedTranslation.includes(translation), 'Saved full draft must include the existing Reader translation');
+    if (fax) {
+      assert.match(readerText, /532\s*nm/i);
+      assert.match(readerText, /peak position did not change/i);
+      assert.match(translation, /532\s*(?:nm|纳米)/i);
+      assert.match(paper.connectedTranslation, /(?:没|未|不)[^。\n]{0,12}(?:变|移)/);
+    }
     const report = {
       at: new Date().toISOString(), source, seconds: Number(((performance.now() - started) / 1000).toFixed(1)),
       extraction: paper.extraction, sourceMode: paper.sourceMode,
@@ -101,14 +113,14 @@ async function run() {
       readerCharacters: readerText.length, readerExcerpt: readerText.slice(0, 1200), translation,
       model, modelBytes: active.size, modelVramBytes: active.size_vram,
       autoDetectedMineru: !configured, setupSeconds, mineruVersion: detected.version, mineruRuntime: detected.runtime,
-      sharedFullTranslation: paper.connectedShared, fullSeconds
+      sharedFullTranslation: paper.connectedShared, fullSeconds, ...(fax && { translatedParagraphs: paper.blocks.filter(block => !block.resource).map(block => block.translation) })
     };
-    fs.writeFileSync(path.join(artifacts, 'live-ocr-report.json'), JSON.stringify(report, null, 2));
+    fs.writeFileSync(path.join(artifacts, fax ? 'live-fax-report.json' : 'live-ocr-report.json'), JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report, null, 2));
     assert.equal(report.pdfBlocks, 0, 'The synthetic scan unexpectedly has selectable text');
     assert.equal(paper.extraction, 'MinerU', 'MinerU OCR did not complete');
     assert.ok(report.mineruBlocks > 0, 'MinerU OCR returned no readable blocks');
-    assert.match(readerText, /ceramic|magnetic|calibration/i, 'Reader is missing the scanned text');
+    assert.match(readerText, fax ? /carbon film/i : /ceramic|magnetic|calibration/i, 'Reader is missing the scanned text');
     assert.match(translation, /[\u3400-\u9fff]/, 'The OCR text was not translated to Chinese');
   } finally { await app.close(); }
 }

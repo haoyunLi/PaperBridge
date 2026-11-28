@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 东亚字体和黑白扫描件
+
+0.2.107 打包版打开中、日、韩三页校准记录时，读到 0 段正文。0.2.108 在这台 RX 7800 XT 上直接读取了标题和观测记录共 9 段，逐行与 Mac PDFKit 原文相同。对 0.2.107 保存的空白论文，点击「Check saved PDF text」或再次打开原件都能恢复正文。保留了已有笔记，关闭重开后仍可切回三组语言设置阅读原译文，导出的三张页面图都含有标题及两条记录。4B 分别译出了 “A peak was observed at 532 nm.”、“The sample exhibited a peak at 633 nm.” 和 “The sample exhibited a single peak at 785 nm.”。[打包版重开与导出测试](tests/cjk-pdf-e2e.cjs)
+
+同一台电脑从 GitHub 下载的 0.2.107 中，JPEG 2000 三色色块和 Group 4 黑白扫描的墨迹区域均显示成白色。0.2.108 打包版的三个颜色逐像素取样与无损 Flate 对照图相同，黑白扫描的墨迹与纸面取样也同 Mac PDFKit 一致。用 MinerU 4.1.7 Auto 解析黑白页时，应用识别到 RX 7800 XT 的 DirectML，提取 4 个块。TranslateGemma 4B 使用 2,881,948,220 字节显存，整篇译文保留了 532 nm 和「经过三次试验，峰值位置没有发生变化」。[扫描原页](tests/scanned-original-e2e.cjs) · [本机 OCR 与翻译](tests/live-ocr.cjs) · [Mac 参考运行](https://github.com/haoyunLi/PaperBridge/actions/runs/46100914629)
+
 ## 双 AMD 显卡与扫描译文中的反向术语
 
 0.2.107 的设置页在本机读到 RX 7800 XT 的 16 GiB 专用显存和 Radeon 核显的 512 MiB，系统内存约 63.1 GiB。起步建议为 TranslateGemma 12B。实际解析时 MinerU Auto 选择 RX 7800 XT 上的 DirectML，Ollama 报告正在运行的 TranslateGemma 4B 占用约 2.7 GiB 显存。另以模拟的设备管理器结果验证，禁用的 48 GiB 适配器不会挤掉可用的 16 GiB 适配器。两块实体显卡在测试期间均保持启用。[硬件回归](tests/setup.test.cjs) · [Windows 显卡状态定义](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/cim-videocontroller)

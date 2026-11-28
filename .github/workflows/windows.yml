@@ -128,6 +128,10 @@ jobs:
           node tests/journal-preview-quotes-e2e.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/journal-reader-occurrences-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/cjk-pdf-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/cjk-pdf-e2e.cjs --legacy
       - name: Keep equation-adjacent prose readable in the packaged app
         shell: pwsh
         run: |

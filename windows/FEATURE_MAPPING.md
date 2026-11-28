@@ -10,6 +10,8 @@ macOS 1.9.1 的 12 项新增行为单独记录在 [MAC_1_9_1_GAPS.md](MAC_1_9_1_
 
 macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key、独立任务模型、结果变体与选区行为记录在 [1.10 增量映射](MAC_1_10_GAPS.md)，已列出的 **21 项对齐**。上面的 1.9 统计保留为历史基线。
 
+0.2.108 对照最新 Mac 1.10.0 复查了中、日、韩文字层、旧空白文档恢复、JPEG 2000、Group 4 黑白扫描和高对比度标注。两种图像编码问题通过 GitHub 下载的 0.2.107 复现，修复后的黑白页已在 RX 7800 XT 实际完成 OCR 和翻译。结果见[多语言原页与扫描复查](WHOLE_APP_REVIEW.md)和[真机验证](AMD_DEVICE_TEST.md)。
+
 本轮 [全软件复查](WHOLE_APP_REVIEW.md)最初对比 `73951d9`，记录了修复及验证。macOS 主分支随后前进到 1.9.1 commit `33cfb933`；新增的 12 项行为在 [1.9.1 增量差距报告](MAC_1_9_1_GAPS.md)中单独跟踪，不回写这张 1.9 历史基线的 111 项统计。
 
 源代码入口：[Mac 主界面](../PaperBridge/ContentView.swift)、[Mac 阅读模型](../PaperBridge/PaperReaderViewModel.swift)、[Mac 选择与标注](../PaperBridge/PaperReaderViewModel+Selection.swift)、[Mac 图书馆](../PaperBridge/PaperReaderViewModel+Library.swift)、[Mac 设置](../PaperBridge/Views/SettingsView.swift)、[Windows 界面](src/main.jsx)、[Windows PDF 提取](src/pdf.mjs)、[Windows 本地安装](electron/setup.cjs)、[Windows 本地存储](electron/storage.cjs)。

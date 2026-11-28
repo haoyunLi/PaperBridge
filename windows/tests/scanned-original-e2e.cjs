@@ -20,6 +20,15 @@ async function dropPDF(page, filename, pdf) {
   await page.getByRole('heading', { name: filename, exact: true }).waitFor();
 }
 
+async function scanSwatches(page, filename) {
+  await dropPDF(page, filename, fs.readFileSync(path.join(__dirname, 'mac-parity', filename)));
+  await openWorkspaceView(page, 'Original');
+  await page.locator('.pdf-toolbar').getByText('Exact original PDF · page 1 of 1').waitFor();
+  await page.locator('.pdf-page-slot .textLayer[data-page="1"]').waitFor();
+  return page.locator('.pdf-page-slot canvas').evaluate(canvas => [36, 96, 156].map(x =>
+    Array.from(canvas.getContext('2d').getImageData(Math.floor(x * canvas.width / 192), Math.floor(canvas.height / 2), 1, 1).data).slice(0, 3)));
+}
+
 async function visibleEndPages(page) {
   await page.waitForFunction(() => {
     const host = document.querySelector('.pdf-continuous');
@@ -159,6 +168,23 @@ async function run() {
     await page.setViewportSize({ width: 1250, height: 970 });
     await page.locator('.pdf-toolbar').getByText(/page 8 of 8/).waitFor();
     await visibleEndPages(page);
+    const control = await scanSwatches(page, 'rgb-panel-control.pdf');
+    const panel = await scanSwatches(page, 'jpx-panel.pdf');
+    const fax = await scanSwatches(page, 'fax-calibration.pdf');
+    assert.deepEqual(fax, [[0, 0, 0], [255, 255, 255], [255, 255, 255]], 'Group 4 scan ink and paper');
+    assert.deepEqual(panel, control, 'JPEG 2000 and Flate carry the same unprofiled pixels');
+    console.log(JSON.stringify({ jpeg2000: panel, flate: control, group4: fax }));
+    const expected = [[192, 47, 40], [37, 162, 71], [48, 81, 205]];
+    assert.deepEqual(panel, expected, 'Original PDF should render all three lossless JPEG 2000 swatches');
+    if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
+      const mac = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
+      assert.deepEqual(mac.jpxPanel, mac.rgbPanelControl, 'PDFKit reproduces its lossless control under its own DeviceRGB profile');
+      assert.deepEqual(fax, mac.faxCalibration, 'Group 4 ink and paper match PDFKit');
+      for (const [i, rgb] of mac.jpxPanel.entries()) {
+        const others = rgb.filter((_, channel) => channel !== i);
+        assert.ok(rgb[i] > Math.max(...others) + 40, 'PDFKit printed each distinct color');
+      }
+    }
     console.log(JSON.stringify({ dir, result, visibleLandscapePagesRestored: true }));
   } finally { await app.close(); }
 }

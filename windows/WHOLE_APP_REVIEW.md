@@ -1,5 +1,13 @@
 # Windows 全软件功能复查
 
+## 多语言原页、扫描图片和高对比度标注
+
+0.2.108 在离线的 PDF 文字层模式下读取安装包自带的字符映射、字体和图像解码器。同一份中、日、韩三页原件的 PDFKit 文字层有九行，Mac 1.10.0 的 Reader 提取器保留两行韩文，Windows Reader 保留九行。曾被 0.2.107 存成空白的工作区可以原位复查，也支持再次打开原件触发复查。已核对旧笔记、原始 PDF 的字节、重开后的三个译文版本和导出页面的墨迹。[文字恢复与导出](tests/cjk-pdf-e2e.cjs)
+
+用 JPEG 2000 与普通 Flate 两种编码装入相同的三色图。在每个平台自己的显示色彩空间中，两种编码的取样完全相同。另用同一份 Group 4 单色扫描核对了黑白区域，并在 Windows 完成 OCR 和全文翻译。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46100914629) · [AMD 测量](AMD_DEVICE_TEST.md)
+
+在本机打包版模拟系统强制颜色时，旧版会将透明 PDF 文字层涂黑，三个高亮按钮也难以区分。修复后在 Original、Paper 的明暗两种强制配色中，未标注的正文与原页像素相同，选中或标注时有可见变化。三个按钮显示颜色名称；琥珀、钴蓝、珊瑚三类标注使用实线、双线、点线，退出重开仍可区分。[原页截图对照](tests/long-facsimile-e2e.cjs) · [重叠标注](tests/overlapping-highlights-e2e.cjs)
+
 ## 术语、笔记保存和 PDF 键盘定位
 
 在 macOS 1.10.0 的原版阅读模型与 Windows 中依次保存 20 个术语并执行 10 组查询。核对了同方向替换、反向词条、重音与大小写、最长词优先、磁盘重开及删除。上限也按实际行为逐项比对，来源最多 160 个字素、译法最多 300 个、模型每次最多接收 24 对术语，500 条已满时仍可替换已有词条。[Mac 参考运行](https://github.com/haoyunLi/PaperBridge/actions/runs/46098753654) · [Windows 对照](tests/mac-parity/terminology.mjs)

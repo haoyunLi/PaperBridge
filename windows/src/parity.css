@@ -220,7 +220,29 @@
 .workspace-splitter::after { content: ""; position: absolute; inset: 0 3px; background: #cfc6b8; }
 .workspace-splitter:focus-visible { outline: none; }
 .workspace-splitter:hover::after, .workspace-splitter:focus-visible::after { background: #0a59d6; }
+.highlight-color-name { display: none; }
+
 @media (forced-colors: active) {
+  /* The canvas already contains the printed glyphs. Keep the searchable text layer transparent. */
+  .pdf-sheet .textLayer { forced-color-adjust: none; }
+  .pdf-sheet .textLayer ::selection { background-color: Highlight; color: HighlightText; }
+  .mark-amber, .mark-teal, .mark-blue, .mark-coral,
+  ::highlight(paperbridge-amber), ::highlight(paperbridge-teal),
+  ::highlight(paperbridge-blue), ::highlight(paperbridge-coral) {
+    background-color: Mark;
+    color: MarkText;
+    text-decoration: underline solid MarkText;
+  }
+  .mark-teal, .mark-blue, ::highlight(paperbridge-teal), ::highlight(paperbridge-blue) { text-decoration-style: double; }
+  .mark-coral, ::highlight(paperbridge-coral) { text-decoration-style: dotted; }
+  ::highlight(paperbridge-note) { text-decoration-color: LinkText; }
+
+  .highlight-controls .highlight,
+  .highlight-controls.compact .highlight { width: auto; padding-inline: 6px; }
+  .highlight-controls .highlight svg { display: none; }
+  .highlight-controls .highlight-color-name { display: inline; }
+  .highlight-controls .highlight.selected { outline-color: Highlight; }
+
   .workspace-splitter:focus-visible::after { background: Highlight; forced-color-adjust: none; }
 }
 @media(max-width:800px) { .workspace-splitter { display: none; } }

@@ -8,7 +8,15 @@ import { pageLines, pdfReadingSegments, recoverCodeAsterisks, recoverInlineSumma
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export async function openPdf(bytes) {
-  const loading = pdfjs.getDocument({ data: new Uint8Array(bytes), isEvalSupported: false });
+  // The packaged dependency supplies offline character maps, fonts and image decoders.
+  const resources = new URL('../node_modules/pdfjs-dist/', document.baseURI);
+  const loading = pdfjs.getDocument({
+    data: new Uint8Array(bytes), isEvalSupported: false,
+    cMapUrl: new URL('cmaps/', resources).href,
+    standardFontDataUrl: new URL('standard_fonts/', resources).href,
+    // Use PDF.js's bundled JavaScript image decoders under the reader's script policy.
+    wasmUrl: new URL('wasm/', resources).href, useWasm: false
+  });
   try { return await loading.promise; }
   catch (error) {
     await loading.destroy().catch(() => {});

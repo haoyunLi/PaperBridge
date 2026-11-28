@@ -83,6 +83,15 @@ async function run() {
       await page.locator('.inspector textarea').fill(tab + ' overlap note');
       await page.getByRole('button', { name: 'Save note', exact: true }).click();
       assert.deepEqual(await host.evaluate(coloredText), expected.initial, tab + ' first three overlaps');
+      await page.emulateMedia({ forcedColors: 'active', colorScheme: tab === 'Reader' ? 'light' : 'dark' });
+      const controls = page.locator('.inspector .highlight-controls');
+      assert.deepEqual(await controls.locator('.highlight').allInnerTexts(), ['Amber', 'Cobalt', 'Coral']);
+      const strokes = await host.evaluate(el => ['amber', 'teal', 'coral'].map(color => {
+        const mark = el.querySelector('mark.mark-' + color);
+        const style = mark ? getComputedStyle(mark) : getComputedStyle(el, '::highlight(paperbridge-' + color + ')');
+        return style.textDecorationStyle;
+      }));
+      assert.deepEqual(strokes, ['solid', 'double', 'dotted'], tab + ' exposes three distinct markings in contrast themes');
       await pick(0); await colorWith('teal');
       assert.deepEqual(await host.evaluate(coloredText), expected.recolored, tab + ' recoloring an earlier mark');
       await pick(1);
@@ -92,6 +101,7 @@ async function run() {
       await page.getByTitle('Undo last highlight or note change', { exact: true }).click();
       await page.locator('.inspector-primary .highlight.coral[aria-pressed="true"]').waitFor();
       assert.deepEqual(await host.evaluate(coloredText), expected.reopened, tab + ' restores the same painting after Undo');
+      await page.emulateMedia({ forcedColors: 'none', colorScheme: null });
     }
     await app.close(); app = await launch(); page = await app.firstWindow();
     await app.evaluate(({ BrowserWindow }) => { const window = BrowserWindow.getAllWindows()[0]; window.setContentSize(1450, 895); window.webContents.setZoomFactor(1.25); });

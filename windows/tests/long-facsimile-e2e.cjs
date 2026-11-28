@@ -8,6 +8,44 @@ const { openWorkspaceView } = require('./sidebar-controls.cjs');
 const { selectText } = require('./select-passage.cjs');
 const { longFacsimile } = require('./mac-parity/long-facsimile.cjs');
 
+async function checkContrast(page, selector, quick, colors, scheme) {
+  const line = page.locator(selector).getByText('Observation 1 in the printed notebook.', { exact: true });
+  const layer = page.locator(selector);
+  await page.emulateMedia({ forcedColors: 'active', colorScheme: scheme });
+  try {
+    await line.scrollIntoViewIfNeeded();
+    const bounds = await line.boundingBox();
+    const clip = { x: Math.floor(bounds.x), y: Math.floor(bounds.y), width: Math.ceil(bounds.width), height: Math.ceil(bounds.height) };
+    const snapshot = () => page.screenshot({ clip });
+    const unmarked = await snapshot();
+    await layer.evaluate(element => { element.style.visibility = 'hidden'; });
+    let printed;
+    try { printed = await snapshot(); }
+    finally { await layer.evaluate(element => { element.style.visibility = ''; }); }
+    assert.ok(unmarked.equals(printed), 'Searchable PDF text must not print a second set of glyphs in Windows contrast themes');
+    await selectText(page, selector, 'Observation 1');
+    await quick.waitFor();
+    assert.deepEqual(await quick.locator('.highlight').allInnerTexts(), colors);
+    assert.ok(!(await snapshot()).equals(printed), 'The active selection remains visible over the printed page');
+    for (const [index, color] of colors.entries()) {
+      const button = quick.getByRole('button', { name: color + ' highlight', exact: true });
+      await button.click();
+      await page.waitForFunction(color => document.querySelector('.selection-toolbar button[aria-pressed="true"]')?.textContent === color, color);
+      const key = ['amber', 'teal', 'coral'][index];
+      const underline = await line.evaluate((el, key) => getComputedStyle(el, '::highlight(paperbridge-' + key + ')').textDecorationStyle, key);
+      assert.equal(underline, ['solid', 'double', 'dotted'][index]);
+    }
+    await page.evaluate(() => window.getSelection().removeAllRanges());
+    assert.ok(!(await snapshot()).equals(printed), 'A saved highlight remains visible after the native selection is cleared');
+    await quick.getByRole('button', { name: 'Remove Highlight', exact: true }).click();
+    await page.waitForFunction(() => !CSS.highlights.has('paperbridge-coral'));
+    await page.keyboard.press('Escape');
+    assert.ok((await snapshot()).equals(printed), 'Removing the last highlight restores the original PDF pixels');
+  } finally {
+    await page.emulateMedia({ forcedColors: 'none', colorScheme: null });
+  }
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
@@ -43,12 +81,15 @@ async function run() {
     const hideInspector = page.getByRole('button', { name: /^(Hide inspector|Close inspector drawer)$/ });
     if (await hideInspector.isVisible()) await hideInspector.click();
     const quick = page.getByRole('dialog', { name: 'Quick selection' });
+    const native = process.env.PAPERBRIDGE_MAC_REFERENCE && JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
+    const colors = native?.publishedPaper.annotationUndo.highlightColors || ['Amber', 'Cobalt', 'Coral'];
     for (const view of ['Original', 'Paper']) {
       await openWorkspaceView(page, view);
       await scroll.focus();
       await page.keyboard.press('Control+Home');
       const firstLine = '.textLayer[data-page="1"]';
       await page.locator(firstLine).getByText('Observation 1 in the printed notebook.', { exact: true }).waitFor();
+      await checkContrast(page, firstLine, quick, colors, view === 'Original' ? 'light' : 'dark');
       await selectText(page, firstLine, 'Observation 1');
       await quick.waitFor({ timeout: 5000 });
       await scroll.evaluate(host => { host.scrollTop += 20; });
@@ -122,9 +163,8 @@ async function run() {
       const translated = editions.find(edition => edition.startsWith('paper_translation'));
       assert.ok(fs.readFileSync(path.join(folder, translated), 'utf8').includes(inference.translation));
     }
-    if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
-      const reference = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8')).longFacsimile;
-      const { readerObservations, ...archive } = reference;
+    if (native) {
+      const { readerObservations, ...archive } = native.longFacsimile;
       assert.deepEqual(archive, { sha256: digest, total: 125, rendered: 120, omitted: 5, headings: 125, lastText });
       console.log('Numbered observations in selectable text: macOS ' + readerObservations + ', Windows ' + observations.length + '.');
     }

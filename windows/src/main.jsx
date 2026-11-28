@@ -848,6 +848,14 @@ function TaskProgress({ busy, progress, status }) {
 function ImportProgress({ item, elapsed, onCancel }) {
   return <div className="import-progress-screen" role="status"><div className="import-progress-card"><FileText size={42} /><small>IMPORTING PDF</small><strong className="import-filename">{item.name}</strong><p>{item.stage}</p><strong>{elapsed}s elapsed</strong><div className="import-progress-bar"><span /></div><button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button><p className="import-preserve-note">Your previous paper, translations, notes, bookmarks, and reading position remain unchanged until this import succeeds.</p></div></div>;
 }
+const pdfTextVersion = 2;
+const noPdfTextWarning = 'No selectable text found. The exact original PDF is available. Use MinerU for OCR.';
+
+function canRestorePdfText(paper) {
+  return paper?.type === 'pdf' && paper.sourceMode !== 'mineru' && !paper.blocks?.length &&
+    !paper.pdfBlocks?.length && (paper.pdfTextVersion || 0) < pdfTextVersion;
+}
+
 function ScanNotice({ page = false, coverage, onParse, onSetup, onReader }) {
   const message = {
     matched: 'MinerU OCR text is ready in Reader for this page.',
@@ -1186,7 +1194,7 @@ function SelectionResults({ results }) {
 }
 
 function HighlightControls({ activeColor, onAdd, onRemove, compact = false, disabled = false }) {
-  return <div className={`highlight-controls ${compact ? 'compact' : ''}`}>{currentHighlightColors.map(color => <button key={color} className={`highlight ${color}${activeColor === color ? ' selected' : ''}`} title={`${highlightColorName(color)} highlight`} aria-label={`${highlightColorName(color)} highlight`} aria-pressed={activeColor === color} disabled={disabled} onClick={() => onAdd(color)}><Highlighter size={compact ? 14 : 16} /></button>)}{activeColor && <button className="remove-selection-highlight" disabled={disabled} onClick={onRemove}>Remove Highlight</button>}</div>;
+  return <div className={`highlight-controls ${compact ? 'compact' : ''}`}>{currentHighlightColors.map(color => <button key={color} className={`highlight ${color}${activeColor === color ? ' selected' : ''}`} title={`${highlightColorName(color)} highlight`} aria-label={`${highlightColorName(color)} highlight`} aria-pressed={activeColor === color} disabled={disabled} onClick={() => onAdd(color)}><Highlighter size={compact ? 14 : 16} aria-hidden="true" /><span className="highlight-color-name">{highlightColorName(color)}</span></button>)}{activeColor && <button className="remove-selection-highlight" disabled={disabled} onClick={onRemove}>Remove Highlight</button>}</div>;
 }
 
 function QuickSelection({ selection, results, busy, lookupBusy, lookup, activeColor, quickTermOpen, termDraft, termSaving, setTermDraft, onTranslate, onExplain, onHighlight, onRemoveHighlight, onOpenTerm, onSaveTerm, onCancelTerm, onMore, onCancelTask, onClose }) {
@@ -2448,11 +2456,43 @@ function App() {
       warnings.push('Could not prepare the PDF page archive. The exact original PDF is available.');
     } finally { await api.finishPageArchive(requestId).catch(() => {}); }
   }
+  async function restorePdfText(token) {
+    const source = paperRef.current;
+    if (!canRestorePdfText(source)) return;
+    let pdf;
+    try {
+      setBusy({ label: 'Checking the saved PDF for selectable text…' });
+      const bytes = await api.readPdf(source.id);
+      requireActiveTask(token);
+      pdf = await openPdf(bytes);
+      requireActiveTask(token);
+      const blocks = await extractPdf(pdf, (done, total) => setProgress({ done, total }), () => requireActiveTask(token));
+      requireActiveTask(token);
+      if (paperRef.current?.id !== source.id || !canRestorePdfText(paperRef.current)) return;
+      commitPaper(current => ({
+        ...current, pdfBlocks: blocks, blocks, pageCount: pdf.numPages, pdfTextVersion,
+        selectedParagraphID: firstSelectableParagraphID(blocks),
+        extractionWarning: blocks.length ? (current.extractionWarning || '').replace(noPdfTextWarning, '')
+          .replace(/The selectable PDF text could not be read: [\s\S]*? The original file is preserved\./, '').trim() : current.extractionWarning
+      }));
+      setStatus(blocks.length ? `Recovered ${blocks.length} text blocks from the saved PDF. Open Reader to translate them.` : noPdfTextWarning);
+    } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
+  }
+  async function checkSavedPdfText() {
+    if (taskRef.current || !canRestorePdfText(paperRef.current)) return;
+    const token = startTask('Checking the saved PDF for selectable text…');
+    try { await restorePdfText(token); }
+    catch (cause) { if (!token.cancelled) setError(`Could not read the saved PDF: ${cause.message}`); }
+    finally { endTask(token); }
+  }
   async function ingestPdf(imported, token) {
     requireActiveTask(token);
     // The import response may precede the current paper's final note save.
     // Reload only after loadPaper flushes it, retaining the latest open copy.
-    if (imported.existing) { await loadPaper(imported.id, { fromImport: true, token }); return; }
+    if (imported.existing) {
+      if (await loadPaper(imported.id, { fromImport: true, token })) await restorePdfText(token);
+      return;
+    }
     const config = settingsRef.current;
     const mode = config.pdfExtractionMode || 'mineruPreferred';
     let mineruMarkdown = '';
@@ -2480,6 +2520,7 @@ function App() {
     let pdf;
     let pdfBlocks = [];
     let pageCount = 0;
+    let textChecked = false;
     try {
       try {
         setBusy({ label: 'Reading PDF text layer…' });
@@ -2491,7 +2532,8 @@ function App() {
           setProgress({ done, total });
           setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current);
         }, () => requireActiveTask(token));
-        if (!pdfBlocks.length && !mineruBlocks) warnings.push('No selectable text found. The exact original PDF is available. Use MinerU for OCR.');
+        textChecked = true;
+        if (!pdfBlocks.length && !mineruBlocks) warnings.push(noPdfTextWarning);
       } catch (cause) {
         requireActiveTask(token);
         if (!pdf && !mineruBlocks) throw cause;
@@ -2508,7 +2550,7 @@ function App() {
       id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(),
       blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
       ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
-      extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning,
+      extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning, pageCount, ...(textChecked && { pdfTextVersion }),
       tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English',
       paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: firstSelectableParagraphID(blocks), position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
     };
@@ -3886,6 +3928,10 @@ function App() {
         </div>}
         {busy && <TaskProgress busy={busy} progress={progress} status={status} />}
         {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
+        {canRestorePdfText(paper) && !pendingImport && <div className="notice">
+          <span>The saved workspace has no extracted text. Check the original PDF for selectable text before using OCR.</span>
+          <button className="button outline" disabled={Boolean(busy)} onClick={checkSavedPdfText}>Check saved PDF text</button>
+        </div>}
         {paper && <div className={`save-status ${workspaceSave.status}`} role={workspaceSave.status === 'error' ? 'alert' : 'status'}>
           {workspaceSave.status !== 'error' && <HardDrive size={13} aria-hidden="true" />}
           <span>{workspaceSave.status === 'saving' ? 'Saving changes…' : workspaceSave.status !== 'error' ? 'Saved on this PC' : `Could not save changes${workspaceSave.error?.message ? `: ${workspaceSave.error.message}` : '.'}`}</span>
