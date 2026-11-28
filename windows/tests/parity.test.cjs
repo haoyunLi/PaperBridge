@@ -532,14 +532,16 @@ test('PDF page archives share exact PDF bytes, detect damaged entries and clear 
     fs.writeFileSync(pdf, pdfBytes);
     const { version } = require('pdfjs-dist/package.json');
     const cache = path.join(root, 'pdf-page-cache');
-    const legacy = path.join(cache, `pdfjs-png-v2-${version}`, hash);
-    fs.mkdirSync(legacy, { recursive: true });
-    const legacyEntry = (name, bytes) => fs.writeFileSync(path.join(legacy, name),
-      Buffer.concat([crypto.createHash('sha256').update(bytes).digest(), bytes]));
-    legacyEntry('page-001.png.entry', image);
-    legacyEntry('page-count.entry', Buffer.from('2'));
+    const legacyFolders = [2, 3].map(revision => path.join(cache, `pdfjs-png-v${revision}-${version}`, hash));
+    for (const legacy of legacyFolders) {
+      fs.mkdirSync(legacy, { recursive: true });
+      const legacyEntry = (name, bytes) => fs.writeFileSync(path.join(legacy, name),
+        Buffer.concat([crypto.createHash('sha256').update(bytes).digest(), bytes]));
+      legacyEntry('page-001.png.entry', image);
+      legacyEntry('page-count.entry', Buffer.from('2'));
+    }
     const archive = await createPageArchive(root, pdf);
-    assert.deepEqual(archive.status(), { cachedPageCount: 0, cachedPages: [] }, 'Previews rendered without predefined CJK maps must be regenerated');
+    assert.deepEqual(archive.status(), { cachedPageCount: 0, cachedPages: [] }, 'Previews rendered without CJK maps or color management must be regenerated');
     assert.equal(archive.readPage(1), null);
     archive.savePage(1, image);
     archive.savePageCount(2);
@@ -555,7 +557,7 @@ test('PDF page archives share exact PDF bytes, detect damaged entries and clear 
     const changed = await createPageArchive(root, copy);
     assert.deepEqual(changed.status(), { cachedPageCount: 0, cachedPages: [] });
     assert.equal(same.matches(fs.readFileSync(copy)), false);
-    const folder = path.join(cache, `pdfjs-png-v3-${version}`, hash);
+    const folder = path.join(cache, `pdfjs-png-v4-${version}`, hash);
     const imageFile = path.join(folder, 'page-001.png.entry');
     const damaged = fs.readFileSync(imageFile);
     damaged[damaged.length - 1] ^= 1;
@@ -565,7 +567,7 @@ test('PDF page archives share exact PDF bytes, detect damaged entries and clear 
     assert.deepEqual(same.readPage(1), image);
     fs.writeFileSync(path.join(folder, 'page-count.entry'), 'damaged');
     assert.deepEqual(same.status(), { cachedPageCount: 0, cachedPages: [1] });
-    assert.ok(fs.existsSync(path.join(legacy, 'page-001.png.entry')));
+    for (const legacy of legacyFolders) assert.ok(fs.existsSync(path.join(legacy, 'page-001.png.entry')));
     store.clearData();
     assert.equal(fs.existsSync(cache), false);
     assert.deepEqual(fs.readFileSync(pdf), pdfBytes);

@@ -50,6 +50,30 @@ async function run() {
       await openWorkspaceView(page, 'Reader'); row = page.locator('#block-' + paragraph.id);
       assert.equal(await row.locator('.translation-text.done').innerText(), report.translation);
     }
+    if (process.argv.includes('--colors')) {
+      const chart = require('./mac-paper-layout/resnet-figure.json');
+      assert.equal(native.figure3?.length, chart.points.length);
+      await openWorkspaceView(page, 'Original');
+      const host = page.locator('.pdf-continuous');
+      await host.focus(); await host.press('Control+Home');
+      await page.locator('.pdf-toolbar').getByText('Exact original PDF · page 1 of 12').waitFor();
+      for (let number = 2; number <= chart.page; number++) {
+        await page.getByRole('button', { name: 'Next page', exact: true }).click();
+        await page.locator('.pdf-toolbar').getByText('Exact original PDF · page ' + number + ' of 12').waitFor();
+      }
+      const slot = page.locator('[data-pdf-page="' + chart.page + '"]');
+      await slot.locator('.textLayer[data-page="' + chart.page + '"]').waitFor();
+      report.figure3 = await slot.locator('canvas').evaluate((canvas, chart) => {
+        const ctx = canvas.getContext('2d');
+        return chart.points.map(([x, y]) => Array.from(ctx.getImageData(Math.floor(x / chart.width * canvas.width),
+          Math.floor(y / chart.height * canvas.height), 1, 1).data).slice(0, 3));
+      }, chart);
+      console.log(JSON.stringify({ sampled: report.figure3, native: native.figure3 }));
+      report.figure3.forEach((rgb, i) => {
+        assert.ok(Math.max(...rgb) - Math.min(...rgb) >= 8, 'Printed residual-network layer fill ' + i);
+        assert.ok(rgb.every((v, j) => Math.abs(v - native.figure3[i][j]) <= 3), 'Layer color matches native PDFKit');
+      });
+    }
     console.log(JSON.stringify(report));
   } finally { await app.close(); }
 }

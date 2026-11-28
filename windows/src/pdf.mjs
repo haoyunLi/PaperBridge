@@ -14,8 +14,10 @@ export async function openPdf(bytes) {
     data: new Uint8Array(bytes), isEvalSupported: false,
     cMapUrl: new URL('cmaps/', resources).href,
     standardFontDataUrl: new URL('standard_fonts/', resources).href,
-    // Use PDF.js's bundled JavaScript image decoders under the reader's script policy.
-    wasmUrl: new URL('wasm/', resources).href, useWasm: false
+    // The offline worker loads the packaged qcms color transform as well as image decoders.
+    // Explicitly enable worker fetch because PDF.js's automatic URL check excludes file URLs.
+    iccUrl: new URL('iccs/', resources).href,
+    wasmUrl: new URL('wasm/', resources).href, useWorkerFetch: true
   });
   try { return await loading.promise; }
   catch (error) {

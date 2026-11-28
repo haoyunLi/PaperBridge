@@ -4,8 +4,8 @@ const crypto = require('node:crypto');
 const { version: pdfjsVersion } = require('pdfjs-dist/package.json');
 const { maximumPreviewPages, pageImageName } = require('./bundle.cjs');
 
-// Earlier previews can omit glyphs from predefined CJK character maps.
-const format = `pdfjs-png-v3-${pdfjsVersion}`;
+// Earlier previews can omit CJK glyphs or display profiled figures in their raw device colors.
+const format = `pdfjs-png-v4-${pdfjsVersion}`;
 const maxPageBytes = 20_000_000;
 const digestBytes = 32;
 const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);

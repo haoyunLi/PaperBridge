@@ -185,7 +185,54 @@ async function run() {
         assert.ok(rgb[i] > Math.max(...others) + 40, 'PDFKit printed each distinct color');
       }
     }
-    console.log(JSON.stringify({ dir, result, visibleLandscapePagesRestored: true }));
+    await page.context().setOffline(true);
+    await page.waitForFunction(() => !navigator.onLine);
+    const srgb = await scanSwatches(page, 'calibration-srgb.pdf');
+    const linearFile = path.join(__dirname, 'mac-parity', 'calibration-linear.pdf');
+    const checksum = crypto.createHash('sha256').update(fs.readFileSync(linearFile)).digest('hex');
+    const legacy = process.env.PAPERBRIDGE_LEGACY_COLOR_CACHE;
+    if (legacy) {
+      const version = 'pdfjs-png-v3-' + require('pdfjs-dist/package.json').version;
+      const cache = path.join(dir, 'pdf-page-cache', version, checksum);
+      fs.mkdirSync(path.dirname(cache), { recursive: true });
+      fs.cpSync(path.join(legacy, version, checksum), cache, { recursive: true });
+    }
+    const linear = await scanSwatches(page, 'calibration-linear.pdf');
+    const expectedLevels = [120, 177, 225]; // LittleCMS conversion from linear sRGB 48, 112, 192.
+    for (const [index, level] of expectedLevels.entries()) {
+      for (const pixels of [srgb, linear]) {
+        assert.ok(pixels[index].every(channel => Math.abs(channel - level) <= 2), 'Profiled scale step ' + index);
+      }
+    }
+    if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
+      const ref = JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE, 'utf8'));
+      assert.deepEqual(ref.linearCalibration, ref.srgbCalibration, 'PDFKit thumbnails of the two encodings agree');
+      for (const [pixels, native] of [[linear, ref.linearSRGBSurface], [srgb, ref.encodedSRGBSurface]]) {
+        pixels.forEach((rgb, i) => assert.ok(rgb.every((v, j) => Math.abs(v - native[i][j]) <= 2), 'ICC scale matches PDFKit'));
+      }
+    }
+    await app.evaluate(({ dialog, shell }, destination) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [destination] });
+      shell.showItemInFolder = () => {};
+    }, dir);
+    await page.getByRole('button', { name: 'More ···', exact: true }).click();
+    await page.locator('.modal').getByRole('button', { name: 'Export Markdown Bundle', exact: true }).click();
+    await page.getByText(/Exported .*original PDF to /).waitFor();
+    const linearExport = path.join(dir, 'calibration-linear_PaperBridge');
+    assert.deepEqual(fs.readFileSync(path.join(linearExport, 'original.pdf')), fs.readFileSync(linearFile));
+    const files = fs.readdirSync(path.join(linearExport, 'pages'));
+    assert.equal(files.length, 1);
+    const exported = await app.evaluate(({ nativeImage }, file) => {
+      const png = nativeImage.createFromPath(file);
+      const { width, height } = png.getSize();
+      const bytes = png.toBitmap();
+      return [36, 96, 156].map(x => {
+        const offset = 4 * (Math.floor(height / 2) * width + Math.floor(width * x / 192));
+        return [bytes[offset + 2], bytes[offset + 1], bytes[offset]];
+      });
+    }, path.join(linearExport, 'pages', files[0]));
+    assert.deepEqual(exported, linear, 'The exported page must preserve the displayed scale');
+    console.log(JSON.stringify({ dir, result, visibleLandscapePagesRestored: true, linear, srgb, exported, legacy: Boolean(legacy) }));
   } finally { await app.close(); }
 }
 

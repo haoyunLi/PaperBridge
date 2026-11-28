@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 原页和导出图中的 ICC 色彩配置
+
+两份 PDF 各画了相同的三阶灰度，一份用线性 RGB 编码，另一份用常规 sRGB 编码，并都嵌入了相应配置。Mac PDFKit 在明确的 sRGB 画布上读出 120、177、225。Windows 0.2.110 直接显示了线性文件的原始数值 48、112、192。0.2.111 使用安装包内的 PDF.js 色彩转换模块，断网后原页显示 119、177、225，导出的页面 PNG 取样相同，原始 PDF 保持逐字节一致。曾由 0.2.110 缓存的旧页面图也重新渲染。[Mac 原生取样](https://github.com/haoyunLi/PaperBridge/actions/runs/46103656002) · [Windows 原页和导出](tests/scanned-original-e2e.cjs)
+
+另在 ResNet 原论文第 4 页图 3 上取六处不同的网络层填充色，Windows 打包版与 Mac PDFKit 的 sRGB 值在每个通道均只相差 1。[ResNet 原论文](https://arxiv.org/abs/1512.03385) · [Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46103840495) · [Windows 图表和正文对照](tests/resnet-table-e2e.cjs)
+
 ## 翻译风格说明和断网后的更新提示
 
 Mac 以用户能读到的字符（字素簇）计算风格说明的 2,000 字和提示词中论文标题的 300 字。Windows 0.2.109 使用 UTF-16 长度，一组带组合重音的输入显示已用 2,000 字，实际只保存了约一半。0.2.110 对比六组 Mac AppSettings 编解码、每篇论文的设置、模型指令和缓存标识，覆盖组合重音、旗帜、家庭 emoji、零宽空格和 BOM。Windows 打包版也验证了输入计数、退出重开和真实 4B 请求。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46102438539) · [Windows 风格说明操作](tests/style-guide-e2e.cjs)
