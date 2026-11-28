@@ -1,0 +1,33 @@
+[
+  {
+    "file": "温度记录.txt",
+    "encoding": "utf16le",
+    "text": "Temperature log\n样本 α：18.5 °C ± 0.2 °C\n発光ピーク：532 nm\n"
+  },
+  {
+    "file": "radiometer.txt",
+    "encoding": "utf16be",
+    "text": "光量測定\nFlux: 12.4 μW\nReference: 633 nm\n"
+  },
+  {
+    "file": "样本表.tsv",
+    "encoding": "utf16le",
+    "text": "样本\tλ (nm)\tΔT (°C)\n対照 α\t532\t−0.3\n"
+  },
+  {
+    "file": "measurements.csv",
+    "encoding": "utf8bom",
+    "text": "sample,wavelength_nm\n标准 β,633\n"
+  },
+  {
+    "file": "calibration.json",
+    "encoding": "utf8",
+    "text": "{\n  \"channel\": \"校准 α\",\n  \"wavelength_nm\": 532,\n  \"uncertainty_μV\": 0.25\n}\n"
+  },
+  {
+    "file": "光源协议.md",
+    "encoding": "utf16be",
+    "text": "# 光源协议\n\nUse the 532 nm reference. Consult the [calibration data](calibration.json).\n"
+  }
+]
+

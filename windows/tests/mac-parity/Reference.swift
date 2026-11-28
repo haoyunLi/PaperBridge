@@ -268,6 +268,7 @@ struct Reference {
                                      "selectionEdges": try nativeSelectionEdges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "richAnnotationRanges": try nativeRichAnnotationRanges(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "attachmentLinks": try nativeAttachmentLinks(fixtures: fixtureURL.deletingLastPathComponent()),
+                                     "supplementText": try nativeSupplementText(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "pdfJournal": try nativePDFJournal(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "journalAnalysis": try nativeJournalAnalysis(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "longPDFSelections": try nativeLongPDFSelections(fixtures: fixtureURL.deletingLastPathComponent()),
