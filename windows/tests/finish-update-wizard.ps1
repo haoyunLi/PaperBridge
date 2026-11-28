@@ -1,5 +1,7 @@
 # Follow the public installer already opened by the installed app, on a disposable runner.
 $ErrorActionPreference = 'Stop'
+# The parent job uses PowerShell 7. Use desktop PowerShell's own in-box UI and hashing modules.
+$env:PSModulePath = "$PSHOME\Modules"
 if ($env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'This check requires a clean GitHub Windows runner.' }
 $reportFile = Join-Path $PSScriptRoot '../test-artifacts/installed-update.json'
 $report = Get-Content -LiteralPath $reportFile -Raw | ConvertFrom-Json
