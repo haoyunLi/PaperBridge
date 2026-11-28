@@ -6,6 +6,8 @@ import OpenAISettings from './OpenAISettings.jsx';
 import { ReadingAppearanceControls } from './ReadingAppearance.jsx';
 import { describeAdapter } from './hardwareDisplay.mjs';
 import { isMineruReady } from '../electron/mineru-readiness.mjs';
+import { savedStyleGuide } from '../electron/translation-style.mjs';
+import { countCharacters } from './sectionHeadings.mjs';
 import './settings.css';
 
 const api = window.paperBridge;
@@ -135,7 +137,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
       {section === 'reading' && <fieldset disabled={locked}>
         <Group title="Translation direction"><div className="settings-grid"><label>Source language<select value={settings.sourceLanguage} onChange={event => onSettings({ sourceLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label><label>Target language<select value={settings.targetLanguage} onChange={event => onSettings({ targetLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label></div><button className="button ghost" onClick={() => onSettings({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={15} />Swap languages</button></Group>
         <Group title="Translation chunking"><label>Maximum translation chunk<input type="range" min="500" max="6000" step="100" value={settings.maxParagraphChars} onChange={event => onSettings({ maxParagraphChars: Number(event.target.value) })} />{settings.maxParagraphChars} characters</label><p>Sets the maximum size of each translation request. Reader paragraphs remain visually intact.</p></Group>
-        <Group title="Translation style guide"><label>Optional translation instructions<textarea value={settings.translationStyleGuide || ''} maxLength={2000} placeholder="For example: concise academic Chinese; keep established English acronyms." onChange={event => onSettings({ translationStyleGuide: event.target.value.slice(0, 2000) })} /></label><p>{(settings.translationStyleGuide || '').length}/2,000 characters. Sent to the selected provider with translation requests. Do not include secrets.</p></Group>
+        <Group title="Translation style guide"><label>Optional translation instructions<textarea value={settings.translationStyleGuide || ''} placeholder="For example: concise academic Chinese; keep established English acronyms." onChange={event => onSettings({ translationStyleGuide: savedStyleGuide(event.target.value) })} /></label><p>{countCharacters(settings.translationStyleGuide || '')}/2,000 characters. Sent to the selected provider with translation requests. Do not include secrets.</p></Group>
         <Group title="Reading appearance"><ReadingAppearanceControls settings={settings} onSettings={onSettings} /></Group>
       </fieldset>}
       {section === 'updates' && <><Group title={`Windows updates · ${updates.version || 'unknown version'}`}>

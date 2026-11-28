@@ -1754,9 +1754,17 @@ function App() {
         setUpdateInfo(null);
         setDeferredUpdateTag('');
       }
-      if (result.status !== 'skipped') setUpdateStatus(result.status === 'available' ? `Windows ${result.latestVersion} is available.` : result.status === 'unpublished' ? 'No Windows release has been published yet.' : 'You have the latest published Windows version.');
-    } catch (cause) { if (!automatic) setUpdateStatus(cause.message); }
-    finally { if (!automatic) setCheckingUpdates(false); }
+      if (result.stale) {
+        setUpdateStatus(`Last found Windows ${result.latestVersion} on ${new Date(result.lastCheckAt).toLocaleDateString()}. PaperBridge will retry the update check automatically.`);
+      } else if (result.status !== 'skipped') {
+        setUpdateStatus(result.status === 'available' ? `Windows ${result.latestVersion} is available.` : result.status === 'unpublished' ? 'No Windows release has been published yet.' : 'You have the latest published Windows version.');
+      }
+      return result.stale === true;
+    } catch (cause) {
+      if (!automatic) setUpdateStatus(cause.message);
+      else if (settingsRef.current?.autoCheckUpdates !== false) setUpdateStatus('Could not check for Windows updates. PaperBridge will retry automatically.');
+      return true;
+    } finally { if (!automatic) setCheckingUpdates(false); }
   }
   async function skipUpdate(event, nextFocus = sidebarToggleRef.current) {
     if (!updateInfo?.tag) return;
@@ -2163,9 +2171,18 @@ function App() {
   useEffect(() => api.onUpdateFile(setUpdateFile), []);
   useEffect(() => {
     if (!ready || settings?.autoCheckUpdates === false) return;
-    checkForUpdates(true);
-    const timer = setInterval(() => checkForUpdates(true), 60 * 60 * 1000);
-    return () => clearInterval(timer);
+    let enabled = true;
+    let pending;
+    const check = () => pending ??= checkForUpdates(true).finally(() => { pending = null; });
+    const onReconnect = async () => {
+      // If connectivity returns during an offline check, retry after that check settles.
+      if (pending && !await pending) return;
+      if (enabled) void check();
+    };
+    void check();
+    const timer = setInterval(check, 60 * 60 * 1000);
+    window.addEventListener('online', onReconnect);
+    return () => { enabled = false; clearInterval(timer); window.removeEventListener('online', onReconnect); };
   }, [ready, settings?.autoCheckUpdates, settings?.autoDownloadUpdates]);
   useEffect(() => { if (modal === 'glossary') setGlossaryError(''); }, [modal]);
   useEffect(() => {
@@ -3941,7 +3958,7 @@ function App() {
         </> : error}</Notice>}
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {showUpdateBanner && <div className="update-banner" role="status">
-          <div><strong>PaperBridge for Windows {updateInfo.latestVersion} is available</strong>{fileMessage && <div role="status">{openingInstaller ? updateStatus : fileMessage}</div>}</div>
+          <div><strong>{updateInfo.stale ? `Previously found PaperBridge for Windows ${updateInfo.latestVersion}` : `PaperBridge for Windows ${updateInfo.latestVersion} is available`}</strong>{fileMessage && <div role="status">{openingInstaller ? updateStatus : fileMessage}</div>}</div>
           {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={openUpdateInstaller}>Open installer</button>}
           {updateButtonLabel && <button className={installAvailable || filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
           <button className="button outline" onClick={openUpdateRelease}>View release</button>

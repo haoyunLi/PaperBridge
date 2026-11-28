@@ -139,7 +139,7 @@ function createUpdateChecker({ store, currentVersion, checkRelease = checkWindow
     }
     // Keep a known update visible while offline, without delaying the next retry.
     return automatic && cached?.result.status === 'available'
-      ? activeCheck.catch(() => ({ ...cached.result, fromCache: true, stale: true }))
+      ? activeCheck.catch(() => ({ ...cached.result, fromCache: true, stale: true, lastCheckAt: cached.lastCheckAt }))
       : activeCheck;
   };
 }

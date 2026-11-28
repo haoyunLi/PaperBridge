@@ -15,7 +15,8 @@ async function observeLocalOllama(baseURL, { identity, prefix = '' } = {}) {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);
       const body = chunks.length ? Buffer.concat(chunks) : undefined;
-      const call = endpoint === 'generate' && body ? { prompt: JSON.parse(body).prompt } : null;
+      const request = endpoint === 'generate' && body ? JSON.parse(body) : null;
+      const call = request ? { prompt: request.prompt, system: request.system } : null;
       if (call) calls.push(call);
       const response = await fetch(localOllamaURL(baseURL, 'api/' + endpoint), { method: req.method,
         headers: { 'Content-Type': 'application/json' }, body, signal: cancel.signal, redirect: 'error' });

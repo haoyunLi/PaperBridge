@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { trimLibraryText } = require('./library-metadata.mjs');
+const { savedStyleGuide } = require('./translation-style.mjs');
 const readingAppearanceDefaults = require('./reading-appearance.json');
 const { normalizeReadingAppearance } = require('./reading-appearance.mjs');
 const { clearSavedMineruResults } = require('./mineru-resources.cjs');
@@ -236,11 +237,11 @@ function createStore(root) {
     settings() {
       const saved = readJson(path.join(root, 'settings.json'), {});
       const { apiKey, openAIAPIKey, openAIConsent, isOpenAIOptInConfirmed, ...safe } = saved && typeof saved === 'object' ? saved : {};
-      return { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) };
+      return { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: savedStyleGuide(safe.translationStyleGuide) };
     },
     saveSettings(settings) {
       const { apiKey, openAIAPIKey, openAIConsent, isOpenAIOptInConfirmed, ...safe } = settings && typeof settings === 'object' ? settings : {};
-      writeJson(path.join(root, 'settings.json'), { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: String(safe.translationStyleGuide || '').slice(0, 2000) });
+      writeJson(path.join(root, 'settings.json'), { ...defaults, ...safe, ...normalizeReadingAppearance(safe), aiProvider: safe.aiProvider === 'openai' ? 'openai' : 'ollama', translationStyleGuide: savedStyleGuide(safe.translationStyleGuide) });
     },
     lastUpdateCheckAt() { return Number(readJson(path.join(root, 'updates.json'), {}).lastCheckAt || 0); },
     saveUpdateCheckAt(value) { this.saveUpdateCheckState({ lastCheckAt: value }); },

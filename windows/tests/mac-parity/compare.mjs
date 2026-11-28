@@ -21,8 +21,26 @@ import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
 import { protectMarkdown, restoreMarkdown, translationPrompt } from '../../src/prompts.mjs';
 import { parsedMarkdownBlocks } from '../../src/academicMarkdown.mjs';
 
+import { aiCacheNamespace, translationInstructions } from '../../src/aiSettings.mjs';
+import { savedStyleGuide } from '../../electron/translation-style.mjs';
+import { snapshotPaperSettings, restorePaperSettings } from '../../src/paperSettings.mjs';
+
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const styles = JSON.parse(readFileSync(new URL('./style-guides.json', import.meta.url), 'utf8'));
+assert.equal(reference.styles.length, styles.length);
+for (const [index, item] of styles.entries()) {
+  const native = reference.styles[index];
+  const guide = item.prefix + item.unit.repeat(item.repeats) + item.suffix;
+  const title = item.titleUnit.repeat(item.titleRepeats);
+  const settings = { aiProvider: 'ollama', ollamaBaseURL: 'http://localhost:11434', translationStyleGuide: guide };
+  assert.equal(native.label, item.label);
+  assert.ok(savedStyleGuide(guide) === native.saved, item.label + ' saved guide');
+  assert.ok(restorePaperSettings({}, snapshotPaperSettings(settings)).translationStyleGuide === native.saved, item.label + ' paper guide');
+  assert.ok(translationInstructions(settings, 'Chinese', title, '') === native.suffix, item.label + ' model instructions and title');
+  assert.ok(aiCacheNamespace(settings) === native.namespace, item.label + ' style cache identity');
+}
+console.log('Compared ' + styles.length + ' style guides, prompt titles and cache identities against macOS.');
 assert.ok(reference.paragraphPreviews.length >= 4);
 for (const { source, preview } of reference.paragraphPreviews) {
   assert.equal(paragraphPreview(source), preview, 'Inspector and bookmark source previews');

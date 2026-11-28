@@ -104,6 +104,7 @@ test('expired cached update stays visible after automatic failure and retries wi
   const failed = await checker(true);
   assert.equal(failed.status, 'available');
   assert.equal(failed.stale, true);
+  assert.equal(failed.lastCheckAt, initialTime);
   assert.equal(store.updateCheckState().lastCheckAt, initialTime);
   time += 60 * 60 * 1000;
   await checker(true);

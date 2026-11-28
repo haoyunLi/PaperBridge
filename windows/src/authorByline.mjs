@@ -1,4 +1,5 @@
 import { matchingGlossaryTerms } from './terminology.mjs';
+import { promptStyleGuide } from '../electron/translation-style.mjs';
 
 // A numbered byline precedes its affiliation key in a paper's front matter.
 const bodyHeading = /^(?:#{1,6}\s*)?(?:\d+[.)]?\s*)?(?:abstract|summary|introduction|methods?|results|references|摘要|引言|方法|结果|参考文献)\s*[:.]?$/iu;
@@ -21,7 +22,7 @@ function hasNumberedNames(text, firstAffiliation) {
 }
 
 export function findNumberedAuthorBlock(blocks, settings = {}, glossary = []) {
-  if (settings.translationStyleGuide?.trim()) return null;
+  if (promptStyleGuide(settings.translationStyleGuide)) return null;
   for (let i = 0; i < Math.min(blocks.length - 1, 12); i++) {
     const block = blocks[i];
     const text = String(block.text || '').trim();
