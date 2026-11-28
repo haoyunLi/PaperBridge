@@ -379,6 +379,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/windows-v')
     permissions:
       contents: read
+      actions: read
     uses: ./.github/workflows/windows-update-handoff.yml
     with:
       release_feed: ${{ needs.verify-public-download.outputs.release_feed }}

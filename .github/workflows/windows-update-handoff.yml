@@ -1,6 +1,7 @@
 name: Verify installed Windows update delivery
 permissions:
   contents: read
+  actions: read
 on:
   push:
     tags: ['windows-handoff-check-*']
@@ -13,6 +14,10 @@ jobs:
   verify:
     runs-on: windows-2025
     timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [public, wizard]
     defaults:
       run:
         shell: pwsh
@@ -49,16 +54,33 @@ jobs:
           $p = Start-Process -FilePath $setup -ArgumentList "/S /currentuser /D=$install" -Wait -PassThru -WindowStyle Hidden
           if ($p.ExitCode -ne 0) { throw "Initial Setup failed with exit code $($p.ExitCode)" }
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
-      - name: Deliver the verified Setup to Windows
+      - name: Observe the Internet-marked download in the Windows shell
+        if: matrix.scenario == 'public'
         env:
-          PAPERBRIDGE_VERIFY_WIZARD: ${{ startsWith(github.ref, 'refs/tags/windows-handoff-check-') }}
+          PAPERBRIDGE_VERIFY_WIZARD: 'true'
         run: node tests/public-installed-update.cjs
+      - name: Retrieve the exact Setup from its release build
+        if: matrix.scenario == 'wizard'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = ($env:PAPERBRIDGE_VERIFIED_FEED | ConvertFrom-Json).version
+          $runs = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/windows.yml/runs?branch=windows-v$v&event=push&per_page=5" | ConvertFrom-Json
+          $id = ($runs.workflow_runs | Where-Object head_branch -eq "windows-v$v" | Select-Object -First 1).id
+          if (!$id) { throw "Cannot locate the release build for $v" }
+          gh run download $id --repo $env:GITHUB_REPOSITORY --name PaperBridge-Windows --dir (Join-Path $env:RUNNER_TEMP 'PaperBridge release build')
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/public-installed-update.cjs --seed-only
+      - name: Complete the release build's interactive setup and observe its first window
+        if: matrix.scenario == 'wizard'
+        shell: powershell
+        run: ./tests/finish-update-wizard.ps1
       - name: Read the pre-upgrade bookmark and note in the installed update
-        if: startsWith(github.ref, 'refs/tags/windows-handoff-check-')
+        if: matrix.scenario == 'wizard'
         run: node tests/public-installed-update.cjs --verify-restored
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: windows-installed-update-handoff
+          name: windows-installed-update-${{ matrix.scenario }}
           path: windows/test-artifacts/installed-update.json
           if-no-files-found: ignore

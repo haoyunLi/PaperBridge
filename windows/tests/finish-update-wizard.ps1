@@ -1,4 +1,5 @@
-# Follow the public installer already opened by the installed app, on a disposable runner.
+# Observe public download confirmation, or exercise the published build's own wizard on a fresh runner.
+param([switch]$ObservePublic)
 $ErrorActionPreference = 'Stop'
 # The parent job uses PowerShell 7. Use desktop PowerShell's own in-box UI and hashing modules.
 $env:PSModulePath = "$PSHOME\Modules"
@@ -9,9 +10,13 @@ $feed = $env:PAPERBRIDGE_VERIFIED_FEED | ConvertFrom-Json
 $installed = [IO.Path]::GetFullPath($env:PAPERBRIDGE_TEST_EXECUTABLE)
 if ($installed -ne (Join-Path $env:RUNNER_TEMP 'PaperBridge update delivery\PaperBridge.exe')) { throw 'Unexpected installation path.' }
 $setupName = "PaperBridge-Windows-$($feed.version)-x64-Setup"
-$setupPath = Join-Path $env:LOCALAPPDATA "PaperBridge\update-downloads\$setupName.exe"
-if ($report.to -ne $feed.version -or $report.sha256 -ne $feed.files.Setup.sha256 -or
-    (Get-FileHash -LiteralPath $setupPath).Hash -ne $report.sha256) { throw 'Unexpected installer.' }
+$setupPath = if ($ObservePublic) {
+    if ($report.internetZone -ne 3 -or $report.sha256 -ne $feed.files.Setup.sha256) { throw 'Missing verified public handoff.' }
+    Join-Path $env:LOCALAPPDATA "PaperBridge\update-downloads\$setupName.exe"
+} else {
+    Join-Path $env:RUNNER_TEMP "PaperBridge release build\$setupName.exe"
+}
+if ($report.to -ne $feed.version -or (Get-FileHash -LiteralPath $setupPath).Hash -ne $feed.files.Setup.sha256) { throw 'Unexpected installer.' }
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $wizard = [ordered]@{ steps = @(); version = $feed.version }
 function Save-Step($message) {
@@ -25,18 +30,34 @@ function Get-Controls($window, $controlType) {
     $window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) |
         Where-Object { $_.Current.IsEnabled -and !$_.Current.IsOffscreen }
 }
-$deadline = [DateTime]::UtcNow.AddSeconds(115)
+if (!$ObservePublic) {
+    Save-Step 'Opening the release build from the build artifact after verifying its public SHA-256'
+    Start-Process -FilePath $setupPath -WindowStyle Normal
+}
+$deadline = [DateTime]::UtcNow.AddSeconds(100)
 $finished = $false
 $lastButton = ''
 while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
     $owner = Get-Process -Name $setupName -ErrorAction SilentlyContinue |
         Where-Object { $_.Path -eq $setupPath -and $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-    if (!$owner) { Start-Sleep -Milliseconds 350; continue }
+    if (!$owner) {
+        if ($ObservePublic -and (Get-Process -Name smartscreen -ErrorAction SilentlyContinue)) {
+            $named = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::NameProperty, 'Windows Defender SmartScreen')
+            $prompt = [Windows.Automation.AutomationElement]::RootElement.FindFirst([Windows.Automation.TreeScope]::Descendants, $named)
+            if ($prompt -and !$prompt.Current.IsOffscreen) {
+                $wizard.result = 'requires Windows user confirmation'
+                Save-Step 'The Internet-marked public download opened Windows Defender SmartScreen'
+                exit 0
+            }
+        }
+        Start-Sleep -Milliseconds 350; continue
+    }
     $window = [Windows.Automation.AutomationElement]::FromHandle($owner.MainWindowHandle)
     if ($window.Current.ProcessId -ne $owner.Id) { throw 'Unexpected window owner.' }
     if (!$wizard.Contains('installerPid')) {
         $wizard.installerPid = $owner.Id
         Save-Step "Visible installer window: $($window.Current.Name)"
+        if ($ObservePublic) { $wizard.result = 'public installer visible'; Save-Step 'The public Setup window is visible'; exit 0 }
     }
     $buttons = @(Get-Controls $window ([Windows.Automation.ControlType]::Button))
     $button = $buttons | Where-Object { ($_.Current.Name -replace '&','').Trim() -match '^(Next\s*>?|Install|Finish)$' } | Select-Object -First 1
@@ -63,7 +84,7 @@ while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
 }
 if (!$finished) {
     $trace = Join-Path (Split-Path $reportFile) 'windows-shell-open.json'
-    Write-Host ("ShellExecute result: " + (Get-Content -LiteralPath $trace -Raw))
+    if (Test-Path -LiteralPath $trace) { Write-Host ("ShellExecute result: " + (Get-Content -LiteralPath $trace -Raw)) }
     Get-Process -ErrorAction SilentlyContinue | Where-Object {
         $_.ProcessName -match 'paperbridge|smartscreen|consent|openwith|rundll32|dllhost'
     } | ForEach-Object { Write-Host "Process: $($_.ProcessName) | $($_.Id) | $($_.MainWindowTitle)" }

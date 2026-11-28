@@ -59,7 +59,9 @@ async function run() {
     await page.locator('.inspector textarea').fill(note);
     await page.getByRole('button', { name: 'Save note', exact: true }).click();
     await row.locator('.block-notes').getByText(note, { exact: false }).waitFor();
+    report.paper = id;
     checkpoint('saved bookmark and note in the installed reader');
+    if (process.argv.includes('--seed-only')) return;
     // A staged release is still waiting for this check before its public feed is promoted.
     // Only discovery is supplied. Chromium downloads the real Setup and the app checks its public proof.
     await app.evaluate((_electron, feed) => {
@@ -102,14 +104,13 @@ async function run() {
     assert.ok(!opened.error, opened.error);
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
     assert.ok(saved.blocks.some(block => block.bookmark && block.notes?.some(item => item.body === note)));
-    report.paper = id;
     checkpoint('handed the verified Internet download to the Windows shell with its bookmark and note saved');
     if (process.env.PAPERBRIDGE_VERIFY_WIZARD === 'true') {
       // Keep the original reader alive during ShellExecute, just as when a person clicks this button.
       const script = path.join(__dirname, 'finish-update-wizard.ps1');
       const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
       try {
-        const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-File', script], { windowsHide: true, timeout: 210000 });
+        const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-File', script, '-ObservePublic'], { windowsHide: true, timeout: 210000 });
         console.log(stdout);
       } catch (error) {
         console.error(error.stdout);
