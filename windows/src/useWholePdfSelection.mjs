@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 
 export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, capture, onSelect, onError }) {
-  const [selectThrough, setSelectThrough] = useState(0);
+  const [request, setRequest] = useState(null);
+  const activeRequest = useRef(null);
+  const selectThrough = request && request.pdf === pdf ? request.through : 0;
+
+  function setPageLimit(through) {
+    activeRequest.current = through ? { pdf, through } : null;
+    setRequest(activeRequest.current);
+  }
+  function isPending() {
+    return Boolean(activeRequest.current && activeRequest.current.pdf === pdf);
+  }
   const copied = useRef(null);
   const deferred = useRef(null);
 
@@ -13,18 +23,22 @@ export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, captur
       deferred.current = null;
     }
   }
-  useEffect(() => () => cancelCopy(), [pdf]);
+  useEffect(() => () => {
+    if (activeRequest.current?.pdf === pdf) activeRequest.current = null;
+    cancelCopy();
+    copied.current = null;
+  }, [pdf]);
 
   function cancel() {
-    setSelectThrough(0);
+    setPageLimit(0);
     cancelCopy();
     copied.current = null;
   }
 
   function start() {
-    if (!pdf || selectThrough) return;
+    if (!pdf || isPending()) return;
     onError('');
-    setSelectThrough(Math.min(8, pdf.numPages));
+    setPageLimit(Math.min(8, pdf.numPages));
   }
 
   // Remember the printed reading order separately from the original DOM offsets used by saved notes.
@@ -37,7 +51,7 @@ export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, captur
   }
 
   useEffect(() => {
-    if (!pdf || !selectThrough) return;
+    if (!pdf || !selectThrough || activeRequest.current !== request) return;
     const host = scroller.current;
     for (let page = 1; page <= selectThrough; page++) {
       if (typeof statuses[page] === 'string') {
@@ -48,10 +62,10 @@ export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, captur
       if (!statuses[page] || !layerFor(host, page)) return;
     }
     if (selectThrough < pdf.numPages) {
-      setSelectThrough(Math.min(pdf.numPages, selectThrough + 8));
+      setPageLimit(Math.min(pdf.numPages, selectThrough + 8));
       return;
     }
-    setSelectThrough(0);
+    setPageLimit(0);
     const layers = [...host.querySelectorAll('.textLayer[data-page]')].filter(layer => statuses[Number(layer.dataset.page)]?.selectable);
     if (!layers.length) { cancelCopy(); return; }
     const first = layers[0], last = layers.at(-1), range = document.createRange();
@@ -66,7 +80,7 @@ export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, captur
       deferred.current = null;
     }
     onSelect(complete);
-  }, [pdf, scroller, selectThrough, statuses, layerFor, capture, onSelect, onError]);
+  }, [pdf, scroller, request, selectThrough, statuses, layerFor, capture, onSelect, onError]);
 
   function queueCopy() {
     if (deferred.current) return;
@@ -82,7 +96,7 @@ export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, captur
   }
 
   function copy(event) {
-    if (selectThrough) { event.preventDefault(); queueCopy(); return; }
+    if (isPending()) { event.preventDefault(); queueCopy(); return; }
     const recorded = copied.current, selection = window.getSelection();
     if (!recorded || !event.clipboardData || !selection.rangeCount) return;
     const current = selection.getRangeAt(0);
@@ -92,5 +106,5 @@ export function useWholePdfSelection({ pdf, scroller, statuses, layerFor, captur
     event.preventDefault();
   }
 
-  return { selectThrough, start, cancel, queueCopy, remember, copy };
+  return { selectThrough, isPending, start, cancel, queueCopy, remember, copy };
 }

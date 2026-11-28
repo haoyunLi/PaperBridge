@@ -1,5 +1,15 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+截至 2026-11-28，已逐项复查 GitHub 上 macOS 1.10.0 的原生功能。1.9 固定基线共 **111 项，108 项对齐，3 项部分对齐**。1.9.1 另有 12 项增量全部对齐，1.9.2 至 1.10.0 另有 21 项全部对齐。[Mac 源码](https://github.com/haoyunLi/PaperBridge/tree/16e01ac42ef03bc7150365ebcf4aca5cd89f5e1d/PaperBridge) · [1.9.1 增量](MAC_1_9_1_GAPS.md) · [1.10.0 增量](MAC_1_10_GAPS.md)
+
+| 剩余项目 | 已实测 | 仍待验证或完成 |
+| --- | --- | --- |
+| G10 独立解析与加速 | RX 7800 XT 的 DirectML 解析及 CPU 解析，自动检测、一键安装与修复。 | NVIDIA CUDA 及其他物理显卡上的安装和解析。 |
+| G14 应用内更新 | 发现新版、跳过、下载、校验并交给 Windows 启动安装。 | 与 Mac 同等的自动安装和重启体验。 |
+| G15 Windows 分发与签名 | GitHub 下载、构建来源证明、SHA-256 校验，以及全新 Windows 的安装版和便携版启动。 | Windows 信任的发布者签名。 |
+
+翻译已在 RX 7800 XT 上实测 4B、12B 和 27B。4B 另在 CPU 回退时验证了数值、单位、否定和重开后的结果。[AMD 型号实测](AMD_DEVICE_TEST.md) · [CPU 对照](WHOLE_APP_REVIEW.md#本机-cpu-翻译回退) · [Windows 下载](README.md#download-for-windows-x64)
+
 本机用隔离的 Ollama 服务实测 GPU 不可用时的 CPU 翻译。三段英文逐段译为中文，显存分配均为零，重开后保留译文。[回退实测](WHOLE_APP_REVIEW.md#本机-cpu-翻译回退)
 
 窄窗口从目录或书签打开段落后会收起遮挡正文的侧栏，键盘可直接继续阅读。[章节与书签验收](tests/paragraph-selection-e2e.cjs)
@@ -30,7 +40,7 @@ Windows 首次窗口适配显示器实际工作区。在 300% 和 400% 缩放下
 
 当前验收目标是功能与可执行操作的一对一对应；排版按 Windows 字体、窗口大小及显示缩放适配。Mac 的尺寸和间距作为设计参考，不以像素一致作为功能对齐的条件。
 
-截至 2026-11-27，固定基线共 111 项，**108 项对齐、3 项部分对齐**。RX 7800 XT 的 4B、12B 和 27B 都已实际翻译并重开保存的论文。4B 和 12B 另核对了温度、电压、统计学否定和 p 值。余项为 NVIDIA 真机解析、更新安装流程和 Windows 发布者签名。[模型对照实测](AMD_DEVICE_TEST.md)。此计数只覆盖表内功能。全新 Windows 从 GitHub 下载并打开了两种 EXE，看到了便携版解压提示和首次引导。旧客户端在保存书签与笔记后将已校验的新版安装包交给 Windows。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) · [应用内更新验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199)
+全新 Windows 从 GitHub 下载并打开了两种 EXE，看到了便携版解压提示和首次引导。旧客户端在保存书签与笔记后将已校验的新版安装包交给 Windows。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) · [应用内更新验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199)
 
 首次审计的固定基线：macOS 1.9 commit `73951d9` 与本分支 `windows/` 的 0.2 实现，核对日期 2026-09-20。共 111 项：**43 对齐、68 部分、0 缺失**。本表按**用户可执行的动作与可观察的结果**拆分；同一行出现入口只代表有代码路径，不代表结果已经等价。`对齐`指静态代码核对显示主要行为等价，`部分`指有可用路径但缺少列出的行为，`缺失`指没有对应路径。[AMD 真机报告](AMD_DEVICE_TEST.md)已覆盖一台 RX 7800 XT、真实翻译、一篇复杂论文，以及单页图像型扫描 PDF 的 OCR 和译文；Electron 回归另覆盖重复文字、双页 PDF 同词不同标注、无文字层 PDF 的 OCR 引导、空 MinerU 结果降级、逐论文任务设置、导出及重启恢复。其它硬件、复杂扫描件、Mac 逐项对照和正式签名仍需验证。
 

@@ -325,6 +325,25 @@ async function run() {
     await back.click(); await selected(2); await position(12);
 
     if (restartScale) {
+      stage('Back and Forward restore passages after changing reading width on the same monitor');
+      await showSidebar();
+      await page.locator('.document-outline .outline-row[data-paragraph-id="19"]').click();
+      await selected(19); await position(19);
+      await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+      const appearance = page.getByRole('dialog', { name: 'Reading Appearance', exact: true });
+      await appearance.getByRole('slider', { name: 'Reading width', exact: true }).press('Home');
+      await page.keyboard.press('Escape');
+      await position(19);
+      await back.click(); await position(12); await selected(2);
+      const afterAppearance = await relativeTop();
+      assert.ok(Math.abs(originalTop - afterAppearance) < 2, JSON.stringify({ originalTop, afterAppearance }));
+      await forward.click(); await position(19); await selected(19);
+      await page.getByRole('button', { name: 'Reading Appearance', exact: true }).click();
+      await appearance.getByRole('button', { name: 'Reset Appearance', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await back.click(); await position(12); await selected(2);
+      console.log(JSON.stringify({ originalTop, afterAppearance, back: 12, forward: 19 }));
+
       stage('Back restores the offscreen reading location after a window width change');
       await showSidebar();
       await page.locator('.document-outline .outline-row[data-paragraph-id="19"]').click();

@@ -52,6 +52,22 @@ async function run() {
         }, { once: true });
       });
       if (!mixed) {
+        const handled = await host().evaluate(node => {
+          const key = (value, ctrlKey = false) => !node.dispatchEvent(new KeyboardEvent('keydown', {
+            key: value, ctrlKey, bubbles: true, cancelable: true
+          }));
+          return { select: key('a', true), copy: key('c', true), cancel: key('Escape') };
+        });
+        assert.deepEqual(handled, { select: true, copy: true, cancel: true }, 'Copy and Escape own the request before the first group of PDF pages renders');
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.ok(await page.evaluate(() => getSelection().isCollapsed));
+        assert.equal(await page.evaluate(() => window.__earlyCopy), null, 'Cancelled Select All must not replace the clipboard');
+        if (notebook) {
+          await host().press('Control+a');
+          await page.waitForFunction(() => !getSelection().isCollapsed && document.querySelector('.pdf-continuous').getAttribute('aria-busy') === 'false');
+          await host().press('Escape');
+          assert.ok(await page.evaluate(() => getSelection().isCollapsed), 'Escape also clears a completed notebook selection');
+        }
         await host().press('Control+a'); await host().press('Escape');
         await page.waitForFunction(() => document.querySelector('.pdf-continuous').getAttribute('aria-busy') === 'false');
         assert.ok(await page.evaluate(() => getSelection().isCollapsed));

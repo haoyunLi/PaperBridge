@@ -812,7 +812,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     if (event.key === 'Escape' && !event.nativeEvent.isComposing && scroller.current?.contains(event.target)) {
       const selection = window.getSelection();
       const inPdf = !selection.isCollapsed && scroller.current.contains(selection.anchorNode) && scroller.current.contains(selection.focusNode);
-      if (selectThrough || inPdf) {
+      if (wholeSelection.isPending() || inPdf) {
         event.preventDefault(); event.stopPropagation();
         wholeSelection.cancel();
         if (inPdf) selection.removeAllRanges();
@@ -821,7 +821,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       return;
     }
     if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.nativeEvent.isComposing) return;
-    if (!event.shiftKey && selectThrough && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'c') {
+    if (!event.shiftKey && wholeSelection.isPending() && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'c') {
       event.preventDefault(); wholeSelection.queueCopy(); return;
     }
     if (!event.shiftKey && pdf && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'a') {
@@ -1570,10 +1570,18 @@ function App() {
       host.scrollTop += bounds.top - host.getBoundingClientRect().top - offset;
     } else host.scrollTop = typeof origin === 'number' ? origin : origin.scrollTop;
   }
-  function restoreReaderWidthChange(host, position, saved) {
+  function restoreReaderViewport(host, position, saved) {
     const anchor = position?.readerViewport;
-    if (!host || !anchor || host.clientWidth === anchor.width || anchor.block !== position.block || anchor.scrollTop !== saved) return false;
-    restoreReaderSearchOrigin(anchor);
+    const origin = normalizeSearchOrigin(anchor);
+    if (!host || !origin || typeof origin !== 'object' || origin.block !== position.block || origin.scrollTop !== saved) return false;
+    const target = host.querySelector(`#block-${origin.block}`);
+    if (!target) return false;
+    if (host.clientWidth === anchor.width) {
+      host.scrollTop = saved;
+      const top = target.getBoundingClientRect().top - host.getBoundingClientRect().top;
+      if (Math.abs(top - origin.offset) < 1) return true;
+    }
+    restoreReaderSearchOrigin(origin);
     persistRestoredReaderPosition();
     return true;
   }
@@ -1669,7 +1677,7 @@ function App() {
         const key = scrollKey(location.tab, location.page);
         const saved = location.scrollByTab?.[key];
         const host = mainScrollRef.current;
-        if (location.tab === 'Reader' && !location.search && restoreReaderWidthChange(host, location, saved)) return;
+        if (location.tab === 'Reader' && !location.search && restoreReaderViewport(host, location, saved)) return;
         const anchor = location.tab === 'Paper' ? location.paperAnchor : location.fullTranslationAnchor;
         if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
         if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
@@ -2026,7 +2034,7 @@ function App() {
           restoreReaderSearchOrigin(origin);
           persistRestoredReaderPosition();
         } else {
-          if (tab === 'Reader' && (!search || clearSearch) && restoreReaderWidthChange(host, position, saved)) return;
+          if (tab === 'Reader' && (!search || clearSearch) && restoreReaderViewport(host, position, saved)) return;
           const anchor = tab === 'Full Translation' ? position?.fullTranslationAnchor : view?.anchor;
           if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
           if (saved == null && tab === 'Reader') {
