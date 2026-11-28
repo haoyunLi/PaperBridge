@@ -443,7 +443,7 @@ test('portable bundles keep HTML images, retained MinerU files and link fragment
   }
 });
 
-test('bundle filenames are safe, case-insensitively unique and preserve generated PDF index names', () => {
+test('bundle filenames are safe, case-insensitively unique and preserve generated PDF index names', async () => {
   const { writeBundle, writeBundleFacsimile, safeName } = require('../electron/bundle.cjs');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-names-'));
   try {
@@ -466,7 +466,7 @@ test('bundle filenames are safe, case-insensitively unique and preserve generate
     assert.equal(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), 'first');
     assert.equal(fs.readFileSync(path.join(result.folder, 'PAPER_ORIGINAL-2.md'), 'utf8'), 'second');
     assert.equal(fs.existsSync(path.join(parent, 'escape.md')), false);
-    writeBundleFacsimile({ ...result, renderedPages: new Set() }, 0, false);
+    await writeBundleFacsimile({ ...result, renderedPages: new Set() }, 0, false);
     assert.equal(fs.readFileSync(path.join(result.folder, 'Original Pages-2.md'), 'utf8'), 'user document');
     assert.match(fs.readFileSync(path.join(result.folder, 'Original Pages.md'), 'utf8'), /could not be opened for page previews/);
     const second = writeBundle(parent, { name: 'Paper.draft.pdf' }, [{ name: 'Legacy name', content: 'legacy compatibility' }]);
@@ -481,7 +481,7 @@ test('bundle filenames are safe, case-insensitively unique and preserve generate
   }
 });
 
-test('PDF facsimile bundles include only completed page images and preserve the translated body', () => {
+test('PDF facsimile bundles include only completed page images and preserve the translated body', async () => {
   const { writeBundle, writeBundleFacsimile } = require('../electron/bundle.cjs');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-facsimile-'));
   const pdf = path.join(parent, 'source.pdf');
@@ -492,7 +492,7 @@ test('PDF facsimile bundles include only completed page images and preserve the 
       { kind: 'analysis', name: 'Analysis', filename: 'paper_analysis_notes.md', content: 'Exact notes.' }
     ];
     const bundle = writeBundle(parent, { name: 'PDF text.pdf', type: 'pdf', facsimile: true }, documents, pdf);
-    writeBundleFacsimile({ ...bundle, renderedPages: new Set([1, 120]) }, 125, true);
+    await writeBundleFacsimile({ ...bundle, renderedPages: new Set([1, 120]) }, 125, true);
     const full = fs.readFileSync(path.join(bundle.folder, 'paper_full_translation_fr.md'), 'utf8');
     assert.match(full, /first 120 of 125 pages/);
     assert.match(full, /Page export stopped/);
@@ -503,12 +503,12 @@ test('PDF facsimile bundles include only completed page images and preserve the 
     assert.equal(fs.readFileSync(path.join(bundle.folder, 'paper_analysis_notes.md'), 'utf8'), 'Exact notes.');
 
     const structured = writeBundle(parent, { name: 'MinerU.pdf', type: 'pdf' }, documents, pdf);
-    writeBundleFacsimile({ ...structured, renderedPages: new Set() }, 1, false);
+    await writeBundleFacsimile({ ...structured, renderedPages: new Set() }, 1, false);
     assert.match(fs.readFileSync(path.join(structured.folder, 'Original Pages.md'), 'utf8'), /previews are unavailable/);
     assert.equal(fs.readFileSync(path.join(structured.folder, 'paper_full_translation_fr.md'), 'utf8'), 'Saved translated text.');
     const manifest = path.join(structured.folder, 'Original Pages.md');
     assert.match(fs.readFileSync(manifest, 'utf8'), /\(original\.pdf#page=1\)/);
-    writeBundleFacsimile({ ...structured, renderedPages: new Set() }, Number.MAX_SAFE_INTEGER, false);
+    await writeBundleFacsimile({ ...structured, renderedPages: new Set() }, Number.MAX_SAFE_INTEGER, false);
     const huge = fs.readFileSync(manifest, 'utf8');
     assert.ok(huge.length < 2_000_000, 'Unusually large counts keep a bounded index and links to both ends');
     assert.ok(huge.includes('(original.pdf#page=' + Number.MAX_SAFE_INTEGER + ')'));

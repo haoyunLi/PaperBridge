@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { _electron: electron } = require('playwright-core');
 const { createStore, defaults } = require('../electron/storage.cjs');
+const { withWindowsReadLock } = require('./windows-read-lock.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..'), artifacts = path.join(root, 'test-artifacts');
@@ -14,6 +15,7 @@ async function run() {
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const app = await electron.launch({ cwd: root, ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace } });
+  let closedForExport = false;
   try {
     const page = await app.firstWindow();
     await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, source);
@@ -92,7 +94,49 @@ async function run() {
     for (const name of ['paper_original.md', 'Original Pages.md', 'original.pdf', 'pages/page-001.png', 'pages/page-002.png']) {
       assert.deepEqual(fs.readFileSync(path.join(first, name)), fs.readFileSync(path.join(retry, name)), name);
     }
-    console.log('Recovered completed files, reported the export location, and retried without changing the preceding bundle.');
-  } finally { await app.close(); }
+    if (process.platform === 'win32') {
+      await app.evaluate(({ ipcMain }) => {
+        const fs = process.getBuiltinModule('node:fs');
+        const path = process.getBuiltinModule('node:path');
+        const finish = ipcMain._invokeHandlers.get('markdown:bundle-finish');
+        ipcMain.removeHandler('markdown:bundle-finish');
+        ipcMain.handle('markdown:bundle-finish', async (...args) => {
+          const target = path.join(args[1].folder, 'paper_original.md');
+          global.__lockedEdition = target;
+          await new Promise(resolve => { global.__beginIndex = resolve; });
+          const rename = fs.renameSync;
+          fs.renameSync = function (from, to) {
+            try { return rename.call(this, from, to); }
+            catch (error) {
+              if (to === target && ['EPERM', 'EBUSY', 'EACCES'].includes(error.code)) global.__sawIndexLock = true;
+              throw error;
+            }
+          };
+          try { return await finish(...args); }
+          finally { fs.renameSync = rename; }
+        });
+      });
+      const waitForMain = key => app.evaluate(async (_electron, key) => {
+        const deadline = Date.now() + 10000;
+        while (!global[key] && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 20));
+        if (!global[key]) throw new Error('Export checkpoint timed out: ' + key);
+        return global[key];
+      }, key);
+      await exportBundle();
+      const locked = await waitForMain('__lockedEdition');
+      const closed = app.waitForEvent('close', { timeout: 20000 });
+      await withWindowsReadLock(locked, async release => {
+        await app.evaluate(() => global.__beginIndex());
+        await waitForMain('__sawIndexLock');
+        await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+        await release();
+      });
+      await closed; closedForExport = true;
+      for (const name of ['paper_original.md', 'Original Pages.md', 'original.pdf', 'pages/page-001.png', 'pages/page-002.png']) {
+        assert.deepEqual(fs.readFileSync(path.join(path.dirname(locked), name)), fs.readFileSync(path.join(retry, name)), name);
+      }
+    }
+    console.log('Recovered partial files, retried export, and completed the page index while closing under a Windows read lock.');
+  } finally { if (!closedForExport) await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -41,7 +41,8 @@ const pendingPdfCopies = new Map();
 let setupManager = null;
 let setupOperation = null;
 let setupChangesMineru = false;
-let waitingForSetupQuit = false;
+let waitingForQuitWork = false;
+const finishingBundles = new Set();
 let openAICredentials = null;
 let openAIClient = null;
 let openAIConsent = false;
@@ -56,6 +57,8 @@ let portableUpdateToReveal = null;
 let pendingLaunchVersion = '';
 let showingLaunchVersion = false;
 let closeTimer = null;
+let closePrompt = null;
+let requireConfirmedClose = false;
 const requests = new Map();
 const openAIRequests = new Map();
 const modelPullManager = createModelPullManager({ pullModel: pullOllamaModel, emit: progress, isSetupBusy: () => Boolean(setupManager?.controller) });
@@ -78,31 +81,58 @@ function revokeOpenAIConsent() {
   openAIRequests.clear();
 }
 
+function clearClosePrompt() {
+  clearTimeout(closeTimer);
+  closeTimer = null;
+  closePrompt?.abort();
+  closePrompt = null;
+}
+
+async function askAboutSlowClose() {
+  closeTimer = null;
+  if (!closeRequested || requireConfirmedClose || closePrompt || !window || window.isDestroyed()) return;
+  const controller = new AbortController();
+  closePrompt = controller;
+  try {
+    const { response } = await dialog.showMessageBox(window, {
+      type: 'warning', title: 'PaperBridge is still saving', message: 'Your latest changes are still being saved.',
+      detail: 'Keep waiting to close after the save finishes. Closing now can lose your latest edits or settings.',
+      buttons: ['Keep waiting', 'Close without saving'], defaultId: 0, cancelId: 0, noLink: true, signal: controller.signal
+    });
+    if (response === 1 && !controller.signal.aborted && closeRequested && !requireConfirmedClose) finishClose();
+  } catch (error) {
+    if (!controller.signal.aborted) console.warn('Could not show the pending save dialog:', error.message);
+  } finally { if (closePrompt === controller) closePrompt = null; }
+}
+
 function finishClose() {
   closeReady = true;
   closeRequested = false;
-  if (closeTimer) clearTimeout(closeTimer);
-  closeTimer = null;
+  clearClosePrompt();
   if (quitAfterClose) app.quit();
   else if (window && !window.isDestroyed()) window.close();
 }
 
 function requestRendererClose(quitting = false, { waitForSave = false } = {}) {
   quitAfterClose ||= quitting;
-  if (closeRequested || !window || window.isDestroyed()) return;
-  if (window.webContents.isCrashed()) { finishClose(); return; }
+  if (!window || window.isDestroyed()) return;
+  if (waitForSave) { requireConfirmedClose = true; clearClosePrompt(); }
+  if (closeRequested) {
+    if (!closeTimer && !requireConfirmedClose) void askAboutSlowClose();
+    return;
+  }
+  if (window.webContents.isCrashed()) { portableUpdateToReveal = null; finishClose(); return; }
   closeRequested = true;
   window.webContents.send('paperbridge:prepare-close');
-  // An update must wait for the reader to confirm that pending edits reached disk.
-  if (!waitForSave) closeTimer = setTimeout(finishClose, 10_000);
+  if (!requireConfirmedClose) closeTimer = setTimeout(askAboutSlowClose, 10_000);
 }
 
 function cancelRendererClose() {
   portableUpdateToReveal = null;
   closeRequested = false;
   quitAfterClose = false;
-  if (closeTimer) clearTimeout(closeTimer);
-  closeTimer = null;
+  requireConfirmedClose = false;
+  clearClosePrompt();
 }
 
 function progress(data) {
@@ -417,12 +447,15 @@ function registerHandlers() {
     if (!cached) archive?.savePage(pageNumber, png);
     return true;
   });
-  ipcMain.handle('markdown:bundle-finish', (_event, { id, folder, pageCount, stopped, completed }) => {
+  ipcMain.handle('markdown:bundle-finish', async (_event, { id, folder, pageCount, stopped, completed }) => {
     const bundle = pageBundle(id, folder);
     if (!Number.isSafeInteger(pageCount) || pageCount < 0) throw new Error('Invalid PDF page count.');
     activeBundle = null;
-    try { writeBundleFacsimile(bundle, pageCount, stopped === true); }
+    const finalization = writeBundleFacsimile(bundle, pageCount, stopped === true);
+    finishingBundles.add(finalization);
+    try { await finalization; }
     catch (error) { throw bundleWriteError(error, folder); }
+    finally { finishingBundles.delete(finalization); }
     bundle.archive?.savePageCount(pageCount);
     if (completed === true && stopped !== true) revealBundle(bundle.folder);
   });
@@ -636,7 +669,7 @@ function createWindow() {
     activeImportArchive = null;
     activeBundle = null;
     discardPendingResults();
-    if (closeRequested) { finishClose(); return; }
+    if (closeRequested) { portableUpdateToReveal = null; finishClose(); return; }
     const generation = processLosses;
     void dialog.showMessageBox(owner, {
       type: 'error', title: 'PaperBridge reader stopped', message: 'The reader closed unexpectedly.',
@@ -751,12 +784,12 @@ app.on('before-quit', event => {
     requestRendererClose(true);
     return;
   }
-  if (setupOperation) {
+  if (setupOperation || finishingBundles.size) {
     event.preventDefault();
-    if (!waitingForSetupQuit) {
-      waitingForSetupQuit = true;
-      setupManager.cancel();
-      void setupOperation.then(() => app.quit(), () => app.quit());
+    if (!waitingForQuitWork) {
+      waitingForQuitWork = true;
+      if (setupOperation) setupManager.cancel();
+      void Promise.allSettled([setupOperation, ...finishingBundles]).then(() => { waitingForQuitWork = false; app.quit(); });
     }
     return;
   }

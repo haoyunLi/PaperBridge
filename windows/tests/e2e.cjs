@@ -38,12 +38,10 @@ function pngDimensions(file) {
 
 async function run() {
   const root = path.resolve(__dirname, '..');
-  const artifacts = path.join(root, 'test-artifacts');
-  if (!path.resolve(artifacts).startsWith(root + path.sep)) throw new Error('Unexpected artifacts path');
-  fs.mkdirSync(artifacts, { recursive: true });
+  const artifactRoot = path.join(root, 'test-artifacts');
+  fs.mkdirSync(artifactRoot, { recursive: true });
+  const artifacts = fs.mkdtempSync(path.join(artifactRoot, 'reader-workflow-'));
   const workspace = path.join(artifacts, 'workspace');
-  if (!path.resolve(workspace).startsWith(path.resolve(artifacts) + path.sep)) throw new Error('Unexpected workspace path');
-  fs.rmSync(workspace, { recursive: true, force: true });
   let generateDelayMs = 0;
   const generateRequests = [];
   const forcedGenerateResponses = [];

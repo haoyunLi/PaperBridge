@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## GitHub 便携版首次启动时识别双 AMD 显卡
+
+用 GitHub 0.2.140 便携版创建空白阅读配置，指向本机实测所用的已安装工具目录，未填写解析器命令路径。首次引导识别出已运行的 Ollama 和已安装的 TranslateGemma 4B，按 63 GiB 系统内存和 RX 7800 XT 的 16 GiB 独立显存建议 12B。高级设置同时列出 512 MiB 的 AMD 核显。重新检测后，MinerU 4.1.7 仍报告 DirectML 使用 RX 7800 XT。完成引导、退出并重开后，应用直接进入阅读工作区。[公开便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.140)
+
 ## GitHub 便携版的光谱术语与否定句
 
 从 GitHub 下载的 0.2.138 便携版在本机 RX 7800 XT 上运行 TranslateGemma 4B。通过正常粘贴入口导入两段英文，并分别点击 Translate Paragraph。第一段采用保存的术语“谱线宽度”，保留了 77 K、0.08 nm、1.25 mA 和 2.50 mA，也保留了峰中心没有移动的结论。第二段译为“对照组在 532 纳米处未检测到任何信号。 12.5% 的差异并不能证明因果关系。”两次推理均报告 2,881,948,220 字节显存占用。这两段分别用时 12.7 秒和 4.5 秒。关闭并重启同一个公开 EXE 后，译文与书签都已恢复。[实测的 Windows 发布版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.138)

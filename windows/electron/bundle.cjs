@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { setTimeout: delay } = require('node:timers/promises');
 const { writeFileAtomically, copyFileAtomically } = require('./atomic-file.cjs');
 const { decodePaperText, rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
@@ -138,7 +139,19 @@ function pageImageName(pageNumber) {
   return `page-${String(pageNumber).padStart(3, '0')}.png`;
 }
 
-function writeBundleFacsimile({ folder, facsimileDocuments, renderedPages }, pageCount, stopped) {
+async function writeFacsimileFile(destination, contents) {
+  // A Windows indexer or preview can briefly hold a newly exported Markdown file open.
+  const delays = [50, 100, 200, 400];
+  for (let attempt = 0; ; attempt++) {
+    try { writeFileAtomically(destination, contents()); return; }
+    catch (error) {
+      if (process.platform !== 'win32' || !['EACCES', 'EBUSY', 'EPERM'].includes(error.code) || attempt === delays.length) throw error;
+      await delay(delays[attempt]);
+    }
+  }
+}
+
+async function writeBundleFacsimile({ folder, facsimileDocuments, renderedPages }, pageCount, stopped) {
   const limit = Math.min(pageCount, maximumPreviewPages);
   const notice = ['Page images preserve the original layout.'];
   if (pageCount > limit) notice.push(`Previews are limited to the first ${limit} of ${pageCount} pages.`);
@@ -161,13 +174,14 @@ function writeBundleFacsimile({ folder, facsimileDocuments, renderedPages }, pag
     }
   }
   const facsimile = ['# Original PDF facsimile', `> ${notice.join(' ')}`, '[Open the exact original PDF](original.pdf)', ...pages].join('\n\n');
-  writeFileAtomically(path.join(folder, 'Original Pages.md'), `${facsimile}\n`);
+  await writeFacsimileFile(path.join(folder, 'Original Pages.md'), () => `${facsimile}\n`);
   for (const { name, heading } of facsimileDocuments) {
     const destination = path.join(folder, name);
-    const body = fs.readFileSync(destination, 'utf8');
-    const content = body.trim() ? body : '> No selectable text was found. Use an OCR parser to recover the text.';
-    const combined = `${facsimile}\n\n---\n\n# ${heading}\n\n${content}${content.endsWith('\n') ? '' : '\n'}`;
-    writeFileAtomically(destination, combined);
+    await writeFacsimileFile(destination, () => {
+      const body = fs.readFileSync(destination, 'utf8');
+      const content = body.trim() ? body : '> No selectable text was found. Use an OCR parser to recover the text.';
+      return `${facsimile}\n\n---\n\n# ${heading}\n\n${content}${content.endsWith('\n') ? '' : '\n'}`;
+    });
   }
 }
 

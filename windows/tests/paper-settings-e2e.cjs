@@ -458,12 +458,24 @@ async function run() {
     assert.equal(await autoCheck.isChecked(), wanted);
     assert.equal(readSettings().autoCheckUpdates, !wanted);
     assert.ok(await app.evaluate(() => global.__closePref.attempts >= 2));
-    await app.evaluate(() => { global.__closePref.mode = 'hold'; });
-    const closed = app.waitForEvent('close', { timeout: 20000 });
+    await app.evaluate(({ dialog }) => {
+      global.__closePref.mode = 'hold';
+      const show = dialog.showMessageBox.bind(dialog);
+      dialog.showMessageBox = (owner, options) => {
+        global.__closePref.prompt = { buttons: options.buttons, defaultId: options.defaultId, cancelId: options.cancelId };
+        return show(owner, options);
+      };
+    });
+    const closed = app.waitForEvent('close', { timeout: 35000 });
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
     await waitFor(() => app.evaluate(() => Boolean(global.__closePref.release)), 'retry waiting for settings storage');
+    await waitFor(() => app.evaluate(() => Boolean(global.__closePref.prompt)), 'native slow-save prompt while settings remain pending', 22000);
+    assert.deepEqual(await app.evaluate(() => global.__closePref.prompt), {
+      buttons: ['Keep waiting', 'Close without saving'], defaultId: 0, cancelId: 0
+    });
     assert.equal(await page.getByRole('dialog').isVisible(), true);
     assert.equal(readSettings().autoCheckUpdates, !wanted);
+    // The completed save must dismiss the real modal Windows dialog and close the reader on its own.
     await app.evaluate(() => { global.__closePref.mode = 'save'; global.__closePref.release(); });
     await closed; app = null;
     assert.equal(readSettings().autoCheckUpdates, wanted);
