@@ -4,6 +4,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { _electron: electron } = require('playwright-core');
 const { openPasteText, loadPastedText, revealSidebarSource, openWorkspaceView } = require('./sidebar-controls.cjs');
 
@@ -102,6 +104,15 @@ async function run() {
     assert.ok(saved.blocks.some(block => block.bookmark && block.notes?.some(item => item.body === note)));
     report.paper = id;
     checkpoint('handed the verified Internet download to the Windows shell with its bookmark and note saved');
-  } finally { await app?.close(); }
+    if (process.env.PAPERBRIDGE_VERIFY_WIZARD === 'true') {
+      // Keep the original reader alive during ShellExecute, just as when a person clicks this button.
+      const script = path.join(__dirname, 'finish-update-wizard.ps1');
+      const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      try {
+        const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-File', script], { windowsHide: true, timeout: 210000 });
+        console.log(stdout);
+      } catch (error) { console.error(error.stdout); throw error; }
+    }
+  } finally { if (app.process().exitCode === null) await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
