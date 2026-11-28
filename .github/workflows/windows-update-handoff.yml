@@ -55,6 +55,7 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "Initial Setup failed with exit code $($p.ExitCode)" }
           "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
       - name: Observe the Internet-marked download in the Windows shell
+        timeout-minutes: 8
         if: matrix.scenario != 'wizard'
         env:
           PAPERBRIDGE_VERIFY_WIZARD: 'true'

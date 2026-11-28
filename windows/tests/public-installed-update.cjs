@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const { createHash } = require('node:crypto');
 const { setTimeout: delay } = require('node:timers/promises');
 const { execFile } = require('node:child_process');
+const { once } = require('node:events');
 const { promisify } = require('node:util');
 const { _electron: electron } = require('playwright-core');
 const { openPasteText, loadPastedText, revealSidebarSource, openWorkspaceView } = require('./sidebar-controls.cjs');
@@ -143,10 +144,23 @@ async function run() {
       }
     }
   } finally {
-    if (app.process().exitCode === null) {
-      // This isolated runner never answers the Windows trust prompt. It may still own ShellExecute.
-      if (onClose) app.process().kill();
-      else await app.close();
+    const reader = app.process();
+    if (reader.exitCode === null && reader.signalCode === null) {
+      if (onClose) {
+        // The reader can still own ShellExecute while SmartScreen waits. Its
+        // renderer and GPU processes inherit Playwright pipes on Windows.
+        const taskkill = path.join(process.env.SystemRoot, 'System32', 'taskkill.exe');
+        await Promise.all([
+          once(reader, 'close', { signal: AbortSignal.timeout(15000) }),
+          promisify(execFile)(taskkill, ['/PID', String(reader.pid), '/T', '/F'], { windowsHide: true, timeout: 10000 })
+            .catch(error => { if (reader.exitCode === null && reader.signalCode === null) throw error; })
+        ]);
+        report.testReaderClosed = true;
+        fs.writeFileSync(reportFile, JSON.stringify(report, null, 2));
+        console.log('Closed the test reader process tree and its Playwright pipes.');
+      } else {
+        await app.close();
+      }
     }
   }
 }
