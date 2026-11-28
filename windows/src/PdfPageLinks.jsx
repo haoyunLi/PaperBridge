@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { MessageSquare } from 'lucide-react';
 import { pageLinks } from './pdfLinks.mjs';
 import './pdf-links.css';
 
@@ -44,6 +45,7 @@ export function PdfPageLinks({ pdf, number, onFollow }) {
       if (!link || pressed?.link !== link || Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) > 5 ||
           !window.getSelection()?.isCollapsed) return;
       event.preventDefault();
+      if (link.comment) layer.children[links.indexOf(link)]?.focus({ preventScroll: true });
       follow.current(link, number);
     }
     sheet.addEventListener('pointermove', move); sheet.addEventListener('pointerleave', leave);
@@ -56,14 +58,19 @@ export function PdfPageLinks({ pdf, number, onFollow }) {
   }, [links, number]);
   if (!links.length) return null;
   return <div ref={overlay} className="pdf-page-links">
-    {links.map(link => <a key={link.id} href={link.url || '#pdf-destination'} aria-label={link.label} title={link.label}
+    {links.map(link => {
+      const Control = link.comment ? 'button' : 'a';
+      const attributes = link.comment ? { type: 'button' } : { href: link.url || '#pdf-destination' };
+      return <Control key={link.id} {...attributes} aria-label={link.label} title={link.label}
       onClick={event => { event.preventDefault(); follow.current(link, number); }}
       style={{ left: link.left * 100 + '%', top: link.top * 100 + '%',
         width: (link.right - link.left) * 100 + '%', height: (link.bottom - link.top) * 100 + '%' }}>
+      {link.sticky && <MessageSquare className="pdf-comment-marker" aria-hidden="true" />}
       {link.areas.map((area, i) => <span key={i} style={{
         left: (area.left - link.left) / (link.right - link.left) * 100 + '%', top: (area.top - link.top) / (link.bottom - link.top) * 100 + '%',
         width: (area.right - area.left) / (link.right - link.left) * 100 + '%', height: (area.bottom - area.top) / (link.bottom - link.top) * 100 + '%'
       }} />)}
-    </a>)}
+      </Control>;
+    })}
   </div>;
 }

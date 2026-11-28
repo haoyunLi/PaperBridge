@@ -1,5 +1,9 @@
 # Windows 全软件功能复查
 
+## 原 PDF 中的审阅留言
+
+在同一份双页校准记录上，PDFKit 命中三处批注并读出三位作者和对应原文。Windows 0.2.123 点击便笺和高亮没有打开留言。0.2.124 的 Original 和 Paper 原页模式支持鼠标和键盘打开，关闭后焦点返回刚读过的批注。另在高亮内拖选「77 K」写下自己的笔记，重启后能从笔记定位到原句，三条审阅留言也可继续打开，归档 PDF 与输入文件逐字节相同。[Mac 原生记录](https://github.com/haoyunLi/PaperBridge/actions/runs/46114251452) · [Windows 打包版测试](tests/pdf-comments-e2e.cjs)
+
 ## PDF 命令链接与跨行引用
 
 Windows 0.2.123 依次激活维修记录里的六个命令链接，页码为 1 → 2 → 4 → 3 → 4 → 3 → 1，与原生 PDFKit 一致。两段分开的引用共享一个键盘焦点。缩放和窗口变窄后，中间无关的文字也不会打开 DOI。[Mac 实测](https://github.com/haoyunLi/PaperBridge/actions/runs/46113818959) · [Windows 实测](tests/pdf-named-actions-e2e.cjs)

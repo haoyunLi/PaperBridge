@@ -557,7 +557,7 @@ function capturePdfRange(host, range) {
     anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
 }
 
-function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onBack, onForward, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
+function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onComment, onBack, onForward, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
   const { pdf, error } = usePdfDocument(paper);
   const scroller = useRef(null);
   const activePage = useRef(0);
@@ -721,6 +721,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   async function followLink(link, fromPage) {
     const request = ++pendingLink.current;
     setLinkError('');
+    if (link.comment) { onComment(link.comment, fromPage); return; }
     if (link.url) { api.openPaperLink(link.url); return; }
     if (link.action === 'GoBack') { onBack(); return; }
     if (link.action === 'GoForward') { onForward(); return; }
@@ -1338,6 +1339,7 @@ function App() {
   const [tab, setTab] = useState('Paper');
   const [displayMode, setDisplayMode] = useState('bilingual');
   const [modal, setModal] = useState('');
+  const [pdfComment, setPdfComment] = useState(null);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [taskSetup, setTaskSetup] = useState(null);
   const modalRef = useRef(null);
@@ -1807,6 +1809,10 @@ function App() {
     }
     await refreshModels(settingsRef.current);
     return result;
+  }
+  function showPdfComment(comment, page) {
+    setPdfComment({ ...comment, page });
+    setModal('pdfComment');
   }
   function dismissModal() {
     if (modal === 'paragraphEdit') { cancelParagraphEdit(); return; }
@@ -4107,7 +4113,7 @@ function App() {
           {paper.type === 'pdf' && displayMode === 'source' ? <PdfView
             key={paper.id}
             paper={paper}
-            scope="paperPdf"
+            scope="paperPdf" onComment={showPdfComment}
             pageNumber={pageNumber}
             position={paper.position?.scrollByTab?.[pdfScrollKey('paperPdf', pageNumber)] || 0}
             restoreToken={readingRestoration.current}
@@ -4149,7 +4155,7 @@ function App() {
         {paper && tab === 'Original' && <PdfView
           key={paper.id}
           paper={paper}
-          scope="pdf"
+          scope="pdf" onComment={showPdfComment}
           pageNumber={pageNumber}
           position={paper.position?.scrollByTab?.[pdfScrollKey('pdf', pageNumber)] || 0}
           restoreToken={readingRestoration.current}
@@ -4196,7 +4202,11 @@ function App() {
     <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button id="inspector-undo-annotation" className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" aria-describedby="note-save-hint" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><div className="note-save-actions"><span id="note-save-hint" className={workspaceSave.status === 'error' ? 'error' : undefined}>{workspaceSave.status === 'error' ? 'Not saved to disk' : workspaceSave.status === 'saving' ? 'Saving note…' : 'Notes save automatically'}</span><button className="button blue" onClick={saveNote}>{workspaceSave.status === 'error' ? 'Retry note save' : 'Save note'}</button></div></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !trimLibraryText(termDraft)} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
-    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+      {modal === 'pdfComment' && pdfComment && <>
+        <p className="muted">Page {pdfComment.page}{pdfComment.author && <> · {pdfComment.author}</>}</p>
+        <p className="pdf-comment-body" dir="auto">{pdfComment.body}</p>
+      </>}
 
       {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onInstall={installLocalComponents} onDownload={model => { setPullModel(model.id); return downloadModel(model.id, model); }} onBackgroundStatus={setStatus} onBusyChange={handleOnboardingBusy} />}
       {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstall={installLocalComponents}

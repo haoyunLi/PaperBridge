@@ -5,6 +5,11 @@ const namedLinks = new Map([
   ['PrevPage', 'Previous PDF page'], ['GoBack', 'Previous reading location'], ['GoForward', 'Next reading location']
 ]);
 
+const commentKinds = new Map([
+  ['Text', 'PDF note'], ['Highlight', 'PDF highlight'], ['Underline', 'PDF underline'],
+  ['StrikeOut', 'PDF strikethrough'], ['Squiggly', 'PDF squiggly underline']
+]);
+
 function pageArea(rect, viewport) {
   const [x1, y1] = viewport.convertToViewportPoint(rect[0], rect[1]);
   const [x2, y2] = viewport.convertToViewportPoint(rect[2], rect[3]);
@@ -28,17 +33,26 @@ export function pageLinks(annotations, viewport) {
   const links = [];
   for (const item of annotations) {
     // PDF annotation flags 1, 2 and 32 suppress screen interaction.
-    if (item.subtype !== 'Link' || (item.annotationFlags & (1 | 2 | 32)) || !Array.isArray(item.rect) ||
+    if ((item.annotationFlags & (1 | 2 | 32)) || !Array.isArray(item.rect) ||
         item.rect.length !== 4 || !item.rect.every(Number.isFinite)) continue;
+    const bounds = pageArea(item.rect, viewport);
+    if (!bounds) continue;
+    const fragments = linkAreas(item.quadPoints, viewport);
+    const geometry = { ...bounds, areas: fragments.length ? fragments : [bounds] };
+    if (item.subtype !== 'Link') {
+      const kind = commentKinds.get(item.subtype), body = item.contentsObj?.str;
+      if (!kind || !body?.trim()) continue;
+      const author = item.titleObj?.str?.trim();
+      const label = author ? kind + ' by ' + author : kind;
+      links.push({ id: item.id, label, comment: { kind, body, author }, sticky: item.subtype === 'Text' && !item.hasAppearance, ...geometry });
+      continue;
+    }
     const url = externalPaperURL(item.url);
     const dest = item.dest;
     const action = namedLinks.has(item.action) ? item.action : null;
     if (!url && !action && typeof dest !== 'string' && !Array.isArray(dest)) continue;
-    const bounds = pageArea(item.rect, viewport);
-    if (!bounds) continue;
-    const areas = linkAreas(item.quadPoints, viewport);
     const label = item.contentsObj?.str?.trim() || item.titleObj?.str?.trim() || url || namedLinks.get(action) || 'Go to linked PDF location';
-    links.push({ id: item.id, label, url, dest, action, ...bounds, areas: areas.length ? areas : [bounds] });
+    links.push({ id: item.id, label, url, dest, action, ...geometry });
   }
   return links;
 }

@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+论文自带的便笺、带留言的高亮和下划线可在两个原 PDF 视图中打开。作者和留言来自文件，Research Inspector 仅保存自己的笔记。[原生和 Windows 对照](tests/pdf-comments-e2e.cjs)
+
 原 PDF 的命令链接已用同一份维修记录在 PDFKit 和 Windows 打包版核对。首页、末页、前后翻页和前后阅读位置均到达同一页。跨两行且中间隔有正文的 DOI 只响应两个引用片段。[实机对照](tests/pdf-named-actions-e2e.cjs)
 
 当前验收目标是功能与可执行操作的一对一对应；排版按 Windows 字体、窗口大小及显示缩放适配。Mac 的尺寸和间距作为设计参考，不以像素一致作为功能对齐的条件。

@@ -12,6 +12,20 @@ test('link hit areas respect the rendered page orientation, crop and annotation 
   assert.deepEqual({ left, top, right, bottom }, { left: .1, top: 0, right: .2, bottom: .1 });
 });
 
+test('source comments preserve author text and ignore popup children, hidden annotations and empty markup', async () => {
+  const { pageLinks } = await import('../src/pdfLinks.mjs');
+  const viewport = { width: 200, height: 300, convertToViewportPoint: (x, y) => [x, 300 - y] };
+  const item = { id: 'a', rect: [12, 120, 70, 200], subtype: 'Text', titleObj: { str: 'Reviewer' }, contentsObj: { str: '  77 K\n  next run.  ' } };
+  const variants = [item, { ...item, id: 'popup', subtype: 'Popup' }, { ...item, id: 'hidden', annotationFlags: 32 },
+    { ...item, id: 'empty', subtype: 'Highlight', contentsObj: { str: '  ' } },
+    { ...item, id: 'underline', subtype: 'Underline', titleObj: null }];
+  const controls = pageLinks(variants, viewport);
+  assert.deepEqual(controls.map(control => control.id), ['a', 'underline']);
+  assert.equal(controls[0].comment.body, item.contentsObj.str);
+  assert.equal(controls[0].label, 'PDF note by Reviewer');
+  assert.equal(controls[1].label, 'PDF underline');
+});
+
 test('a named PDF destination resolves once and preserves its rotation, zoom or fit rectangle', async () => {
   const { pdfLinkDestination } = await import('../src/pdfLinks.mjs');
   const ref = { num: 9, gen: 0 };
