@@ -26,9 +26,8 @@ function Save-Step($message) {
     $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportFile -Encoding UTF8
 }
 function Get-Controls($window, $controlType) {
-    $condition = New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, $controlType)
-    $window.FindAll([Windows.Automation.TreeScope]::Descendants, $condition) |
-        Where-Object { $_.Current.IsEnabled -and !$_.Current.IsOffscreen }
+    $window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+        Where-Object { $_.Current.ControlType.Id -eq $controlType.Id -and $_.Current.IsEnabled }
 }
 if (!$ObservePublic) {
     Save-Step 'Opening the release build from the build artifact after verifying its public SHA-256'
@@ -59,6 +58,12 @@ while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
         Save-Step "Visible installer window: $($window.Current.Name)"
         if ($ObservePublic) { $wizard.result = 'public installer visible'; Save-Step 'The public Setup window is visible'; exit 0 }
     }
+    $scope = Get-Controls $window ([Windows.Automation.ControlType]::RadioButton) |
+        Where-Object { ($_.Current.Name -replace '&','') -match 'only for me|just for me|current user' } | Select-Object -First 1
+    if ($scope) {
+        $choice = $scope.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
+        if (!$choice.Current.IsSelected) { $choice.Select() }
+    }
     $buttons = @(Get-Controls $window ([Windows.Automation.ControlType]::Button))
     $button = $buttons | Where-Object { ($_.Current.Name -replace '&','').Trim() -match '^(Next\s*>?|Install|Finish)$' } | Select-Object -First 1
     if (!$button) { Start-Sleep -Milliseconds 400; continue }
@@ -71,10 +76,6 @@ while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
         $checked = $run.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
         if ($checked -ne [Windows.Automation.ToggleState]::On) { throw 'Run PaperBridge was not selected by default.' }
         Save-Step 'Run PaperBridge was selected on the Finish page'
-    } else {
-        $scope = Get-Controls $window ([Windows.Automation.ControlType]::RadioButton) |
-            Where-Object { ($_.Current.Name -replace '&','') -match 'only for me|just for me|current user' } | Select-Object -First 1
-        if ($scope) { $scope.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern).Select() }
     }
     $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
     Save-Step "Invoked $action in the verified installer"
@@ -97,7 +98,9 @@ if (!$finished) {
         foreach ($item in $other) { Write-Host "Owned dialog: $($item.Current.Name)" }
         if ($candidate.Current.Name -match 'Setup|Security|Windows protected|SmartScreen|Open File' -or $owner.ProcessName -eq 'PaperBridge') {
             $labels = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
-            Write-Host (($labels | ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -First 25) -join ' | ')
+            Write-Host (($labels | Where-Object { $_.Current.Name } | Select-Object -First 25 | ForEach-Object {
+                "$($_.Current.Name) [$($_.Current.ControlType.ProgrammaticName), enabled=$($_.Current.IsEnabled), offscreen=$($_.Current.IsOffscreen)]"
+            }) -join ' | ')
         }
     }
     throw "The verified installer did not reach Finish. Last page action: $lastButton"
