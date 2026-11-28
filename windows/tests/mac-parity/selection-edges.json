@@ -1,0 +1,26 @@
+[
+  {
+    "scope": "reader",
+    "side": "original",
+    "context": "The benchmark records  3.4 ms  for each scan.",
+    "quote": "  3.4 ms  "
+  },
+  {
+    "scope": "reader",
+    "side": "translation",
+    "context": "在本组试验中，测得 3.4 毫秒 ，随后记录结果。",
+    "quote": " 3.4 毫秒 "
+  },
+  {
+    "scope": "summarySource",
+    "side": "original",
+    "context": "🔎 The summary reports  the same value  in both samples.",
+    "quote": "  the same value  "
+  },
+  {
+    "scope": "summaryTarget",
+    "side": "translation",
+    "context": "🔎 两组样品报告了　相同的结果　，见表中数值。",
+    "quote": "　相同的结果　"
+  }
+]

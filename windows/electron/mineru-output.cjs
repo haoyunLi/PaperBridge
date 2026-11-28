@@ -1,0 +1,198 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
+const yauzl = require('yauzl');
+const { decodePaperText, rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, maxMarkdownBytes } = require('./markdown-assets.cjs');
+
+const structuredOutput = 'structured_content.json';
+const maxMetadataBytes = maxMarkdownBytes;
+const maxImageBytes = 8_000_000;
+const maxArchiveEntries = 50_000;
+const maxAttachmentBytes = 256 * 1024 * 1024;
+const maxRetainedBytes = 1024 * 1024 * 1024;
+
+function regularArchiveFile(entry) {
+  const host = entry.versionMadeBy >>> 8;
+  const unixType = (host === 3 || host === 19) ? (entry.externalFileAttributes >>> 16) & 0o170000 : 0;
+  return !entry.fileName.endsWith('/') && !(entry.externalFileAttributes & 0x410)
+    && (!unixType || unixType === 0o100000) && entry.canDecodeFileData();
+}
+
+async function unpackEntry(zip, entry, folder, checkActive) {
+  checkActive();
+  const destination = path.join(folder, entry.fileName);
+  await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+  const file = await fs.promises.open(destination, 'wx');
+  try {
+    await pipeline(await zip.openReadStreamPromise(entry), async function* (source) {
+      for await (const chunk of source) {
+        checkActive();
+        yield chunk;
+      }
+    }, file.createWriteStream());
+  } catch (error) {
+    await file.close().catch(() => {});
+    await fs.promises.unlink(destination).catch(() => {});
+    throw error;
+  }
+  return destination;
+}
+
+async function unpackMineruArchive(archive, folder, checkActive) {
+  const zip = await yauzl.openPromise(archive, { strictFileNames: true, autoClose: false });
+  try {
+    if (zip.entryCount > maxArchiveEntries) throw new Error('MinerU output contains too many archive entries.');
+    const entries = new Map();
+    for await (const entry of zip.eachEntry()) {
+      checkActive();
+      if (!regularArchiveFile(entry)) continue;
+      const key = archivePathKey(entry.fileName);
+      if (key) entries.set(key, entries.has(key) ? null : entry);
+    }
+    const source = entries.get('markdown.md');
+    if (!source) throw new Error('MinerU finished without a unique Markdown file.');
+    if (source.uncompressedSize > maxMetadataBytes) throw new Error('The MinerU Markdown output is too large to read.');
+    checkActive();
+    await fs.promises.mkdir(folder);
+    const markdown = await unpackEntry(zip, source, folder, checkActive);
+    entries.delete('markdown.md');
+    const selected = new Set([structuredOutput]);
+    function selectReferences(content, from) {
+      visitLocalAssets(content, from, relative => {
+        const key = archivePathKey(relative);
+        if (key && entries.has(key)) selected.add(key);
+      });
+    }
+    selectReferences(decodePaperText(await fs.promises.readFile(markdown)), source.fileName);
+    // Preserve the standard full-size figures as well as attachments named by the document.
+    for (const key of entries.keys()) if (/^images\/[a-z0-9_-]+\.(?:png|jpe?g|gif|webp)$/.test(key)) selected.add(key);
+    let selectedBytes = 0;
+    for (const key of selected) {
+      const entry = entries.get(key);
+      const limit = key === structuredOutput ? maxMetadataBytes : maxAttachmentBytes;
+      if (!entry || entry.uncompressedSize > limit || selectedBytes + entry.uncompressedSize > maxRetainedBytes) continue;
+      selectedBytes += entry.uncompressedSize;
+      checkActive();
+      try {
+        const file = await unpackEntry(zip, entry, folder, checkActive);
+        if (isMarkdownFile(key) && entry.uncompressedSize <= maxMarkdownBytes) {
+          selectReferences(decodePaperText(await fs.promises.readFile(file)), entry.fileName);
+        }
+      } catch {
+        // Optional unreadable files stay as missing links. Cancellation still stops the import.
+        checkActive();
+      }
+    }
+    checkActive();
+    return markdown;
+  } finally { zip.close(); }
+}
+
+function* mineruMarkdownFiles(folder) {
+  if (!fs.existsSync(folder)) return;
+  for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+    if (entry.name.startsWith('.')) continue;
+    const file = path.join(folder, entry.name);
+    if (entry.isDirectory()) yield* mineruMarkdownFiles(file);
+    if (entry.isFile() && path.extname(entry.name).toLowerCase() === '.md') yield file;
+  }
+}
+
+function findMineruMarkdown(folder, preferredStem) {
+  const expected = preferredStem.toLowerCase();
+  let bestFile = null;
+  let bestScore = 0;
+  for (const file of mineruMarkdownFiles(folder)) {
+    const size = fs.statSync(file).size;
+    if (!size) continue;
+    const stem = path.parse(file).name.toLowerCase();
+    const score = size + (stem === expected ? 10_000_000 : 0) + (/full|content/.test(stem) ? 1_000_000 : 0);
+    if (score > bestScore) { bestFile = file; bestScore = score; }
+  }
+  return bestFile;
+}
+
+const imageTypes = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp' };
+
+function embedMineruImages(markdown, file, resourceRoot = path.dirname(file), options) {
+  const directory = fs.realpathSync(resourceRoot);
+  const from = path.relative(directory, fs.realpathSync(file)).split(path.sep).join('/');
+  return rewriteAssetUrls(markdown, url => {
+    const reference = localAssetReference(url, from);
+    if (!reference || !archivePathKey(reference.relative)) return url;
+    const mime = imageTypes[path.extname(reference.relative).toLowerCase()];
+    if (!mime) return url;
+    const asset = assetFile(directory, reference.relative);
+    try {
+      if (asset && asset.size <= maxImageBytes) return `data:${mime};base64,${fs.readFileSync(asset.file).toString('base64')}`;
+    } catch { /* An unavailable figure must not prevent reading the extracted text. */ }
+    return url;
+  }, options);
+}
+
+function readMineruMarkdown(file, resourceRoot) {
+  return embedMineruImages(decodePaperText(fs.readFileSync(file)), file, resourceRoot);
+}
+
+function readMineruPageHints(markdownFile) {
+  const directory = fs.realpathSync(path.dirname(markdownFile));
+  const stem = path.basename(markdownFile, path.extname(markdownFile));
+  const validIndex = index => Number.isSafeInteger(index) && index >= 0 && index < 100_000;
+  for (const name of [structuredOutput, `${stem}_content_list.json`]) {
+    const asset = assetFile(directory, name);
+    if (!asset || asset.size > maxMetadataBytes) continue;
+    try {
+      const data = JSON.parse(fs.readFileSync(asset.file, 'utf8'));
+      const hints = [];
+      const add = (index, values, lastIndex = index) => {
+        if (!validIndex(index)) return;
+        for (const text of values) if (typeof text === 'string' && text.trim()) {
+          hints.push({ page: index + 1, ...(lastIndex > index && { endPage: lastIndex + 1 }), text });
+        }
+      };
+      const list = value => Array.isArray(value) ? value : [];
+      if (Array.isArray(data)) {
+        for (const entry of data) {
+          if (!entry) continue;
+          add(entry.page_idx, [entry.text, ...list(entry.img_caption), ...list(entry.table_caption), ...list(entry.list_items)]);
+        }
+      } else {
+        let continued = null;
+        const addContinued = () => {
+          if (!continued || continued.parts.length < 2) return;
+          const spaced = continued.parts.join(' ');
+          // The exported Markdown may remove a printed hyphen at an explicit
+          // continuation. Match both spellings without editing the saved text.
+          const joined = continued.parts.reduce((left, right) => /\p{L}[-‐]$/u.test(left.trimEnd()) && /^\p{Ll}/u.test(right.trimStart()) ?
+            left.trimEnd().slice(0, -1) + right.trimStart() : left + ' ' + right);
+          add(continued.index, joined === spaced ? [spaced] : [spaced, joined], continued.lastIndex);
+        };
+        for (const page of list(data?.pages)) {
+          if (!validIndex(page?.page_idx)) continue;
+          for (const block of list(page?.blocks)) {
+            if (!block) continue;
+            add(page.page_idx, [block.content, ...list(block.captions).map(caption => caption?.content), ...list(block.footnotes).map(note => note?.content)]);
+            if (block.type === 'text' && typeof block.content === 'string') {
+              if (continued && block.continues_prev === true && !block.anchor &&
+                  page.page_idx >= continued.lastIndex && page.page_idx <= continued.lastIndex + 1) {
+                continued.parts.push(block.content);
+                continued.lastIndex = page.page_idx;
+              } else {
+                addContinued();
+                continued = { index: page.page_idx, lastIndex: page.page_idx, parts: [block.content] };
+              }
+            } else if (block.type === 'list') {
+              addContinued();
+              continued = null;
+            }
+          }
+        }
+        addContinued();
+      }
+      if (hints.length) return hints;
+    } catch { /* An unreadable sidecar does not affect the Markdown. */ }
+  }
+  return [];
+}
+
+module.exports = { mineruMarkdownFiles, findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMineruArchive, embedMineruImages, imageTypes, maxImageBytes };

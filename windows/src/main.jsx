@@ -1,0 +1,4524 @@
+import { characterPrefix, trimLibraryText } from '../electron/library-metadata.mjs';
+import { taggedPdfText } from './pdfBidi.mjs';
+import { useWholePdfSelection } from './useWholePdfSelection.mjs';
+import { PdfPageLinks } from './PdfPageLinks.jsx';
+import { pdfLinkDestination } from './pdfLinks.mjs';
+import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { documentLinkTarget, revealMarkdownTarget } from './markdownLinks.mjs';
+import { capturePreviewAnchor, paperModeViewport, restorePreviewAnchor, storePaperViewport } from './paperScroll.mjs';
+import { isMineruReady } from '../electron/mineru-readiness.mjs';
+import { externalPaperURL } from '../electron/paper-link.mjs';
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
+import { markdownPlugins, rehypePlugins } from './markdownRendering.mjs';
+import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark, Highlighter, MessageSquareText, Download, X, PanelRightClose, PanelRightOpen, ArrowRightLeft, Play, Square, RefreshCw, FileText, Library, ChevronLeft, ChevronRight, List, Sparkles, Pencil, Trash2, Undo2, Focus, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Check, AlertCircle, HardDrive, ZoomIn, ZoomOut } from 'lucide-react';
+import { findNumberedAuthorBlock } from './authorByline.mjs';
+import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
+import { omitClippedFigureText } from './pdfFigureText.mjs';
+import { rotatedSelectionContent, usesPageRotation, verticalSelectionContent, wholePdfPageText } from './pdfLayout.mjs';
+import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, canRecheckPdfPageGap, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
+import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
+import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
+import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, isPdfListing, pdfFootnoteMarker } from './text.mjs';
+import { translationSystem, selectionTranslationSystem, translationPrompt, selectionTranslationCacheVersion, selectionContext, spansCompleteSentences, selectionTranslationPrompt, strictSelectionTranslationPrompt, isLikelyOverexpandedSelection, explainPrompt, summaryPrompt, mergeSummaryPrompt, summaryQuotePrompt, onlyProtectedMarkup, restoreMarkdown, markdownTranslationPrompt, omitInlineImageData, connectedTranslationPrompt } from './prompts.mjs';
+import { libraryLabel, referenceBlockIds, sectionRanges, overviewSectionIds, translationRangeIds, qualityIssues, summaryNeedsTextRefresh, markdownSummaryTextVersion, legacySummaryTextNotice, staleSummaryNotice, summarySourceBlocks, summarySourceBatches, validatedSummaryQuote, summaryQuoteMatch, parseSummaryClaims, summarySourceCandidates, claimsMarkdown, revalidateSummaryClaims, remapSummaryEvidence, reflowBlock, mergeBlocks, editedParagraphs } from './paper.mjs';
+import { analysisSourceText, anchorText, locateMineruPages, mineruPageMapVersion, protectStructuredMarkdown, pythonImportBeforeListing, readableMineruBlocks, restoreStructuredTranslations, usesSharedMarkdown, withSharedMarkdownTranslation } from './academicMarkdown.mjs';
+import { PARSER_SETTING_KEYS, TASK_SETTING_KEYS, snapshotPaperSettings, restorePaperSettings } from './paperSettings.mjs';
+import { referenceCoverageVersion, reviewSavedReferenceCoverage } from './references.mjs';
+import { switchOutputSettings, switchReadingSource, migrateExplanations, cachedExplanation, explanationKey } from './outputCache.mjs';
+import { createUndoEntry, applyUndoEntry, recordUndoEntry, remainingUndoEntries, remapPositionAfterStructureChange } from './paperUndo.mjs';
+import { markdownDocuments, markdownExportName } from './exportDocuments.mjs';
+import { normalizeOutputLanguage, commonOutputLanguage, migrateOutputLanguages } from './outputLanguages.mjs';
+import { applySelectionNote, findSelectionNote, noteSelectionIdentity, sameNoteSelection, validNoteSelection, viewText } from './noteAnnotations.mjs';
+import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords, markSavedAnnotationRecordsForReview, restoreSavedAnnotationQuote } from './savedAnnotations.mjs';
+import { annotationCreationTime } from './annotationCreationTime.mjs';
+import { createPaperSaveQueue } from './paperSaveQueue.mjs';
+import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
+import { firstSelectableParagraphID, isSelectableParagraphID, ocrCoverageForPage, paragraphOnPdfPage, paragraphPreview, resolveSelectedParagraphID } from './paragraphSelection.mjs';
+import SetupPanel from './SetupPanel.jsx';
+import Onboarding from './Onboarding.jsx';
+import SettingsPanel from './SettingsPanel.jsx';
+import { ReadingAppearancePopover } from './ReadingAppearance.jsx';
+import readingAppearanceDefaults from '../electron/reading-appearance.json';
+import { readerLineHeight } from '../electron/reading-appearance.mjs';
+import { modelSettingsPatch } from './modelCatalog.mjs';
+import { hasOllamaModel } from '../electron/ollama-models.mjs';
+import { activeAIModel, aiCacheNamespace, aiServiceStatus, translationInstructions, aiTaskSetupIssue, isGlobalAIError, isOllamaMemoryError, isOllamaGenerationConnectionError } from './aiSettings.mjs';
+import { mineruImportStage } from './importProgress.mjs';
+import { connectedBatchVersion, connectedRetryExcerpts, localConnectedRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
+import { filteredReaderBlocks, searchableText, searchKey } from './textSearch.mjs';
+import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
+import './onboarding.css';
+import 'katex/dist/katex.min.css';
+import './style.css';
+import './hardware.css';
+import './parity.css';
+import './save-status.css';
+import ReaderToolbar from './ReaderToolbar.jsx';
+import ReaderParagraph from './ReaderParagraph.jsx';
+import ReaderBlockActions from './ReaderBlockActions.jsx';
+import ParagraphEditor from './ParagraphEditor.jsx';
+import { documentOutline } from './documentOutline.mjs';
+import { PaperAttachment, usePaperAttachment } from './PaperAttachment.jsx';
+import './paper-attachment.css';
+import './document-outline.css';
+import './sidebar-layout.css';
+import { SidebarLanguage, SidebarAIStatus } from './SidebarControls.jsx';
+import './compact-workspace.css';
+import SidebarSource from './SidebarSource.jsx';
+
+if (import.meta.env.DEV) document.title = 'PaperBridge Dev';
+const api = window.paperBridge;
+const ONBOARDING_VERSION = 1;
+const selectionIdentity = value => value ? JSON.stringify([value.scope, value.id, value.page, value.kind, value.offset, value.text, value.anchors && pdfAnchorKey(value), value.renderedAnchor, value.displayMode, value.sourceMode]) : '';
+const pdfScrollKey = (scope, page) => `Pdf:${scope}:${page}`;
+const pdfZoomStep = 25;
+const pdfFitZoom = 100;
+const pdfMinZoom = 50;
+const pdfMaxZoom = 250;
+const maxPdfBitmapPixels = 8_000_000;
+const maxPdfBitmapSide = 4096;
+const pdfZoomPercent = value => Number.isFinite(value)
+  ? Math.max(pdfMinZoom, Math.min(pdfMaxZoom, Math.round(value / pdfZoomStep) * pdfZoomStep)) : pdfFitZoom;
+const pdfOffsetAtFit = (host, page, zoom) => Math.max(0, host.scrollTop - page.offsetTop) * pdfFitZoom / zoom;
+const languages = ['English', 'Simplified Chinese', 'Traditional Chinese', 'Japanese', 'Korean', 'French', 'German', 'Spanish', 'Italian', 'Portuguese', 'Russian'];
+const richHighlights = new Map();
+const annotationStyles = ['amber', 'teal', 'blue', 'coral', 'note'];
+const currentHighlightColors = ['amber', 'teal', 'coral'];
+
+function safeMarkdownUrl(url, key) { return key === 'src' && /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=]+$/i.test(url) ? url : defaultUrlTransform(url); }
+function refreshRichHighlights() {
+  if (!CSS.highlights) return;
+  for (const style of annotationStyles) {
+    const ranges = [...richHighlights.values()].flatMap(entry => entry[style]);
+    if (ranges.length) {
+      const highlight = new Highlight(...ranges);
+      if (style === 'note') highlight.priority = 1;
+      CSS.highlights.set(`paperbridge-${style}`, highlight);
+    } else CSS.highlights.delete(`paperbridge-${style}`);
+  }
+}
+function hiddenSelectionText(node) {
+  return (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement)?.closest('.katex-mathml, [data-selection-ignore]');
+}
+function textWalker(root, visibleOnly) {
+  return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, visibleOnly ? {
+    acceptNode: node => hiddenSelectionText(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  } : null);
+}
+const readingKeys = {
+  ArrowLeft: ['left', 'character', 'word'],
+  ArrowRight: ['right', 'character', 'word'],
+  ArrowUp: ['backward', 'line', 'paragraph'],
+  ArrowDown: ['forward', 'line', 'paragraph'],
+  Home: ['backward', 'lineboundary'],
+  End: ['forward', 'lineboundary']
+};
+function readingBoundary(root, end) {
+  if (!root) return null;
+  const walker = textWalker(root, true);
+  let boundary;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent.trim()) continue;
+    boundary = node;
+    if (!end) break;
+  }
+  return boundary;
+}
+function moveReadingSelection(event, region, initialRegion, pdf) {
+  const key = readingKeys[event.key];
+  if (!Array.isArray(key) || event.defaultPrevented || event.altKey || event.metaKey || event.isComposing || !region) return false;
+  const selected = window.getSelection();
+  if (!selected) return false;
+  const inside = node => region.contains(node) && !hiddenSelectionText(node) && (!pdf || Number.isInteger(pdfRangeEndpoint(node)));
+  const hasCaret = inside(selected.anchorNode) && inside(selected.focusNode);
+  // Keep ordinary vertical navigation and Home/End scrolling outside a selection.
+  if (!event.shiftKey && (!hasCaret || (selected.isCollapsed && key[1] !== 'character'))) return false;
+  if (!hasCaret) {
+    const start = initialRegion && readingBoundary(initialRegion, false);
+    if (!start) return false;
+    selected.collapse(start, 0);
+  }
+  event.preventDefault();
+  const previous = [selected.anchorNode, selected.anchorOffset, selected.focusNode, selected.focusOffset];
+  if (event.ctrlKey && !key[2]) {
+    const end = event.key === 'End';
+    const edge = readingBoundary(pdf ? initialRegion : region, end);
+    if (edge) selected[event.shiftKey ? 'extend' : 'collapse'](edge, end ? edge.length : 0);
+  } else {
+    // Use Chromium's character, word and visual line boundaries.
+    selected.modify(event.shiftKey ? 'extend' : 'move', key[0], event.ctrlKey ? key[2] : key[1]);
+  }
+  if (!inside(selected.anchorNode) || !inside(selected.focusNode)) selected.setBaseAndExtent(...previous);
+  return true;
+}
+function domText(root, visibleOnly) {
+  if (!root || !visibleOnly) return root?.textContent || '';
+  const walker = textWalker(root, true);
+  let text = '';
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) text += node.textContent;
+  return text;
+}
+function annotationRanges(root, annotations, source, { pdf = false } = {}) {
+  const walker = textWalker(root, true);
+  const nodes = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    nodes.push({ node, start: nodes.length ? nodes.at(-1).end : 0, end: 0 });
+    nodes.at(-1).end = nodes.at(-1).start + node.textContent.length;
+  }
+  const text = nodes.map(item => item.node.textContent).join('');
+  const result = Object.fromEntries(annotationStyles.map(style => [style, []]));
+  const highlights = [], notes = [];
+  for (const item of annotations) {
+    const color = item.color || (typeof item.body === 'string' && item.body.trim() ? 'note' : null);
+    if (!Object.hasOwn(result, color)) continue;
+    const start = markdownAnnotationOffset(text, item, source);
+    if (start === null) continue;
+    const span = { start, end: start + item.text.length, color };
+    (color === 'note' ? notes : highlights).push(span);
+  }
+  // PDFKit draws each highlight annotation independently on the printed page.
+  const painted = pdf ? highlights : visibleHighlightSpans(highlights);
+  for (const span of [...painted, ...notes]) {
+    const start = nodes.find(node => node.end > span.start);
+    const end = nodes.find(node => node.end >= span.end);
+    if (!start || !end) continue;
+    const range = document.createRange();
+    range.setStart(start.node, span.start - start.start);
+    range.setEnd(end.node, span.end - end.start);
+    result[span.color].push(range);
+  }
+  return result;
+}
+function useRichAnnotations(host, content, annotations, source) {
+  const highlightKey = useRef({});
+  useEffect(() => {
+    if (!annotations?.length || !host.current || !CSS.highlights) return;
+    richHighlights.set(highlightKey.current, annotationRanges(host.current, annotations, source));
+    refreshRichHighlights();
+    return () => { richHighlights.delete(highlightKey.current); refreshRichHighlights(); };
+  }, [host, content, annotations, source]);
+}
+function openPaperLink(event) {
+  if (event.defaultPrevented || event.button > 1) return;
+  const link = event.target.closest?.('a[href]');
+  if (!link || !event.currentTarget.contains(link)) return;
+  const href = link.getAttribute('href');
+  const fragment = href.startsWith('#');
+  const url = fragment ? null : externalPaperURL(href);
+  if (!fragment && !url) return;
+  event.preventDefault();
+  const selection = window.getSelection();
+  if (event.detail > 0 && selection && !selection.isCollapsed && selection.containsNode(link, true)) return;
+  if (fragment) {
+    const target = documentLinkTarget(link, href);
+    if (target) {
+      revealMarkdownTarget(target);
+      if (!target.hasAttribute('tabindex')) target.tabIndex = -1;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+  } else api.openPaperLink(url);
+}
+
+function Markdown({ children, annotations, annotationSource = children }) {
+  const host = useRef(null);
+  useRichAnnotations(host, children, annotations, annotationSource);
+  return <div ref={host} data-markdown-host onClick={openPaperLink} onAuxClick={openPaperLink}><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
+}
+function short(text, count = 92) {
+  if (!text || text.length <= count) return text;
+  const prefix = characterPrefix(text, count);
+  return prefix === text ? text : prefix + '…';
+}
+function afterReadingLayout(host, restore) {
+  requestAnimationFrame(() => {
+    const pendingFigures = [...(host?.querySelectorAll('img[src^="data:image/"]') || [])].filter(image => !image.complete);
+    // Embedded MinerU figures can grow the preview after its text is ready.
+    if (pendingFigures.length) void Promise.allSettled(pendingFigures.map(image => image.decode())).then(() => requestAnimationFrame(restore));
+    else requestAnimationFrame(restore);
+  });
+}
+function domRangeIn(root, range, { visibleOnly = false, trimEdges = false } = {}) {
+  if (!root || !range || !root.contains(range.startContainer) || !root.contains(range.endContainer)) return null;
+  if (visibleOnly && (hiddenSelectionText(range.startContainer) || hiddenSelectionText(range.endContainer))) return null;
+  const raw = domText(range.cloneContents(), visibleOnly);
+  if (!raw.trim()) return null;
+  const text = trimEdges ? raw.trim() : raw;
+  const before = document.createRange();
+  before.selectNodeContents(root);
+  before.setEnd(range.startContainer, range.startOffset);
+  const offset = domText(before.cloneContents(), visibleOnly).length + (trimEdges ? raw.length - raw.trimStart().length : 0);
+  return { text, offset, quote: visibleOnly ? renderedSelectionQuote(range, text) : undefined, context: domText(root, visibleOnly) };
+}
+// The visible selection carries paragraph breaks, code lines and table separators.
+// Keep textContent-based offsets for exact annotation navigation.
+function renderedSelectionQuote(range, text) {
+  const element = node => node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  const first = element(range.startContainer), last = element(range.endContainer);
+  if (!first?.closest('[data-markdown-host]') || !last?.closest('[data-markdown-host]')) return undefined;
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return undefined;
+  const current = selection.getRangeAt(0);
+  if (current.compareBoundaryPoints(Range.START_TO_START, range) !== 0 ||
+      current.compareBoundaryPoints(Range.END_TO_END, range) !== 0) return undefined;
+  const quote = selection.toString();
+  if (!quote || quote === text || quote.replace(/\s/g, '') !== text.replace(/\s/g, '')) return undefined;
+  // Chromium inserts line breaks between boxes in inline equations. The
+  // visible math text already follows the printed formula in document order.
+  if (first.closest('.katex') || last.closest('.katex') || range.cloneContents().querySelector('.katex')) return undefined;
+  return quote;
+}
+function textSelectionOffsets(captured, source, markdown) {
+  return selectionOffsets(captured, matchingTextOffset(captured.context, source, captured.text, captured.offset), markdown, source);
+}
+function textRangeAt(root, offset, length, visibleOnly = false) {
+  if (!root || !Number.isInteger(offset) || offset < 0 || !Number.isInteger(length) || length <= 0) return null;
+  const walker = textWalker(root, visibleOnly);
+  let node; let seen = 0; let first = null; let last = null;
+  while ((node = walker.nextNode())) {
+    const next = seen + node.textContent.length;
+    if (!first && next > offset) first = { node, at: offset - seen };
+    if (first && next >= offset + length) { last = { node, at: offset + length - seen }; break; }
+    seen = next;
+  }
+  if (!first || !last) return null;
+  const range = document.createRange();
+  range.setStart(first.node, first.at);
+  range.setEnd(last.node, last.at);
+  return range;
+}
+function readablePdfRange(range) {
+  const ancestor = range.commonAncestorContainer;
+  if ((ancestor.nodeType === Node.ELEMENT_NODE ? ancestor : ancestor.parentElement)?.closest('[data-pdf-clipped]')) return '';
+  const fragment = range.cloneContents();
+  for (const clipped of fragment.querySelectorAll('[data-pdf-clipped]')) clipped.remove();
+  for (const lineBreak of fragment.querySelectorAll('br')) lineBreak.replaceWith(' ');
+  return fragment.textContent.replace(/\s+/g, ' ').trim();
+}
+function pdfSelectionContent(root, range, text, offset, pageText) {
+  // The visible quote includes line breaks represented by elements, separate from saved text offsets.
+  const quote = readablePdfRange(range);
+  const start = Math.max(0, offset - 300);
+  const end = Math.min(pageText.length, offset + text.length + 300);
+  const context = textRangeAt(root, start, end - start);
+  return { text, offset, pageText, quote: quote !== text ? quote : undefined, context: context ? readablePdfRange(context) : quote };
+}
+function validViewAnchor(paper, item) {
+  if (item.scope === 'paperArticle') return !item.needsReview && paperArticleAnchorAvailable(paper, item);
+  const source = viewText(paper, item.scope);
+  return !item.needsReview && textAnchorAvailable(item, source, source);
+}
+function markdownViewTab(scope) {
+  if (scope === 'paperArticle') return 'Paper';
+  return scope === 'fullTranslation' ? 'Full Translation' : 'Summary';
+}
+function validBlockAnchor(block, item, kind, markdown = blockMarkdown(block, kind)) {
+  return !item?.needsReview && textAnchorAvailable(item, anchorText(block, kind), markdown, block);
+}
+function blockAnnotationScope(item) { return item?.scope === 'paper' ? 'paper' : 'reader'; }
+function blockAnnotationsFor(items, scope) { return (items || []).filter(item => blockAnnotationScope(item) === scope); }
+function viewAnnotations(paper, scope) {
+  return [...(paper.viewHighlights || []), ...(paper.viewNotes || [])]
+    .filter(item => item.scope === scope && validViewAnchor(paper, item));
+}
+function pdfAnnotationsFor(paper, scope) {
+  return [...(paper.pdfHighlights || []), ...(paper.pdfNotes || [])].filter(item => pdfAnnotationScope(item) === scope);
+}
+function displayHighlightColor(color) { return color === 'blue' ? 'teal' : color; }
+function highlightColorName(color) { return color === 'teal' ? 'Cobalt' : `${color[0].toUpperCase()}${color.slice(1)}`; }
+function highlightMatchesSelection(item, selection) {
+  if (!item || item.needsReview || !selection) return false;
+  if (isPdfScope(selection.scope)) return samePdfSelection(item, selection);
+  if (isMarkdownView(selection.scope)) return sameViewAnchor(item, selection);
+  return blockAnnotationScope(item) === selection.scope && sameTextAnchor(item, selection);
+}
+function selectionHighlights(paper, selection) {
+  if (!paper || !selection) return [];
+  if (isPdfScope(selection.scope)) return (paper.pdfHighlights || []).filter(item => highlightMatchesSelection(item, selection));
+  if (isMarkdownView(selection.scope)) return (paper.viewHighlights || []).filter(item => highlightMatchesSelection(item, selection));
+  const block = paper.blocks?.find(item => item.id === selection.id);
+  const items = selection.kind === 'translation' ? block?.translationHighlights : block?.highlights;
+  return (items || []).filter(item => highlightMatchesSelection(item, selection));
+}
+function withHighlight(text, highlights = []) {
+  if (!highlights.length || typeof text !== 'string') return text;
+  const spans = [];
+  for (const highlight of highlights) {
+    if (highlight?.renderedAnchor) continue;
+    const at = markdownAnnotationOffset(text, highlight);
+    if (at !== null) spans.push({ start: at, end: at + highlight.text.length, color: highlight.color });
+  }
+  const nodes = []; let cursor = 0;
+  for (const span of visibleHighlightSpans(spans)) {
+    nodes.push(text.slice(cursor, span.start));
+    nodes.push(<mark key={`${span.start}-${span.end}`} className={`mark-${span.color}`}>{text.slice(span.start, span.end)}</mark>);
+    cursor = span.end;
+  }
+  nodes.push(text.slice(cursor));
+  return nodes;
+}
+function PlainText({ as: Element = 'div', children, highlights, notes, ...attributes }) {
+  const host = useRef(null);
+  const content = withHighlight(children, highlights);
+  useRichAnnotations(host, content, notes, children);
+  return <Element ref={host} dir="auto" {...attributes}>{content}</Element>;
+}
+function ReaderSourcePages({ block, onOpen }) {
+  const location = sourcePageLabel(block.page, block.endPage);
+  if (!location) return null;
+  if (!onOpen) return <span className="reader-block-page">{location}</span>;
+  const linkedPage = number => <button type="button" className="reader-page-link" aria-label={`Open original PDF page ${number}`}
+    onClick={event => { event.stopPropagation(); onOpen(number); }}>{number}</button>;
+  const range = Number.isSafeInteger(block.endPage) && block.endPage > block.page;
+  return <span className="reader-block-page">{range ? 'Pages ' : 'Page '}{linkedPage(block.page)}{range && <>–{linkedPage(block.endPage)}</>}</span>;
+}
+
+function BlockPassage({ block, kind, scope, structured = true, ...attributes }) {
+  const translation = kind === 'translation';
+  const text = translation ? block.translation : block.text;
+  const markdown = structured && blockMarkdown(block, kind);
+  const highlights = blockAnnotationsFor(translation ? block.translationHighlights : block.highlights, scope);
+  const notes = blockAnnotationsFor(block.notes, scope)
+    .filter(item => (item.kind || 'source') === kind && validBlockAnchor(block, item, kind, markdown || false));
+  if (markdown) return <div {...attributes}><Markdown annotations={[...highlights, ...notes]} annotationSource={anchorText(block, kind)}>{markdown}</Markdown></div>;
+  if (scope === 'paper') return <div {...attributes}>
+    <PlainText as={block.heading ? 'h3' : 'p'} highlights={highlights} notes={notes}>{text}</PlainText>
+  </div>;
+  return <PlainText highlights={highlights} notes={notes} {...attributes}>{text}</PlainText>;
+}
+async function sha256(value) { const bytes = new TextEncoder().encode(value); return [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map(value => value.toString(16).padStart(2, '0')).join(''); }
+
+function usePdfDocument(paper) {
+  const [loaded, setLoaded] = useState(null);
+  const id = paper?.id;
+  useEffect(() => {
+    if (paper?.type !== 'pdf') return;
+    let live = true;
+    let opened;
+    api.readPdf(id).then(bytes => live ? openPdf(bytes) : null).then(pdf => {
+      opened = pdf;
+      if (live) setLoaded({ id, pdf, error: '' });
+      else return pdf?.loadingTask.destroy();
+    }).catch(cause => { if (live) setLoaded({ id, pdf: null, error: cause.message }); });
+    return () => { live = false; opened?.loadingTask.destroy().catch(() => {}); };
+  }, [id, paper?.type]);
+  return loaded?.id === id ? loaded : { pdf: null, error: '' };
+}
+
+const eastAsianLetter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+function PdfSheet({ pdf, number, width, facsimile, textOnly = false, selectionOrder, annotations, onSize, onReady, onFollowLink }) {
+  const canvas = useRef(null);
+  const layer = useRef(null);
+  const finishedLayer = useRef(null);
+  const highlightKey = useRef({});
+  const [rendered, setRendered] = useState(false);
+  useEffect(() => {
+    if (!pdf) return;
+    let cancelled = false;
+    let task;
+    let textLayer;
+    const surface = canvas.current;
+    const root = layer.current;
+    const previous = finishedLayer.current;
+    const reusable = root && previous?.pdf === pdf && previous.number === number && previous.selectionOrder === selectionOrder;
+    if (!reusable) {
+      setRendered(false);
+      finishedLayer.current = null;
+      if (root) { delete root.dataset.page; root.replaceChildren(); }
+    }
+    (async () => {
+      const page = await pdf.getPage(number);
+      if (cancelled) return;
+      const base = page.getViewport({ scale: 1 });
+      const targetWidth = facsimile ? Math.min(850, 1600 * base.width / base.height) : width;
+      const viewport = page.getViewport({ scale: targetWidth / base.width });
+      onSize?.(number, base.height / base.width);
+      const ratio = Math.min(window.devicePixelRatio || 1, Math.sqrt(maxPdfBitmapPixels / (viewport.width * viewport.height)),
+        maxPdfBitmapSide / Math.max(viewport.width, viewport.height));
+      surface.width = textOnly ? 1 : Math.max(1, Math.floor(viewport.width * ratio));
+      surface.height = textOnly ? 1 : Math.max(1, Math.floor(viewport.height * ratio));
+      surface.style.width = viewport.width + 'px';
+      surface.style.height = viewport.height + 'px';
+      if (root) {
+        root.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
+        if (reusable) previous.textLayer.update({ viewport });
+      }
+      if (!textOnly) {
+        task = page.render({ canvasContext: surface.getContext('2d'), canvas: surface, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
+        await task.promise;
+      }
+      if (cancelled) return;
+      if (!root) { onReady?.(number, null); return; }
+      if (reusable) { onReady?.(number, previous.status); return; }
+      const pdfjs = await import('pdfjs-dist');
+      const original = await page.getTextContent();
+      const tagged = await taggedPdfText(page, original);
+      const taggedBidi = tagged !== original;
+      const logicalOrder = selectionOrder === 'tagged';
+      const raw = logicalOrder ? tagged : original;
+      const visible = await omitClippedFigureText(page, raw, pdfjs.OPS);
+      // Existing PDF note offsets belong to the text order used when that paper was imported.
+      const rotatedReading = usesPageRotation(visible.items, page.rotate);
+      let textContentSource = raw;
+      if ((rotatedReading && (selectionOrder === 'page' || logicalOrder)) || (logicalOrder && taggedBidi)) {
+        textContentSource = rotatedSelectionContent(raw, page.view, page.rotate, logicalOrder && taggedBidi);
+      }
+      if (textContentSource === raw && selectionOrder) textContentSource = verticalSelectionContent(raw, page.view);
+      if (cancelled) return;
+      textLayer = new pdfjs.TextLayer({ textContentSource, container: root, viewport });
+      await textLayer.render();
+      if (cancelled) return;
+      if (visible !== raw) {
+        // Keep unmodified text nodes for saved PDF offsets. Invisible figure titles
+        // must not intercept mouse clicks on the printed labels under them.
+        const shown = new Set(visible.items);
+        const items = textContentSource.items.filter(item => typeof item.str === 'string');
+        for (const [i, item] of items.entries()) {
+          const span = textLayer.textDivs[i];
+          if (shown.has(item.sourceItem || item) || !span || span.textContent !== item.str) continue;
+          span.setAttribute('data-pdf-clipped', '');
+          span.hidden = true;
+        }
+      }
+      root.dataset.page = String(number);
+      const text = visible.items.map(item => item.str || '').join('');
+      const status = { selectable: Boolean(text.trim()), copyText: wholePdfPageText(visible, page.view, page.rotate), eastAsian: eastAsianLetter.test(text), rotatedReading, taggedBidi,
+        verticalCjk: visible.items.some(item => item.dir === 'ttb' && eastAsianLetter.test(item.str)) };
+      finishedLayer.current = { pdf, number, selectionOrder, textLayer, status };
+      setRendered(true);
+      onReady?.(number, status);
+    })().catch(cause => { if (!cancelled) onReady?.(number, cause.message); });
+    return () => { cancelled = true; task?.cancel(); if (finishedLayer.current?.textLayer !== textLayer) textLayer?.cancel(); };
+  }, [pdf, number, width, facsimile, textOnly, selectionOrder, onSize, onReady]);
+  useEffect(() => {
+    const root = layer.current;
+    if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights || !annotations?.length) return;
+    const text = root.textContent;
+    const valid = annotations.flatMap(item => pdfAnchors(item).flatMap(anchor => {
+      const offset = anchor.page === number ? resolvedPdfOffset(item, anchor, text) : null;
+      return offset === null ? [] : [{ ...anchor, offset, color: item.color, body: item.body }];
+    }));
+    if (!valid.length) return;
+    const key = highlightKey.current;
+    richHighlights.set(key, annotationRanges(root, valid, undefined, { pdf: true }));
+    refreshRichHighlights();
+    return () => { richHighlights.delete(key); refreshRichHighlights(); };
+  }, [annotations, number, rendered]);
+  return <div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? 'Original PDF page ' + number : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}
+    {!facsimile && !textOnly && onFollowLink && <PdfPageLinks pdf={pdf} number={number} onFollow={onFollowLink} />}</div>;
+}
+
+function pdfPageElement(host, page) {
+  return host?.children[page - 1];
+}
+
+function pdfPageAt(host, position) {
+  let low = 0;
+  let high = host.children.length - 1;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (host.children[mid].offsetTop <= position) low = mid;
+    else high = mid - 1;
+  }
+  return low + 1;
+}
+
+function pdfLayerFor(host, page) {
+  return pdfPageElement(host, page)?.querySelector('.textLayer[data-page]');
+}
+
+function pdfRangeEndpoint(node) {
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+  return Number(element?.closest('.textLayer[data-page]')?.dataset.page);
+}
+
+function capturePdfRange(host, range) {
+  if (!host || !range || !host.contains(range.startContainer) || !host.contains(range.endContainer)) return null;
+  const first = pdfRangeEndpoint(range.startContainer);
+  const last = pdfRangeEndpoint(range.endContainer);
+  if (!Number.isInteger(first) || !Number.isInteger(last) || first > last) return null;
+  const parts = [];
+  for (let page = first; page <= last; page++) {
+    const root = pdfLayerFor(host, page);
+    if (!root) return null;
+    const fragment = document.createRange();
+    fragment.selectNodeContents(root);
+    if (page === first) fragment.setStart(range.startContainer, range.startOffset);
+    if (page === last) fragment.setEnd(range.endContainer, range.endOffset);
+    if (!fragment.toString().trim()) continue;
+    const captured = domRangeIn(root, fragment, { trimEdges: true });
+    if (!captured || captured.context.slice(captured.offset, captured.offset + captured.text.length) !== captured.text) return null;
+    const part = pdfSelectionContent(root, fragment, captured.text, captured.offset, captured.context);
+    if (part.quote !== '') parts.push({ ...part, page });
+  }
+  if (!parts.length) return null;
+  if (parts.length === 1) return { ...parts[0], anchors: parts };
+  const quote = parts.map(part => part.quote ?? part.text).join(' ');
+  return { page: parts[0].page, offset: parts[0].offset, text: parts.map(part => part.text).join('\n'), quote, context: quote,
+    anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })) };
+}
+
+function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onComment, onBack, onForward, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
+  const { pdf, error } = usePdfDocument(paper);
+  const scroller = useRef(null);
+  const activePage = useRef(0);
+  const activeOffset = useRef(0);
+  const horizontalCenter = useRef(0.5);
+  const activePageTop = useRef(0);
+  const layoutWidth = useRef(0);
+  const lastFitWidth = useRef(0);
+  const lastWheelZoom = useRef(-Infinity);
+  const pendingLink = useRef(0);
+  const [linkError, setLinkError] = useState('');
+  useEffect(() => () => { pendingLink.current++; }, [pdf]);
+  const scrollFrame = useRef(0);
+  const scrollTimer = useRef(0);
+  const lastJump = useRef(null);
+  const lastRestore = useRef(null);
+  const [fitWidth, setFitWidth] = useState(0);
+  const [sizes, setSizes] = useState({});
+  const [statuses, setStatuses] = useState({});
+  const [visible, setVisible] = useState([1, 1]);
+  const [dragPage, setDragPage] = useState(null);
+  const wholeSelection = useWholePdfSelection({ pdf, scroller, statuses, layerFor: pdfLayerFor, capture: capturePdfRange, onSelect, onError: setLinkError });
+  const { selectThrough } = wholeSelection;
+  const currentPage = Math.max(1, Math.min(pageNumber, pdf?.numPages ?? pageNumber));
+  const zoom = pdfZoomPercent(paper?.position?.pdfZoom?.[scope]);
+  const width = fitWidth * zoom / pdfFitZoom;
+  const pinned = navigation ?? selected;
+  const selectFirst = pinned?.page;
+  const selectLast = pdfAnchors(pinned).at(-1)?.page ?? selectFirst;
+  const onSize = useCallback((number, ratio) => setSizes(current => current[number] === ratio ? current : { ...current, [number]: ratio }), []);
+  const onReady = useCallback((number, status) => setStatuses(current => ({ ...current, [number]: status })), []);
+
+  useLayoutEffect(() => {
+    const host = scroller.current;
+    if (!host || !pdf) return;
+    const resize = () => {
+      setFitWidth(Math.min(850, Math.max(1, host.clientWidth - 28)));
+      refreshVisiblePages(host);
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [pdf]);
+
+  function refreshVisiblePages(host) {
+    const first = pdfPageAt(host, host.scrollTop);
+    const last = pdfPageAt(host, host.scrollTop + host.clientHeight);
+    setVisible(current => current[0] === first && current[1] === last ? current : [first, last]);
+  }
+
+  useLayoutEffect(() => {
+    const host = scroller.current;
+    const page = pdfPageElement(host, currentPage);
+    if (!page) return;
+    const navigationId = navigation?.id;
+    const jump = activePage.current !== currentPage || lastRestore.current !== restoreToken ||
+      (navigationId && lastJump.current !== navigationId);
+    if (!jump && activePageTop.current === page.offsetTop && layoutWidth.current === width && lastFitWidth.current === fitWidth) {
+      refreshVisiblePages(host);
+      return;
+    }
+    clearTimeout(scrollTimer.current);
+    cancelAnimationFrame(scrollFrame.current);
+    activePage.current = currentPage;
+    activePageTop.current = page.offsetTop;
+    if (jump) activeOffset.current = navigationId ? 0 : position;
+    else if (lastFitWidth.current && lastFitWidth.current !== fitWidth) activeOffset.current *= fitWidth / lastFitWidth.current;
+    lastJump.current = navigationId;
+    lastRestore.current = restoreToken;
+    host.scrollTop = page.offsetTop + activeOffset.current * zoom / pdfFitZoom;
+    if (layoutWidth.current !== width) host.scrollLeft = page.offsetLeft + horizontalCenter.current * width - host.clientWidth / 2;
+    layoutWidth.current = width;
+    lastFitWidth.current = fitWidth;
+    refreshVisiblePages(host);
+  }, [pdf, currentPage, position, restoreToken, navigation?.id, width, fitWidth, zoom, sizes]);
+
+  useLayoutEffect(() => () => {
+    cancelAnimationFrame(scrollFrame.current);
+    clearTimeout(scrollTimer.current);
+  }, []);
+
+  useEffect(() => {
+    if (dragPage == null) return;
+    const stopDragging = () => setDragPage(null);
+    window.addEventListener('mouseup', stopDragging);
+    window.addEventListener('blur', stopDragging);
+    return () => {
+      window.removeEventListener('mouseup', stopDragging);
+      window.removeEventListener('blur', stopDragging);
+    };
+  }, [dragPage]);
+
+  useEffect(() => {
+    if (!navigation || !pdf) return;
+    const host = scroller.current;
+    const anchors = pdfAnchors(navigation);
+    const verifiedAnchors = [];
+    const ranges = [];
+    for (const anchor of anchors) {
+      if (!Number.isInteger(anchor.page) || anchor.page < 1 || anchor.page > pdf.numPages || typeof anchor.text !== 'string') { onNavigationFailure(); return; }
+      const root = pdfLayerFor(host, anchor.page);
+      if (!root) {
+        if (typeof statuses[anchor.page] === 'string') onNavigationFailure('unreadable');
+        return;
+      }
+      const offset = resolvedPdfOffset(navigation, anchor, root.textContent);
+      const range = textRangeAt(root, offset, anchor.text.length);
+      if (!range || range.toString() !== anchor.text) { onNavigationFailure(); return; }
+      verifiedAnchors.push({ ...anchor, offset });
+      ranges.push(range);
+    }
+    if (!ranges.length) { onNavigationFailure(); return; }
+    // The range also crosses scan-only or blank pages that have no saved text anchor.
+    for (let page = anchors[0].page + 1; page < anchors.at(-1).page; page++) {
+      if (typeof statuses[page] === 'string') { onNavigationFailure('unreadable'); return; }
+      if (!pdfLayerFor(host, page)) return;
+    }
+    const first = ranges[0];
+    const last = ranges.at(-1);
+    const range = document.createRange();
+    range.setStart(first.startContainer, first.startOffset);
+    range.setEnd(last.endContainer, last.endOffset);
+    const captured = capturePdfRange(host, range);
+    if (!captured || !samePdfSelection({ ...captured, scope }, { ...navigation, anchors: verifiedAnchors })) { onNavigationFailure(); return; }
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const page = pdfPageElement(host, captured.page);
+    const target = first.getClientRects()[0] || first.getBoundingClientRect();
+    const withinPage = target.top - page.getBoundingClientRect().top - 18;
+    const hostLeft = host.getBoundingClientRect().left;
+    if (target.left < hostLeft || target.right > hostLeft + host.clientWidth) {
+      host.scrollLeft += target.left - hostLeft - 18;
+    }
+    host.scrollTop = page.offsetTop + Math.max(0, withinPage);
+    onNavigate(wholeSelection.remember(range, captured));
+  }, [pdf, navigation?.id, statuses]);
+
+
+
+  function handleScroll() {
+    onScrollSelection(scroller.current);
+    cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = requestAnimationFrame(() => {
+      const host = scroller.current;
+      if (!host?.children.length) return;
+      const top = host.scrollTop;
+      const page = top > 0 && host.scrollHeight - top - host.clientHeight < 2
+        ? host.children.length
+        : pdfPageAt(host, top + Math.min(36, host.clientHeight / 4));
+      const slot = pdfPageElement(host, page);
+      activePageTop.current = slot.offsetTop;
+      horizontalCenter.current = (host.scrollLeft + host.clientWidth / 2 - slot.offsetLeft) / width;
+      const offset = pdfOffsetAtFit(host, slot, zoom);
+      activeOffset.current = offset;
+      refreshVisiblePages(host);
+      clearTimeout(scrollTimer.current);
+      if (activePage.current !== page) {
+        activePage.current = page;
+        onPage(page, offset);
+      } else scrollTimer.current = setTimeout(() => onPage(page, offset), 160);
+    });
+  }
+  function capture() {
+    const selection = window.getSelection();
+    const captured = capturePdfRange(scroller.current, selection?.rangeCount ? selection.getRangeAt(0) : null);
+    if (captured) onSelect(captured);
+  }
+  async function followLink(link, fromPage) {
+    const request = ++pendingLink.current;
+    setLinkError('');
+    if (link.comment) { onComment(link.comment, fromPage); return; }
+    if (link.url) { api.openPaperLink(link.url); return; }
+    if (link.action === 'GoBack') { onBack(); return; }
+    if (link.action === 'GoForward') { onForward(); return; }
+    if (link.action) {
+      const pages = { FirstPage: 1, LastPage: pdf.numPages, PrevPage: fromPage - 1, NextPage: fromPage + 1 };
+      const number = pages[link.action];
+      if (number >= 1 && number <= pdf.numPages && number !== fromPage) { onLinkJump(); jump(number); }
+      return;
+    }
+    try {
+      const target = await pdfLinkDestination(pdf, link.dest);
+      if (request !== pendingLink.current) return;
+      if (!target) throw Error('This PDF link has no available destination.');
+      const host = scroller.current, slot = pdfPageElement(host, target.page);
+      if (!host || !slot) return;
+      clearTimeout(scrollTimer.current);
+      cancelAnimationFrame(scrollFrame.current);
+      onLinkJump();
+      window.getSelection()?.removeAllRanges();
+      const fitScale = fitWidth / target.width;
+      let scale = target.scale;
+      if (target.fit === 'Fit' || target.fit === 'FitB') scale = Math.min(fitScale, host.clientHeight / target.height);
+      else if (target.fit === 'FitH' || target.fit === 'FitBH') scale = fitScale;
+      else if (target.fit === 'FitV' || target.fit === 'FitBV') scale = host.clientHeight / target.height;
+      else if (target.region?.width && target.region?.height) scale = Math.min(fitWidth / target.region.width, host.clientHeight / target.region.height);
+      const nextZoom = scale ? pdfZoomPercent(pdfFitZoom * scale / fitScale) : zoom;
+      const offset = target.y * fitScale;
+      activeOffset.current = offset;
+      const nextWidth = fitWidth * nextZoom / pdfFitZoom;
+      const left = target.x * nextWidth / target.width;
+      horizontalCenter.current = (left + host.clientWidth / 2) / nextWidth;
+      host.scrollTop = slot.offsetTop + offset * nextZoom / pdfFitZoom;
+      host.scrollLeft = slot.offsetLeft + left;
+      onPage(target.page, offset, true, nextZoom);
+    } catch {
+      if (request === pendingLink.current) setLinkError('This PDF link has no available destination.');
+    }
+  }
+  function jump(number, boundary) {
+    pendingLink.current++;
+    setLinkError('');
+    clearTimeout(scrollTimer.current);
+    cancelAnimationFrame(scrollFrame.current);
+    window.getSelection()?.removeAllRanges();
+    const host = scroller.current;
+    const slot = boundary && host && pdfPageElement(host, number);
+    if (slot) host.scrollTop = boundary === 'End' ? host.scrollHeight : 0;
+    onPage(number, slot ? pdfOffsetAtFit(host, slot, zoom) : 0, true);
+  }
+  function changeZoom(value) {
+    const next = pdfZoomPercent(value);
+    const host = scroller.current;
+    const page = pdfPageElement(host, currentPage);
+    if (!page || next === zoom) return;
+    activeOffset.current = pdfOffsetAtFit(host, page, zoom);
+    horizontalCenter.current = (host.scrollLeft + host.clientWidth / 2 - page.offsetLeft) / width;
+    onScrollSelection();
+    onPage(currentPage, activeOffset.current, false, next);
+  }
+  const zoomOnWheel = useEffectEvent(event => {
+    if (!event.ctrlKey || event.altKey || event.metaKey) return;
+    event.preventDefault();
+    const now = performance.now();
+    if (!event.deltaY || now - lastWheelZoom.current < 90) return;
+    lastWheelZoom.current = now;
+    changeZoom(zoom + (event.deltaY < 0 ? pdfZoomStep : -pdfZoomStep));
+  });
+  useEffect(() => {
+    const host = scroller.current;
+    if (!host) return;
+    const onWheel = event => zoomOnWheel(event);
+    host.addEventListener('wheel', onWheel, { passive: false });
+    return () => host.removeEventListener('wheel', onWheel);
+  }, [pdf]);
+  function handlePdfShortcut(event) {
+    if (event.key === 'Escape' && !event.nativeEvent.isComposing && scroller.current?.contains(event.target)) {
+      const selection = window.getSelection();
+      const inPdf = !selection.isCollapsed && scroller.current.contains(selection.anchorNode) && scroller.current.contains(selection.focusNode);
+      if (wholeSelection.isPending() || inPdf) {
+        event.preventDefault(); event.stopPropagation();
+        wholeSelection.cancel();
+        if (inPdf) selection.removeAllRanges();
+        onSelect(null);
+      }
+      return;
+    }
+    if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.nativeEvent.isComposing) return;
+    if (!event.shiftKey && wholeSelection.isPending() && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'c') {
+      event.preventDefault(); wholeSelection.queueCopy(); return;
+    }
+    if (!event.shiftKey && pdf && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) wholeSelection.start();
+      return;
+    }
+    if (!event.shiftKey && pdf && scroller.current?.contains(event.target) && (event.key === 'Home' || event.key === 'End')) {
+      event.preventDefault();
+      event.stopPropagation();
+      jump(event.key === 'Home' ? 1 : pdf.numPages, event.key);
+      return;
+    }
+    const next = event.key === '+' || event.key === '=' ? zoom + pdfZoomStep
+      : event.key === '-' ? zoom - pdfZoomStep : event.key === '0' ? pdfFitZoom : null;
+    if (next == null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    changeZoom(next);
+  }
+  const pageStatus = statuses[currentPage];
+  const [start, end] = visible;
+  const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
+  const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
+  if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
+  const needsOCR = pageStatus?.selectable === false;
+  const coverage = needsOCR ? ocrCoverageForPage(paper, currentPage) : null;
+  const missingText = pageStatus?.eastAsian && paper.blocks.length > 0 && paper.sourceMode !== 'mineru' &&
+    (paper.pdfTextVersion || 0) < eastAsianPdfTextVersion && !paper.blocks.some(block => block.page > 0 &&
+      block.page <= currentPage && (block.endPage || block.page) >= currentPage && eastAsianLetter.test(block.text));
+  const oldPdfReader = paper.blocks.length > 0 && paper.sourceMode !== 'mineru';
+  const savedVersion = paper.pdfTextVersion || 0;
+  const verticalOrder = oldPdfReader && pageStatus?.verticalCjk && savedVersion < verticalPdfTextVersion;
+  const rotatedOrder = oldPdfReader && pageStatus?.rotatedReading && savedVersion < rotatedPdfTextVersion;
+  const taggedOrder = oldPdfReader && pageStatus?.taggedBidi && savedVersion < pdfTextVersion;
+  return <div className="pdf-panel" onKeyDown={handlePdfShortcut}>
+    <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} zoom={zoom} onZoom={changeZoom} />
+    {(missingText || verticalOrder || rotatedOrder || taggedOrder) && <div className="scan-notice" role="status"><FileText size={20} /><div>
+      <b>{missingText ? 'East Asian text is missing from this page in the saved Reader' : verticalOrder ? 'The saved Reader may show these vertical columns out of order' : rotatedOrder ? 'The saved Reader may show this rotated page out of order' : 'The saved Reader may show right-to-left words out of order'}</b>
+      <p>Read and translate the text in a new library copy. Your notes and translations stay with this paper.</p>
+      <button className="button outline" disabled={busy} onClick={onRecoverText}>Recover PDF text in new copy</button>
+    </div></div>}
+    {needsOCR && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
+      onReader={coverage || paper.blocks.length ? () => onReader(currentPage) : null} />}
+    {linkError && <Notice tone="error">{linkError}</Notice>}
+    {Boolean(selectThrough) && <div role="status" className="notice">Selecting PDF text… Press Esc to cancel.</div>}
+    {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
+    {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} data-pdf-zoom={zoom} tabIndex={0} aria-label="Continuous original PDF"
+      onScroll={handleScroll} onCopy={wholeSelection.copy} aria-busy={Boolean(selectThrough)} onMouseDown={event => {
+        if (event.button === 0) wholeSelection.cancel();
+        const number = pdfRangeEndpoint(event.target);
+        if (event.button === 0 && Number.isInteger(number)) setDragPage(number);
+      }} onMouseUp={capture}>
+      {width > 0 && Array.from({ length: pdf.numPages }, (_, index) => {
+        const number = index + 1;
+        const nearby = number === currentPage || number >= start - 1 && number <= end + 1;
+        const mounted = nearby || number <= selectThrough || number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
+        return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
+          {mounted && <PdfSheet pdf={pdf} number={number} width={width} textOnly={!nearby} selectionOrder={paper.pdfTaggedReadingOrder ? 'tagged' : paper.pdfRotatedReadingOrder ? 'page' : paper.pdfVerticalReadingOrder ? 'vertical' : null} annotations={annotations} onSize={onSize} onReady={onReady} onFollowLink={followLink} />}
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+function PdfToolbar({ page, count, onPage, zoom, onZoom }) {
+  return <div className="pdf-toolbar"><span>Exact original PDF · page {page} of {count || '…'}</span><div className="row">
+    {onZoom && <div className="row pdf-zoom" role="group" aria-label="PDF zoom">
+      <button className="icon-button" aria-label="Zoom out PDF" title="Zoom out · Ctrl+-" disabled={!count || zoom <= pdfMinZoom} onClick={() => onZoom(zoom - pdfZoomStep)}><ZoomOut size={17} /></button>
+      <output aria-label="PDF zoom level">{zoom}%</output>
+      <button className="icon-button" aria-label="Zoom in PDF" title="Zoom in · Ctrl++" disabled={!count || zoom >= pdfMaxZoom} onClick={() => onZoom(zoom + pdfZoomStep)}><ZoomIn size={17} /></button>
+      <button className="button outline" aria-label="Fit PDF to window" title="Fit to window · Ctrl+0" disabled={!count || zoom === pdfFitZoom} onClick={() => onZoom(pdfFitZoom)}>Fit</button>
+    </div>}
+    <button className="icon-button" aria-label="Previous page" disabled={!count || page <= 1} onClick={() => onPage(page - 1)}><ChevronLeft size={17} /></button>
+    <button className="icon-button" aria-label="Next page" disabled={!count || page >= count} onClick={() => onPage(page + 1)}><ChevronRight size={17} /></button>
+  </div></div>;
+}
+function PdfFacsimile({ paper, pageNumber, onPage, onOriginal }) {
+  const [expanded, setExpanded] = useState(true);
+  return <section className="pdf-facsimile" aria-label="Original PDF reference">
+    <div className="pdf-facsimile-heading">
+      <button className="button ghost" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? 'Hide original page' : 'Show original page'}</button>
+      <button className="button outline" onClick={onOriginal}>Open original PDF</button>
+    </div>
+    {expanded && <PdfReference paper={paper} pageNumber={pageNumber} onPage={onPage} />}
+  </section>;
+}
+function PdfReference({ paper, pageNumber, onPage }) {
+  const { pdf, error } = usePdfDocument(paper);
+  const [renderError, setRenderError] = useState('');
+  const onReady = useCallback((_number, cause) => setRenderError(cause), []);
+  const page = Math.max(1, Math.min(pageNumber, pdf?.numPages ?? pageNumber));
+  return <div className="pdf-panel">
+    <PdfToolbar page={page} count={pdf?.numPages} onPage={onPage} />
+    {(error || renderError) && <Notice tone="error">{error || renderError}</Notice>}
+    {pdf && <div className="pdf-scroll"><PdfSheet key={page} pdf={pdf} number={page} facsimile onReady={onReady} /></div>}
+  </div>;
+}
+
+function Empty({ title, body, children }) { return <div className="empty"><BookOpen size={36} strokeWidth={1.5} /><h2>{title}</h2><p>{body}</p>{children}</div>; }
+function Notice({ children, tone = 'info', onClose, className = '' }) { return <div className={`notice ${tone} ${className}`}><div className="notice-body">{children}</div>{onClose && <button className="icon-button" aria-label="Dismiss" onClick={onClose}><X size={15} /></button>}</div>; }
+const workspacePanelWidths = {
+  sidebar: { minimum: 240, initial: 264, maximum: 300 },
+  inspector: { minimum: 280, initial: 330, maximum: 420 }
+};
+
+function WorkspaceSplitter({ panel, width, onResize }) {
+  const drag = useRef(null);
+  const { minimum, maximum } = workspacePanelWidths[panel];
+  const sidebar = panel === 'sidebar';
+  const direction = sidebar ? 1 : -1;
+  const resize = value => onResize(Math.max(minimum, Math.min(maximum, value)));
+  return <div className={`workspace-splitter ${panel}-splitter`} role="separator" tabIndex={0} aria-orientation="vertical"
+    aria-label={sidebar ? 'Resize Document Sidebar' : 'Resize Research Inspector'}
+    aria-controls={sidebar ? 'document-sidebar' : 'research-inspector'}
+    aria-valuemin={minimum} aria-valuemax={maximum} aria-valuenow={width}
+    onPointerDown={event => {
+      if (event.button !== 0 || !event.isPrimary) return;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      drag.current = { pointerId: event.pointerId, x: event.clientX, width };
+    }}
+    onPointerMove={event => {
+      const start = drag.current;
+      if (start?.pointerId === event.pointerId) resize(start.width + direction * (event.clientX - start.x));
+    }}
+    onLostPointerCapture={() => { drag.current = null; }}
+    onKeyDown={event => {
+      const sizes = { ArrowLeft: width - direction * 8, ArrowRight: width + direction * 8, Home: minimum, End: maximum };
+      if (!Object.hasOwn(sizes, event.key)) return;
+      event.preventDefault();
+      resize(sizes[event.key]);
+    }} />;
+}
+
+function TaskProgress({ busy, progress, status }) {
+  const total = Number.isFinite(progress?.total) && progress.total > 0 ? progress.total : null;
+  const done = total === null ? null : Math.max(0, Math.min(total, progress.done || 0));
+  return <div className="task-progress" role="status" aria-live="polite"><div className="task-progress-heading"><strong>{busy.label}</strong><span>{total === null ? 'Working…' : `${done} of ${total} processed`}{progress?.failed > 0 ? ` · ${progress.failed} failed` : ''}</span></div><progress aria-label="Task progress" {...(total === null ? {} : { max: total, value: done })} />{status && <p className="task-progress-message">{status}</p>}</div>;
+}
+
+function ImportProgress({ item, elapsed, showTimingHint, previousName, onCancel }) {
+  return <div className="import-progress-screen"><div className="import-progress-card">
+    <FileText size={42} /><small>IMPORTING PDF</small>
+    <strong className="import-filename">{item.name}</strong>
+    <p role="status">{item.stage}</p>
+    <strong role="timer">{elapsed} elapsed</strong>
+    <div className="import-progress-bar" aria-hidden="true"><span /></div>
+    <button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button>
+    {showTimingHint && <p className="import-preserve-note">Layout analysis and text recognition can take several minutes on the first import. You can translate the paper once it opens.</p>}
+    {previousName && <p className="import-preserve-note">Cancel to return to {previousName} with your translations, notes, bookmarks, and reading position.</p>}
+  </div></div>;
+}
+const eastAsianPdfTextVersion = 2;
+const verticalPdfTextVersion = 3;
+const rotatedPdfTextVersion = 4;
+const pdfTextVersion = 5;
+const noPdfTextWarning = 'No selectable text found. The exact original PDF is available. Use MinerU for OCR.';
+
+function canRestorePdfText(paper) {
+  return paper?.type === 'pdf' && paper.sourceMode !== 'mineru' && !paper.blocks?.length &&
+    !paper.pdfBlocks?.length && (paper.pdfTextVersion || 0) < eastAsianPdfTextVersion;
+}
+
+function ScanNotice({ page = false, coverage, onParse, onSetup, onReader }) {
+  const message = {
+    matched: 'MinerU OCR text is ready in Reader for this page.',
+    unknown: 'Saved MinerU text is available in Reader. Its page could not be identified.',
+    absent: 'MinerU found no readable text on this page.'
+  }[coverage] || 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.';
+  return <div className="scan-notice" role="status"><AlertCircle size={20} /><div>
+    <strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{message}</p>
+    <div className="row">
+      {!coverage && <><button className="button blue" onClick={onParse}>Parse with MinerU</button>
+        <button className="button outline" onClick={onSetup}>Set up local AI</button></>}
+      {onReader && <button className={coverage ? 'button blue' : 'button ghost'} onClick={onReader}>
+        {coverage === 'matched' ? 'Open OCR Reader' : 'Open Reader'}
+      </button>}
+    </div>
+  </div></div>;
+}
+
+function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence, setupSummary }) {
+  const claims = revalidateSummaryClaims(paper.summary?.claims, paper.blocks);
+  const { mode: sourceMode } = paperArticleSource(paper);
+  return <div className="summary-view">
+    <div className="section-heading"><h2>Whole-paper Summary</h2><button className="button blue" disabled={!!busy || !canSummarize} onClick={setupSummary || summarize}><Sparkles size={16} /> {setupSummary ? 'Set up summary' : paper.summary ? 'Regenerate' : 'Generate summary'}</button></div>
+    {paper.summary ? <>
+      {paper.summary.stale ? <Notice tone="error">{staleSummaryNotice}</Notice>
+        : summaryNeedsTextRefresh(paper) && <Notice>{legacySummaryTextNotice}</Notice>}
+      <p className="summary-evidence-note">AI-generated summary. Source links show where quotations appear. Verify research findings and the model’s interpretation against the original paper.</p>
+      <div className="summary-panels">
+        <article className="summary-card" data-view-scope="summarySource" tabIndex={0} aria-label="Source summary text" onMouseUp={event => onSelect(event.currentTarget, 'summarySource')}><small>{paper.summary.sourceLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summarySource')}>{paper.summary.source}</Markdown></article>
+        <article className="summary-card translated" data-view-scope="summaryTarget" tabIndex={0} aria-label="Translated summary text" onMouseUp={event => onSelect(event.currentTarget, 'summaryTarget')}><small>{paper.summary.targetLanguage}</small><Markdown annotations={viewAnnotations(paper, 'summaryTarget')}>{paper.summary.target}</Markdown></article>
+      </div>
+      {claims?.length ? <section className="source-links" aria-label="Check the Sources">
+        <h3>Check the Sources</h3>
+        {claims.map((claim, index) => {
+          const key = JSON.stringify([sourceMode, index, claim.text]);
+          return <details className="evidence-claim" key={key} open={expandedEvidence.has(key)}
+            onToggle={event => { if (event.currentTarget.open) expandedEvidence.add(key); else expandedEvidence.delete(key); }}>
+            <summary>Claim {index + 1} · {claim.sources.length ? `${claim.sources.length} exact source passage(s)` : 'No source link validated'}</summary>
+            <p>{claim.text}</p>
+            {claim.sources.length ? claim.sources.map((source, at) => <div key={`${source.paragraphID}-${at}`}><blockquote>{source.quote}</blockquote><button onClick={() => navigate(source.paragraphID, { revealSource: true, quote: source.quote })}>Read original block {source.paragraphID} →</button></div>) : <small>Check the original paper independently before treating this claim as evidence.</small>}
+          </details>;
+        })}
+      </section> : <p className="summary-evidence-note">This saved summary has no verified source links.</p>}
+    </> : <Empty title={paper.blocks.length ? 'No summary yet' : 'No readable text yet'} body={paper.blocks.length ? 'Generate a summary in the source and target languages. Open a verified quotation to read it in the original paper.' : 'Use MinerU OCR from Paper or Original before summarizing this PDF.'} />}
+  </div>;
+}
+
+function ReaderQualityWarning({ issue, structured, busy, onEdit, onCompare, onReextract }) {
+  return <div className="quality-warning" onClick={event => event.stopPropagation()}>
+    <p><AlertCircle size={15} aria-hidden="true" />{issue.reason}</p>
+    <div className="row">
+      {issue.reextract
+        ? <button className="button outline" disabled={!!busy} onClick={onReextract}>Re-extract PDF as New Copy</button>
+        : <button className="button outline" disabled={structured || !!busy} onClick={onEdit}>Edit or Split</button>}
+      <button className="button outline" onClick={onCompare}>Compare Original</button>
+    </div>
+    {issue.reextract && <p>Your annotations and translations stay with this copy.</p>}
+    {structured && !issue.reextract && <p>MinerU controls these blocks. Review the original or edit an exported Markdown copy to keep the linked assets together.</p>}
+  </div>;
+}
+
+function OverviewView({ paper, sections, busy, status, canSummarize, summarize, navigate, onSelect, expandedOverview, issues, onOriginal, onReader, translatedCount, paragraphCount, setupSummary }) {
+  const entries = useMemo(() => readingMap(paper.blocks, sections), [paper.blocks, sections]);
+  const qualityKey = JSON.stringify([paperArticleSource(paper).mode, 'quality']);
+  return <div className="content-column overview-layout">
+    {!busy && status && <Notice className="workspace-status">{status}</Notice>}
+    {issues.length > 0 && <details className="quality-list" open={expandedOverview.has(qualityKey)}
+      onToggle={event => { if (event.currentTarget.open) expandedOverview.add(qualityKey); else expandedOverview.delete(qualityKey); }}>
+      <summary>Check {issues.length} possible extraction {issues.length === 1 ? 'issue' : 'issues'}</summary>
+      <p>Review these suggestions against the source. Equations, headings, and captions can end without a period.</p>
+      {issues.slice(0, 40).map(issue => <div className="quality-item" key={issue.id}>
+        <div><strong>Block {issue.id}</strong><p>{issue.reason}</p><blockquote>{issue.excerpt}</blockquote></div>
+        <button className="button outline" onClick={() => navigate(issue.id, { mode: 'bilingual' })}>Review block {issue.id}</button>
+      </div>)}
+      {issues.length > 40 && <p>Showing the first 40 suggestions. Each affected Reader block shows its own warning.</p>}
+    </details>}
+    <section className="reading-guide">
+      <div className="reading-guide-heading"><h2>Find your way into the paper.</h2><p>A map of detected sections with exact source excerpts. No model is used, and these passages are not an AI summary.</p></div>
+      <div className="reading-guide-actions"><button className="button blue" disabled={!paragraphCount} onClick={onReader}>Start Reading</button><button className="button outline" onClick={onOriginal}>View Original</button><span>{translatedCount} / {paragraphCount} translated</span></div>
+      {!entries.length && <p className="reading-guide-empty">{paragraphCount ? 'No suitable section passages were detected. Start in Reader and inspect the source directly.' : 'This document has no selectable text. You can still view its original pages; use MinerU/OCR to make scanned text readable by the analysis tools.'}</p>}
+      <div className="reading-map">{entries.map(entry => <article key={entry.id}><div className="reading-map-title"><strong>{entry.title}</strong><button onClick={() => navigate(entry.paragraphID, { revealSource: true })}>Read paragraph {entry.paragraphID} →</button></div><p className="reading-map-question">{entry.question}</p><p className="reading-map-excerpt">{entry.excerpt}</p><small>SOURCE EXCERPT · {entry.sectionTitle}</small></article>)}</div>
+      <p className="reading-guide-disclaimer">Missing sections are not invented. Headings and reading order depend on extraction; verify scientific claims against the source.</p>
+    </section>
+    <SummaryView paper={paper} busy={busy} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={onSelect} expandedEvidence={expandedOverview} setupSummary={setupSummary} />
+  </div>;
+}
+
+function PaperPreview({ paper, displayMode, referenceIDs, onSelect }) {
+  const host = useRef(null);
+  const { mode: sourceMode, structured } = paperArticleSource(paper);
+  const blocks = paper.blocks;
+  const articleAnnotations = useMemo(() => [...(paper.viewHighlights || []), ...(paper.viewNotes || [])].filter(item =>
+    item.scope === 'paperArticle' && item.displayMode === displayMode && item.sourceMode === sourceMode && !item.needsReview),
+  [paper.viewHighlights, paper.viewNotes, displayMode, sourceMode]);
+  useRichAnnotations(host, blocks, articleAnnotations);
+  const passages = useMemo(() => blocks.map(block => {
+    const visible = paperPassageVisibility(block, displayMode, referenceIDs);
+    const markdown = paperUsesMarkdown(block, sourceMode, structured);
+    return <section className="paper-preview-block" data-paper-block-id={block.id} key={block.id}>
+      {visible.source && <>
+        <BlockPassage block={block} kind="source" scope="paper" structured={markdown}
+          className={visible.unavailable ? 'paper-preview-source unavailable' : 'paper-preview-source'} data-paper-kind="source" />{'\n'}
+      </>}
+      {visible.translation && <><BlockPassage block={block} kind="translation" scope="paper" structured={markdown}
+          className="paper-preview-translation" data-paper-kind="translation" />{'\n'}</>}
+      {visible.showMissing && <div className="paper-preview-translation unavailable" data-selection-ignore><p>Translation unavailable</p></div>}
+      {markdown && block.heading && <span className="paper-heading-break" aria-hidden="true"><br /></span>}
+    </section>;
+  }), [blocks, displayMode, referenceIDs, sourceMode, structured]);
+  return <article ref={host} data-view-scope="paperArticle" data-source-mode={sourceMode} data-display-mode={displayMode} className={`document-preview paper-mode-${displayMode}`} tabIndex={0} aria-label="Paper preview text"
+    onMouseUp={event => onSelect(event.currentTarget, 'paper')}>
+    {passages}
+  </article>;
+}
+
+function filterLibraryEntries(entries, query) {
+  if (!query) return entries;
+  const needle = searchKey(query);
+  return entries.filter(item => searchableText(`${item.name} ${(item.tags || []).join(' ')}`).includes(needle));
+}
+
+function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, onEditLabel, persistenceWarning }) {
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState('');
+  const items = useMemo(() => filterLibraryEntries(entries, query), [entries, query]);
+  async function openItem(id) {
+    setError('');
+    setOpening(true);
+    try {
+      if (await loadPaper(id)) setModal(current => current === 'library' ? '' : current);
+      else setError('Finish the current task or retry the workspace save before opening another paper.');
+    } catch (cause) {
+      setError(cause.message);
+    } finally { setOpening(false); }
+  }
+  return <>
+    <p>Saved on this PC with each paper’s translations, notes, bookmarks, and reading position.</p>
+    {persistenceWarning && <div role="alert"><Notice tone="error">{persistenceWarning}</Notice></div>}
+    <input aria-label="Search titles and tags" placeholder="Search titles and tags" value={query} onChange={event => setQuery(event.target.value)} />
+    {items.map((item, index) => <div className="library-entry" key={item.id} data-library-id={item.id} data-workspace-available={item.workspaceAvailable !== false}>
+      <button className="modal-list-row" disabled={busy || opening} onClick={() => openItem(item.id)}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.workspaceAvailable === false ? 'Saved workspace unavailable · Reimport the original' : `${item.translatedCount ?? 0}/${item.blockCount} translated`}{item.lastOpened ? ` · Opened ${new Date(item.lastOpened).toLocaleDateString()}` : ''}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
+      <button className="icon-button" aria-label={`Edit label for ${item.name}`} onClick={event => onEditLabel(item, index, event.currentTarget.closest('.modal-body').scrollTop)}><Pencil size={16} /></button>
+    </div>)}
+    {!items.length && <p>{query ? 'No matching papers. Try another title or tag.' : 'No saved papers. Open a PDF or paste text to begin.'}</p>}
+    {busy && <p>Finish or stop the current task before opening another paper.</p>}
+    {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
+  </>;
+}
+
+function ClearDataConfirmation({ onRemove, onCancel }) {
+  const [includeArchivedPdfs, setIncludeArchivedPdfs] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [error, setError] = useState('');
+  async function confirm() {
+    setRemoving(true); setError('');
+    try { await onRemove(includeArchivedPdfs); }
+    catch (cause) { setError(cause.message); }
+    finally { setRemoving(false); }
+  }
+  return <>
+    <p>This removes saved papers, extracted text and figures, translations, bookmarks, notes, terminology, and settings.</p>
+    <label className="settings-checkbox"><input type="checkbox" disabled={removing} checked={includeArchivedPdfs}
+      onChange={event => setIncludeArchivedPdfs(event.target.checked)} /> Also remove archived PDF copies from PaperBridge</label>
+    <p>PDFs outside the PaperBridge archive stay at their original locations. The OpenAI API key can be removed under Models. Text already sent online cannot be recalled.</p>
+    {error && <p role="alert" className="notice error">{error}</p>}
+    <div className="row"><button className="button danger" disabled={removing} onClick={confirm}>{removing ? 'Removing…' : 'Remove saved data'}</button>
+      <button className="button outline" onClick={onCancel}>Cancel</button></div>
+  </>;
+}
+
+function SavedTerminology({ glossary, saving, error, onRemove }) {
+  const [query, setQuery] = useState('');
+  const rows = [...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, query));
+  return <>
+    <p>Approved terms guide future translations in the same language direction.</p>
+    <input aria-label="Search saved terms" placeholder="Search saved terms" value={query} onChange={event => setQuery(event.target.value)} />
+    {rows.map(([index, term]) => <div className="term-row" key={`${term.source}-${index}`}>
+      <span><b>{term.source}</b> → {term.target}<small>{term.sourceLanguage} → {term.targetLanguage}</small></span>
+      <button className="icon-button" aria-label={`Remove ${term.source}`} disabled={saving} onClick={() => onRemove(index)}><Trash2 size={16} /></button>
+    </div>)}
+    {error && <p role="alert" className="selection-lookup-message error">{error}</p>}
+    {!rows.length && <p role="status">{glossary.length ? 'No matching terms. Try another word or translation.' : 'No saved terms yet. Select a phrase in Reader to add one.'}</p>}
+  </>;
+}
+
+function LibraryLabelEditor({ item, onSave, onSaved, onCancel }) {
+  const [title, setTitle] = useState(item.name);
+  const [tags, setTags] = useState(item.tags);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  async function save() {
+    if (saving || !trimLibraryText(title)) return;
+    setSaving(true); setError('');
+    try {
+      await onSave(item.id, title, tags);
+      if (mounted.current) onSaved();
+    } catch (cause) {
+      if (mounted.current) setError(cause.message);
+    } finally { if (mounted.current) setSaving(false); }
+  }
+  function saveOnEnter(event) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229 ||
+        event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    if (!event.repeat) void save();
+  }
+  return <>
+    <p>Only the library label changes; the original PDF stays unchanged. Labels remain available even when a saved workspace cannot be read.</p>
+    <label>Title<input value={title} disabled={saving} onChange={event => setTitle(event.target.value)} onKeyDown={saveOnEnter} /></label>
+    <label>Tags, separated by commas<input value={tags} disabled={saving} onChange={event => setTags(event.target.value)} onKeyDown={saveOnEnter} /></label>
+    {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
+    <div className="row"><button className="button blue" disabled={saving || !trimLibraryText(title)} onClick={save}>{saving ? 'Saving…' : 'Save label'}</button><button className="button outline" onClick={onCancel}>Cancel</button></div>
+  </>;
+}
+
+function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, navigatePdf, removeRecords }) {
+  const entries = useMemo(() => savedAnnotations(paper), [paper]);
+  const [context, setContext] = useState(null);
+  const menuRef = useRef(null);
+  const focusAfterRemoval = useRef(null);
+  useLayoutEffect(() => {
+    focusAfterRemoval.current?.focus({ preventScroll: true });
+    focusAfterRemoval.current = null;
+  }, [entries]);
+  const contextEntry = context && context.paperId === paper?.id && entries.find(entry => entry.key === context.key);
+  const showContext = Boolean(contextEntry);
+  useLayoutEffect(() => {
+    if (!showContext) {
+      if (context) setContext(null);
+      return;
+    }
+    const menu = menuRef.current;
+    menu.showPopover();
+    const rect = menu.getBoundingClientRect();
+    menu.style.left = Math.max(4, Math.min(context.x, innerWidth - rect.width - 4)) + 'px';
+    menu.style.top = Math.max(4, Math.min(context.y, innerHeight - rect.height - 4)) + 'px';
+    menu.dataset.positioned = 'true';
+    menu.querySelector('button').focus({ preventScroll: true });
+    return () => { if (menu.matches(':popover-open')) menu.hidePopover(); };
+  }, [context, showContext]);
+  function openContext(event, entry, keyboard = false) {
+    event.preventDefault();
+    const trigger = event.currentTarget.querySelector('.annotation-navigate');
+    const rect = trigger.getBoundingClientRect();
+    setContext({ key: entry.key, paperId: paper.id, trigger,
+      x: keyboard ? rect.left + 8 : event.clientX, y: keyboard ? rect.bottom : event.clientY });
+  }
+  function closeContext() {
+    setContext(null);
+    context?.trigger.focus({ preventScroll: true });
+  }
+  function deleteFromContext() {
+    const row = context.trigger.closest('.annotation-row');
+    const neighbor = [row.nextElementSibling, row.previousElementSibling].find(node => node?.matches('.annotation-row'));
+    focusAfterRemoval.current = neighbor?.querySelector('.annotation-navigate') || document.getElementById('inspector-undo-annotation');
+    setContext(null);
+    removeRecords(contextEntry.records);
+  }
+  if (!entries.length) return null;
+  function navigateRecord(ref, records) {
+    if (ref.location === 'block') navigateBlockAnnotation(ref.blockId, ref.item, ref.kind, ref.category, records);
+    else if (ref.location === 'view') navigateView(ref.item, records);
+    else navigatePdf(ref.item);
+  }
+  function removalLabel(ref) {
+    if (ref.category === 'note') return `Delete ${ref.location === 'pdf' ? 'PDF ' : ref.location === 'view' ? 'view ' : ''}note ${ref.item.id}`;
+    return `Remove ${ref.location === 'pdf' ? 'PDF ' : ref.location === 'view' ? 'view ' : ''}highlight ${ref.location === 'block' ? `${ref.blockId} ` : ''}${ref.item.id || ref.key}`;
+  }
+  function removalName(ref, entry) {
+    const label = removalLabel(ref);
+    const matching = entry.records.filter(item => removalLabel(item) === label);
+    return matching.length > 1 ? `${label} (${matching.indexOf(ref) + 1} of ${matching.length})` : label;
+  }
+  return <div className="inspector-section saved-annotations"><small>SAVED ANNOTATIONS · {entries.length}</small>
+    {showContext && <div ref={menuRef} popover="auto" role="menu" aria-label="Annotation actions" className="reader-actions-menu annotation-context-menu"
+      onToggle={event => { if (event.newState === 'closed' && !event.currentTarget.matches(':popover-open')) setContext(null); }}
+      onKeyDown={event => {
+        if (event.key === 'Escape' || event.key === 'Tab') {
+          event.stopPropagation();
+          if (event.key === 'Escape') event.preventDefault();
+          closeContext();
+        }
+      }}>
+      <button role="menuitem" type="button" onClick={deleteFromContext}><Trash2 size={14} />Delete Annotation</button>
+    </div>}
+    {entries.map(entry => {
+      const primary = entry.notes[0] || entry.highlights[0];
+      const colors = [...new Set(entry.highlights.map(ref => displayHighlightColor(ref.item.color)).filter(Boolean))];
+      return <div className="annotation-row" data-annotation-key={entry.key} key={entry.key}
+        onContextMenu={event => openContext(event, entry, !event.clientX && !event.clientY)}
+        onKeyDown={event => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') openContext(event, entry, true); }}>
+        <button className="annotation-navigate" onClick={() => navigateRecord(primary, entry.records)}>
+          <b className="annotation-label">{entry.label}{entry.review ? primary.location === 'pdf' && canRecheckPdfPageGap(primary.item) ? ' · review needed, recheck original PDF' : ' · source changed, review needed' : ''}</b>
+          {colors.length > 0 && <span className="annotation-colors">{colors.map(highlightColorName).join(', ')} highlight</span>}
+          <span className="annotation-quote" title={entry.quote}>{entry.quote}</span>
+          {entry.notes.map(ref => <small className="annotation-note" key={ref.key} title={ref.item.body}>{ref.item.body}</small>)}
+        </button>
+        <div className="annotation-actions">
+          {entry.records.map(ref => <button className="icon-button" key={ref.key} aria-label={removalName(ref, entry)} title={ref.category === 'note' ? `Delete note only: ${ref.item.body}` : 'Remove highlight only'} onClick={() => removeRecords([ref])}><X size={14} /></button>)}
+          {entry.records.length > 1 && <button className="icon-button" aria-label={`Delete annotation ${entry.label}`} title="Delete this annotation, including its notes and highlights" onClick={() => removeRecords(entry.records)}><Trash2 size={14} /></button>}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
+function ParagraphExplanation({ paper, activeBlock, language, setLanguage, result, onExplain, busy }) {
+  const block = paper.blocks.find(item => item.id === activeBlock);
+  if (!block || block.resource) return <div className="inspector-section paragraph-explanation">
+    <small>PARAGRAPH EXPLANATION</small>
+    <div className="explanation-source">Choose a paragraph’s lightbulb button to explain the full paragraph.</div>
+  </div>;
+  return <div className="inspector-section paragraph-explanation">
+    <small>{block.heading ? 'HEADING EXPLANATION' : 'FULL PARAGRAPH EXPLANATION'} · BLOCK {block.id}</small>
+    <select aria-label="Explanation language" value={language} onChange={event => setLanguage(event.target.value)}>
+      {languages.map(value => <option key={value}>{value}</option>)}
+    </select>
+    <div className="explanation-source">{paragraphPreview(block.text)}</div>
+    <button className="inspector-link" disabled={!!busy} onClick={() => onExplain(block.id)}>{block.heading ? 'Explain heading' : 'Explain full paragraph'}</button>
+    {result?.id === block.id && <div className="explanation-result"><strong>{result.language || language}</strong><p>{result.output}</p></div>}
+  </div>;
+}
+
+function selectionLookupInput(paper, selection, settings, explanationLanguage, glossary) {
+  if (!paper || !selection || !settings) return null;
+  const quote = selection.quote ?? selection.text;
+  const block = paper.blocks.find(item => item.id === selection.id);
+  const translated = selection.kind === 'translation';
+  const blockContext = translated ? block?.translation : block?.text;
+  const fullContext = (isPdfScope(selection.scope) || selection.renderedAnchor ? selection.context : blockContext || selection.context) || '';
+  const from = translated ? settings.targetLanguage : settings.sourceLanguage;
+  const to = translated ? settings.sourceLanguage : settings.targetLanguage;
+  const model = activeAIModel(settings, 'quickLookup');
+  const terms = matchingGlossaryTerms(glossary, quote, from, to);
+  const identity = selectionIdentity(selection);
+  const key = JSON.stringify([paper.id, selectionTranslationCacheVersion, identity, quote, fullContext, from, to, model,
+    aiCacheNamespace(settings), explanationLanguage, terms]);
+  return { key, identity, quote, fullContext, from, to, model, terms };
+}
+
+function SelectionResults({ results }) {
+  return <>{['translate', 'explain'].filter(kind => results?.[kind]).map(kind => <div className={`inspector-result ${kind}`} key={kind}><small>{kind === 'translate' ? 'TRANSLATION' : 'SIMPLE EXPLANATION'}</small><p>{results[kind]}</p></div>)}</>;
+}
+
+function HighlightControls({ activeColor, onAdd, onRemove, compact = false, disabled = false }) {
+  return <div className={`highlight-controls ${compact ? 'compact' : ''}`}>{currentHighlightColors.map(color => <button key={color} className={`highlight ${color}${activeColor === color ? ' selected' : ''}`} title={`${highlightColorName(color)} highlight`} aria-label={`${highlightColorName(color)} highlight`} aria-pressed={activeColor === color} disabled={disabled} onClick={() => onAdd(color)}><Highlighter size={compact ? 14 : 16} aria-hidden="true" /><span className="highlight-color-name">{highlightColorName(color)}</span></button>)}{activeColor && <button className="remove-selection-highlight" disabled={disabled} onClick={onRemove}>Remove Highlight</button>}</div>;
+}
+
+function QuickSelection({ selection, results, busy, lookupBusy, lookup, activeColor, quickTermOpen, termDraft, termSaving, setTermDraft, onTranslate, onExplain, onHighlight, onRemoveHighlight, onOpenTerm, onSaveTerm, onCancelTerm, onMore, onCancelTask, onClose }) {
+  const quote = selection.quote ?? selection.text;
+  return <div className="selection-toolbar" role="dialog" aria-label="Quick selection"
+    onMouseDown={event => { if (!event.target.closest('input, .quick-selection-results')) event.preventDefault(); }}>
+    <div className="quick-selection-head"><strong>{quote}</strong><button aria-label="Close quick lookup" onClick={onClose}><X size={14} /></button></div>
+    <div className="quick-selection-actions"><button disabled={!!busy} onClick={onTranslate}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={onExplain}><Sparkles size={14} /> Explain</button></div>
+    {lookupBusy && <div className="quick-selection-busy"><span>{busy.label}</span><button onClick={onCancelTask}>Cancel</button></div>}
+    {(results.translate || results.explain) && <div className="quick-selection-results"><SelectionResults results={results} /></div>}
+    {!busy && lookup?.error && <p className="selection-lookup-message error" role="alert">{lookup.error}</p>}
+    {!busy && !lookup?.error && lookup?.status && <p className="selection-lookup-message">{lookup.status}</p>}
+    <div className="quick-highlight-row"><span>Highlight</span><HighlightControls activeColor={activeColor} onAdd={onHighlight} onRemove={onRemoveHighlight} disabled={lookupBusy} compact /></div>
+    {quickTermOpen ? <div className="quick-term"><input aria-label="Preferred translation" placeholder="Preferred translation" value={termDraft} disabled={termSaving} onChange={event => setTermDraft(event.target.value)} /><div className="row"><button disabled={!trimLibraryText(termDraft) || termSaving} onClick={onSaveTerm}>Save Term</button><button disabled={termSaving} onClick={onCancelTerm}>Cancel</button></div></div> : <div className="quick-selection-foot"><button disabled={termSaving || !canSaveTermSource(quote)} onClick={onOpenTerm}>Save Term…</button><button onClick={onMore}><MessageSquareText size={14} /> Notes & More</button></div>}
+  </div>;
+}
+
+function App() {
+  const [ready, setReady] = useState(false);
+  const [settings, setSettings] = useState(null);
+  const settingsRef = useRef(null);
+  const parserPreferenceEdits = useRef({});
+  const settingsSaveChain = useRef(Promise.resolve());
+  const lastSettingsWrite = useRef(null);
+  const modelRefreshId = useRef(0);
+  const [appVersion, setAppVersion] = useState('');
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [updateFile, setUpdateFile] = useState(null);
+  const [updateAction, setUpdateAction] = useState(null);
+  const [setupOnClose, setSetupOnClose] = useState('');
+  const setupOnCloseRef = useRef('');
+  const [setupWaitMessage, setSetupWaitMessage] = useState('');
+  function scheduleSetup(tag) {
+    setupOnCloseRef.current = tag;
+    setSetupOnClose(tag);
+  }
+  const usingUpdate = Boolean(updateAction?.pending);
+  const updateActionMessage = updateAction && updateAction.tag === updateInfo?.tag ? updateAction.message : '';
+  const filePhase = updateInfo && updateInfo.tag === updateFile?.tag ? updateFile.phase : 'idle';
+  const fileMessage = filePhase === 'downloading' ? `Downloading Windows update · ${updateFile.percent}%`
+    : filePhase === 'ready' ? updateActionMessage || 'Download complete. SHA-256 and GitHub build proof verified.'
+    : filePhase === 'cancelled' ? 'Update download cancelled. You can download it again.'
+    : filePhase === 'failed' ? updateFile.message
+    : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
+  const readySetupTag = filePhase === 'ready' && updateInfo?.canOpenInstaller ? updateInfo.tag : '';
+  useLayoutEffect(() => {
+    if (setupOnCloseRef.current && setupOnCloseRef.current !== readySetupTag) scheduleSetup('');
+  }, [readySetupTag]);
+  const updateActionAvailable = filePhase === 'ready' && (updateInfo?.canOpenInstaller || updateInfo?.canCloseForPortable);
+  const updateActionLabel = updateInfo?.canCloseForPortable ? 'Close and show portable update' : 'Open installer';
+  const updateButtonLabel = filePhase === 'downloading' ? 'Cancel download' : filePhase === 'ready' ? 'Show downloaded update' : updateInfo?.downloadLabel;
+  const [deferredUpdateTag, setDeferredUpdateTag] = useState('');
+  const showUpdateBanner = updateInfo?.status === 'available' && updateInfo.tag !== deferredUpdateTag;
+  const [updateStatus, setUpdateStatus] = useState('');
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [glossary, setGlossary] = useState([]);
+  const glossarySave = useRef(null);
+  const [glossarySaving, setGlossarySaving] = useState(false);
+  const [glossaryError, setGlossaryError] = useState('');
+  const [library, setLibrary] = useState([]);
+  const [archiveCleanup, setArchiveCleanup] = useState({ remaining: 0 });
+  const [paper, setPaper] = useState(null);
+  const expandedOverview = useMemo(() => new Set(), [paper?.id]);
+  const paperRef = useRef(null);
+  const paperLoadRequest = useRef(0);
+  const [tab, setTab] = useState('Paper');
+  const [displayMode, setDisplayMode] = useState('bilingual');
+  const [modal, setModal] = useState('');
+  const [pdfComment, setPdfComment] = useState(null);
+  const [draggingFiles, setDraggingFiles] = useState(false);
+  const [taskSetup, setTaskSetup] = useState(null);
+  const modalRef = useRef(null);
+  const finishingOnboarding = useRef(false);
+  const [onboardingFinishing, setOnboardingFinishing] = useState(false);
+  const [onboardingSaveError, setOnboardingSaveError] = useState('');
+  const [onboardingBusy, setOnboardingBusy] = useState(false);
+  const onboardingBusyRef = useRef(false);
+  const handleOnboardingBusy = useCallback(value => { onboardingBusyRef.current = value; setOnboardingBusy(value); }, []);
+  const [paste, setPaste] = useState('');
+  const [pasteExpanded, setPasteExpanded] = useState(false);
+  const [pasteFocusRequest, setPasteFocusRequest] = useState(0);
+  const [models, setModels] = useState([]);
+  const [hardware, setHardware] = useState(null);
+  const [mineruRuntime, setMineruRuntime] = useState(null);
+  const [checkingHardware, setCheckingHardware] = useState(false);
+  const [hardwareError, setHardwareError] = useState('');
+  const hardwareCheckId = useRef(0);
+  const [modelDownloadMessage, setModelDownloadMessage] = useState('');
+  const [modelDownloadError, setModelDownloadError] = useState('');
+  const [ollamaError, setOllamaError] = useState('');
+  const [ollamaStatus, setOllamaStatus] = useState('unchecked');
+  const [refreshingModels, setRefreshingModels] = useState(false);
+  const [sidebarParserRevision, setSidebarParserRevision] = useState(0);
+  const [settingsSection, setSettingsSection] = useState('setup');
+  const [openAIState, setOpenAIState] = useState({ hasKey: null, consent: false, models: [], refreshing: false, saving: false, status: '', error: '' });
+  const openAIStateRef = useRef(openAIState);
+  openAIStateRef.current = openAIState;
+  const openAIRefreshId = useRef(null);
+  const [status, setStatus] = useState('');
+  const [error, setError] = useState('');
+  const [closeFailure, setCloseFailure] = useState('');
+  const attachment = usePaperAttachment(paperRef, modal, setModal, setError);
+  const [workspaceSave, setWorkspaceSave] = useState({ status: 'idle', error: null });
+  const [busy, setBusy] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [pendingImport, setPendingImport] = useState(null);
+  const [importElapsed, setImportElapsed] = useState(0);
+  const importElapsedLabel = `${Math.floor(importElapsed / 60)}m ${importElapsed % 60}s`;
+  const [search, setSearch] = useState('');
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [libraryDialogSearch, setLibraryDialogSearch] = useState('');
+  useEffect(() => {
+    if (modal !== 'library' && modal !== 'libraryLabel') { setLibraryDialogSearch(''); libraryReturn.current = null; }
+  }, [modal]);
+  const [libraryEdit, setLibraryEdit] = useState(null);
+  const libraryReturn = useRef(null);
+  const [libraryPersistenceWarning, setLibraryPersistenceWarning] = useState('');
+  const libraryMetadataSaveChain = useRef(Promise.resolve());
+  const libraryMetadataRequest = useRef(0);
+  const [selection, setSelection] = useState(null);
+  const [lookupCache, setLookupCache] = useState(() => new Map());
+  const [lookupFeedback, setSelectionLookup] = useState({ status: '', error: '' });
+  const [explanationLanguage, setExplanationLanguage] = useState('English');
+  const [noteDraft, setNoteDraft] = useState('');
+  const [termDraft, setTermDraft] = useState('');
+  const [quickTermOpen, setQuickTermOpen] = useState(false);
+  const [inspector, setInspector] = useState(() => !window.matchMedia('(max-height: 480px)').matches);
+  const [compactInspector, setCompactInspector] = useState(() => window.matchMedia('(max-width: 1399px)').matches);
+  const [sidebar, setSidebar] = useState(() => !window.matchMedia('(max-width: 800px)').matches);
+  const [documentDetailsExpanded, setDocumentDetailsExpanded] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(workspacePanelWidths.sidebar.initial);
+  const [inspectorWidth, setInspectorWidth] = useState(workspacePanelWidths.inspector.initial);
+  const [focus, setFocus] = useState(false);
+  const [pageNumber, setPageNumber] = useState(1);
+  const [pdfNavigation, setPdfNavigation] = useState(null);
+  const [viewNavigation, setViewNavigation] = useState(null);
+  const [blockNavigation, setBlockNavigation] = useState(null);
+  const activeBlock = resolveSelectedParagraphID(paper);
+  const [edit, setEdit] = useState(null);
+  const editRef = useRef(null);
+  editRef.current = edit;
+  const [undo, setUndoState] = useState([]);
+  const undoHistory = useRef(undo);
+  const [readingHistoryState, setReadingHistoryState] = useState({ back: 0, forward: 0 });
+  const pendingUndoSnapshot = useRef(null);
+  const noteEditingIdentity = useRef('');
+  const [pullModel, setPullModel] = useState('');
+  const [pullProgress, setPullProgress] = useState(null);
+  const [pulling, setPulling] = useState(false);
+  const [cancellingPull, setCancellingPull] = useState(false);
+  const pullRef = useRef(false);
+  const [setupProgress, setSetupProgress] = useState(null);
+  const searchRef = useRef(null);
+  const sidebarToggleRef = useRef(null);
+  const taskRef = useRef(null);
+  const selectionRef = useRef(null);
+  selectionRef.current = selection;
+  const translationQueueRef = useRef(null);
+  const mineruPreflight = useRef(false);
+  const saveQueue = useRef(null);
+  const clearingWorkspace = useRef(false);
+  const readingHistory = useRef(null);
+  const readingRestoration = useRef(0);
+  const readingGeneration = readingRestoration.current;
+  const fileInputRef = useRef(null);
+  const mainScrollRef = useRef(null);
+  const scrollSaveTimer = useRef(null);
+  const readerResize = useRef(null);
+  const appearanceScroll = useRef(null);
+  const restoringScroll = useRef(false);
+  const pendingReadingRestorations = useRef(new Set());
+  const [readingLayoutState, setReadingLayoutState] = useState({ paperId: null, busy: false });
+  const searchOrigin = useRef(null);
+  const searchScroll = useRef(null);
+  const lastCommand = useRef({ name: '', at: 0 });
+  const commandRef = useRef(null);
+
+  if (!saveQueue.current) saveQueue.current = createPaperSaveQueue({
+    save: snapshot => api.savePaper(snapshot),
+    onState: next => setWorkspaceSave(next),
+    onSaved: result => setLibrary(result)
+  });
+  if (!readingHistory.current) readingHistory.current = createReadingHistory(50);
+
+  function setUndo(entries) {
+    if (!entries.length) {
+      pendingUndoSnapshot.current = null;
+      noteEditingIdentity.current = '';
+    }
+    undoHistory.current = entries;
+    setUndoState(entries);
+  }
+  function saveUndoEntry(before, after, range) {
+    const entry = createUndoEntry(before, after, range);
+    if (entry) setUndo(recordUndoEntry(undoHistory.current, entry));
+  }
+  function finishNoteUndo() {
+    if (noteEditingIdentity.current && pendingUndoSnapshot.current) {
+      saveUndoEntry(pendingUndoSnapshot.current, paperRef.current);
+      pendingUndoSnapshot.current = null;
+    }
+    noteEditingIdentity.current = '';
+  }
+  const commitPaper = (updater, { delay = 0, deferUndo = false, undoRange } = {}) => {
+    const current = paperRef.current;
+    if (clearingWorkspace.current) return current;
+    const next = typeof updater === 'function' ? updater(current) : updater;
+    if (next === current) return current;
+    if (pendingUndoSnapshot.current && !deferUndo) {
+      saveUndoEntry(pendingUndoSnapshot.current, next, undoRange);
+      pendingUndoSnapshot.current = null;
+      noteEditingIdentity.current = '';
+    }
+    paperRef.current = next; setPaper(next);
+    if (next) saveQueue.current.schedule(next, delay);
+    return next;
+  };
+  function selectParagraph(id) {
+    return commitPaper(current => {
+      if (!current || id !== null && !isSelectableParagraphID(id, current.blocks) || current.selectedParagraphID === id) return current;
+      return { ...current, selectedParagraphID: id };
+    }, { deferUndo: true });
+  }
+  async function finishNoteEditing() {
+    finishNoteUndo();
+    return saveQueue.current.flush();
+  }
+  async function retryPaperSave() {
+    await saveQueue.current.retry();
+  }
+  const syncReadingHistory = () => {
+    const snapshot = readingHistory.current.snapshot();
+    setReadingHistoryState({ back: snapshot.back.length, forward: snapshot.forward.length });
+  };
+  const scrollKey = (surface = tab, page = pageNumber) => surface === 'Original' ? `Original:${page}` : surface;
+  function captureReaderSearchOrigin() {
+    const host = mainScrollRef.current;
+    if (!host) return 0;
+    const top = host.getBoundingClientRect().top;
+    const children = host.querySelector('.reader-list')?.children;
+    let first = 0, end = children?.length || 0;
+    while (first < end) {
+      const middle = Math.floor((first + end) / 2);
+      if (children[middle].getBoundingClientRect().bottom <= top + 12) first = middle + 1;
+      else end = middle;
+    }
+    let visible = children?.[first];
+    while (visible && !visible.classList.contains('block')) visible = visible.nextElementSibling;
+    return visible ? { scrollTop: host.scrollTop, block: Number(visible.id.replace('block-', '')),
+      offset: visible.getBoundingClientRect().top - top } : host.scrollTop;
+  }
+  function restoreReaderSearchOrigin(value) {
+    const origin = normalizeSearchOrigin(value), host = mainScrollRef.current;
+    if (origin === null || !host) return;
+    const block = typeof origin === 'object' && host.querySelector(`#block-${origin.block}`);
+    if (block) {
+      const bounds = block.getBoundingClientRect();
+      const offset = Math.max(origin.offset, 16 - bounds.height);
+      host.scrollTop += bounds.top - host.getBoundingClientRect().top - offset;
+    } else host.scrollTop = typeof origin === 'number' ? origin : origin.scrollTop;
+  }
+  function restoreReaderViewport(host, position, saved) {
+    const anchor = position?.readerViewport;
+    const origin = normalizeSearchOrigin(anchor);
+    if (!host || !origin || typeof origin !== 'object' || origin.block !== position.block || origin.scrollTop !== saved) return false;
+    const target = host.querySelector(`#block-${origin.block}`);
+    if (!target) return false;
+    if (host.clientWidth === anchor.width) {
+      host.scrollTop = saved;
+      const top = target.getBoundingClientRect().top - host.getBoundingClientRect().top;
+      if (Math.abs(top - origin.offset) < 1) return true;
+    }
+    restoreReaderSearchOrigin(origin);
+    persistRestoredReaderPosition();
+    return true;
+  }
+  function currentReadingLocation() {
+    const current = paperRef.current;
+    if (!current) return null;
+    const scrollByTab = { ...current.position?.scrollByTab };
+    if (search && Number.isFinite(searchScroll.current)) scrollByTab.Reader = searchScroll.current;
+    const key = scrollKey();
+    scrollByTab[key] = mainScrollRef.current?.scrollTop || 0;
+    if (tab === 'Reader' && search) searchScroll.current = scrollByTab.Reader;
+    const pdfHost = mainScrollRef.current?.querySelector('.pdf-continuous');
+    const pdfPage = pdfPageElement(pdfHost, pageNumber);
+    if (pdfPage) scrollByTab[pdfScrollKey(pdfHost.dataset.pdfScope, pageNumber)] = pdfOffsetAtFit(pdfHost, pdfPage, pdfZoomPercent(Number(pdfHost.dataset.pdfZoom)));
+    const reader = tab === 'Reader' && !search ? captureReaderSearchOrigin() : null;
+    const readerViewport = reader && typeof reader === 'object' ? { ...reader, width: mainScrollRef.current.clientWidth } : null;
+    const block = readerViewport?.block || current.position?.block || firstSelectableParagraphID(current.blocks) || 1;
+    return { paperId: current.id, sourceMode: paperArticleSource(current).mode, tab, displayMode, block,
+      ...(readerViewport && { readerViewport }),
+      selectedParagraphID: resolveSelectedParagraphID(current),
+      page: pageNumber, search, searchOrigin: searchOrigin.current, scrollByTab,
+      ...(tab === 'Paper' && { paperAnchor: capturePreviewAnchor(mainScrollRef.current) }),
+      ...(tab === 'Full Translation' && { fullTranslationAnchor: capturePreviewAnchor(mainScrollRef.current) }) };
+  }
+  function recordReadingJump(isAlreadyAtDestination = () => false) {
+    const location = currentReadingLocation();
+    if (!location || isAlreadyAtDestination(location)) return false;
+    void finishNoteEditing();
+    clearTimeout(scrollSaveTimer.current);
+    readingHistory.current.record(location);
+    syncReadingHistory();
+    commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
+    return true;
+  }
+  function publishReadingRestorationState() {
+    const next = { paperId: paperRef.current?.id || null, busy: pendingReadingRestorations.current.size > 0 };
+    restoringScroll.current = next.busy;
+    setReadingLayoutState(previous => previous.paperId === next.paperId && previous.busy === next.busy ? previous : next);
+  }
+  function beginReadingRestore() {
+    const owner = { paperId: paperRef.current?.id, generation: readingRestoration.current };
+    pendingReadingRestorations.current.add(owner);
+    publishReadingRestorationState();
+    return owner;
+  }
+  function finishReadingRestore(owner) {
+    // A stale callback must not announce readiness for a newer restoration.
+    if (pendingReadingRestorations.current.delete(owner)) publishReadingRestorationState();
+  }
+  function invalidateReadingScroll() {
+    clearTimeout(scrollSaveTimer.current);
+    pendingReadingRestorations.current.clear();
+    const generation = ++readingRestoration.current;
+    publishReadingRestorationState();
+    return generation;
+  }
+  function resetReadingHistory() {
+    readingHistory.current.reset();
+    searchOrigin.current = null;
+    searchScroll.current = null;
+    invalidateReadingScroll();
+    syncReadingHistory();
+  }
+  function canRestoreReadingLocation(location) {
+    const current = paperRef.current;
+    if (!current || location.paperId !== current.id) return false;
+    return !location.sourceMode || location.sourceMode === paperArticleSource(current).mode || canSwitchReadingSource(current, location.sourceMode);
+  }
+  function restoreReadingLocation(location) {
+    if (!location || location.paperId !== paperRef.current?.id) return;
+    void finishNoteEditing();
+    const generation = invalidateReadingScroll();
+    const owner = beginReadingRestore();
+    searchOrigin.current = normalizeSearchOrigin(location.searchOrigin);
+    searchScroll.current = location.search ? Number(location.scrollByTab?.Reader || 0) : null;
+    window.getSelection()?.removeAllRanges();
+    setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+    setTab(location.tab); setDisplayMode(location.displayMode); setPageNumber(location.page); setSearch(location.search);
+    const sourceChanged = location.sourceMode && location.sourceMode !== paperArticleSource(paperRef.current).mode;
+    if (sourceChanged) { setUndo([]); cancelParagraphEdit(); setError(''); }
+    commitPaper(current => {
+      const target = sourceChanged ? switchReadingSource(current, location.sourceMode, settingsRef.current) : current;
+      const selectedParagraphID = resolveSelectedParagraphID({ blocks: target.blocks, position: { block: location.block },
+        ...(Object.hasOwn(location, 'selectedParagraphID') && { selectedParagraphID: location.selectedParagraphID }) });
+      return { ...target, selectedParagraphID,
+        position: persistedReadingPosition(location, sourceChanged ? { ...current.position, readerSearchOrigin: undefined } : current.position) };
+    });
+    afterReadingLayout(mainScrollRef.current, () => {
+      try {
+        const current = paperRef.current;
+        if (generation !== readingRestoration.current || current?.id !== location.paperId ||
+            current.position?.tab !== location.tab || current.position?.displayMode !== location.displayMode) return;
+        const key = scrollKey(location.tab, location.page);
+        const saved = location.scrollByTab?.[key];
+        const host = mainScrollRef.current;
+        if (location.tab === 'Reader' && !location.search && restoreReaderViewport(host, location, saved)) return;
+        const anchor = location.tab === 'Paper' ? location.paperAnchor : location.fullTranslationAnchor;
+        if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
+        if (saved == null && location.tab === 'Reader') document.getElementById(`block-${location.block}`)?.scrollIntoView({ block: 'start' });
+      } finally { finishReadingRestore(owner); }
+    });
+  }
+  function goBackInReading() {
+    const destination = readingHistory.current.goBack(currentReadingLocation(), canRestoreReadingLocation);
+    syncReadingHistory();
+    restoreReadingLocation(destination);
+  }
+  function goForwardInReading() {
+    const destination = readingHistory.current.goForward(currentReadingLocation(), canRestoreReadingLocation);
+    syncReadingHistory();
+    restoreReadingLocation(destination);
+  }
+  function navigateToTab(target) {
+    if (!paperRef.current || target === tab) return;
+    recordReadingJump();
+    setTab(target);
+  }
+  function openReaderSourcePage(page) {
+    const location = currentReadingLocation();
+    if (!location || !recordReadingJump()) return;
+    restoreReadingLocation({ ...location, tab: 'Original', page,
+      scrollByTab: { ...location.scrollByTab, [scrollKey('Original', page)]: 0, [pdfScrollKey('pdf', page)]: 0 } });
+  }
+  function compareOriginal(page) {
+    navigateToTab('Paper');
+    changeDisplayMode('source');
+    if (page) changeFacsimilePage(page);
+  }
+  function changeFacsimilePage(number) {
+    setPageNumber(number);
+    commitPaper(current => ({ ...current, position: { ...current.position, page: number } }));
+  }
+  function changePdfPage(scope, number, offset, manual, zoom) {
+    if (paperRef.current?.id !== paper.id || readingGeneration !== readingRestoration.current) return;
+    if (manual) {
+      void finishNoteEditing();
+      setPdfNavigation(null);
+      setSelection(null);
+    }
+    setPageNumber(number);
+    const key = pdfScrollKey(scope, number);
+    commitPaper(current => {
+      const position = current.position;
+      if (zoom == null && position?.page === number && position.scrollByTab?.[key] === offset) return current;
+      return { ...current, position: { ...position, page: number, scrollByTab: { ...position?.scrollByTab, [key]: offset },
+        ...(zoom != null && { pdfZoom: { ...position?.pdfZoom, [scope]: zoom } }) } };
+    }, { delay: manual || zoom != null ? 0 : 250, deferUndo: !manual });
+  }
+  function selectPdf(anchor, scope) {
+    if (!anchor) { setSelection(null); return; }
+    return applyReadingSelection({ ...anchor, id: null, kind: 'source', scope, showQuickLookup: true });
+  }
+  function hideQuickSelection() {
+    setSelection(current => current?.showQuickLookup ? { ...current, showQuickLookup: false } : current);
+  }
+  function hideOffscreenLookup(host) {
+    if (!selectionRef.current?.showQuickLookup) return;
+    const selected = window.getSelection();
+    if (host && selected?.rangeCount) {
+      const range = selected.getRangeAt(0);
+      if (host.contains(range.commonAncestorContainer)) {
+        const bounds = range.getBoundingClientRect(), viewport = host.getBoundingClientRect();
+        if (bounds.bottom > viewport.top && bounds.top < viewport.bottom &&
+            bounds.right > viewport.left && bounds.left < viewport.right) return;
+      }
+    }
+    hideQuickSelection();
+  }
+  function openSelectionInspector() {
+    dismissQuickSelection();
+    setFocus(false);
+    if (window.matchMedia('(max-width: 800px)').matches) setSidebar(false);
+    setInspector(true);
+    setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0);
+  }
+  function dismissQuickSelection() {
+    hideQuickSelection();
+    if (quickTermOpen) {
+      setQuickTermOpen(false);
+      setTermDraft('');
+    }
+  }
+  const loadPaper = async (item, { fromImport = false, token = null } = {}) => {
+    if (clearingWorkspace.current || (editRef.current && !fromImport)) return false;
+    if ((busy || taskRef.current) && !fromImport) { setError('Finish or stop the current task before opening another paper.'); return; }
+    const request = ++paperLoadRequest.current;
+    const saved = await finishNoteEditing();
+    if (request !== paperLoadRequest.current) return false;
+    if (!saved) { setError('The current paper could not be saved. Retry before opening another paper.'); return; }
+    let loaded = typeof item === 'string' ? await api.loadPaper(item) : item;
+    if (token) requireActiveTask(token);
+    if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
+    if (fromImport && loaded?.id === paperRef.current?.id) loaded = paperRef.current;
+    if (!loaded) throw new Error('This saved paper could not be read. Its library entry was retained; try importing the original again.');
+    // Capture the saved output's language before missing task settings are filled
+    // from the current global configuration. Unknown historical output stays so.
+    loaded = restoreStructuredTranslations(reviewSavedReferenceCoverage(migrateOutputLanguages(loaded)));
+    let pagesMigrated = false;
+    if (loaded.mineruMarkdown && loaded.mineruPageMapVersion !== mineruPageMapVersion) {
+      const pageHints = await api.cachedMineruPages(loaded.id).catch(() => []);
+      if (token) requireActiveTask(token);
+      if (request !== paperLoadRequest.current || ((taskRef.current || editRef.current) && !fromImport)) return false;
+      const pdfBlocks = loaded.pdfBlocks || (loaded.sourceMode === 'pdf' ? loaded.blocks : []);
+      const mineruBlocks = locateMineruPages(loaded.mineruBlocks, pageHints, pdfBlocks, loaded.pageCount);
+      const blocks = loaded.sourceMode === 'mineru' ? locateMineruPages(loaded.blocks, pageHints, pdfBlocks, loaded.pageCount) : loaded.blocks;
+      pagesMigrated = pageHints.length > 0 || mineruBlocks !== loaded.mineruBlocks || blocks !== loaded.blocks;
+      if (pagesMigrated) loaded = { ...loaded, mineruBlocks, blocks, mineruPageMapVersion };
+    }
+    const previous = settingsRef.current;
+    const hasTaskSettings = Boolean(loaded.taskSettings);
+    // Workspaces saved before provider support contain local results.
+    const restoredFromPaper = restorePaperSettings({ ...previous, aiProvider: 'ollama', translationStyleGuide: '' }, loaded.taskSettings);
+    loaded = { ...loaded, paragraphExplanations: migrateExplanations(loaded, hasTaskSettings ? restoredFromPaper : null) };
+    if (hasTaskSettings || previous.aiProvider === 'openai') {
+      const restored = { ...(hasTaskSettings ? restoredFromPaper : previous), aiProvider: previous.aiProvider,
+        openAITranslationModel: previous.openAITranslationModel, openAISummaryModel: previous.openAISummaryModel,
+        openAIExplainModel: previous.openAIExplainModel, openAIQuickLookupModel: previous.openAIQuickLookupModel };
+      loaded = { ...switchOutputSettings(loaded, restoredFromPaper, restored), taskSettings: snapshotPaperSettings(restored) };
+      settingsRef.current = restored; setSettings(restored);
+      if (previous?.ollamaBaseURL !== restored.ollamaBaseURL) { setModels([]); setOllamaStatus('unchecked'); setOllamaError('Checking the restored local endpoint…'); refreshModels(restored); }
+    }
+    resetReadingHistory();
+    cancelParagraphEdit();
+    loaded = { ...loaded, selectedParagraphID: resolveSelectedParagraphID(loaded) };
+    paperRef.current = loaded; setPaper(loaded); setUndo([]); setTab(loaded.position?.tab || 'Paper'); setDisplayMode(loaded.position?.displayMode || 'bilingual'); setExplanationLanguage(languages.includes(loaded.explanationLanguage) ? loaded.explanationLanguage : 'English'); setInspector(loaded.inspectorOpen ?? inspector); setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null); setSearch(''); setPageNumber(loaded.position?.page || 1);
+    if (pagesMigrated) saveQueue.current.schedule(loaded);
+    setStatus(loaded.extractionWarning || (hasTaskSettings ? `Opened ${loaded.name}.` : `Opened ${loaded.name}. This older paper has no saved task settings; check its languages and models before continuing.`));
+    return true;
+  };
+  const updateBlock = (id, change) => commitPaper(current => ({ ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) }));
+  function persistSettings(snapshot) {
+    if (lastSettingsWrite.current?.snapshot === snapshot) return lastSettingsWrite.current.write;
+    const write = settingsSaveChain.current.then(() => api.saveSettings(snapshot));
+    const entry = { snapshot, write };
+    lastSettingsWrite.current = entry;
+    settingsSaveChain.current = write.catch(error => {
+      if (lastSettingsWrite.current === entry) {
+        lastSettingsWrite.current = null;
+        setError(error.message);
+      }
+    });
+    return write;
+  }
+  const updateSettings = change => {
+    const previous = settingsRef.current;
+    const changedKeys = Object.keys(change).filter(key => TASK_SETTING_KEYS.includes(key) && change[key] !== previous[key]);
+    const readingSettingsChanged = changedKeys.some(key => !PARSER_SETTING_KEYS.includes(key));
+    for (const key of changedKeys.filter(key => PARSER_SETTING_KEYS.includes(key))) {
+      parserPreferenceEdits.current[key] = (parserPreferenceEdits.current[key] || 0) + 1;
+    }
+    if (readingSettingsChanged && taskRef.current) cancelTask();
+    if (tab === 'Reader' && paperRef.current && !pendingImport && !restoringScroll.current &&
+        ['fontSize', 'readingWidth', 'lineHeight', 'lineSpacing'].some(key => Object.hasOwn(change, key) && change[key] !== previous[key])) {
+      appearanceScroll.current = { paperId: paperRef.current.id, generation: readingRestoration.current, search, origin: captureReaderSearchOrigin() };
+    }
+    const next = { ...previous, ...change };
+    if (change.aiProvider !== undefined && change.aiProvider !== previous.aiProvider) {
+      api.setOpenAIConsent(false).catch(() => {});
+      setOpenAIState(current => ({ ...current, consent: false, status: change.aiProvider === 'openai' ? 'OpenAI is selected but paused until you allow this session.' : 'Using local Ollama.', error: '' }));
+    }
+    if (change.ollamaBaseURL !== undefined && change.ollamaBaseURL !== previous.ollamaBaseURL) {
+      modelRefreshId.current++;
+      setRefreshingModels(false);
+      setModels([]); setOllamaStatus('unchecked'); setOllamaError('Refresh models to check this local endpoint.');
+    }
+    settingsRef.current = next; setSettings(next);
+    if (paperRef.current && changedKeys.length) {
+      commitPaper(current => ({ ...(readingSettingsChanged ? switchOutputSettings(current, previous, next) : current), taskSettings: snapshotPaperSettings(next) }));
+      if (readingSettingsChanged) setUndo([]);
+    }
+  };
+  const changeExplanationLanguage = language => {
+    if (taskRef.current?.kind === 'selection') cancelTask();
+    setExplanationLanguage(language);
+    if (paperRef.current) commitPaper(current => ({ ...current, explanationLanguage: language }));
+  };
+  function openOnboarding() {
+    if (taskRef.current || pulling) { setError('Finish or cancel the current task before starting the setup guide.'); return; }
+    setOnboardingSaveError(''); updateSettings({ onboardingPage: 0 }); setModal('onboarding');
+  }
+  function openSetup(request = null) { setTaskSetup(request); setModal('setup'); }
+  function openSettings(request = null, section = 'setup') { setSettingsSection(section); setTaskSetup(request); setModal('settings'); }
+  function openTaskSetup(issue, checked = false) {
+    if (taskRef.current) return;
+    if (!checked && settingsRef.current.aiProvider !== 'openai') void refreshModels(settingsRef.current);
+    if (issue.destination === 'setup' && !pullRef.current) openSetup(issue);
+    else openSettings(issue);
+  }
+  async function finishOnboarding(action = 'done') {
+    if ((onboardingBusyRef.current && action !== 'background') || finishingOnboarding.current) return;
+    finishingOnboarding.current = true; setOnboardingFinishing(true); setOnboardingSaveError('');
+    try {
+      updateSettings({ onboardingCompletedVersion: ONBOARDING_VERSION });
+      await persistSettings(settingsRef.current);
+      handleOnboardingBusy(false);
+      if (action === 'setup') openSetup();
+      else setModal('');
+      if (action === 'openPdf') openFile();
+      if (action === 'practice') loadPractice();
+    } catch (cause) { setOnboardingSaveError(`Could not save setup progress: ${cause.message}`); }
+    finally { finishingOnboarding.current = false; setOnboardingFinishing(false); }
+  }
+  async function installLocalComponents(request) {
+    const previous = settingsRef.current;
+    const initialEdits = { ...parserPreferenceEdits.current };
+    const result = await api.setupInstall(request);
+    const unchanged = key => settingsRef.current[key] === previous[key] && parserPreferenceEdits.current[key] === initialEdits[key];
+    if (request.components.mineru && previous.mineruExecutable === request.mineruExecutable && unchanged('mineruExecutable')) {
+      const change = {};
+      if (result.mineruExecutable) change.mineruExecutable = result.mineruExecutable;
+      if (result.mineruBackend && unchanged('mineruBackend')) change.mineruBackend = result.mineruBackend;
+      if (result.mineruInstalled && result.mineruExecutable && previous.pdfExtractionMode === 'pdfOnly' && unchanged('pdfExtractionMode')) {
+        change.pdfExtractionMode = 'mineruPreferred';
+      }
+      if (Object.keys(change).length) updateSettings(change);
+      setSidebarParserRevision(value => value + 1);
+    }
+    await refreshModels(settingsRef.current);
+    return result;
+  }
+  function showPdfComment(comment, page) {
+    setPdfComment({ ...comment, page });
+    setModal('pdfComment');
+  }
+  function editLibraryLabel(item, index, scrollTop) {
+    libraryReturn.current = { id: item.id, index, scrollTop };
+    setLibraryEdit({ id: item.id, name: item.name, tags: (item.tags || []).join(', ') });
+    setModal('libraryLabel');
+  }
+  function returnToLibrary() {
+    setLibraryEdit(null);
+    setModal(current => current === 'libraryLabel' ? 'library' : current);
+  }
+  function dismissModal() {
+    if (modal === 'libraryLabel') { returnToLibrary(); return; }
+    if (modal === 'paragraphEdit') { cancelParagraphEdit(); return; }
+    if (modal === 'onboarding') { if (!onboardingBusyRef.current) finishOnboarding('skip'); return; }
+    setModal('');
+  }
+  async function checkForUpdates(automatic = false) {
+    if (!automatic) { setCheckingUpdates(true); setUpdateStatus('Checking Windows releases…'); }
+    try {
+      if (automatic) {
+        await settingsSaveChain.current;
+        if (settingsRef.current?.autoCheckUpdates === false) return;
+      }
+      const result = await api.checkUpdates(automatic);
+      if (automatic && settingsRef.current?.autoCheckUpdates === false) return;
+      if (result.status === 'available') {
+        setUpdateFile(result.updateFile);
+        setUpdateInfo(result);
+        if (!automatic || !result.fromCache) setDeferredUpdateTag('');
+      } else if (result.status === 'current' || result.status === 'unpublished') {
+        setUpdateInfo(null);
+        setDeferredUpdateTag('');
+      }
+      if (result.stale) {
+        setUpdateStatus(`Last found Windows ${result.latestVersion} on ${new Date(result.lastCheckAt).toLocaleDateString()}. PaperBridge will retry the update check automatically.`);
+      } else if (result.status !== 'skipped') {
+        setUpdateStatus(result.status === 'available' ? `Windows ${result.latestVersion} is available.` : result.status === 'unpublished' ? 'No Windows release has been published yet.' : 'You have the latest published Windows version.');
+      }
+      return result.stale === true;
+    } catch (cause) {
+      if (!automatic) setUpdateStatus(cause.message);
+      else if (settingsRef.current?.autoCheckUpdates !== false) setUpdateStatus('Could not check for Windows updates. PaperBridge will retry automatically.');
+      return true;
+    } finally { if (!automatic) setCheckingUpdates(false); }
+  }
+  async function skipUpdate(event, nextFocus = sidebarToggleRef.current) {
+    if (!updateInfo?.tag) return;
+    const trigger = event.currentTarget;
+    try {
+      await api.skipUpdate(updateInfo.tag);
+      if (document.activeElement === trigger) nextFocus?.focus({ preventScroll: true });
+      setUpdateInfo(current => current?.tag === updateInfo.tag ? null : current);
+      setUpdateStatus(`Skipped Windows ${updateInfo.latestVersion}. You can still find it with Check now.`);
+    } catch (cause) { setError(cause.message); }
+  }
+  async function downloadUpdate() {
+    if (!updateInfo?.downloadLabel) return;
+    try {
+      if (filePhase === 'downloading') await api.cancelUpdateDownload(updateInfo.tag);
+      else if (filePhase === 'ready') await api.revealUpdate(updateInfo.tag);
+      else await api.downloadUpdate(updateInfo.tag);
+    }
+    catch (cause) { setError(cause.message); }
+  }
+  async function finishUpdateDownload() {
+    if (!updateActionAvailable || busy || usingUpdate) return;
+    const tag = updateInfo.tag;
+    setError(current => current === updateAction?.message ? '' : current);
+    const showAction = (message, pending = true) => setUpdateAction({ tag, message, pending });
+    let reminder;
+    setUpdateStatus('');
+    showAction('Saving the current reading position and notes…');
+    try {
+      await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
+      if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before continuing with the update.');
+      if (updateInfo.canCloseForPortable) {
+        showAction('Checking the portable update before closing PaperBridge…');
+        await api.closeForPortableUpdate(tag);
+        showAction('Closing PaperBridge. Open the selected update in File Explorer.');
+        return;
+      }
+      scheduleSetup('');
+      showAction('Checking the installer and asking Windows to open it…');
+      reminder = setTimeout(() => showAction('Still waiting to open Setup. Check the taskbar for a Windows confirmation, or choose Show downloaded update to find the installer in File Explorer.'), 8000);
+      await api.openUpdateInstaller(tag);
+      showAction('Follow the Windows setup wizard. If no window appears, choose Show downloaded update to find the installer in File Explorer.', false);
+    } catch (cause) {
+      showAction(cause.message, false);
+      setError(cause.message);
+    } finally { clearTimeout(reminder); }
+  }
+  async function openUpdateRelease() {
+    if (!updateInfo?.tag) return;
+    try { await api.openUpdateRelease(updateInfo.tag); }
+    catch (cause) { setError(cause.message); }
+  }
+  const changeDisplayMode = mode => {
+    if (mode === displayMode) return;
+    const fromPaper = tab === 'Paper' && !restoringScroll.current ? currentReadingLocation() : null;
+    invalidateReadingScroll();
+    if (tab === 'Paper') { setViewNavigation(null); setBlockNavigation(null); }
+    if (selectionRef.current?.scope === 'paperArticle') {
+      void finishNoteEditing();
+      window.getSelection()?.removeAllRanges();
+      setSelection(null);
+    }
+    setDisplayMode(mode);
+    commitPaper(current => {
+      const position = fromPaper ? persistedReadingPosition(fromPaper, current.position) : current.position;
+      return { ...current, position: { ...position, displayMode: mode } };
+    });
+    if (tab === 'Reader' && !search) {
+      const origin = normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin);
+      if (origin !== null) scheduleReaderSearchRestore(origin);
+    }
+  };
+  function rememberUndo() {
+    finishNoteUndo();
+    pendingUndoSnapshot.current = paperRef.current;
+  }
+  function undoLastChange(type) {
+    finishNoteUndo();
+    const history = undoHistory.current;
+    const entry = type ? history.findLast(item => item.type === type) : history.at(-1);
+    if (!entry) return;
+    if (entry.type === 'structure' && taskRef.current) { setError('Finish or stop the current task before undoing a source edit.'); return; }
+    const restored = commitPaper(current => applyUndoEntry(current, entry));
+    if (entry.type === 'structure') {
+      resetStructureNavigation();
+      const restoredPage = restored.position?.page || 1;
+      setPageNumber(restoredPage);
+      restoreMainScroll({ clearSearch: true, page: restoredPage });
+    } else setNoteDraft(findSelectionNote(restored, selectionRef.current)?.body || '');
+    setUndo(remainingUndoEntries(history, entry));
+  }
+  const restoreMainScroll = ({ clearSearch = false, page = pageNumber } = {}) => {
+    const generation = readingRestoration.current;
+    const paperId = paperRef.current?.id;
+    const sourceMode = paperArticleSource(paperRef.current).mode;
+    const host = mainScrollRef.current;
+    let cancelled = false;
+    const owner = beginReadingRestore();
+    afterReadingLayout(host, () => {
+      try {
+        if (cancelled || generation !== readingRestoration.current || paperRef.current?.id !== paperId ||
+            paperArticleSource(paperRef.current).mode !== sourceMode || paperRef.current?.position?.tab !== tab ||
+            mainScrollRef.current !== host) return;
+        const key = tab === 'Original' ? `Original:${page}` : tab;
+        const position = paperRef.current?.position;
+        const view = tab === 'Paper' ? paperModeViewport(position, sourceMode, displayMode) : null;
+        const saved = view ? view.scrollTop : tab === 'Reader' && search && !clearSearch ? searchScroll.current : position?.scrollByTab?.[key];
+        const origin = tab === 'Reader' && (!search || clearSearch) ? normalizeSearchOrigin(position?.readerSearchOrigin) : null;
+        if (origin !== null) {
+          restoreReaderSearchOrigin(origin);
+          persistRestoredReaderPosition();
+        } else {
+          if (tab === 'Reader' && (!search || clearSearch) && restoreReaderViewport(host, position, saved)) return;
+          const anchor = tab === 'Full Translation' ? position?.fullTranslationAnchor : view?.anchor;
+          if (host && !restorePreviewAnchor(host, anchor, saved)) host.scrollTop = Number(saved || 0);
+          if (saved == null && tab === 'Reader') {
+            document.getElementById(`block-${paperRef.current?.position?.block || 1}`)?.scrollIntoView({ block: 'start' });
+            if ((!search || clearSearch) && host?.querySelector('[data-reading-list]')) persistRestoredReaderPosition();
+          }
+        }
+      } finally { finishReadingRestore(owner); }
+    });
+    return () => { cancelled = true; finishReadingRestore(owner); };
+  };
+  const saveMainScroll = () => {
+    if (clearingWorkspace.current || pendingImport || taskRef.current?.kind === 'pdfImport' || restoringScroll.current || !paperRef.current) return;
+    const generation = readingRestoration.current;
+    hideOffscreenLookup(mainScrollRef.current);
+    clearTimeout(scrollSaveTimer.current);
+    if (tab === 'Reader' && search) { searchScroll.current = mainScrollRef.current?.scrollTop || 0; return; }
+    const id = paperRef.current.id;
+    const key = tab === 'Original' ? `Original:${pageNumber}` : tab;
+    const host = mainScrollRef.current;
+    const offset = host?.scrollTop || 0;
+    const watch = readerResize.current;
+    if (tab === 'Reader' && watch && host?.clientWidth === watch.width) {
+      watch.anchor = captureReaderSearchOrigin();
+      watch.generation = generation;
+    }
+    scrollSaveTimer.current = setTimeout(() => {
+      if (paperRef.current?.id !== id || generation !== readingRestoration.current || tab === 'Reader' && searchOrigin.current !== null) return;
+      const host = mainScrollRef.current;
+      const top = host?.getBoundingClientRect().top || 0;
+      const visible = tab === 'Reader' && !search ? [...host.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12) : null;
+      const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
+      commitPaper(current => {
+        const position = { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } };
+        if (visible) position.readerViewport = { block, offset: visible.getBoundingClientRect().top - top, scrollTop: offset, width: host.clientWidth };
+        if (tab === 'Full Translation') position.fullTranslationAnchor = capturePreviewAnchor(host);
+        return { ...current, position: tab === 'Paper'
+          ? storePaperViewport(position, paperArticleSource(current).mode, displayMode, offset, capturePreviewAnchor(host))
+          : position };
+      });
+    }, 350);
+  };
+  function persistRestoredReaderPosition() {
+    const origin = captureReaderSearchOrigin();
+    commitPaper(current => {
+      const { readerSearchOrigin: discarded, ...position } = current.position || {};
+      return { ...current, position: { ...position, ...(typeof origin === 'object' && {
+        block: origin.block, readerViewport: { ...origin, width: mainScrollRef.current.clientWidth }
+      }),
+        scrollByTab: { ...position.scrollByTab, Reader: typeof origin === 'number' ? origin : origin.scrollTop } } };
+    });
+  }
+  function scheduleReaderSearchRestore(origin) {
+    const generation = readingRestoration.current;
+    const current = paperRef.current;
+    const host = mainScrollRef.current;
+    const reader = host?.querySelector('[data-reading-list]');
+    const pendingOrigin = current?.position?.readerSearchOrigin;
+    if (!reader || !current || normalizeSearchOrigin(pendingOrigin) === null) return;
+    const paperId = current.id, sourceMode = paperArticleSource(current).mode;
+    const owner = beginReadingRestore();
+    afterReadingLayout(host, () => {
+      try {
+        const latest = paperRef.current;
+        if (generation !== readingRestoration.current || latest?.id !== paperId ||
+            paperArticleSource(latest).mode !== sourceMode || latest.position?.tab !== 'Reader' ||
+            !reader.isConnected || mainScrollRef.current !== host ||
+            host.querySelector('[data-reading-list]') !== reader ||
+            latest.position?.readerSearchOrigin !== pendingOrigin) return;
+        restoreReaderSearchOrigin(origin);
+        persistRestoredReaderPosition();
+      } finally { finishReadingRestore(owner); }
+    });
+  }
+  const changeSearch = value => {
+    if (!search && value) {
+      invalidateReadingScroll();
+      searchOrigin.current = captureReaderSearchOrigin();
+      searchScroll.current = mainScrollRef.current?.scrollTop || 0;
+      const location = { ...currentReadingLocation(), search: value, searchOrigin: searchOrigin.current };
+      commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
+    }
+    setSearch(value);
+    if (search && !value && searchOrigin.current !== null) {
+      const origin = searchOrigin.current;
+      invalidateReadingScroll();
+      searchOrigin.current = null;
+      searchScroll.current = null;
+      scheduleReaderSearchRestore(origin);
+    }
+  };
+  function toggleFocus() {
+    if (!paper || pendingImport) return;
+    if (!focus) {
+      void finishNoteEditing();
+      dismissQuickSelection();
+    }
+    setFocus(current => !current);
+  }
+  function closeDocumentOverlay() {
+    setSidebar(false);
+    const target = pendingImport ? mainScrollRef.current?.querySelector('.import-progress-screen button') : sidebarToggleRef.current;
+    target?.focus({ preventScroll: true });
+  }
+  function toggleDocumentSidebar() {
+    if (focus) {
+      setFocus(false);
+      setSidebar(true);
+      setInspector(false);
+    } else setSidebar(!sidebar);
+  }
+  function toggleResearchInspector() {
+    if (focus) {
+      setFocus(false);
+      setSidebar(false);
+      setInspector(true);
+    } else {
+      if (inspector) void finishNoteEditing();
+      setInspector(!inspector);
+    }
+  }
+  const refreshModels = async config => {
+    const requestId = ++modelRefreshId.current;
+    const isCurrent = () => requestId === modelRefreshId.current && settingsRef.current?.ollamaBaseURL === config.ollamaBaseURL;
+    setRefreshingModels(true);
+    try {
+      const values = await api.listModels(config.ollamaBaseURL);
+      if (isCurrent()) { setModels(values); setOllamaStatus('ready'); setOllamaError(''); }
+      return { models: values, ollamaStatus: 'ready' };
+    } catch (err) {
+      if (isCurrent()) { setModels([]); setOllamaStatus('unavailable'); setOllamaError(err.message); }
+      return { models: [], ollamaStatus: 'unavailable' };
+    } finally {
+      if (isCurrent()) setRefreshingModels(false);
+    }
+  };
+  async function refreshOpenAIKeyStatus() {
+    try {
+      const result = await api.openAIKeyStatus();
+      setOpenAIState(current => ({ ...current, hasKey: result.hasKey, error: '' }));
+      return result.hasKey;
+    } catch (cause) { setOpenAIState(current => ({ ...current, hasKey: false, error: cause.message })); return false; }
+  }
+  async function saveOpenAIKey(value) {
+    setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
+    try {
+      await api.saveOpenAIKey(value);
+      openAIRefreshId.current = null;
+      setOpenAIState(current => ({ ...current, hasKey: true, consent: false, models: [], refreshing: false, saving: false, status: 'Key saved with Windows credential encryption. Refresh models to check access.', error: '' }));
+      return true;
+    } catch (cause) { setOpenAIState(current => ({ ...current, saving: false, error: cause.message })); return false; }
+  }
+  async function removeOpenAIKey() {
+    setOpenAIState(current => ({ ...current, saving: true, error: '', status: '' }));
+    try {
+      await api.removeOpenAIKey();
+      openAIRefreshId.current = null;
+      setOpenAIState(current => ({ ...current, hasKey: false, consent: false, models: [], refreshing: false, saving: false, status: 'API key removed.', error: '' }));
+    } catch (cause) { setOpenAIState(current => ({ ...current, saving: false, error: cause.message })); }
+  }
+  async function setOpenAIConsent(enabled) {
+    if (!enabled && settingsRef.current?.aiProvider === 'openai' && taskRef.current) cancelTask();
+    setOpenAIState(current => ({ ...current, consent: enabled, error: '' }));
+    try {
+      const consent = await api.setOpenAIConsent(enabled);
+      setOpenAIState(current => ({ ...current, consent, error: '', status: consent ? 'OpenAI text access is enabled for this app session.' : 'OpenAI text access is paused.' }));
+    } catch (cause) { setOpenAIState(current => ({ ...current, consent: false, error: cause.message })); }
+  }
+  async function refreshOpenAIModels() {
+    if (openAIState.refreshing) return;
+    const requestId = crypto.randomUUID();
+    const previous = openAIRefreshId.current;
+    openAIRefreshId.current = requestId;
+    if (previous) api.cancelOpenAI(previous).catch(() => {});
+    setOpenAIState(current => ({ ...current, refreshing: true, error: '', status: 'Fetching model IDs only; no paper text is sent.' }));
+    try {
+      const values = await api.listOpenAIModels(requestId);
+      if (openAIRefreshId.current === requestId) setOpenAIState(current => ({ ...current, models: values, refreshing: false, status: `Found ${values.length} model IDs. Choose a text model that supports the Responses API.`, error: '' }));
+    } catch (cause) {
+      if (openAIRefreshId.current === requestId) setOpenAIState(current => ({ ...current, refreshing: false, status: 'Could not fetch models.', error: cause.message }));
+    } finally { if (openAIRefreshId.current === requestId) openAIRefreshId.current = null; }
+  }
+  function useRecommendedModel(model) {
+    if (pullRef.current || taskRef.current) return;
+    try { updateSettings(modelSettingsPatch(settingsRef.current, model, models)); setModelDownloadError(''); setModelDownloadMessage(`${model.title} is selected for ${model.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`); }
+    catch (cause) { setModelDownloadError(cause.message); }
+  }
+  async function downloadModel(requestedModel = pullModel.trim() || 'translategemma:4b', recommendation = null) {
+    if (pullRef.current || taskRef.current) return { error: 'Finish or cancel the current task before downloading a model.' };
+    pullRef.current = true; setPulling(true); setCancellingPull(false); setPullProgress(null); setError(''); setModelDownloadMessage(''); setModelDownloadError('');
+    const config = settingsRef.current;
+    const paperId = paperRef.current?.id;
+    try {
+      await api.pullModel({ baseURL: config.ollamaBaseURL, model: requestedModel });
+      const inventory = await refreshModels(config);
+      const available = inventory.models;
+      let message = 'Model downloaded. Choose its task in Settings.';
+      if (recommendation && !taskRef.current && settingsRef.current.ollamaBaseURL === config.ollamaBaseURL && paperRef.current?.id === paperId) {
+        if (inventory.ollamaStatus !== 'ready' || !hasOllamaModel(available, requestedModel)) {
+          throw new Error('Ollama finished the download, but the model is missing from the latest list. Refresh Models, then choose Use model when it appears.');
+        }
+        updateSettings(modelSettingsPatch(settingsRef.current, recommendation, available));
+        message = `${recommendation.title} downloaded and selected for ${recommendation.role === 'translation' ? 'translation' : 'summary, explanation and quick lookup'}.`;
+      }
+      setPullProgress(null); setStatus(message); setModelDownloadMessage(message);
+      return { message };
+    } catch (cause) {
+      if (/cancel|abort/i.test(cause.message)) {
+        const message = 'Model download cancelled.';
+        setStatus(message); setModelDownloadMessage(message); setPullProgress(null);
+        return { error: message };
+      }
+      setError(cause.message); setModelDownloadError(cause.message);
+      return { error: cause.message };
+    }
+    finally { pullRef.current = false; setPulling(false); setCancellingPull(false); }
+  }
+  async function cancelModelDownload() {
+    setCancellingPull(true);
+    try { await api.cancelPullModel(); } catch (cause) { setError(cause.message); setModelDownloadError(cause.message); setCancellingPull(false); }
+  }
+  async function checkHardware() {
+    const request = ++hardwareCheckId.current, config = settingsRef.current;
+    setCheckingHardware(true); setHardwareError('');
+    const [graphics, mineru] = await Promise.allSettled([api.graphicsStatus(), api.mineruRuntime(config.mineruExecutable, config.mineruBackend)]);
+    if (request !== hardwareCheckId.current) return;
+    if (graphics.status === 'fulfilled') setHardware(graphics.value);
+    const sameParser = config.mineruExecutable === settingsRef.current.mineruExecutable && config.mineruBackend === settingsRef.current.mineruBackend;
+    if (sameParser && mineru.status === 'fulfilled') setMineruRuntime(mineru.value);
+    const errors = [graphics, ...(sameParser ? [mineru] : [])].filter(result => result.status === 'rejected');
+    setHardwareError(errors.map(result => result.reason.message).join(' '));
+    setCheckingHardware(false);
+  }
+  useEffect(() => {
+    if (!ready) return;
+    setMineruRuntime(null);
+    const timer = setTimeout(checkHardware, 250);
+    return () => { clearTimeout(timer); hardwareCheckId.current++; };
+  }, [ready, settings?.mineruExecutable, settings?.mineruBackend]);
+  useEffect(() => {
+    api.bootstrap().then(async data => {
+      settingsRef.current = data.settings; setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library);
+      setLibraryPersistenceWarning(data.libraryPersistenceWarning || '');
+      setArchiveCleanup({ remaining: data.pendingArchivedPdfs || 0 });
+      if (data.library.length) {
+        try { await loadPaper(data.library.some(item => item.id === data.lastPaperId) ? data.lastPaperId : data.library[0].id); }
+        catch (cause) { setError(cause.message); }
+      }
+      const currentSettings = settingsRef.current;
+      setReady(true);
+      if (!(currentSettings.onboardingCompletedVersion >= ONBOARDING_VERSION)) setModal('onboarding');
+      refreshOpenAIKeyStatus();
+      refreshModels(currentSettings);
+    }).catch(err => setError(err.message));
+    const off = api.onProgress(data => {
+      if (data.kind === 'setup') setSetupProgress(data);
+      else if (data.kind === 'model') setPullProgress(data);
+      else if (data.kind === 'mineru' && data.requestId && data.requestId === taskRef.current?.mineruRequest) {
+        const message = data.status || 'MinerU is processing the PDF…';
+        setStatus(message);
+        setPendingImport(current => current ? { ...current, stage: mineruImportStage(message) } : current);
+      }
+    });
+    return off;
+  }, []);
+  useEffect(() => {
+    if (!pendingImport) { setImportElapsed(0); return undefined; }
+    const update = () => setImportElapsed(Math.max(0, Math.floor((Date.now() - pendingImport.startedAt) / 1000)));
+    update(); const timer = setInterval(update, 1000); return () => clearInterval(timer);
+  }, [pendingImport?.startedAt]);
+  useEffect(() => { if (ready && settings && settings === settingsRef.current) void persistSettings(settings); }, [settings, ready]);
+  useLayoutEffect(() => {
+    const dialog = modalRef.current;
+    if (!modal || !dialog) return;
+    const previous = modal === 'attachment' ? attachment.trigger.current : document.activeElement;
+    const focusable = () => [...dialog.querySelectorAll('button, a[href], input, select, textarea, [tabindex]')]
+      .filter(element => !element.disabled && element.tabIndex >= 0 && element.getClientRects().length > 0 && !element.closest('[inert]'));
+    const trap = event => {
+      if (event.key === 'Enter' && !event.isComposing && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        const primary = dialog.querySelector('button[aria-keyshortcuts="Enter"]');
+        if (primary && (event.target === dialog || event.target === primary && event.repeat)) {
+          event.preventDefault();
+          if (!event.repeat && !primary.disabled && !primary.closest('[inert]')) primary.click();
+          return;
+        }
+      }
+      if (event.key !== 'Tab') return;
+      const items = focusable(), first = items[0], last = items.at(-1), active = document.activeElement;
+      if (!first) { event.preventDefault(); dialog.focus(); }
+      else if (!items.includes(active) || event.shiftKey && active === first || !event.shiftKey && active === last) {
+        event.preventDefault(); (event.shiftKey ? last : first).focus();
+      }
+    };
+    if (modal === 'libraryLabel') dialog.querySelector('input')?.focus();
+    else if (modal === 'library' && libraryReturn.current) {
+      const { id, index, scrollTop } = libraryReturn.current;
+      libraryReturn.current = null;
+      const rows = [...dialog.querySelectorAll('.library-entry')];
+      const row = rows.find(node => node.dataset.libraryId === id) || rows[Math.min(index, rows.length - 1)];
+      const target = row?.querySelector('.icon-button') || dialog.querySelector('input');
+      dialog.querySelector('.modal-body').scrollTop = scrollTop;
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: 'nearest' });
+    } else {
+      libraryReturn.current = null;
+      dialog.focus();
+    }
+    document.addEventListener('keydown', trap, true);
+    return () => {
+      document.removeEventListener('keydown', trap, true);
+      if (previous?.isConnected && !previous.closest('[inert]')) previous.focus({ preventScroll: true });
+    };
+  }, [modal]);
+  useEffect(() => {
+    const id = paper?.id;
+    if (!id) return;
+    saveQueue.current.flush().then(async saved => {
+      if (!saved || paperRef.current?.id !== id) return;
+      const opened = await api.markPaperOpened(id);
+      if (paperRef.current?.id !== id) return;
+      setLibrary(current => {
+        const item = current.find(entry => entry.id === id);
+        return item ? [{ ...item, lastOpened: opened.lastOpened }, ...current.filter(entry => entry.id !== id)] : current;
+      });
+    }).catch(cause => setError(cause.message));
+  }, [paper?.id]);
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 1399px)');
+    const update = event => setCompactInspector(event.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  useEffect(() => { if (taskRef.current?.kind === 'selection' && taskRef.current.selectionKey !== selectionIdentity(selection)) cancelTask(); }, [selectionIdentity(selection)]);
+  useEffect(() => { setQuickTermOpen(false); setTermDraft(''); setSelectionLookup({ status: '', error: '' }); }, [selectionIdentity(selection)]);
+  useEffect(() => api.onUpdateFile(setUpdateFile), []);
+  useEffect(() => {
+    if (!ready || settings?.autoCheckUpdates === false) return;
+    let enabled = true;
+    let pending;
+    const check = () => pending ??= checkForUpdates(true).finally(() => { pending = null; });
+    const onReconnect = async () => {
+      // If connectivity returns during an offline check, retry after that check settles.
+      if (pending && !await pending) return;
+      if (enabled) void check();
+    };
+    void check();
+    const timer = setInterval(check, 60 * 60 * 1000);
+    window.addEventListener('online', onReconnect);
+    return () => { enabled = false; clearInterval(timer); window.removeEventListener('online', onReconnect); };
+  }, [ready, settings?.autoCheckUpdates, settings?.autoDownloadUpdates]);
+  useEffect(() => { if (modal === 'glossary') setGlossaryError(''); }, [modal]);
+  useEffect(() => {
+    if (modal !== 'library') return;
+    let active = true;
+    api.bootstrap().then(data => {
+      if (!active) return;
+      setLibrary(data.library); setLibraryPersistenceWarning(data.libraryPersistenceWarning || '');
+    }).catch(cause => { if (active) setLibraryPersistenceWarning(`Could not refresh the paper library: ${cause.message}`); });
+    return () => { active = false; };
+  }, [modal]);
+  useEffect(() => { if (paperRef.current && paperRef.current.position?.tab !== tab) commitPaper(current => ({ ...current, position: { ...current.position, tab } })); }, [tab]);
+  useEffect(() => { if (paperRef.current && !focus && paperRef.current.inspectorOpen !== inspector) commitPaper(current => ({ ...current, inspectorOpen: inspector })); }, [inspector, paper?.id, focus]);
+  useEffect(() => {
+    void finishNoteEditing();
+    setSelection(null);
+  }, [tab, paper?.id]);
+  useEffect(() => {
+    if (!viewNavigation || !paper || tab !== markdownViewTab(viewNavigation.scope)) return;
+    const article = viewNavigation.scope === 'paperArticle';
+    if (article && (displayMode !== viewNavigation.displayMode || paperArticleSource(paper).mode !== viewNavigation.sourceMode)) return;
+    const surface = document.querySelector(`[data-view-scope="${viewNavigation.scope}"]`);
+    const host = article ? surface : surface?.querySelector('[data-markdown-host]');
+    const rendered = domText(host, true);
+    const source = viewText(paper, viewNavigation.scope);
+    const { text, scope } = viewNavigation;
+    const offset = markdownAnnotationOffset(rendered, viewNavigation, source);
+    const range = offset === null || !validViewAnchor(paper, viewNavigation) ? null : textRangeAt(host, offset, text.length, true);
+    if (!range) { markViewAnchorForReview(viewNavigation.records); setViewNavigation(null); return; }
+    revealMarkdownTarget(range.startContainer);
+    revealMarkdownTarget(range.endContainer);
+    const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+    const generation = readingRestoration.current;
+    afterReadingLayout(host, () => {
+      if (generation === readingRestoration.current && selected.rangeCount && selected.getRangeAt(0) === range) {
+        range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
+      }
+    });
+    const quote = restoreRenderedQuote(range, text, viewNavigation.records);
+    const captured = { text, offset, context: rendered };
+    const position = article ? {
+      ...selectionOffsets(captured, null, paperArticleSource(paper)), displayMode: viewNavigation.displayMode, sourceMode: viewNavigation.sourceMode
+    } : textSelectionOffsets(captured, source, source);
+    applyReadingSelection({ id: null, kind: article ? viewNavigation.kind || 'source' : scope === 'summarySource' ? 'source' : 'translation',
+      text, scope, quote, ...position, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
+    setInspector(true); setViewNavigation(null);
+  }, [viewNavigation?.requestId, tab, displayMode, paper?.id]);
+  const command = name => {
+    if (editRef.current) { if (name === 'dismiss') cancelParagraphEdit(); return; }
+    if (name === 'dismiss') {
+      if (modal) dismissModal();
+      else if (sidebar && !focus && window.matchMedia('(max-width: 800px)').matches) closeDocumentOverlay();
+      else if (selection?.showQuickLookup && (!inspector || focus)) dismissQuickSelection();
+      else setSelection(null);
+      return;
+    }
+    if (modal === 'onboarding' && name !== 'onboarding') return;
+    const now = performance.now();
+    if (lastCommand.current.name === name && now - lastCommand.current.at < 150) return;
+    lastCommand.current = { name, at: now };
+    if (name === 'openPdf') { if (!busy) openFile(); }
+    else if (name === 'library') setModal('library');
+    else if (name === 'glossary') setModal('glossary');
+    else if (name === 'summary') { if (paper) setTab('Summary'); }
+    else if (name === 'find' && paper) {
+      if (window.matchMedia('(max-width: 800px)').matches) setSidebar(false);
+      if (inspector && window.matchMedia('(max-height: 480px)').matches) {
+        void finishNoteEditing();
+        setInspector(false);
+      }
+      setTab('Reader');
+      setTimeout(() => searchRef.current?.focus({ preventScroll: true }), 0);
+    }
+    else if (name === 'primaryTask') runPrimaryTask();
+    else if (name === 'generateSummary') startSummaryFromMenu();
+    else if (name === 'generateFullTranslation') startFullTranslationFromMenu();
+    else if (name === 'export') exportDefaultMarkdown();
+    else if (name === 'inspector') { setFocus(false); setInspector(true); }
+    else if (name === 'focusReading' && readingLayoutAvailable) toggleFocus();
+    else if (name === 'toggleSidebar' && readingLayoutAvailable) toggleDocumentSidebar();
+    else if (name === 'translateSelection') { if (selection && !busy) runSelection('translate'); }
+    else if (name === 'explainSelection') { if (selection && !busy) runSelection('explain'); }
+    else if (name === 'highlightSelection') { if (selection) addHighlight('amber'); }
+    else if (name === 'undo') { if (paper) undoLastChange(); }
+    else if (name === 'undoAnnotation') { if (paper) undoLastChange('annotations'); }
+    else if (name === 'undoParagraph') { if (paper && !busy) undoLastChange('structure'); }
+    else if (name === 'readingBack') goBackInReading();
+    else if (name === 'readingForward') goForwardInReading();
+    else if (name === 'settings') openSettings();
+    else if (name === 'setup') openSetup();
+    else if (name === 'onboarding') openOnboarding();
+    else if (name === 'checkUpdates') checkForUpdates(false);
+  };
+  commandRef.current = command;
+  useEffect(() => {
+    const offCommand = api.onCommand(name => commandRef.current?.(name));
+    const key = event => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.key === 'Escape') { commandRef.current?.('dismiss'); }
+      if (!event.ctrlKey || event.repeat || event.getModifierState('AltGraph')) return;
+      const letter = event.key.toLowerCase();
+      const name = event.shiftKey && !event.altKey ? ({ l: 'library', e: 'export', i: 'inspector', t: 'translateSelection', h: 'highlightSelection' })[letter]
+        : event.altKey && !event.shiftKey ? ({ e: 'explainSelection', f: 'focusReading', s: 'toggleSidebar' })[letter]
+        : !event.shiftKey && !event.altKey ? ({ o: 'openPdf', l: 'library', f: 'find', ',': 'settings', '1': 'summary', enter: 'primaryTask', '[': 'readingBack', ']': 'readingForward' })[letter] : null;
+      if (name) { event.preventDefault(); commandRef.current?.(name); }
+    };
+    window.addEventListener('keydown', key); return () => { offCommand(); window.removeEventListener('keydown', key); };
+  }, []);
+  async function saveReadingStateBeforeClose() {
+    // The last scroll event or its debounced write may still be pending when the window closes.
+    clearTimeout(scrollSaveTimer.current);
+    const host = mainScrollRef.current;
+    if (!pendingImport && host && paperRef.current && host.dataset.readingPaperId === paperRef.current.id && host.getAttribute('aria-busy') === 'false' && !restoringScroll.current) {
+      const location = currentReadingLocation();
+      const position = persistedReadingPosition(location, paperRef.current.position);
+      const previous = paperRef.current.position || {};
+      const anchorField = tab === 'Reader' ? 'readerViewport' : tab === 'Full Translation' ? 'fullTranslationAnchor' : 'paperAnchor';
+      const anchorChanged = JSON.stringify(position[anchorField] ?? null) !== JSON.stringify(previous[anchorField] ?? null);
+      if (anchorChanged || Object.entries(position.scrollByTab).some(([key, value]) => value !== (previous.scrollByTab?.[key] ?? 0))) {
+        commitPaper(current => ({ ...current, position }), { deferUndo: true });
+      }
+    }
+    for (;;) {
+      const paper = paperRef.current;
+      const prefs = settingsRef.current;
+      const metadata = libraryMetadataSaveChain.current;
+      // A failed label draft can still be discarded by closing its editor.
+      await metadata.catch(() => {});
+      try { await glossarySave.current; }
+      catch { return false; }
+      if (!await finishNoteEditing()) return false;
+      if (prefs) {
+        try { await persistSettings(prefs); }
+        catch (error) { throw new Error(`Could not save the latest settings. ${error.message}`); }
+      }
+      // A slow write can leave time to type another note or change a preference.
+      if (paper === paperRef.current && prefs === settingsRef.current &&
+          metadata === libraryMetadataSaveChain.current && !glossarySave.current) return true;
+    }
+  }
+  useEffect(() => api.onPrepareClose(async () => {
+    let reminder;
+    try {
+      if (await saveReadingStateBeforeClose()) {
+        const tag = setupOnCloseRef.current;
+        if (tag) {
+          scheduleSetup('');
+          reminder = setTimeout(() => setSetupWaitMessage('Waiting for Windows Setup. Check the taskbar for a confirmation.'), 8000);
+        }
+        const issue = await api.closeReady(tag);
+        if (!issue) return;
+        setCloseFailure(`PaperBridge kept this window open. ${issue}`);
+      } else {
+        setCloseFailure('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
+      }
+    } catch (error) {
+      setCloseFailure(`PaperBridge kept this window open. ${error.message} Close again to retry.`);
+    } finally {
+      clearTimeout(reminder);
+      setSetupWaitMessage('');
+    }
+    setUpdateAction(null);
+    api.closeCancelled();
+  }), [tab, displayMode, pageNumber, search, pendingImport]);
+  useLayoutEffect(() => {
+    if (paper && !pendingImport && !viewNavigation && !blockNavigation) return restoreMainScroll();
+    publishReadingRestorationState();
+  }, [tab, paper?.id, tab === 'Paper' ? displayMode : null, Boolean(pendingImport)]);
+  useLayoutEffect(() => {
+    const request = appearanceScroll.current;
+    appearanceScroll.current = null;
+    if (!request || tab !== 'Reader' || request.paperId !== paper?.id || request.search !== search ||
+        request.generation !== readingRestoration.current || !mainScrollRef.current) return;
+    clearTimeout(scrollSaveTimer.current);
+    restoreReaderSearchOrigin(request.origin);
+    if (search) searchScroll.current = mainScrollRef.current.scrollTop;
+    else persistRestoredReaderPosition();
+  }, [settings?.fontSize, settings?.readingWidth, settings?.lineHeight, settings?.lineSpacing, paper?.id, tab, search]);
+  useLayoutEffect(() => {
+    const host = mainScrollRef.current;
+    if (tab !== 'Reader' || !host || !paper?.id || search || pendingImport) return;
+    const watch = { width: host.clientWidth, anchor: null, generation: null };
+    readerResize.current = watch;
+    const observer = new ResizeObserver(() => {
+      const previous = watch.width;
+      watch.width = host.clientWidth;
+      if (previous === watch.width) return;
+      const recent = watch.generation === readingRestoration.current ? watch.anchor : null;
+      watch.anchor = null;
+      if (!watch.width || restoringScroll.current || paperRef.current?.id !== paper.id) return;
+      const position = paperRef.current.position, saved = position?.readerViewport;
+      const validSaved = saved?.width === previous && saved.block === position.block && saved.scrollTop === position.scrollByTab?.Reader;
+      const anchor = recent ?? (validSaved ? saved : null);
+      if (anchor === null) return;
+      clearTimeout(scrollSaveTimer.current);
+      restoreReaderSearchOrigin(anchor);
+      persistRestoredReaderPosition();
+    });
+    observer.observe(host);
+    return () => { observer.disconnect(); readerResize.current = null; };
+  }, [tab, paper?.id, search, Boolean(pendingImport)]);
+  useLayoutEffect(() => {
+    if (blockNavigation?.recordType !== 'paragraph' || tab !== 'Reader') return;
+    const host = mainScrollRef.current;
+    const target = host?.querySelector(`#block-${blockNavigation.blockId}`);
+    if (target && paperRef.current?.id === blockNavigation.paperId) {
+      // Settle the viewport before Back, Forward or a paper switch can capture it.
+      if (blockNavigation.focusReader) target.closest('[data-reading-list]')?.focus({ preventScroll: true });
+      target.scrollIntoView({ behavior: 'instant', block: 'start' });
+      const offset = host.scrollTop;
+      commitPaper(current => ({ ...current, position: { ...current.position,
+        scrollByTab: { ...current.position?.scrollByTab, Reader: offset } } }));
+    }
+    setBlockNavigation(null);
+  }, [blockNavigation?.requestId, tab, paper?.id]);
+  useEffect(() => {
+    const targetTab = blockNavigation?.scope === 'paper' ? 'Paper' : 'Reader';
+    if (!blockNavigation || blockNavigation.recordType === 'paragraph' || !paper || tab !== targetTab) return;
+    let cancelled = false;
+    afterReadingLayout(mainScrollRef.current, () => {
+      if (cancelled || paperRef.current?.id !== paper.id) return;
+      const request = blockNavigation;
+      const block = paperRef.current.blocks.find(item => item.id === request.blockId);
+      const root = request.scope === 'paper'
+        ? document.querySelector(`[data-paper-block-id="${request.blockId}"] [data-paper-kind="${request.kind}"]`)
+        : document.querySelector(`[data-block-id="${request.blockId}"][data-kind="${request.kind}"]`);
+      const rich = Boolean(root?.querySelector('[data-markdown-host]'));
+      const rendered = domText(root, rich);
+      const source = anchorText(block, request.kind);
+      const markdown = rich && blockMarkdown(block, request.kind);
+      const at = markdownAnnotationOffset(rendered, request, request.recordType === 'evidence' ? analysisSourceText(block) : source);
+      const range = block && validBlockAnchor(block, request, request.kind, markdown) && at !== null ? textRangeAt(root, at, request.text.length, rich) : null;
+      if (!range) {
+        if (request.recordType === 'evidence') {
+          root?.scrollIntoView({ block: 'start' });
+          setBlockNavigation(null);
+          return;
+        }
+        commitPaper(current => markSavedAnnotationRecordsForReview(current, request.records));
+        setError(`The saved ${request.scope === 'paper' ? 'Paper' : 'Reader'} text no longer matches this block. The annotation was kept for review.`);
+        setBlockNavigation(null);
+        return;
+      }
+      revealMarkdownTarget(range.startContainer);
+      revealMarkdownTarget(range.endContainer);
+      const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+      const host = mainScrollRef.current;
+      if (host && request.recordType === 'evidence') {
+        const quote = range.getBoundingClientRect();
+        const viewport = host.getBoundingClientRect();
+        const top = root.closest('.block')?.getBoundingClientRect().top ?? quote.top;
+        host.scrollTop += Math.max(top, quote.top - Math.max(0, (host.clientHeight - quote.height) / 2)) - viewport.top;
+      } else range.startContainer.parentElement?.scrollIntoView({ block: 'center' });
+      const quote = restoreRenderedQuote(range, request.text, request.records);
+      const captured = { text: request.text, offset: at, context: rendered };
+      applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, quote, ...textSelectionOffsets(captured, source, markdown),
+        scope: request.scope, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
+      if (request.recordType !== 'evidence') setInspector(true);
+      setBlockNavigation(null);
+    });
+    return () => { cancelled = true; };
+  }, [blockNavigation?.requestId, tab, displayMode, paper?.id]);
+  useEffect(() => () => clearTimeout(scrollSaveTimer.current), []);
+
+  async function openFile() {
+    if (editRef.current) return;
+    if (taskRef.current) return;
+    let imported;
+    try { imported = await api.importPdf(); }
+    catch (err) { setError(err.message); return; }
+    if (!imported || taskRef.current || editRef.current) return;
+    const token = startPdfImport(imported.name, 'Preparing the selected PDF');
+    try {
+      requireActiveTask(token);
+      await ingestPdf(imported, token);
+    } catch (err) { if (!token.cancelled) setError(`Could not import ${imported.name}: ${err.message}`); } finally { endTask(token); }
+  }
+  const clearFileDrag = useCallback(() => {
+    setDraggingFiles(false);
+  }, []);
+  useEffect(() => {
+    window.addEventListener('blur', clearFileDrag);
+    window.addEventListener('dragend', clearFileDrag);
+    return () => {
+      window.removeEventListener('blur', clearFileDrag);
+      window.removeEventListener('dragend', clearFileDrag);
+    };
+  }, [clearFileDrag]);
+  function enterFileDrag(event) {
+    if (!event.dataTransfer.types.includes('Files')) return;
+    event.preventDefault();
+    setDraggingFiles(true);
+  }
+  function leaveFileDrag(event) {
+    if (!event.currentTarget.contains(event.relatedTarget)) clearFileDrag();
+  }
+  async function dropPdf(event) {
+    clearFileDrag();
+    if (editRef.current) { event.preventDefault(); return; }
+    const files = [...event.dataTransfer.files];
+    if (!files.length) return;
+    event.preventDefault();
+    if (modal) return;
+    if (taskRef.current) { setError('Finish or stop the current task before opening another paper.'); return; }
+    const file = files.find(item => /\.pdf$/i.test(item.name));
+    if (!file) { setError('Drop a PDF file to open it.'); return; }
+    const token = startPdfImport(file.name, 'Reading the selected file');
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      requireActiveTask(token);
+      const imported = await api.importPdfBytes({ name: file.name, bytes });
+      requireActiveTask(token);
+      setPendingImport(current => current ? { ...current, name: imported.name, stage: 'Preparing the selected PDF' } : current);
+      await ingestPdf(imported, token);
+    } catch (err) { if (!token.cancelled) setError(`Could not import ${file.name}: ${err.message}`); } finally { endTask(token); }
+  }
+  function startPdfImport(name, stage, token = startTask(`Opening ${name}…`)) {
+    const current = paperRef.current;
+    const host = mainScrollRef.current;
+    if (token.kind !== 'pdfImport' && current && !restoringScroll.current && host?.dataset.readingPaperId === current.id) {
+      const key = scrollKey();
+      const savedOffset = current.position?.scrollByTab?.[key] ?? 0;
+      if (host.scrollTop !== savedOffset) {
+        const location = currentReadingLocation();
+        commitPaper(paper => ({ ...paper, position: persistedReadingPosition(location, paper.position) }), { deferUndo: true });
+      }
+    }
+    invalidateReadingScroll();
+    token.kind = 'pdfImport';
+    setPendingImport({ name, startedAt: Date.now(), stage });
+    return token;
+  }
+  async function extractMineruForTask(id, parser, backend, token) {
+    const requestId = crypto.randomUUID();
+    token.mineruRequest = requestId;
+    try {
+      const extracted = await api.extractMineru({ id, executable: parser.executable, backend, requestId,
+        cpuFallback: parser.runtime?.cpuFallback === true });
+      const result = typeof extracted === 'string' ? { markdown: extracted, pageHints: [] } : extracted;
+      if (result.resourceId) token.mineruResource = { id, resourceId: result.resourceId };
+      requireActiveTask(token);
+      return { ...result, blocks: readableMineruBlocks(result.markdown) };
+    } catch (cause) {
+      discardMineruResult(token);
+      throw cause;
+    } finally { token.mineruRequest = null; }
+  }
+  function discardMineruResult(token) {
+    if (!token.mineruResource) return;
+    api.discardMineruResult(token.mineruResource).catch(() => {});
+    token.mineruResource = null;
+  }
+  async function archiveImportedPages(imported, pdf, token, warnings) {
+    const requestId = crypto.randomUUID();
+    setBusy({ label: 'Preparing original PDF page images…' });
+    setPendingImport(current => current ? { ...current, stage: 'Preparing original PDF page images' } : current);
+    setProgress(null);
+    try {
+      const archive = await api.preparePageArchive({ id: imported.id, fingerprint: imported.fingerprint, pageCount: pdf.numPages, requestId });
+      requireActiveTask(token);
+      if (!archive) throw new Error('Page archive unavailable.');
+      const { limit } = archive;
+      const cached = new Set(archive.cachedPages);
+      let unavailable = 0;
+      for (let pageNumber = 1; pageNumber <= limit; pageNumber++) {
+        setProgress({ done: pageNumber - 1, total: limit });
+        setPendingImport(current => current ? { ...current, stage: `Preparing original PDF page images · ${pageNumber} of ${limit}` } : current);
+        if (cached.has(pageNumber) && await api.archivePdfPage({ requestId, pageNumber })) {
+          requireActiveTask(token);
+          continue;
+        }
+        requireActiveTask(token);
+        const bytes = await renderPagePng(pdf, pageNumber, token);
+        requireActiveTask(token);
+        if (!bytes || !await api.archivePdfPage({ requestId, pageNumber, bytes })) unavailable++;
+        requireActiveTask(token);
+      }
+      if (limit < pdf.numPages) warnings.push(`PNG previews were limited to the first ${limit} pages. The exact original PDF contains all ${pdf.numPages} pages.`);
+      if (unavailable) warnings.push(`Could not prepare preview images for ${unavailable} page(s). The exact original PDF is available.`);
+    } catch {
+      requireActiveTask(token);
+      warnings.push('Could not prepare the PDF page archive. The exact original PDF is available.');
+    } finally { await api.finishPageArchive(requestId).catch(() => {}); }
+  }
+  async function restorePdfText(token) {
+    const source = paperRef.current;
+    if (!canRestorePdfText(source)) return;
+    let pdf;
+    try {
+      setBusy({ label: 'Checking the saved PDF for selectable text…' });
+      const bytes = await api.readPdf(source.id);
+      requireActiveTask(token);
+      pdf = await openPdf(bytes);
+      requireActiveTask(token);
+      const blocks = await extractPdf(pdf, (done, total) => setProgress({ done, total }), () => requireActiveTask(token));
+      requireActiveTask(token);
+      if (paperRef.current?.id !== source.id || !canRestorePdfText(paperRef.current)) return;
+      commitPaper(current => ({
+        ...current, pdfBlocks: blocks, blocks, pageCount: pdf.numPages, pdfTextVersion,
+        pdfVerticalReadingOrder: current.pdfVerticalReadingOrder || !(current.pdfNotes?.length || current.pdfHighlights?.length),
+        pdfTaggedReadingOrder: current.pdfTaggedReadingOrder || !(current.pdfNotes?.length || current.pdfHighlights?.length),
+        pdfRotatedReadingOrder: current.pdfRotatedReadingOrder || !(current.pdfNotes?.length || current.pdfHighlights?.length),
+        selectedParagraphID: firstSelectableParagraphID(blocks),
+        extractionWarning: blocks.length ? (current.extractionWarning || '').replace(noPdfTextWarning, '')
+          .replace(/The selectable PDF text could not be read: [\s\S]*? The original file is preserved\./, '').trim() : current.extractionWarning
+      }));
+      setStatus(blocks.length ? `Recovered ${blocks.length} text blocks from the saved PDF. Open Reader to translate them.` : noPdfTextWarning);
+    } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
+  }
+  async function checkSavedPdfText() {
+    if (taskRef.current || !canRestorePdfText(paperRef.current)) return;
+    const token = startTask('Checking the saved PDF for selectable text…');
+    try { await restorePdfText(token); }
+    catch (cause) { if (!token.cancelled) setError(`Could not read the saved PDF: ${cause.message}`); }
+    finally { endTask(token); }
+  }
+  async function ingestPdf(imported, token, recoverPage) {
+    requireActiveTask(token);
+    // The import response may precede the current paper's final note save.
+    // Reload only after loadPaper flushes it, retaining the latest open copy.
+    if (imported.existing) {
+      if (await loadPaper(imported.id, { fromImport: true, token })) await restorePdfText(token);
+      return;
+    }
+    const config = settingsRef.current;
+    const mode = recoverPage ? 'pdfOnly' : config.pdfExtractionMode || 'mineruPreferred';
+    let mineruMarkdown = '';
+    let mineruBlocks = null;
+    let mineruResourceId = null;
+    let pageHints = [];
+    const warnings = [];
+    if (mode !== 'pdfOnly') {
+      try {
+        setPendingImport(current => current ? { ...current, stage: 'Checking MinerU availability' } : current);
+        const mineru = await api.mineruStatus(config.mineruExecutable, config.mineruBackend);
+        requireActiveTask(token);
+        if (!isMineruReady(mineru)) throw new Error(mineru.runtime?.reason || mineru.reason || 'No compatible MinerU installation was detected. Open Local AI setup.');
+        setBusy({ label: 'MinerU is reconstructing the paper…' });
+        setPendingImport(current => current ? { ...current, stage: 'MinerU is processing the PDF' } : current);
+        const result = await extractMineruForTask(imported.id, mineru, config.mineruBackend, token);
+        ({ markdown: mineruMarkdown, blocks: mineruBlocks, pageHints, resourceId: mineruResourceId = null } = result);
+        if (result.resourceWarning) warnings.push(result.resourceWarning);
+      } catch (cause) {
+        requireActiveTask(token);
+        if (mode === 'mineruOnly') throw cause;
+        warnings.push(`MinerU failed: ${cause.message} Using the original PDF and any selectable text.`);
+      }
+    }
+    let pdf;
+    let pdfBlocks = [];
+    let pageCount = 0;
+    let textChecked = false;
+    try {
+      try {
+        setBusy({ label: 'Reading PDF text layer…' });
+        setPendingImport(current => current ? { ...current, stage: 'Reading selectable PDF text' } : current);
+        pdf = await openPdf(imported.bytes);
+        requireActiveTask(token);
+        pageCount = pdf.numPages;
+        pdfBlocks = await extractPdf(pdf, (done, total) => {
+          setProgress({ done, total });
+          setPendingImport(current => current ? { ...current, stage: `Reading selectable PDF text · ${done} of ${total}` } : current);
+        }, () => requireActiveTask(token));
+        textChecked = true;
+        if (!pdfBlocks.length && !mineruBlocks) warnings.push(noPdfTextWarning);
+      } catch (cause) {
+        requireActiveTask(token);
+        if (!pdf && !mineruBlocks) throw cause;
+        warnings.push(`The selectable PDF text could not be read: ${cause.message} The original file is preserved.`);
+      }
+      if (pdf && !mineruBlocks) await archiveImportedPages(imported, pdf, token, warnings);
+    } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
+    mineruBlocks = locateMineruPages(mineruBlocks, pageHints, pdfBlocks, pageCount);
+    const blocks = mineruBlocks || pdfBlocks;
+    const recovered = recoverPage && (blocks.find(block => block.page === recoverPage && eastAsianLetter.test(block.text)) || paragraphOnPdfPage(blocks, recoverPage));
+    const startTab = recovered ? 'Reader' : 'Paper';
+    const startPage = recovered ? recoverPage : 1;
+    const startBlock = recovered?.id ?? firstSelectableParagraphID(blocks);
+    const extractionWarning = warnings.join(' ');
+    if (!await finishNoteEditing()) throw new Error('Retry the current paper save before opening another paper.');
+    requireActiveTask(token);
+    const document = {
+      id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(),
+      blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
+      ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
+      extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning, pageCount, pdfVerticalReadingOrder: true, pdfRotatedReadingOrder: true, pdfTaggedReadingOrder: true, ...(textChecked && { pdfTextVersion }),
+      tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English',
+      paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: startBlock, position: { block: startBlock || 1, page: startPage, tab: startTab, displayMode: 'bilingual' }
+    };
+    resetReadingHistory();
+    cancelParagraphEdit(); setUndo([]); commitPaper(document); setTab(startTab); setDisplayMode('bilingual'); setExplanationLanguage('English'); setPageNumber(startPage); setSearch('');
+    token.mineruResource = null;
+    setStatus(extractionWarning || `Extracted ${blocks.length} blocks${pageCount ? ` from ${pageCount} pages` : ''}. Compare uncertain passages with Original PDF.`);
+  }
+  async function importText(text, name = 'Pasted Text', { practice = false } = {}) {
+    if (!text.trim() || taskRef.current || editRef.current) return;
+    const token = startTask('Preparing pasted text…');
+    try {
+      if (!await finishNoteEditing()) throw new Error('Retry the current paper save before loading pasted text.');
+      requireActiveTask(token);
+      const id = await sha256(text.trim());
+      requireActiveTask(token);
+      const existing = await api.loadPaper(id);
+      requireActiveTask(token);
+      // Notes remain editable while the lookup is pending. Flush again before
+      // replacing the paper, and prefer the latest same-paper snapshot.
+      if (!await finishNoteEditing()) throw new Error('Retry the current paper save before loading pasted text.');
+      requireActiveTask(token);
+      if (existing) {
+        const current = paperRef.current?.id === id ? paperRef.current : existing;
+        if (await loadPaper(current, { fromImport: true, token }) !== true) return;
+      } else {
+        const blocks = blocksFromText(text);
+        const references = referenceBlockIds(blocks);
+        const paragraphs = blocks.filter(block => !block.resource && !references.has(block.id));
+        const initialTab = paragraphs.length ? 'Summary' : 'Paper';
+        resetReadingHistory(); cancelParagraphEdit(); setUndo([]);
+        commitPaper({ id, name, type: 'text', sourceMode: 'text', createdAt: new Date().toISOString(), blocks,
+          tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current),
+          explanationLanguage: 'English', paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: firstSelectableParagraphID(blocks),
+          position: { block: 1, page: 1, tab: initialTab }, extraction: 'Pasted text' });
+        setTab(initialTab); setExplanationLanguage('English'); setPageNumber(1); setSearch('');
+        setSelection(null); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+        setStatus(`Loaded ${name} with ${paragraphs.length} analysis paragraphs using Pasted text.${references.size ? ` Kept ${references.size} reference blocks in the document but excluded them from AI tasks.` : ''}`);
+      }
+      if (practice) setStatus('Loaded a fictional practice paper. No model is used until you choose an AI action.');
+      if (pasteExpanded) setDocumentDetailsExpanded(true);
+    } catch (cause) { if (!token.cancelled) setError(cause.message); } finally { endTask(token); }
+  }
+  function openPasteText() {
+    if (taskRef.current || editRef.current) return;
+    setFocus(false); setSidebar(true); setDocumentDetailsExpanded(true); setPasteExpanded(true);
+    setPasteFocusRequest(request => request + 1);
+  }
+  function loadPractice() {
+    if (paperRef.current) { setStatus('The practice paper is available from the empty workspace. Your open paper remains unchanged.'); return; }
+    importText(practiceParagraphs.join('\n\n'), 'Welcome to PaperBridge (practice sample)', { practice: true }).catch(cause => setError(cause.message));
+  }
+  function startTask(label) { const token = { cancelled: false, ids: new Set(), paperId: paperRef.current?.id }; taskRef.current = token; setBusy({ label }); setProgress(null); setStatus(''); setError(''); return token; }
+  function requireActiveTask(token) { if (token.cancelled || taskRef.current !== token) throw new Error('Cancelled'); }
+  function endTask(token) {
+    discardMineruResult(token);
+    if (taskRef.current !== token) return;
+    taskRef.current = null;
+    if (token.kind === 'pdfImport') setPendingImport(null);
+    setBusy(null);
+    setProgress(null);
+  }
+  async function prepareTaskAI(config, roles, token) {
+    if (!roles.length) return true;
+    const local = config.aiProvider === 'openai' ? {} : await refreshModels(config);
+    let hasKey = openAIStateRef.current.hasKey;
+    if (config.aiProvider === 'openai' && hasKey == null) hasKey = await refreshOpenAIKeyStatus();
+    requireActiveTask(token);
+    const { consent } = openAIStateRef.current;
+    const issue = aiTaskSetupIssue(config, roles, { ...local, consent, hasKey });
+    if (!issue) return true;
+    endTask(token);
+    openTaskSetup(issue, true);
+    return false;
+  }
+  async function generate(model, prompt, system, token, format) {
+    requireActiveTask(token);
+    const requestId = crypto.randomUUID(); token.ids.add(requestId);
+    try {
+      let answer;
+      if (settingsRef.current.aiProvider === 'openai') {
+        if (!openAIStateRef.current.consent) throw new Error('Open Settings > Models to allow sending text to OpenAI for this session. Nothing was sent.');
+        if (!openAIStateRef.current.hasKey) throw new Error('Save an OpenAI API key in Settings > Models.');
+        if (!String(model || '').trim()) throw new Error('Choose an OpenAI model for this task in Settings > Models.');
+        answer = await api.generateOpenAI({ model, prompt: omitInlineImageData(prompt), system: omitInlineImageData(system), requestId });
+      } else answer = await api.generate({ baseURL: settingsRef.current.ollamaBaseURL, model, prompt, system, requestId, format });
+      requireActiveTask(token); return answer;
+    }
+    finally { token.ids.delete(requestId); }
+  }
+  function cancelTask() {
+    const token = taskRef.current;
+    if (!token) return;
+    token.cancelled = true;
+    token.cancelRender?.();
+    if (token.kind === 'bundleExport') {
+      setStatus('Stopping page export…');
+      return;
+    }
+    const translating = translationQueueRef.current?.token === token;
+    if (translating) translationQueueRef.current = null;
+    for (const id of token.ids) { api.cancel(id).catch(() => {}); api.cancelOpenAI(id).catch(() => {}); }
+    api.cancelMineru().catch(() => {}); setPendingImport(null); taskRef.current = null; setBusy(null); setProgress(null);
+    if (token.kind === 'selection') setSelectionLookup({ status: 'Quick lookup cancelled.', error: '' });
+    setStatus(translating ? 'Translation stopped. Completed blocks are kept.' : 'Task cancelled. Completed work was saved.');
+  }
+  function matchingTerms(text, from = settings.sourceLanguage, to = settings.targetLanguage) {
+    return matchingGlossaryTerms(glossary, text, from, to);
+  }
+  function translateMarkupSpans(excerpt, config, translationModel, instructions, token) {
+    return translateAroundMarkup(excerpt, async selection => {
+      const prompt = strictSelectionTranslationPrompt(selection, config.sourceLanguage, config.targetLanguage,
+        matchingTerms(selection, config.sourceLanguage, config.targetLanguage));
+      const result = await generate(translationModel, prompt, instructions, token);
+      if (isLikelyOverexpandedSelection(result, selection)) throw new Error('The model expanded the excerpt instead of translating it.');
+      return excerpt.standaloneLabel ? result.replace(/[&\\[\]]/g, char => '&#' + char.codePointAt(0) + ';') : result;
+    });
+  }
+  function retryBlock(id) {
+    if (!paperRef.current || busy || taskRef.current) return;
+    if (translationSetup && !verbatimTranslationIDs.has(id)) { openTaskSetup(translationSetup); return; }
+    void translateBlocks([id], { retryId: id });
+  }
+  async function translateBlocks(ids, { sharedFull = false, retryId = null } = {}) {
+    if (!paperRef.current || busy || taskRef.current) return;
+    const token = startTask('Translating paragraphs…');
+    const references = referenceBlockIds(paperRef.current.blocks);
+    const eligible = new Set(translationRangeIds(paperRef.current.blocks, ids, references, retryId));
+    const queue = paperRef.current.blocks.filter(block => eligible.has(block.id));
+    if (!queue.length) {
+      if (sharedFull) commitPaper(withSharedMarkdownTranslation);
+      setStatus(sharedFull ? 'Using completed Reader translations for the full paper.' : 'This range is already complete.');
+      endTask(token);
+      return;
+    }
+    function recordTranslation(id, change) {
+      commitPaper(current => {
+        const next = { ...current, blocks: current.blocks.map(block => block.id === id ? { ...block, ...change } : block) };
+        const syncDraft = sharedFull || (current.connectedShared && !current.connectedStale && usesSharedMarkdown(current));
+        return syncDraft ? withSharedMarkdownTranslation(next) : next;
+      });
+    }
+    const active = { token, queue, next: 0 };
+    translationQueueRef.current = active;
+    const total = queue.length;
+    let failed = 0;
+    try {
+      const config = settingsRef.current;
+      const translationModel = activeAIModel(config, 'translation');
+      const needsModel = config.sourceLanguage !== config.targetLanguage && queue.some(block => !verbatimTranslationIDs.has(block.id));
+      if (!await prepareTaskAI(config, needsModel ? ['translation'] : [], token)) return;
+      for (let index = 0; index < total; index++) {
+        if (token.cancelled) break;
+        const block = active.queue[index];
+        active.next = index + 1;
+        setBusy({ label: `Translating block ${block.id} · ${index + 1} of ${total}` });
+        setProgress({ done: index, total, failed });
+        try {
+          const marker = pdfFootnoteMarker(block);
+          const source = block.sourceMarkdown || block.text.slice(marker.length);
+          const protectedBlock = protectStructuredMarkdown(source, { boundLinks: Boolean(block.sourceMarkdown) });
+          let output = block.sourceMarkdown || block.text;
+          if (config.sourceLanguage !== config.targetLanguage && !verbatimTranslationIDs.has(block.id)) {
+            const parts = chunkText(protectedBlock.text, Number(config.maxParagraphChars) || 1800);
+            const translated = [];
+            const promptForPart = block.sourceMarkdown || protectedBlock.tokens.length ? markdownTranslationPrompt : translationPrompt;
+            const instructions = translationInstructions(config, config.targetLanguage, paperRef.current.name, translationSystem(config.targetLanguage));
+            for (const part of parts) {
+              const tokens = protectedBlock.tokens.filter(([marker]) => part.includes(marker));
+              if (onlyProtectedMarkup(part, tokens)) {
+                translated.push(restoreMarkdown(part, tokens));
+                continue;
+              }
+              if (protectedBlock.standaloneLabel && parts.length === 1) {
+                translated.push(await translateMarkupSpans(protectedBlock, config, translationModel, instructions, token));
+                continue;
+              }
+              const prompt = promptForPart(part, config.sourceLanguage, config.targetLanguage, matchingTerms(part));
+              const answer = await generate(translationModel, prompt, instructions, token);
+              try {
+                translated.push(tokens.length || block.sourceMarkdown ? restoreMarkdown(answer, tokens) : answer);
+              } catch (error) {
+                const previouslyRejected = block.status === 'failed' && (block.errorCode === 'PROTECTED_MARKDOWN_CHANGED'
+                  || block.error === 'The model changed a protected formula, figure, or link. Retry this block.');
+                if (config.aiProvider !== 'ollama' || !previouslyRejected || error.code !== 'PROTECTED_MARKDOWN_CHANGED') throw error;
+                requireActiveTask(token);
+                translated.push(await translateMarkupSpans({ text: part, tokens }, config, translationModel, instructions, token));
+              }
+            }
+            output = (marker ? marker + ' ' : '') + translated.join(block.sourceMarkdown ? '\n' : ' ');
+          }
+          if (!token.cancelled) recordTranslation(block.id, { translation: output, translationMarkdown: block.sourceMarkdown ? output : null,
+            translationLanguage: normalizeOutputLanguage(config), status: 'ok', error: '', errorCode: null });
+        } catch (err) {
+          if (token.cancelled) break;
+          if (isGlobalAIError(config.aiProvider, err.message)) throw err;
+          recordTranslation(block.id, { status: 'failed', error: err.message, errorCode: err.code || null });
+          failed++;
+        }
+        setProgress({ done: index + 1, total, failed });
+      }
+      if (!token.cancelled) {
+        if (sharedFull) {
+          const remaining = translationRangeIds(paperRef.current.blocks, null, references).length;
+          setStatus(remaining ? `Full translation saved with ${remaining} unfinished block(s). Original text is retained in those positions.`
+            : 'Structure-preserving full translation saved. Reader and the full draft share the same translations.');
+        } else if (failed) setStatus(`Translation pass finished. ${failed} ${failed === 1 ? 'block' : 'blocks'} failed in this range and can be retried.`);
+        else setStatus(`Translation pass finished. ${paperRef.current.blocks.filter(block => block.status === 'ok' && !block.resource && !references.has(block.id)).length} blocks saved.`);
+      }
+    } catch (err) { setError(err.message); } finally { if (translationQueueRef.current?.token === token) translationQueueRef.current = null; endTask(token); }
+  }
+  function openTranslationRange() {
+    if (tab === 'Reader' && !search) {
+      const location = currentReadingLocation();
+      clearTimeout(scrollSaveTimer.current);
+      if (location) commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
+    }
+    setModal('range');
+  }
+  function prioritizeSection(section) {
+    const active = translationQueueRef.current;
+    if (!active || active.token !== taskRef.current || !section) return false;
+    const remaining = active.queue.slice(active.next);
+    const ids = new Set(section.ids);
+    const priority = remaining.filter(block => ids.has(block.id));
+    if (!priority.length) return false;
+    active.queue = active.queue.slice(0, active.next).concat(priority, remaining.filter(block => !ids.has(block.id)));
+    setStatus(`${section.title} will be translated after the current block. ${priority.length} queued ${priority.length === 1 ? 'block' : 'blocks'}.`);
+    return true;
+  }
+  async function runSelection(kind) {
+    if (busy || taskRef.current) return;
+    const currentPaper = paperRef.current;
+    const config = settingsRef.current;
+    const input = selectionLookupInput(currentPaper, selectionRef.current, config, explanationLanguage, glossary);
+    if (!input) return;
+    if (!inspector || focus) {
+      setSelection(current => current && !current.showQuickLookup ? { ...current, showQuickLookup: true } : current);
+    }
+    const { key, identity, quote, fullContext, from, to, model, terms } = input;
+    if (lookupCache.get(key)?.[kind] !== undefined) {
+      setSelectionLookup({ key, status: 'Using cached quick lookup.', error: '' });
+      return;
+    }
+    const sourceContext = omitInlineImageData(fullContext);
+    const context = selectionContext(sourceContext, quote, kind === 'translate' ? 600 : 2400);
+    setSelectionLookup({ status: '', error: '' });
+    const token = startTask(kind === 'translate' ? 'Translating selection…' : 'Explaining selection…');
+    token.kind = 'selection'; token.selectionKey = identity;
+    try {
+      if (!await prepareTaskAI(config, kind === 'explain' || from !== to ? ['quickLookup'] : [], token)) return;
+      let output = quote;
+      if (kind === 'translate' && from !== to) {
+        const withContext = context.includes(quote) && spansCompleteSentences(quote, sourceContext);
+        const strict = strictSelectionTranslationPrompt(quote, from, to, terms);
+        const prompt = withContext ? selectionTranslationPrompt(quote, context, from, to, terms) : strict;
+        const system = translationInstructions(config, to, currentPaper.name, selectionTranslationSystem(to));
+        output = await generate(model, prompt, system, token);
+        // Only a contextual local request has a distinct, non-billable fallback.
+        if (withContext && config.aiProvider !== 'openai' && isLikelyOverexpandedSelection(output, quote)) {
+          setBusy({ label: 'Refining exact selection…' });
+          output = await generate(model, strict, system, token);
+        }
+        if (isLikelyOverexpandedSelection(output, quote)) throw new Error('The model expanded the selection instead of translating it. Retry with another model.');
+      } else if (kind === 'explain') {
+        output = await generate(model, explainPrompt(quote, context, explanationLanguage), 'You are a patient academic explainer. Explain accurately and simply.', token);
+      }
+      if (!token.cancelled && paperRef.current?.id === currentPaper.id && selectionIdentity(selectionRef.current) === identity) {
+        setLookupCache(current => new Map(current).set(key, { ...current.get(key), [kind]: output }));
+        setSelectionLookup({ key, status: kind === 'translate' ? 'Selection translated.' : 'Selection explained.', error: '' });
+      }
+    } catch (err) { if (!token.cancelled) { setSelectionLookup({ key, status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
+  }
+  async function reextractAsNew(savedPaperId, recoverPage) {
+    if (busy || taskRef.current || editRef.current) return;
+    setModal('');
+    let token = savedPaperId ? startTask('Reading the archived PDF…') : null;
+    let uncommittedId;
+    try {
+      if (token) {
+        if (!await finishNoteEditing()) throw new Error('Save the current paper changes before recovering the PDF.');
+        requireActiveTask(token);
+      }
+      const imported = await api.copyPdfAsNew(savedPaperId);
+      if (!imported) return;
+      uncommittedId = imported.id;
+      if (token) requireActiveTask(token);
+      else if (taskRef.current || editRef.current) return;
+      token = startPdfImport(imported.name, 'Preparing an independent PDF copy', token || undefined);
+      await ingestPdf(imported, token, recoverPage);
+      uncommittedId = null;
+    } catch (cause) { if (!token?.cancelled) setError(cause.message); }
+    finally {
+      if (uncommittedId) await api.discardNewPdfCopy(uncommittedId).catch(cause => setError(cause.message));
+      if (token) endTask(token);
+    }
+  }
+  function selectParagraphForExplanation(id) {
+    const current = paperRef.current;
+    if (!current?.blocks.some(block => block.id === id && !block.resource)) return;
+    void finishNoteEditing();
+    if (taskRef.current?.kind === 'selection') cancelTask();
+    window.getSelection()?.removeAllRanges();
+    selectionRef.current = null;
+    setSelection(null); setNoteDraft(''); setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+    setQuickTermOpen(false); setTermDraft(''); setSelectionLookup({ status: '', error: '' });
+    selectParagraph(id); setFocus(false); setInspector(true);
+  }
+  async function explainBlock(id) {
+    const block = paperRef.current?.blocks.find(item => item.id === id);
+    if (!block || busy || taskRef.current) return;
+    const token = startTask(`Explaining block ${id}…`);
+    try {
+      const config = settingsRef.current;
+      if (!await prepareTaskAI(config, ['explanation'], token)) return;
+      const source = analysisSourceText(block);
+      const output = await generate(activeAIModel(config, 'explanation'), explainPrompt(source, source, explanationLanguage), 'Explain this whole academic paragraph accurately and simply.', token);
+      if (!token.cancelled) {
+        const settingsKey = explanationKey(id, explanationLanguage, settings);
+        const result = { id, language: explanationLanguage, source, output, settingsKey };
+        commitPaper(current => ({ ...current, paragraphExplanations: { ...current.paragraphExplanations, [settingsKey]: result } }));
+        setInspector(true);
+      }
+    } catch (cause) { if (!token.cancelled) setError(cause.message); } finally { endTask(token); }
+  }
+  async function summarize() {
+    const current = paperRef.current;
+    if (!current || busy || taskRef.current) return;
+    const source = summarySourceBlocks(current.blocks);
+    if (!source.length) { setError('No readable body text to summarize. For a scanned PDF, use MinerU OCR first.'); return; }
+    const token = startTask('Summarizing paper…');
+    try {
+      const config = settingsRef.current;
+      const summaryModel = activeAIModel(config, 'summary');
+      const translationModel = activeAIModel(config, 'translation');
+      const sameLanguage = config.sourceLanguage === config.targetLanguage;
+      const roles = sameLanguage ? ['summary'] : ['summary', 'translation'];
+      if (!await prepareTaskAI(config, roles, token)) return;
+
+      const batches = summarySourceBatches(source);
+      const system = 'You are a careful academic paper assistant. Return only the requested JSON.';
+      let claims = [];
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        setBusy({ label: `Summarizing part ${i + 1} of ${batches.length}` }); setProgress({ done: i, total: batches.length + 1 });
+        const response = await generate(summaryModel, summaryPrompt(batch, config.sourceLanguage), system, token, 'json');
+        const partial = parseSummaryClaims(response, batch);
+        const candidates = summarySourceCandidates(response, batch);
+        for (const [index, claim] of partial.entries()) {
+          if (claim.sources.length) continue;
+          const excerpts = batch.filter(block => candidates[index]?.includes(block.id));
+          for (const { id, text } of excerpts) {
+            const answer = await generate(summaryModel, summaryQuotePrompt(claim.text, id, text), 'Select only an exact supporting quote from the supplied passage, or return NONE.', token);
+            const candidate = answer.trim();
+            const quote = validatedSummaryQuote(text, candidate) ?? validatedSummaryQuote(text, candidate.replace(/^["“‘]|["”’]$/g, ''));
+            if (quote !== null) {
+              claim.sources = [{ paragraphID: id, quote }];
+              break;
+            }
+          }
+        }
+        claims.push(...partial);
+        if (claims.length > 6) {
+          setBusy({ label: `Consolidating claims through part ${i + 1} of ${batches.length}` });
+          const response = await generate(summaryModel, mergeSummaryPrompt(claims, config.sourceLanguage), system, token, 'json');
+          claims = parseSummaryClaims(response, source, claims.flatMap(claim => claim.sources));
+          if (!claims.length) throw new Error('The summary model returned no usable consolidated claims; the saved summary was not replaced.');
+        }
+        setProgress({ done: i + 1, total: batches.length + 1 });
+      }
+      if (!claims.length) throw new Error('The summary model returned no usable claims; the saved summary was not replaced.');
+      const sourceSummary = claimsMarkdown(claims);
+      let targetSummary = sourceSummary;
+      if (!sameLanguage) {
+        const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
+        const translations = [];
+        for (const [index, claim] of claims.entries()) {
+          setBusy({ label: `Translating summary claim ${index + 1} of ${claims.length}` });
+          const { text, tokens } = protectStructuredMarkdown(claim.text);
+          const prompt = translationPrompt(text, config.sourceLanguage, config.targetLanguage, matchingTerms(text, config.sourceLanguage, config.targetLanguage));
+          const answer = await generate(translationModel, prompt, instructions, token);
+          if (!answer.trim()) throw new Error('The summary translation was empty; the saved summary was not replaced.');
+          translations.push({ text: restoreMarkdown(answer.trim(), tokens) });
+        }
+        targetSummary = claimsMarkdown(translations);
+      }
+      requireActiveTask(token);
+      commitPaper(paper => ({ ...paper, summary: { source: sourceSummary, target: targetSummary, claims, contentsChecked: true, referenceCoverageVersion, markdownTextVersion: markdownSummaryTextVersion, sourceLanguage: config.sourceLanguage, targetLanguage: config.targetLanguage } }));
+      setStatus('Summary saved. Only exact-match source quotations are linked.');
+    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
+  }
+  async function fullTranslation(force = false) {
+    if (!paperRef.current || busy || taskRef.current) return;
+    if (!paperRef.current.blocks.some(block => !block.heading && !block.resource)) { setError('No readable text to translate. Use MinerU OCR first.'); return; }
+    if (usesSharedMarkdown(paperRef.current)) return translateBlocks(null, { sharedFull: true });
+    const token = startTask('Translating full paper…');
+    try {
+      const config = settingsRef.current;
+      const translationModel = activeAIModel(config, 'translation');
+      const current = paperRef.current;
+      if (!force && current.connectedTranslation && !current.connectedStale && !pendingConnectedBatches(current).length) {
+        setStatus('Using the saved connected full translation.');
+        return;
+      }
+      const resume = !force && !current.connectedStale && supportsConnectedBatchVersion(current.connectedBatchVersion);
+      const batchVersion = resume ? current.connectedBatchVersion : connectedBatchVersion;
+      let inheritedLanguageConflict = false;
+      const saveDraft = batches => commitPaper(paper => ({
+        ...paper, connectedBlocks: [...batches],
+        connectedTranslation: batches.map(batch => batch.output).join('\n\n'),
+        connectedLanguageConflict: inheritedLanguageConflict,
+        connectedLanguage: inheritedLanguageConflict ? null
+          : commonOutputLanguage(batches.filter(batch => batch.kind === 'translation').map(batch => batch.translationLanguage))
+            || (batches.every(batch => batch.kind === 'original') && config.sourceLanguage === config.targetLanguage ? normalizeOutputLanguage(config) : null),
+        connectedBatchVersion: batchVersion, connectedContentsChecked: true, connectedReferenceCoverageVersion: referenceCoverageVersion, connectedShared: false, connectedStale: false
+      }));
+      if (config.sourceLanguage === config.targetLanguage) {
+        const source = current.blocks.map(block => block.sourceMarkdown || block.text).join('\n\n');
+        saveDraft([{ kind: 'original', source, output: source, translationLanguage: normalizeOutputLanguage(config), status: 'ok' }]);
+        setStatus('Source and target languages match. The full draft uses the original text.');
+        return;
+      }
+      const authorSource = (authorByline?.sourceMarkdown || authorByline?.text || '').trim();
+      const previous = resume ? current.connectedBlocks : [];
+      const batches = planConnectedBatches(current.blocks, batchVersion).map((batch, index) => {
+        const saved = previous?.[index];
+        if (saved?.kind === batch.kind && saved.source === batch.source && saved.pdfFootnoteMarker === batch.pdfFootnoteMarker && saved.status === 'ok' && saved.output) return saved;
+        return { ...batch, output: batch.source, translationLanguage: batch.kind === 'translation' ? normalizeOutputLanguage(config) : null,
+          status: batch.kind === 'original' ? 'ok' : 'pending' };
+      });
+      // Resuming a contradictory saved artifact does not establish the language
+      // of its reused successful passages. A fresh generation has no such reuse.
+      inheritedLanguageConflict = current.connectedLanguageConflict === true && batches.some((batch, index) =>
+        batch.kind === 'translation' && batch === previous?.[index]);
+      const translationCount = batches.filter(batch => batch.kind === 'translation').length;
+      let done = batches.filter(batch => batch.kind === 'translation' && batch.status === 'ok').length;
+      if (done === translationCount) {
+        saveDraft(batches);
+        setStatus('Connected full-paper translation saved.');
+        return;
+      }
+      if (!await prepareTaskAI(config, ['translation'], token)) return;
+      setProgress({ done, total: translationCount });
+      for (const [index, batch] of batches.entries()) {
+        if (batch.status === 'ok') continue;
+        requireActiveTask(token);
+        setBusy({ label: `Translating full paper · batch ${done + 1} of ${translationCount}` });
+        const localRetry = localConnectedRetry(batch, previous?.[index], config.aiProvider);
+        try {
+          const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
+          let output = batch.pdfFootnoteMarker ? batch.pdfFootnoteMarker + ' ' : '';
+          const parts = connectedRetryExcerpts(batch, localRetry, authorSource);
+          for (const [partIndex, part] of parts.entries()) {
+            requireActiveTask(token);
+            if (part.preserve) {
+              output += part.separator + part.source;
+              continue;
+            }
+            if (parts.length > 1) setBusy({ label: `${localRetry ? 'Retrying' : 'Translating'} batch ${done + 1} · part ${partIndex + 1} of ${parts.length}` });
+            const excerpt = protectStructuredMarkdown(part.source);
+            if (onlyProtectedMarkup(excerpt.text, excerpt.tokens)) {
+              output += part.separator + restoreMarkdown(excerpt.text, excerpt.tokens);
+              continue;
+            }
+            const prompt = connectedTranslationPrompt(excerpt.text, config.sourceLanguage, config.targetLanguage, matchingTerms(excerpt.text, config.sourceLanguage, config.targetLanguage));
+            const answer = await generate(translationModel, prompt, instructions, token);
+            let translated;
+            try {
+              translated = restoreConnectedExcerpt(answer, excerpt.tokens, part.source);
+            } catch (error) {
+              if (!localRetry || error.code !== 'PROTECTED_MARKDOWN_CHANGED') throw error;
+              translated = await translateMarkupSpans(excerpt, config, translationModel, instructions, token);
+            }
+            output += part.separator + translated;
+          }
+          batches[index] = { ...batch, output, translationLanguage: normalizeOutputLanguage(config), status: 'ok' };
+        } catch (cause) {
+          if (token.cancelled) return;
+          if (isGlobalAIError(config.aiProvider, cause.message)) throw cause;
+          batches[index] = { ...batch, status: 'failed', error: cause.message,
+            ...(cause.code === 'PROTECTED_MARKDOWN_CHANGED' && { errorCode: cause.code }),
+            ...(localRetry === 'markup' && { retryProtectedMarkup: true }),
+            ...(localRetry === 'short' && { retryShortExcerpts: true }) };
+        }
+        saveDraft(batches);
+        setProgress({ done: ++done, total: translationCount });
+      }
+      const failures = batches.filter(batch => batch.status === 'failed').length;
+      setStatus(failures ? `Connected full-paper translation saved. ${failures} failed batch(es) retain the original text.`
+        : 'Connected full-paper translation saved.');
+    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
+  }
+  async function runMineru() {
+    if (!paper || paper.type !== 'pdf' || busy || mineruPreflight.current || editRef.current) return;
+    const hasMineruWork = blocks => blocks?.some(block => block.status === 'ok' || block.bookmark || block.highlights?.length || block.notes?.length);
+    const hasArticleWork = (current, mode) => [current.viewNotes, current.viewHighlights].some(items =>
+      items?.some(item => item.scope === 'paperArticle' && item.sourceMode === mode));
+    if ((paper.sourceMode === 'mineru' && (hasMineruWork(paper.blocks) || paper.summary || paper.connectedTranslation)) ||
+        hasMineruWork(paper.mineruBlocks) || hasArticleWork(paper, 'mineru')) {
+      setError('This MinerU reader already contains saved work. Export it before parsing the PDF again.');
+      return;
+    }
+    let runtime;
+    mineruPreflight.current = true;
+    try { runtime = await api.mineruStatus(settings.mineruExecutable, settings.mineruBackend); }
+    catch (cause) { setError(`MinerU detection failed: ${cause.message}`); return; }
+    finally { mineruPreflight.current = false; }
+    if (paperRef.current?.id !== paper.id || taskRef.current || editRef.current) return;
+    if (!isMineruReady(runtime)) {
+      setStatus(runtime.runtime?.reason || runtime.reason || 'MinerU OCR is not ready. Open Local AI setup to repair it.');
+      openSetup(); return;
+    }
+    const token = startTask('MinerU is extracting structure…');
+    try {
+      const { markdown, pageHints, blocks: parsed, resourceId = null, resourceWarning = '' } = await extractMineruForTask(paper.id, runtime, settings.mineruBackend, token);
+      requireActiveTask(token);
+      resetReadingHistory();
+      const previousBlocks = paperRef.current.blocks;
+      const updated = commitPaper(current => {
+        const hasUserWork = current.summary || current.connectedTranslation || hasMineruWork(current.blocks) ||
+          hasArticleWork(current, paperArticleSource(current).mode);
+        const pdfBlocks = current.pdfBlocks || (current.sourceMode !== 'mineru' ? current.blocks : []);
+        const blocks = locateMineruPages(parsed, pageHints, pdfBlocks);
+        const { Reader: discarded, ...scrollByTab } = current.position?.scrollByTab || {};
+        return { ...current, mineruMarkdown: markdown, mineruBlocks: blocks, mineruPageMapVersion, mineruResourceId: resourceId, pdfBlocks, blocks: hasUserWork ? current.blocks : blocks,
+          selectedParagraphID: hasUserWork ? resolveSelectedParagraphID(current) : firstSelectableParagraphID(blocks),
+          ...(!hasUserWork && { position: { ...current.position, block: firstSelectableParagraphID(blocks) || 1, scrollByTab, readerSearchOrigin: undefined } }),
+          extractionWarning: resourceWarning, extraction: hasUserWork ? current.extraction : 'MinerU', sourceMode: hasUserWork ? (current.sourceMode || 'pdf') : 'mineru' };
+      });
+      if (updated.blocks !== previousBlocks) {
+        window.getSelection()?.removeAllRanges();
+        setUndo([]); cancelParagraphEdit(); setSelection(null); setSearch('');
+        setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+        if (tab === 'Reader') restoreMainScroll({ clearSearch: true });
+      }
+      token.mineruResource = null;
+      setStatus(`MinerU structure ready: ${parsed.length} blocks. You can switch Reader source without discarding either version.${resourceWarning ? ` ${resourceWarning}` : ''}`);
+    } catch (err) { if (!token.cancelled) setError(err.message); } finally { endTask(token); }
+  }
+  function canSwitchReadingSource(current, mode) {
+    if (taskRef.current) { setError('Finish or stop the current task before switching the reading source.'); return false; }
+    if (current.type === 'pdf' && ['pdf', 'mineru'].includes(mode) && Array.isArray(current[`${mode}Blocks`])) return true;
+    setError('The requested reading source is no longer available for this paper.');
+    return false;
+  }
+  function switchSourceMode(mode) {
+    const current = paperRef.current;
+    if (!current || paperArticleSource(current).mode === mode || !canSwitchReadingSource(current, mode)) return false;
+    recordReadingJump();
+    invalidateReadingScroll();
+    commitPaper(current => {
+      const target = switchReadingSource(current, mode, settingsRef.current);
+      const selectedParagraphID = firstSelectableParagraphID(target.blocks);
+      const { Reader: discarded, ...scrollByTab } = current.position?.scrollByTab || {};
+      return { ...target, selectedParagraphID, position: { ...current.position, block: selectedParagraphID || 1, scrollByTab, readerSearchOrigin: undefined } };
+    });
+    searchOrigin.current = null;
+    window.getSelection()?.removeAllRanges();
+    setUndo([]); cancelParagraphEdit(); setSelection(null); setSearch('');
+    setPdfNavigation(null); setViewNavigation(null); setBlockNavigation(null);
+    if (tab === 'Reader') restoreMainScroll({ clearSearch: true });
+    setError('');
+    setStatus(`Reader source changed to ${mode === 'mineru' ? 'MinerU' : 'PDF text'}. The other version remains saved.`);
+    return true;
+  }
+  function openPdfReader(page) {
+    const current = paperRef.current;
+    const origin = currentReadingLocation();
+    if (!current || !origin) return;
+    const sourceChanged = origin.sourceMode !== 'mineru' && Boolean(current.mineruBlocks?.length);
+    if (sourceChanged && !canSwitchReadingSource(current, 'mineru')) return;
+
+    const blocks = sourceChanged ? current.mineruBlocks : current.blocks;
+    const target = paragraphOnPdfPage(blocks, page);
+    const scrollByTab = { ...origin.scrollByTab };
+    if (target || sourceChanged) delete scrollByTab.Reader;
+    const block = target?.id ?? (sourceChanged ? blocks[0]?.id : origin.block);
+    recordReadingJump();
+    restoreReadingLocation({
+      ...origin, sourceMode: sourceChanged ? 'mineru' : origin.sourceMode, tab: 'Reader', page, block,
+      selectedParagraphID: target?.id ?? (sourceChanged ? firstSelectableParagraphID(blocks) : origin.selectedParagraphID),
+      displayMode: origin.displayMode === 'translation' ? 'bilingual' : origin.displayMode,
+      search: '', searchOrigin: null, scrollByTab
+    });
+    if (sourceChanged) setStatus(target ? `Opened MinerU text from PDF page ${page}.` : 'Opened the saved MinerU Reader.');
+  }
+  function exportDefaultMarkdown() {
+    if (!canExport) return;
+    return defaultExportBundle ? exportBundle() : exportMarkdown('analysis');
+  }
+  async function exportMarkdown(kind) {
+    if (!paper || taskRef.current) return;
+    const token = startTask('Exporting Markdown…');
+    setModal('');
+    try {
+      const [document] = markdownDocuments(paper, undefined, kind);
+      if (!document) return;
+      const destination = await api.exportMarkdown({ name: markdownExportName(paper, document), content: document.content });
+      if (destination && !token.cancelled) setStatus(`Exported ${destination}`);
+    } catch (cause) { if (!token.cancelled) setError(cause.message); }
+    finally { endTask(token); }
+  }
+  async function exportBundle() {
+    if (!paper || taskRef.current) return;
+    const token = startTask('Exporting portable Markdown bundle…');
+    token.kind = 'bundleExport';
+    setModal('');
+    try {
+      const resource = Object.hasOwn(paper, 'mineruResourceId') ? { mineruResourceId: paper.mineruResourceId } : {};
+      const result = await api.exportBundle({
+        paper: { id: paper.id, name: paper.name, type: paper.type, sourceMode: paper.sourceMode, facsimile: pdfFacsimile, ...resource },
+        documents: markdownDocuments(paper)
+      });
+      if (!result) return;
+      let pageImages = 0;
+      let reusedPages = 0;
+      let missingPages = 0;
+      if (result.originalPdf) {
+        setBusy({ label: 'Exporting portable PDF page images…' });
+        const destination = { id: paper.id, folder: result.folder };
+        const cachedPages = new Set(result.cachedPages);
+        let pageCount = result.cachedPageCount || 0;
+        let completed = false;
+        let pdf;
+        const loadPdf = async () => {
+          if (!pdf) {
+            pdf = await openPdf(await api.readBundlePdf(destination));
+            pageCount = pdf.numPages;
+          }
+          return pdf;
+        };
+        try {
+          if (!pageCount && !token.cancelled) await loadPdf();
+          const limit = Math.min(pageCount, result.maximumPreviewPages);
+          for (let pageNumber = 1; pageNumber <= limit && !token.cancelled; pageNumber++) {
+            setProgress({ done: pageNumber - 1, total: limit });
+            if (cachedPages.has(pageNumber) && await api.exportBundlePage({ ...destination, pageNumber })) {
+              pageImages++;
+              reusedPages++;
+              setProgress({ done: pageNumber, total: limit });
+              continue;
+            }
+            if (token.cancelled) break;
+            const pdfDocument = await loadPdf();
+            if (token.cancelled) break;
+            const bytes = await renderPagePng(pdfDocument, pageNumber, token);
+            if (token.cancelled) break;
+            if (bytes) {
+              await api.exportBundlePage({ ...destination, pageNumber, bytes });
+              pageImages++;
+            } else missingPages++;
+            setProgress({ done: pageNumber, total: limit });
+          }
+          completed = true;
+        } finally {
+          try { await api.finishBundle({ ...destination, pageCount, stopped: token.cancelled, completed }); }
+          finally { await pdf?.loadingTask.destroy().catch(() => {}); }
+        }
+      }
+      const missingAssets = result.missingAssetPaths?.length;
+      const unscanned = result.unscannedMarkdownPaths?.length;
+      setStatus(`Exported ${result.documents} Markdown files, ${result.assets} asset(s), ${pageImages} PDF page image(s)${token.cancelled ? ' (page export stopped)' : missingPages ? ` (${missingPages} unavailable)` : ''}${result.originalPdf ? ', and original PDF' : ''} to ${result.folder}${reusedPages ? `. Reused ${reusedPages} archived PDF page image(s).` : ''}${missingAssets ? `. ${missingAssets} referenced local asset(s) could not be included.` : ''}${unscanned ? `. Links inside ${unscanned} Markdown attachment(s) over 64 MiB were not checked.` : ''}`);
+    } catch (cause) { setError(`Bundle export incomplete: ${cause.message}`); }
+    finally { endTask(token); }
+  }
+  async function clearSavedData(includeArchivedPdfs) {
+    if (taskRef.current || clearingWorkspace.current) return;
+    clearingWorkspace.current = true;
+    paperLoadRequest.current++;
+    try {
+      invalidateReadingScroll();
+      if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
+      await settingsSaveChain.current;
+      await glossarySave.current?.catch(() => {});
+      await libraryMetadataSaveChain.current.catch(() => {});
+      libraryMetadataRequest.current++;
+      openAIRefreshId.current = null;
+      setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
+      const result = await api.clearData(includeArchivedPdfs);
+      setArchiveCleanup({ remaining: result?.pendingArchivedPdfs || 0 });
+      setLookupCache(new Map());
+      resetReadingHistory();
+      cancelParagraphEdit();
+      paperRef.current = null; setPaper(null); setLibrary([]); setLibraryPersistenceWarning(''); setGlossary([]);
+      setLibrarySearch(''); setInspector(false); setNoteDraft('');
+      const data = await api.bootstrap();
+      settingsRef.current = data.settings; setSettings(data.settings);
+      modelRefreshId.current++;
+      setModels([]); setOllamaStatus('unchecked'); setOllamaError(''); setRefreshingModels(false);
+      void refreshModels(data.settings);
+      setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
+      setPaste(''); setPasteExpanded(false); setPasteFocusRequest(0);
+      setModal('');
+      setStatus(includeArchivedPdfs
+        ? `Removed saved workspaces and ${result.archivedPdfsRemoved} archived PDF ${result.archivedPdfsRemoved === 1 ? 'copy' : 'copies'}.`
+        : 'Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
+      const pdfWarning = result?.pdfCleanupError ? 'Workspace data was cleared. ' + (result.pendingArchivedPdfs
+        ? 'Some archived files could not be removed. Close any PDF viewer using them, then retry in Settings → Local Data.'
+        : result.pdfCleanupError) : '';
+      setError([pdfWarning, result?.workspaceCleanupWarning].filter(Boolean).join(' '));
+    } catch (cause) {
+      throw new Error('Could not clear saved data. ' + cause.message.replace(/^Error invoking remote method '[^']+': Error: /, ''));
+    } finally {
+      clearingWorkspace.current = false;
+    }
+  }
+  async function retryArchiveCleanup() {
+    if (taskRef.current || archiveCleanup.busy) return;
+    setArchiveCleanup(current => ({ ...current, busy: true, message: '' }));
+    try {
+      const result = await api.retryArchiveCleanup();
+      const removed = result.archivedPdfsRemoved;
+      let message = `Removed ${removed} archived PDF ${removed === 1 ? 'copy' : 'copies'}.`;
+      const kept = result.archivedPdfsKept;
+      if (kept) message += ` Kept ${kept} ${kept === 1 ? 'copy' : 'copies'} used by a saved paper or changed since the cleanup.`;
+      if (result.pdfCleanupError) message += result.pendingArchivedPdfs
+        ? ' Close any PDF viewer using the remaining files and retry.' : ' ' + result.pdfCleanupError;
+      setArchiveCleanup({ remaining: result.pendingArchivedPdfs || 0, message, error: Boolean(result.pdfCleanupError) });
+      if (!result.pdfCleanupError) setError(current => current.startsWith('Workspace data was cleared.') ? '' : current);
+    } catch (cause) {
+      setArchiveCleanup(current => ({ ...current, busy: false, message: cause.message, error: true }));
+    }
+  }
+  async function saveLibraryLabel(id, title, tags) {
+    const label = libraryLabel(title, tags);
+    const request = ++libraryMetadataRequest.current;
+    const pending = libraryMetadataSaveChain.current.catch(() => {}).then(() =>
+      api.updateLibraryMetadata({ id, title: label.libraryTitle, tags: label.tags }));
+    libraryMetadataSaveChain.current = pending;
+    const items = await pending;
+    if (request !== libraryMetadataRequest.current) return;
+    setLibrary(items);
+    if (paperRef.current?.id === id) {
+      // Library metadata is independently durable. Do not rewrite or recreate a
+      // damaged workspace merely to change its label, including an open paper.
+      const next = { ...paperRef.current, ...label };
+      paperRef.current = next; setPaper(next);
+    }
+  }
+  function captureSelection() {
+    const selected = window.getSelection();
+    const range = selected.rangeCount ? selected.getRangeAt(0) : null;
+    if (!range) return;
+    const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+    const element = start?.closest('[data-block-id]');
+    const rich = Boolean(element?.querySelector('[data-markdown-host]'));
+    const captured = domRangeIn(element, range, { visibleOnly: rich });
+    if (!captured) return;
+    const block = paperRef.current?.blocks.find(item => item.id === Number(element.dataset.blockId));
+    const kind = element.dataset.kind || 'source';
+    const source = anchorText(block, kind);
+    const { text } = captured;
+    const nextSelection = { id: block?.id ?? null, kind, text, quote: captured.quote, ...textSelectionOffsets(captured, source, rich && blockMarkdown(block, kind)), scope: 'reader', showQuickLookup: true,
+      context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
+    return applyReadingSelection(nextSelection);
+  }
+  function addHighlight(color) {
+    if (!selection) return;
+    if (isPdfScope(selection.scope)) {
+      if (!validPdfSelection(selection)) { setError('Select exact text in the original PDF before highlighting.'); return; }
+      const saved = paper.pdfHighlights || [];
+      const matching = saved.filter(item => highlightMatchesSelection(item, selection));
+      if (matching.length === 1 && matching[0].color === color && matching[0].quote === selection.quote) { setStatus('This highlight already uses that color.'); return; }
+      rememberUndo();
+      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope,
+        page: selection.page, offset: selection.offset, text: selection.text, quote: selection.quote,
+        ...(selection.anchors && { anchors: storedPdfAnchors(selection) }), color };
+      commitPaper(current => ({ ...current, pdfHighlights: replaceHighlight(saved, matching, item) }));
+      const action = !matching.length ? 'saved' : matching[0].color === color ? 'updated' : 'color updated';
+      setStatus(`PDF highlight ${action} in ${selection.scope === 'paperPdf' ? 'Paper' : 'Original'}.`);
+      return;
+    }
+    if (isMarkdownView(selection.scope)) {
+      if (!validNoteSelection(paper, selection)) { setError('This selection cannot be anchored exactly in the saved document.'); return; }
+      const saved = paper.viewHighlights || [];
+      const matching = saved.filter(item => highlightMatchesSelection(item, selection));
+      if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
+      rememberUndo();
+      const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+        ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }),
+        ...(selection.quote && { quote: selection.quote }),
+        ...(selection.scope === 'paperArticle' && { displayMode: selection.displayMode, sourceMode: selection.sourceMode, kind: selection.kind }), color };
+      commitPaper(current => ({ ...current, viewHighlights: replaceHighlight(saved, matching, item) }));
+      setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved in the annotation list.');
+      return;
+    }
+    const block = paper.blocks.find(item => item.id === selection.id);
+    const key = selection.kind === 'translation' ? 'translationHighlights' : 'highlights';
+    const source = anchorText(block, selection.kind);
+    if (!['reader', 'paper'].includes(selection.scope) || !block || !validTextSelection(selection, source, blockMarkdown(block, selection.kind))) { setError('This exact selection cannot be anchored to one source block.'); return; }
+    const highlights = block[key] || [];
+    const matching = highlights.filter(item => highlightMatchesSelection(item, selection));
+    if (matching.length === 1 && matching[0].color === color) { setStatus('This highlight already uses that color.'); return; }
+    rememberUndo();
+    const item = { ...(matching[0] || {}), ...(!matching.length && { createdAt: annotationCreationTime(paper, selection) }), id: matching[0]?.id || crypto.randomUUID(), scope: selection.scope, text: selection.text, offset: selection.offset, displayOffset: selection.displayOffset,
+      ...((selection.renderedAnchor || matching[0]?.renderedAnchor) && { renderedAnchor: selection.renderedAnchor }), ...(selection.quote && { quote: selection.quote }), color };
+    updateBlock(block.id, { [key]: replaceHighlight(highlights, matching, item) });
+    setStatus(matching.length ? 'Highlight color updated.' : 'Highlight saved.');
+  }
+  function removeSelectionHighlight() {
+    if (!paper || !selection || !selectionHighlights(paper, selection).length) return;
+    rememberUndo();
+    if (isPdfScope(selection.scope)) commitPaper(current => ({ ...current, pdfHighlights: (current.pdfHighlights || []).filter(item => !highlightMatchesSelection(item, selection)) }));
+    else if (isMarkdownView(selection.scope)) commitPaper(current => ({ ...current, viewHighlights: (current.viewHighlights || []).filter(item => !highlightMatchesSelection(item, selection)) }));
+    else {
+      const block = paper.blocks.find(item => item.id === selection.id);
+      const key = selection.kind === 'translation' ? 'translationHighlights' : 'highlights';
+      updateBlock(block.id, { [key]: (block[key] || []).filter(item => !highlightMatchesSelection(item, selection)) });
+    }
+    setStatus('Highlight removed; its note was kept.');
+  }
+  function updateNote(body, sourceIdentity) {
+    const currentPaper = paperRef.current;
+    const currentSelection = selectionRef.current;
+    if (!currentPaper || !sameNoteSelection(currentPaper.id, currentSelection, sourceIdentity)) return;
+    if (!validNoteSelection(currentPaper, currentSelection)) {
+      setError('This note needs an exact selection in the current saved document.');
+      return;
+    }
+    const next = applySelectionNote(currentPaper, currentSelection, body);
+    setNoteDraft(body);
+    if (next === currentPaper) return;
+    const identity = noteSelectionIdentity(currentPaper.id, currentSelection);
+    if (noteEditingIdentity.current !== identity) {
+      rememberUndo();
+      noteEditingIdentity.current = identity;
+    }
+    commitPaper(next, { delay: 350, deferUndo: true });
+  }
+  async function saveNote() {
+    if (!selection) return;
+    if (saveQueue.current.state().status === 'error') await saveQueue.current.retry();
+    const saved = await finishNoteEditing();
+    setStatus(saved ? 'Note saved on this PC.' : 'The note is still in memory. Retry the failed save.');
+  }
+  function removeAnnotationRecords(records) {
+    const current = paperRef.current;
+    if (!current) return;
+    const activeNote = findSelectionNote(current, selectionRef.current);
+    const next = removeSavedAnnotationRecords(current, records);
+    if (next === current) return;
+    // Finish the typing undo group before recording this separate deletion.
+    // The draft changes only when its actual backing note is being deleted.
+    void finishNoteEditing();
+    rememberUndo();
+    commitPaper(next);
+    if (activeNote && records.some(ref => ref.category === 'note' && ref.item === activeNote)) {
+      setNoteDraft(findSelectionNote(next, selectionRef.current)?.body || '');
+    }
+    setStatus(records.length > 1 ? 'Annotation deleted. Undo restores its notes and highlights.'
+      : records[0].category === 'note' ? 'Note deleted; any highlight was kept.' : 'Highlight removed; any note was kept.');
+  }
+  async function saveGlossary(next) {
+    const write = api.saveGlossary(next);
+    glossarySave.current = write;
+    setGlossarySaving(true);
+    try {
+      await write;
+      setGlossary(next);
+    } finally {
+      glossarySave.current = null;
+      setGlossarySaving(false);
+    }
+  }
+  async function addTerm() {
+    if (!selection || !trimLibraryText(termDraft) || glossarySave.current) return;
+    const key = selectionIdentity(selection);
+    const sourceLanguage = selection.kind === 'translation' ? settings.targetLanguage : settings.sourceLanguage;
+    const targetLanguage = selection.kind === 'translation' ? settings.sourceLanguage : settings.targetLanguage;
+    setSelectionLookup({ status: '', error: '' });
+    try {
+      const next = upsertGlossaryTerm(glossary, { source: selection.quote ?? selection.text, target: termDraft, sourceLanguage, targetLanguage });
+      try { await saveGlossary(next); }
+      catch (cause) { throw new Error(`Could not save the term: ${cause.message}`); }
+      if (selectionIdentity(selectionRef.current) === key) {
+        setTermDraft('');
+        setQuickTermOpen(false);
+        setSelectionLookup({ status: 'Term saved for future translations.', error: '' });
+      } else setStatus('Term saved for future translations.');
+    } catch (cause) {
+      if (selectionIdentity(selectionRef.current) === key) setSelectionLookup({ status: '', error: cause.message });
+      else setError(cause.message);
+    }
+  }
+  async function removeTerm(index) {
+    if (glossarySave.current) return;
+    setGlossaryError('');
+    try { await saveGlossary(glossary.filter((_, at) => at !== index)); }
+    catch (cause) { setGlossaryError(`Could not remove the term: ${cause.message}`); }
+  }
+  function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
+  function navigate(id, { revealSource = false, quote, mode: requestedMode, fromSidebar = false } = {}) {
+    const block = paperRef.current?.blocks.find(block => block.id === id);
+    if (!block) return;
+    if (!fromSidebar && !quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
+    if (quote) {
+      const text = analysisSourceText(block);
+      if (!summaryQuoteMatch(text, quote)) return;
+      const match = summaryQuoteMatch(text, quote, { unique: true });
+      if (match) {
+        navigateBlockAnnotation(id, { ...match, scope: 'reader' }, 'source', 'evidence');
+        return;
+      }
+    }
+    const mode = requestedMode ?? (revealSource && displayMode === 'translation' ? 'bilingual' : displayMode);
+    recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.selectedParagraphID === id && location.displayMode === mode);
+    invalidateReadingScroll();
+    const closeOverlay = fromSidebar && window.matchMedia('(max-width: 800px)').matches;
+    if (closeOverlay) setSidebar(false);
+    setBlockNavigation({ recordType: 'paragraph', paperId: paperRef.current.id, blockId: id, requestId: crypto.randomUUID(), focusReader: closeOverlay });
+    searchOrigin.current = null; setSearch(''); setDisplayMode(mode); setTab('Reader');
+    commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
+      position: { ...current.position, tab: 'Reader', block: id, displayMode: mode, readerSearchOrigin: undefined } }));
+  }
+  function restoreRenderedQuote(range, text, records) {
+    const quote = renderedSelectionQuote(range, text);
+    if (quote && records?.some(ref => !ref.item.quote && !ref.item.needsReview)) {
+      commitPaper(current => restoreSavedAnnotationQuote(current, records, quote));
+    }
+    return quote;
+  }
+  function navigateBlockAnnotation(blockId, item, kind, recordType, records) {
+    const block = paperRef.current?.blocks.find(entry => entry.id === blockId);
+    const scope = blockAnnotationScope(item);
+    const targetTab = scope === 'paper' ? 'Paper' : 'Reader';
+    if (item.needsReview || !block || !validBlockAnchor(block, item, kind)) {
+      if (block) commitPaper(current => markSavedAnnotationRecordsForReview(current, records));
+      setError(`The saved ${scope === 'paper' ? 'Paper' : 'Reader'} text no longer matches this block. The annotation was kept for review.`);
+      return;
+    }
+    const mode = scope === 'paper' ? 'bilingual' : (kind === 'translation' && displayMode === 'source' || kind === 'source' && displayMode === 'translation') ? 'bilingual' : displayMode;
+    recordReadingJump(location => location.tab === targetTab && (scope === 'paper' || !location.search) && location.block === blockId && location.displayMode === mode
+      && selectionRef.current?.scope === scope && selectionRef.current?.id === blockId && selectionRef.current?.kind === kind
+      && sameTextAnchor(selectionRef.current, item));
+    invalidateReadingScroll();
+    if (tab !== targetTab || displayMode !== mode || search) setSelection(null);
+    if (recordType !== 'evidence') setInspector(true);
+    setSearch(''); searchOrigin.current = null; setDisplayMode(mode); setTab(targetTab);
+    setBlockNavigation({ ...item, scope, blockId, kind, recordType, records, requestId: crypto.randomUUID() });
+    commitPaper(current => ({ ...current, ...(scope === 'reader' && { selectedParagraphID: blockId }),
+      position: { ...current.position, tab: targetTab, ...(scope === 'reader' && { block: blockId }), displayMode: mode, readerSearchOrigin: undefined } }));
+  }
+  function markViewAnchorForReview(records) {
+    commitPaper(current => markSavedAnnotationRecordsForReview(current, records));
+    setError('The saved Markdown text no longer matches this view. The annotation was kept for review.');
+  }
+  function navigateView(item, records) {
+    if (!validViewAnchor(paperRef.current, item)) {
+      markViewAnchorForReview(records);
+      return;
+    }
+    const targetTab = markdownViewTab(item.scope);
+    const article = item.scope === 'paperArticle';
+    if (article && item.sourceMode !== paperArticleSource(paperRef.current).mode) {
+      if (!switchSourceMode(item.sourceMode)) return;
+    } else {
+      recordReadingJump(location => location.tab === targetTab && (!article || location.displayMode === item.displayMode)
+        && selectionRef.current && sameViewAnchor(selectionRef.current, item));
+      invalidateReadingScroll();
+    }
+    if (article) changeDisplayMode(item.displayMode);
+    setInspector(true);
+    setTab(targetTab);
+    setViewNavigation({ ...item, records, requestId: crypto.randomUUID() });
+  }
+  function navigatePdf(item) {
+    const recheck = canRecheckPdfPageGap(item);
+    if (item.needsReview && !recheck) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
+    const scope = pdfAnnotationScope(item);
+    const targetTab = scope === 'paperPdf' ? 'Paper' : 'Original';
+    recordReadingJump(location => location.tab === targetTab && selectionRef.current?.scope === scope
+      && samePdfSelection(item, selectionRef.current));
+    setInspector(true); setTab(targetTab); setPageNumber(item.page);
+    if (scope === 'paperPdf') setDisplayMode('source');
+    setPdfNavigation({ ...item, needsReview: false, recheck, scope, id: crypto.randomUUID() });
+    commitPaper(current => ({ ...current, position: { ...current.position, tab: targetTab, page: item.page, ...(scope === 'paperPdf' ? { displayMode: 'source' } : {}) } }));
+  }
+  function pdfNavigationReady(anchor) {
+    const scope = pdfAnnotationScope(pdfNavigation);
+    const next = { ...anchor, id: null, kind: 'source', scope };
+    const current = paperRef.current;
+    const recovered = item => item.anchors == null && item.offset !== next.offset && samePdfSelection(item, pdfNavigation);
+    const verified = item => pdfNavigation.recheck && item.needsReview && samePdfSelection(item, next);
+    const needsUpdate = item => verified(item) || !item.needsReview && (
+      recovered(item) ||
+      (!item.quote && anchor.quote && highlightMatchesSelection(item, next)));
+    if (current.pdfNotes?.some(needsUpdate) || current.pdfHighlights?.some(needsUpdate)) {
+      const update = items => items?.map(item => needsUpdate(item) ? {
+        ...item, ...(verified(item) && { needsReview: false }), ...(recovered(item) && { offset: next.offset, anchors: storedPdfAnchors(next) }),
+        ...(!item.quote && anchor.quote && { quote: anchor.quote })
+      } : item);
+      commitPaper(paper => ({ ...paper, pdfNotes: update(paper.pdfNotes), pdfHighlights: update(paper.pdfHighlights) }));
+    }
+    setSelection(next);
+    setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
+    setPdfNavigation(null);
+  }
+  function pdfNavigationFailed(reason) {
+    if (reason === 'unreadable') {
+      setPdfNavigation(null);
+      setError('Could not read the original PDF page. Try opening the annotation again.');
+      return;
+    }
+    const requested = pdfNavigation;
+    if (requested) {
+      const mark = item => (item.anchors == null) === (requested.anchors == null) && samePdfSelection(item, requested)
+        ? { ...item, needsReview: true } : item;
+      commitPaper(current => ({ ...current, pdfNotes: (current.pdfNotes || []).map(mark), pdfHighlights: (current.pdfHighlights || []).map(mark) }));
+    }
+    setPdfNavigation(null);
+    setError('The saved PDF text no longer matches its page ranges. The annotation was kept for review.');
+  }
+  function resetStructureNavigation() {
+    resetReadingHistory();
+    window.getSelection()?.removeAllRanges();
+    cancelParagraphEdit(); setSelection(null); setNoteDraft(''); setSearch('');
+    setBlockNavigation(null); setViewNavigation(null);
+  }
+  function modifyBlocks(start, count, replacements) {
+    if (taskRef.current) { setError('Finish or stop the current task before editing the source.'); return; }
+    if (paper.sourceMode === 'mineru') { setError('MinerU controls this document structure. Edit an exported Markdown copy instead.'); return; }
+    const location = currentReadingLocation();
+    if (location) commitPaper(current => ({ ...current, position: persistedReadingPosition(location, current.position) }));
+    resetStructureNavigation();
+    rememberUndo();
+    const range = { start, beforeEnd: start + count, afterEnd: start + replacements.length };
+    commitPaper(current => {
+      const blocks = current.blocks.slice(0, start).concat(replacements, current.blocks.slice(range.beforeEnd))
+        .map((block, index) => ({ ...block, id: index + 1 }));
+      return { ...current, blocks, selectedParagraphID: blocks[start]?.id ?? firstSelectableParagraphID(blocks),
+        position: remapPositionAfterStructureChange(current.position, current.blocks, blocks, range),
+        summary: remapSummaryEvidence(current.summary, current.blocks, blocks, range),
+        connectedStale: Boolean(current.connectedTranslation) };
+    }, { undoRange: range });
+    restoreMainScroll({ clearSearch: true });
+  }
+  function beginEditingBlock(id) {
+    const current = paperRef.current;
+    if (!current || busy || taskRef.current || modal || current.sourceMode === 'mineru') return;
+    const block = current.blocks.find(block => block.id === id);
+    if (!block || block.resource) return;
+    selectParagraph(id);
+    editRef.current = { paperId: current.id, id, text: block.text, listing: isPdfListing(block) };
+    setEdit(editRef.current);
+    setModal('paragraphEdit');
+  }
+  function cancelParagraphEdit() {
+    editRef.current = null;
+    setEdit(null);
+    setModal(current => current === 'paragraphEdit' ? '' : current);
+  }
+  function updateParagraphDraft(text) {
+    if (!editRef.current) return;
+    editRef.current = { ...editRef.current, text };
+    setEdit(editRef.current);
+  }
+  function saveEdit() {
+    const draft = editRef.current, current = paperRef.current;
+    if (!draft || busy || taskRef.current || current?.sourceMode === 'mineru') return;
+    const index = current?.id === draft.paperId ? current.blocks.findIndex(block => block.id === draft.id) : -1;
+    if (index < 0) { cancelParagraphEdit(); setError('This paragraph is no longer available. Reopen its editor.'); return; }
+    const block = current.blocks[index];
+    const replacements = editedParagraphs(block, draft.text);
+    if (!replacements.length) { setError('Enter at least one paragraph before saving.'); return; }
+    if (replacements[0] === block) { cancelParagraphEdit(); return; }
+    modifyBlocks(index, 1, replacements);
+  }
+  function reflowParagraph(id) {
+    const index = blockIndexes.get(id);
+    const block = paper.blocks[index];
+    if (!block || block.resource) return;
+    const pieces = reflowBlock(block);
+    if (pieces.length === 1) { setStatus(`Block ${id} is already short enough or has no safe sentence boundary.`); return; }
+    modifyBlocks(index, 1, pieces);
+    setStatus(`Reflowed block ${id} into ${pieces.length} complete-sentence blocks.`);
+  }
+  function captureViewSelection(surface, scope) {
+    const host = scope === 'paper' ? surface : surface.querySelector('[data-markdown-host]');
+    const range = window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null;
+    if (!range) return;
+    let kind = scope === 'summarySource' ? 'source' : 'translation';
+    let id = null;
+    let captured;
+    let offsets = { offset: null };
+    if (scope === 'paper') {
+      const start = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
+      const side = start?.closest('[data-paper-kind]');
+      kind = side?.dataset.paperKind || 'source';
+      const element = side?.closest('[data-paper-block-id]');
+      const block = paperRef.current?.blocks.find(item => item.id === Number(element?.dataset.paperBlockId));
+      const rich = Boolean(side?.querySelector('[data-markdown-host]'));
+      const within = domRangeIn(side, range, { visibleOnly: rich });
+      if (block && within) {
+        captured = within;
+        id = block.id;
+        offsets = textSelectionOffsets(within, anchorText(block, kind), rich && blockMarkdown(block, kind));
+      } else {
+        captured = domRangeIn(host, range, { visibleOnly: true });
+        if (captured) {
+          scope = 'paperArticle';
+          const source = paperArticleSource(paper);
+          offsets = { ...selectionOffsets(captured, null, source), displayMode, sourceMode: source.mode };
+        }
+      }
+    } else {
+      captured = domRangeIn(host, range, { visibleOnly: true });
+      const source = viewText(paperRef.current, scope);
+      if (captured) offsets = textSelectionOffsets(captured, source, source);
+    }
+    if (!captured) return;
+    const { text } = captured;
+    const nextSelection = { id, kind, text, quote: captured.quote, ...offsets, scope, showQuickLookup: true, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
+    return applyReadingSelection(nextSelection);
+  }
+  function applyReadingSelection(next) {
+    const previous = selectionRef.current;
+    if (selectionIdentity(previous) !== selectionIdentity(next)) {
+      if (previous) void finishNoteEditing();
+      setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
+    }
+    if (next?.scope === 'reader') selectParagraph(next.id);
+    setSelection(next);
+    return true;
+  }
+  function handleMainScrollIntent(event) {
+    const host = mainScrollRef.current;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!restoringScroll.current || !host || !target || !event.isTrusted || event.defaultPrevented || event.isComposing || event.nativeEvent?.isComposing ||
+        modal || pendingImport || event.altKey || event.ctrlKey || event.metaKey ||
+        host.querySelector('[data-pdf-scope]') ||
+        target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [data-pdf-scope], .pdf-scroll')) return;
+    // Independent scrollers own their input, including PDF viewers and long editor controls.
+    for (let node = target; node && node !== host; node = node.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(node).overflowY) && node.scrollHeight > node.clientHeight + 1) return;
+    }
+    if (event.type === 'wheel') {
+      if (!event.deltaY || event.shiftKey) return;
+    } else if (event.type === 'keydown') {
+      if (target.closest('a, button') || !['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) return;
+    } else if (event.type === 'pointerdown') {
+      if (event.button !== 0 || target !== host || host.scrollHeight <= host.clientHeight) return;
+      const bounds = host.getBoundingClientRect();
+      const contentLeft = bounds.left + host.clientLeft;
+      const contentRight = contentLeft + host.clientWidth;
+      if (event.clientX >= contentLeft && event.clientX < contentRight) return;
+    } else return;
+
+    // Only explicit user intent cancels pending position restoration. Native scroll
+    // events can also come from our own scrollTop assignments and must not cancel it.
+    invalidateReadingScroll();
+    if (tab === 'Reader' && !search) {
+      searchOrigin.current = null;
+      if (paperRef.current?.position?.readerSearchOrigin != null) {
+        commitPaper(current => {
+          const { readerSearchOrigin: discarded, ...position } = current.position;
+          return { ...current, position };
+        });
+      }
+    }
+    // At a scroll boundary the input may move nothing, but the visible position
+    // still replaces the cancelled restore destination. Later scroll events refresh this save.
+    saveMainScroll();
+  }
+  function handleReadingKey(event) {
+    if (modal || pendingImport || !Object.hasOwn(readingKeys, event.key) ||
+        event.target.closest('a, button, input, textarea, select, [contenteditable]')) return;
+    const host = event.target.closest('[data-reading-list], [data-view-scope], [data-pdf-scope]');
+    if (!host) return;
+    const scope = host.dataset.viewScope;
+    const pdf = host.dataset.pdfScope;
+    const reader = host.hasAttribute('data-reading-list');
+    const selected = window.getSelection();
+    let region = host;
+    let initial = host;
+    if (reader) {
+      const anchor = selected?.anchorNode;
+      const passage = anchor?.nodeType === Node.ELEMENT_NODE ? anchor : anchor?.parentElement;
+      const selector = '.source-text, .translation-text.done';
+      const active = passage?.closest(selector);
+      const top = mainScrollRef.current?.getBoundingClientRect().top || 0;
+      const visible = [...host.querySelectorAll('.block')].find(block => block.getBoundingClientRect().bottom > top + 12);
+      region = initial = active && host.contains(active) ? active
+        : visible?.querySelector(selector) || host.querySelector(selector);
+    } else if (pdf) {
+      initial = pdfLayerFor(host, pageNumber);
+    } else if (scope !== 'paperArticle') {
+      region = initial = host.querySelector('[data-markdown-host]');
+    }
+    if (!moveReadingSelection(event, region, initial, pdf)) return;
+    if (!selected.isCollapsed) {
+      if (reader && captureSelection()) return;
+      if (pdf) {
+        const captured = capturePdfRange(host, selected.getRangeAt(0));
+        if (captured && selectPdf(captured, pdf)) return;
+      } else if (!reader && captureViewSelection(host, scope === 'paperArticle' ? 'paper' : scope)) return;
+    }
+    if (selectionRef.current) {
+      void finishNoteEditing();
+      setSelection(null); setNoteDraft('');
+    }
+  }
+  function canMergeAt(index) {
+    const left = paper?.blocks[index], right = paper?.blocks[index + 1];
+    return Boolean(left && right && !left.resource && !right.resource && referenceIDs.has(left.id) === referenceIDs.has(right.id));
+  }
+  function mergeAdjacent(index) {
+    if (!canMergeAt(index)) return;
+    modifyBlocks(index, 2, [mergeBlocks(paper.blocks[index], paper.blocks[index + 1])]);
+  }
+  const lookupKey = useMemo(() => selectionLookupInput(paper, selection, settings, explanationLanguage, glossary)?.key,
+    [paper, selection, settings, explanationLanguage, glossary]);
+  const selectionResults = lookupCache.get(lookupKey) || {};
+  const selectionLookup = lookupFeedback.key && lookupFeedback.key !== lookupKey ? {} : lookupFeedback;
+  const outline = useMemo(() => documentOutline(paper), [paper]);
+  const authorByline = useMemo(() => findNumberedAuthorBlock(paper?.blocks || [], settings || {}, glossary), [paper?.blocks, settings, glossary]);
+  const verbatimTranslationIDs = useMemo(() => {
+    const ids = new Set(authorByline ? [authorByline.id] : []);
+    const blocks = paper?.blocks || [];
+    for (const [i, block] of blocks.entries()) {
+      if (pythonImportBeforeListing(block, blocks[i + 1])) ids.add(block.id);
+    }
+    return ids;
+  }, [paper?.blocks, authorByline]);
+  const blockIndexes = useMemo(() => new Map(paper?.blocks.map((block, index) => [block.id, index])), [paper?.blocks]);
+  const referenceIDs = useMemo(() => referenceBlockIds(paper?.blocks || []), [paper?.blocks]);
+  const unfinishedTranslationIds = useMemo(() => translationRangeIds(paper?.blocks || [], null, referenceIDs), [paper?.blocks, referenceIDs]);
+  const sections = useMemo(() => {
+    const unfinished = new Set(unfinishedTranslationIds);
+    return sectionRanges(paper?.blocks || [], referenceIDs).map(section => ({
+      ...section, unfinished: section.ids.filter(id => unfinished.has(id))
+    }));
+  }, [paper?.blocks, referenceIDs, unfinishedTranslationIds]);
+  const extractionIssues = useMemo(() => qualityIssues(paper?.blocks || [], referenceIDs), [paper?.blocks, referenceIDs]);
+  const extractionIssuesById = useMemo(() => new Map(extractionIssues.map(issue => [issue.id, issue])), [extractionIssues]);
+  const filteredLibrary = useMemo(() => filterLibraryEntries(library, librarySearch), [library, librarySearch]);
+  const visibleBlocks = useMemo(() => filteredReaderBlocks(paper?.blocks || [], search), [paper?.blocks, search]);
+  const paragraphExplanation = cachedExplanation(paper, activeBlock, explanationLanguage, settings);
+  const translatedCount = paper?.blocks.filter(block => block.status === 'ok' && !block.resource && !referenceIDs.has(block.id)).length || 0;
+  const failedCount = paper?.blocks.filter(block => block.status === 'failed' && !block.resource && !referenceIDs.has(block.id)).length || 0;
+  const translatableCount = paper?.blocks.filter(block => !block.resource && !referenceIDs.has(block.id)).length || 0;
+  const canSummarize = useMemo(() => summarySourceBlocks(paper?.blocks || []).length > 0, [paper?.blocks]);
+  const activeSelectionHighlights = selectionHighlights(paper, selection);
+  const activeHighlightColor = activeSelectionHighlights.length ? displayHighlightColor(activeSelectionHighlights[0].color) : '';
+  const workspaceStyle = {
+    '--reader-font': `${settings?.fontSize ?? readingAppearanceDefaults.fontSize}px`,
+    '--reader-line': readerLineHeight(settings),
+    '--reader-width': `${settings?.readingWidth ?? readingAppearanceDefaults.readingWidth}px`,
+    '--document-sidebar-width': `${sidebarWidth}px`,
+    '--research-inspector-width': `${inspectorWidth}px`
+  };
+  const viewportBlock = paper?.position?.block;
+  // A resource has a Reader position but no translatable paragraph of its own.
+  const atBodyResource = paper?.blocks[blockIndexes.get(viewportBlock)]?.resource && !referenceIDs.has(viewportBlock);
+  const currentParagraph = (atBodyResource ? null : viewportBlock) ?? activeBlock ?? sections[0]?.startId;
+  const currentSection = sections.find(section => section.ids.includes(currentParagraph));
+  const currentSectionIds = currentSection?.unfinished || [];
+  const activeQueue = translationQueueRef.current;
+  const queuedSectionIds = modal === 'range' && activeQueue && activeQueue.token === taskRef.current
+    ? new Set(activeQueue.queue.slice(activeQueue.next).map(block => block.id)) : null;
+  const queuedSectionCount = queuedSectionIds ? currentSection?.ids.filter(id => queuedSectionIds.has(id)).length || 0 : 0;
+  const abstractConclusionIds = translationRangeIds(paper?.blocks || [], overviewSectionIds(sections), referenceIDs);
+  const structuredFull = usesSharedMarkdown(paper);
+  const defaultExportBundle = paper?.type === 'pdf' || structuredFull;
+  const canExport = Boolean(defaultExportBundle || paper?.blocks.length);
+  const defaultExportLabel = defaultExportBundle ? 'Export Markdown Bundle' : 'Export Markdown';
+  const fullHasSource = paper?.blocks.some(block => !block.heading && !block.resource);
+  const translationRoles = settings?.sourceLanguage === settings?.targetLanguage ? [] : ['translation'];
+  const aiReadiness = { models, ollamaStatus, consent: openAIState.consent, hasKey: openAIState.hasKey };
+  const translationSetup = settings && translatedCount < translatableCount ? aiTaskSetupIssue(settings, translationRoles, aiReadiness) : null;
+  const summarySetup = settings && canSummarize ? aiTaskSetupIssue(settings, ['summary', ...translationRoles], aiReadiness) : null;
+  const fullSetup = settings && fullHasSource && (!structuredFull || unfinishedTranslationIds.length)
+    ? aiTaskSetupIssue(settings, translationRoles, aiReadiness) : null;
+  const pdfFacsimile = paper?.type === 'pdf' && paper.sourceMode !== 'mineru';
+  const plainUnfinished = structuredFull ? [] : pendingConnectedBatches(paper);
+  const retriesInShorterPassages = plainUnfinished.some(batch => localConnectedRetry(batch, batch, settings?.aiProvider) === 'short');
+  const fullTranslationNeedsWork = paper && (!paper.connectedTranslation || paper.connectedStale
+    || plainUnfinished.length > 0 || (structuredFull && (!paper.connectedShared || unfinishedTranslationIds.length > 0)));
+  const fullTranslationAction = !paper?.connectedTranslation ? 'Translate full paper'
+    : structuredFull ? 'Update from Reader' : plainUnfinished.length ? 'Resume unfinished batches' : 'Regenerate';
+  const menuReady = ready && modal !== 'onboarding' && modal !== 'paragraphEdit';
+  const menuBusy = Boolean(busy || onboardingBusy);
+  const readingLayoutAvailable = Boolean(paper && !pendingImport && !modal);
+  const refreshSummary = paper?.summary?.stale || (tab === 'Summary' && summaryNeedsTextRefresh(paper));
+  const canPrimaryTask = tab === 'Summary' ? canSummarize && (!paper.summary || refreshSummary)
+    : tab === 'Full Translation' ? fullHasSource && fullTranslationNeedsWork : translatedCount < translatableCount;
+  const primarySetup = tab === 'Summary' ? summarySetup : tab === 'Full Translation' ? fullSetup : translationSetup;
+  function primaryLabel() {
+    if (primarySetup && canPrimaryTask) {
+      if (tab === 'Summary' || tab === 'Full Translation') return settings.aiProvider === 'openai' ? 'Set up OpenAI' : 'Set up local AI';
+      return 'Set up translation';
+    }
+    if (tab === 'Summary') {
+      if (!paper?.summary) return 'Summarize Paper';
+      return refreshSummary ? 'Refresh Summary' : 'Summary Ready';
+    }
+    if (tab === 'Full Translation') {
+      if (!paper?.connectedTranslation) return 'Generate Full Translation';
+      return fullTranslationNeedsWork ? 'Resume Full Translation' : 'Full Translation Ready';
+    }
+    if (translatableCount && translatedCount === translatableCount) return 'Translated';
+    return translatedCount ? 'Resume Translation' : 'Translate Paper';
+  }
+  function startSummaryFromMenu() {
+    if (!canSummarize || busy || taskRef.current) return;
+    if (modal === 'more') setModal('');
+    setTab('Summary');
+    const current = paperRef.current;
+    const saved = current?.summary;
+    if (Array.isArray(saved?.claims) && saved.claims.length > 0 && !saved.stale && !summaryNeedsTextRefresh(current)) {
+      setError('');
+      setStatus('Opened the saved summary.');
+      return;
+    }
+    summarize();
+  }
+  function startFullTranslationFromMenu() {
+    if (!fullHasSource || busy || taskRef.current) return;
+    if (modal === 'more') setModal('');
+    setTab('Full Translation');
+    fullTranslation();
+  }
+  function runPrimaryTask() {
+    if (!canPrimaryTask || busy || taskRef.current || editRef.current) return;
+    if (primarySetup) openTaskSetup(primarySetup);
+    else if (tab === 'Summary') summarize();
+    else if (tab === 'Full Translation') fullTranslation();
+    else translateBlocks(unfinishedTranslationIds);
+  }
+  const pendingNoteUndo = Boolean(noteEditingIdentity.current && pendingUndoSnapshot.current);
+  const canUndoAnnotation = pendingNoteUndo || undo.some(entry => entry.type === 'annotations');
+  const canUndoParagraph = !menuBusy && undo.some(entry => entry.type === 'structure');
+  const latestType = pendingNoteUndo ? 'annotations' : undo.at(-1)?.type;
+  const canUndo = Boolean(latestType && (latestType !== 'structure' || !menuBusy));
+  useEffect(() => {
+    api.updateMenuState({ ready: menuReady, hasPaper: Boolean(paper), busy: menuBusy, hasSelection: Boolean(selection), canUndo, canUndoAnnotation, canUndoParagraph, canUseReadingLayout: readingLayoutAvailable,
+      canGoBack: readingHistoryState.back > 0, canGoForward: readingHistoryState.forward > 0,
+      canPrimaryTask: Boolean(canPrimaryTask), canSummarize, canFullTranslation: Boolean(fullHasSource),
+      canLookupSelection: Boolean(selection) && !menuBusy, canExport, checkingUpdates }).catch(cause => setError(cause.message));
+  }, [menuReady, Boolean(paper), menuBusy, Boolean(selection), canUndo, canUndoAnnotation, canUndoParagraph, readingLayoutAvailable, readingHistoryState.back, readingHistoryState.forward, Boolean(canPrimaryTask), canSummarize, Boolean(fullHasSource), canExport, checkingUpdates]);
+
+  if (!ready || !settings) return error
+    ? <main className="loading"><section role="alert"><h1>Could not open your workspace</h1><p>{error}</p>
+      <button className="button blue" onClick={() => window.location.reload()}>Try again</button></section></main>
+    : <div className="loading">Opening PaperBridge…</div>;
+  const sidebarSource = <SidebarSource text={paste} onText={setPaste} expanded={pasteExpanded} onExpanded={setPasteExpanded}
+    focusRequest={pasteFocusRequest} busy={Boolean(busy)} onOpenPDF={openFile} onLoad={importText} onPractice={loadPractice} />;
+  const service = aiServiceStatus(settings.aiProvider, openAIState.consent, ollamaStatus, refreshingModels, ollamaError);
+  const sidebarAI = <SidebarAIStatus settings={settings} service={service} ollamaError={ollamaError} refreshingModels={refreshingModels}
+    onRefreshModels={() => refreshModels(settingsRef.current)} openAIConsent={openAIState.consent} enabled={modal !== 'onboarding' && !pendingImport && (!paper || documentDetailsExpanded)}
+    parserRevision={sidebarParserRevision} onOpenAISettings={() => openSettings(null, 'models')} onOpenSettings={() => openSettings(null, 'parsing')} />;
+  return <div data-display-mode={displayMode} onClick={attachment.click} onAuxClick={attachment.click} style={workspaceStyle} onDragEnter={enterFileDrag} onDragLeave={leaveFileDrag}
+    onDragOver={enterFileDrag} onDrop={dropPdf} className={`app ${focus ? 'focus' : ''} ${!sidebar ? 'no-sidebar' : ''} ${!inspector ? 'no-inspector' : ''} ${pendingImport ? 'importing' : ''}`}>
+    {draggingFiles && !modal && !busy && !edit && <div className="pdf-drop-target" role="status"><span>Drop PDF to open</span></div>}
+    {sidebar && !focus && !modal && <WorkspaceSplitter panel="sidebar" width={sidebarWidth} onResize={setSidebarWidth} />}
+    {inspector && !focus && !modal && !pendingImport && !compactInspector && <WorkspaceSplitter panel="inspector" width={inspectorWidth} onResize={setInspectorWidth} />}
+    <aside id="document-sidebar" className="sidebar" inert={Boolean(modal)}>
+      <div className="sidebar-overlay-bar"><span>Document</span><button type="button" aria-label="Close Document Sidebar" aria-controls="document-sidebar"
+        title={readingLayoutAvailable ? 'Close document sidebar · Ctrl+Alt+S' : 'Close document sidebar'} onClick={closeDocumentOverlay}><X size={16} /> Close</button></div>
+      <div className="sidebar-scroll">
+        <div className="brand"><img src="./brand.png" alt="" /><div><strong>PaperBridge</strong><small>Papers across languages</small><em>● Private by design</em></div></div>
+        <button className="sidebar-library-button" title="Open library" disabled={Boolean(pendingImport)} onClick={() => setModal('library')}><Library size={16} /> Paper Library</button>
+        {!paper && !pendingImport && sidebarSource}
+        {!paper && !pendingImport && sidebarAI}
+        {pendingImport ? <div className="side-group"><div className="side-label">IMPORTING</div><strong className="side-title">{pendingImport.name}</strong><p className="side-hint">{pendingImport.stage}</p></div> : paper && <>
+          <details className="document-details" open={documentDetailsExpanded}>
+            <summary onClick={event => {
+              // Import can unmount this disclosure before the native queued
+              // toggle event. Commit the user's choice during activation.
+              event.preventDefault();
+              setDocumentDetailsExpanded(expanded => !expanded);
+            }}>Document &amp; Import</summary>
+            {sidebarSource}
+            <div className="side-group"><div className="side-label">DOCUMENT</div><strong className="side-title">{paper.name}</strong><div className="side-stat"><span>Paragraphs</span><b>{translatableCount}</b></div>{referenceIDs.size > 0 && <div className="side-stat"><span>Skipped refs</span><b>{referenceIDs.size}</b></div>}<div className="side-stat"><span>Translated</span><b>{translatedCount}</b></div>{failedCount > 0 && <div className="side-stat failed-stat"><span>Failed</span><b>{failedCount}</b></div>}<div className="side-stat"><span>Parser</span><b>{paper.extraction}</b></div></div>
+            <SidebarLanguage settings={settings} languages={languages} disabled={Boolean(busy || pulling)} onChange={change => { if (!taskRef.current && !pullRef.current) updateSettings(change); }} />
+            {sidebarAI}
+          </details>
+          {paper.blocks.some(block => block.bookmark) && <nav className="side-group document-bookmarks" aria-label="Bookmarks">
+            <div className="side-label"><span><Bookmark size={14} /> BOOKMARKS</span></div>
+            {paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row bookmark-row" key={block.id} data-paragraph-id={block.id} title={block.text} onClick={() => navigate(block.id, { fromSidebar: true })}><span><span className="outline-title">{paragraphPreview(block.text)}</span><small>Paragraph {block.id}</small></span><ChevronRight size={12} /></button>)}
+          </nav>}
+          <nav className="side-group document-outline" aria-label="Outline">
+            <div className="side-label"><span><List size={14} /> OUTLINE</span></div>
+            {outline.map(section => <button className="outline-row" key={section.id} data-paragraph-id={section.id} aria-current={activeBlock === section.id ? 'location' : undefined} title={section.title} onClick={() => navigate(section.id, { fromSidebar: true })}><span className="outline-title">{section.title}</span><small aria-label={`Paragraph ${section.id}`}>{section.id}</small></button>)}
+          </nav>
+        </>}
+        <div className="side-group recent-papers"><div className="side-label">RECENT PAPERS</div><input className="side-search" aria-label="Search papers or tags" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} title={item.name} aria-current={paper?.id === item.id ? 'page' : undefined} disabled={Boolean(busy || edit)}
+          onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{item.name}</span><small>{item.workspaceAvailable === false ? 'Workspace unavailable' : `${item.blockCount} ${item.blockCount === 1 ? 'block' : 'blocks'}`}</small></button>)}</div>
+        <div className="sidebar-footer"><button onClick={() => openSetup()}><Download size={16} /> Local AI setup</button><button onClick={() => openSettings()}><Settings2 size={16} /> Settings</button><button onClick={() => setModal('glossary')}><Languages size={16} /> Saved Terminology</button></div>
+      </div>
+    </aside>
+    <main className="workspace" inert={Boolean(modal)}>
+      <header className="header"><div className="title-row"><button ref={sidebarToggleRef} aria-controls="document-sidebar" aria-expanded={sidebar && !focus} className="icon-button panel-toggle" title="Toggle sidebar" aria-label={sidebar && !focus ? "Hide Document Sidebar" : "Show Document Sidebar"} aria-keyshortcuts="Control+Alt+S" disabled={Boolean(pendingImport)} onClick={toggleDocumentSidebar}>{sidebar && !focus ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1 title={pendingImport?.name || paper?.name || 'PaperBridge'}>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsedLabel} elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}{!pendingImport && <span className="compact-service" title={service.detail}> · {service.label}</span>}</p></div>
+        <div className={`service ${service.tone}`} title={service.detail}><span aria-hidden="true">● </span>{service.label}</div>
+        {paper && <button className="icon-button" aria-label={focus ? 'Exit Focus Reading' : 'Focus Reading'} aria-keyshortcuts="Control+Alt+F"
+          title={`${focus ? 'Exit Focus Reading' : 'Focus Reading'} · Ctrl+Alt+F`} disabled={Boolean(pendingImport)} onClick={toggleFocus}>
+          {focus ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+        </button>}
+        {paper && <ReadingAppearancePopover key={paper.id} settings={settings} onSettings={updateSettings} disabled={Boolean(pendingImport || modal)} />}
+        <button className="icon-button" title="Toggle inspector" aria-label={inspector && !focus ? 'Hide Research Inspector' : 'Show Research Inspector'}
+          disabled={Boolean(pendingImport)} onClick={toggleResearchInspector}>{inspector && !focus ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}</button></div>
+      {!pendingImport && <div className="header-tools">
+        {paper && <nav className="tabs">{[{ name: 'Paper', label: 'Paper' }, { name: 'Reader', label: 'Reader' }, { name: 'Original', label: 'Original' }, { name: 'Summary', label: 'Overview' }, { name: 'Full Translation', label: 'Full Translation' }].map(item =>
+          <button key={item.name} className={tab === item.name ? 'active' : ''} onClick={() => setTab(item.name)}>{item.label}</button>)}</nav>}
+        <div className="toolbar-actions">
+          {busy ? <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button> : paper &&
+            <button className={tab === 'Summary' ? 'button blue' : 'button coral'} disabled={!canPrimaryTask} onClick={runPrimaryTask}>
+              {tab === 'Summary' ? <Sparkles size={16} /> : <Languages size={16} />} {primaryLabel()}
+            </button>}
+          <button className="button ghost" onClick={() => setModal('more')}>More ···</button>
+        </div>
+      </div>}
+      </header>
+      {(error || closeFailure || setupWaitMessage || showUpdateBanner || busy || paper) && <div className="workspace-status-rail" aria-live="polite">
+        {!modal && setupWaitMessage && <p role="status">{setupWaitMessage}</p>}
+        {!modal && closeFailure && <Notice tone="error" onClose={() => setCloseFailure('')}>{closeFailure}</Notice>}
+        {error && <Notice tone="error" onClose={() => setError('')}>{settings.aiProvider === 'ollama' && (isOllamaMemoryError(error) || isOllamaGenerationConnectionError(error)) ? <>
+          {isOllamaMemoryError(error) ? 'Ollama reported insufficient memory to run the selected model.' : <>
+            The local model stopped responding during this task. <button className="button outline" disabled={Boolean(busy)} onClick={() => openSetup()}>Check local AI</button>
+          </>} <button className="button outline" disabled={Boolean(busy)}
+            onClick={() => openSettings({ message: 'Choose an installed model for this task, or download one in Local AI.' }, 'models')}>
+            {isOllamaMemoryError(error) ? 'Choose a smaller model' : 'Choose another model'}</button>
+          <details><summary>Ollama details</summary>{error}</details>
+        </> : error}</Notice>}
+        {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
+        {showUpdateBanner && <div className="update-banner" role="status">
+          <div><strong>{updateInfo.stale ? `Previously found PaperBridge for Windows ${updateInfo.latestVersion}` : `PaperBridge for Windows ${updateInfo.latestVersion} is available`}</strong>{fileMessage && <div role="status">{fileMessage}</div>}</div>
+          {updateActionAvailable && <button className="button blue" disabled={Boolean(busy || usingUpdate)} onClick={finishUpdateDownload}>{updateActionLabel}</button>}
+          {updateButtonLabel && <button className={updateActionAvailable || filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
+          <button className="button outline" onClick={openUpdateRelease}>View release</button>
+          <button className="button ghost" onClick={() => { sidebarToggleRef.current?.focus({ preventScroll: true }); setDeferredUpdateTag(updateInfo.tag); }}>Later</button>
+          <button className="button ghost" disabled={usingUpdate} onClick={skipUpdate}>Skip this version</button>
+        </div>}
+        {busy && <TaskProgress busy={busy} progress={progress} status={status} />}
+        {busy && !paper && <button className="button danger" onClick={cancelTask}><Square size={14} /> Stop</button>}
+        {canRestorePdfText(paper) && !pendingImport && <div className="notice">
+          <span>The saved workspace has no extracted text. Check the original PDF for selectable text before using OCR.</span>
+          <button className="button outline" disabled={Boolean(busy)} onClick={checkSavedPdfText}>Check saved PDF text</button>
+        </div>}
+        {paper && <div className={`save-status ${workspaceSave.status}`} role={workspaceSave.status === 'error' ? 'alert' : 'status'}>
+          {workspaceSave.status !== 'error' && <HardDrive size={13} aria-hidden="true" />}
+          <span>{workspaceSave.status === 'saving' ? 'Saving changes…' : workspaceSave.status !== 'error' ? 'Saved on this PC' : `Could not save changes${workspaceSave.error?.message ? `: ${workspaceSave.error.message}` : '.'}`}</span>
+          {workspaceSave.status === 'error' && <button className="button outline" onClick={retryPaperSave}>Retry save</button>}
+        </div>}
+      </div>}
+      {paper && !pendingImport && tab === 'Reader' && <ReaderToolbar displayMode={displayMode} onDisplayMode={changeDisplayMode}
+        search={search} onSearch={changeSearch} searchRef={searchRef} canUndo={canUndo} onUndo={() => undoLastChange()}
+        onUndoParagraph={canUndoParagraph && latestType !== 'structure' ? () => undoLastChange('structure') : null} />}
+      <div className={`main-scroll${paper && !pendingImport ? tab === 'Reader' ? ' reader-scroll' : tab === 'Summary' ? ' summary-scroll' : '' : ''}`} ref={mainScrollRef} data-reading-paper-id={paper?.id || ''}
+        aria-busy={Boolean(paper && (readingLayoutState.paperId !== paper.id || readingLayoutState.busy))}
+        onWheelCapture={handleMainScrollIntent} onPointerDownCapture={handleMainScrollIntent}
+        onScroll={saveMainScroll} onKeyDown={event => { handleReadingKey(event); handleMainScrollIntent(event); }}>
+        {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsedLabel} showTimingHint={importElapsed >= 10} previousName={paper?.name} onCancel={cancelTask} /> : <>
+        {(!paper || tab !== 'Reader' && tab !== 'Summary') && !busy && status && <Notice className="workspace-status">{status}</Notice>}
+        {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={openPasteText}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
+        {paper && tab === 'Paper' && <div className={pdfFacsimile && displayMode !== 'source' ? 'content-column pdf-comparison-column' : 'content-column'}>
+          <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.type === 'pdf' && displayMode === 'source' ? 'Exact native PDF rendering with selectable text and original page layout' : paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Reflowed selectable PDF text · exact pages remain available in Original mode' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
+          {paper.mineruBlocks && <div className="source-mode row"><span>Reader source: {paper.sourceMode === 'mineru' ? 'MinerU Markdown' : 'PDF text'}</span><button className="button outline" onClick={() => switchSourceMode(paper.sourceMode === 'mineru' ? 'pdf' : 'mineru')}>Switch to {paper.sourceMode === 'mineru' ? 'PDF text' : 'MinerU Markdown'}</button></div>}
+          {paper.type === 'pdf' && displayMode === 'source' ? <PdfView
+            key={paper.id}
+            paper={paper}
+            scope="paperPdf" onComment={showPdfComment}
+            pageNumber={pageNumber}
+            position={paper.position?.scrollByTab?.[pdfScrollKey('paperPdf', pageNumber)] || 0}
+            restoreToken={readingRestoration.current}
+            annotations={pdfAnnotationsFor(paper, 'paperPdf')}
+            selected={selection?.scope === 'paperPdf' ? selection : null}
+            navigation={pdfNavigation?.scope === 'paperPdf' ? pdfNavigation : null}
+            onBack={goBackInReading} onForward={goForwardInReading} onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('paperPdf', ...args)}
+            onScrollSelection={hideOffscreenLookup}
+            onSelect={anchor => selectPdf(anchor, 'paperPdf')}
+            onNavigate={pdfNavigationReady}
+            onNavigationFailure={pdfNavigationFailed}
+            onOcr={runMineru}
+            onSetup={() => openSetup()}
+            onReader={openPdfReader}
+            onRecoverText={() => reextractAsNew(paper.id, pageNumber)} busy={Boolean(busy)}
+          /> : <>
+            {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => openSetup()} />}
+            <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
+              {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
+              <PaperPreview paper={paper} displayMode={displayMode} referenceIDs={referenceIDs} onSelect={captureViewSelection} />
+            </div>
+          </>}
+        </div>}
+        {paper && tab === 'Reader' && <div className="reader-layout"><div className="reader-list" data-reading-list tabIndex={0} role="region" aria-label="Reader text" style={{ '--reader-font': `${settings.fontSize}px`, '--reader-line': readerLineHeight(settings), '--reader-width': `${settings.readingWidth}px` }} onMouseUp={captureSelection}>{!busy && status && <Notice className="workspace-status">{status}</Notice>}{visibleBlocks.map(block => {
+          const index = blockIndexes.get(block.id);
+          const issue = extractionIssuesById.get(block.id);
+          const pageLabel = sourcePageLabel(block.page, block.endPage);
+          const original = <BlockPassage block={block} kind="source" scope="reader" className="source-text" data-block-id={block.id} data-kind="source" />;
+          const translation = !block.resource && !referenceIDs.has(block.id) && (block.status === 'ok'
+            ? <BlockPassage block={block} kind="translation" scope="reader" className="translation-text done" data-block-id={block.id} data-kind="translation" />
+            : block.heading ? block.status === 'failed' && <p className="heading-failure">{block.error || 'Heading translation failed. Retry when ready.'}</p>
+              : <div className="translation-text" data-block-id={block.id} data-kind="translation">{block.status === 'failed'
+                ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
+                : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && !verbatimTranslationIDs.has(block.id) ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
+          return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span><span className="reader-block-number" aria-label={`Block ${block.id}${pageLabel ? `, ${pageLabel}` : ''}`}>{String(block.id).padStart(2, '0')}</span><ReaderSourcePages block={block} onOpen={paper.type === 'pdf' ? openReaderSourcePage : null} />{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
+          {issue && <ReaderQualityWarning issue={issue} onReextract={() => reextractAsNew()} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
+          {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
+        })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}
+        {paper && tab === 'Original' && <PdfView
+          key={paper.id}
+          paper={paper}
+          scope="pdf" onComment={showPdfComment}
+          pageNumber={pageNumber}
+          position={paper.position?.scrollByTab?.[pdfScrollKey('pdf', pageNumber)] || 0}
+          restoreToken={readingRestoration.current}
+          annotations={pdfAnnotationsFor(paper, 'pdf')}
+          selected={selection?.scope === 'pdf' ? selection : null}
+          navigation={pdfNavigation?.scope !== 'paperPdf' ? pdfNavigation : null}
+          onBack={goBackInReading} onForward={goForwardInReading} onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('pdf', ...args)}
+          onScrollSelection={hideOffscreenLookup}
+          onSelect={anchor => selectPdf(anchor, 'pdf')}
+          onNavigate={pdfNavigationReady}
+          onNavigationFailure={pdfNavigationFailed}
+          onOcr={runMineru}
+          onSetup={() => openSetup()}
+          onReader={openPdfReader}
+          onRecoverText={() => reextractAsNew(paper.id, pageNumber)} busy={Boolean(busy)}
+        />}
+        {paper && tab === 'Summary' && <OverviewView paper={paper} sections={sections} busy={busy} status={status} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={translatedCount} paragraphCount={translatableCount} setupSummary={summarySetup ? () => openTaskSetup(summarySetup) : null} />}
+        {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
+          <div className="section-heading">
+            <div><h2>Connected full translation</h2><p>{structuredFull
+              ? 'Shares Reader translations and preserves Markdown structure'
+              : 'A separate document-wide pass for consistent terminology'}</p></div>
+            <button className="button coral" disabled={!!busy || !fullHasSource || (structuredFull && !fullTranslationNeedsWork)}
+              onClick={() => fullSetup ? openTaskSetup(fullSetup) : fullTranslation(fullTranslationAction === 'Regenerate')}><Languages size={16} /> {fullSetup ? 'Set up full translation' : fullTranslationAction}</button>
+          </div>
+          {paper.connectedStale && <Notice tone="error">The source changed after this translation. Update it to match the current source.</Notice>}
+          {structuredFull && paper.connectedShared && !paper.connectedStale && unfinishedTranslationIds.length > 0 &&
+            <Notice>{unfinishedTranslationIds.length} unfinished block(s) shown in the original language.</Notice>}
+          {plainUnfinished.length > 0 && <Notice>{plainUnfinished.length} unfinished batch(es) shown in the original language. Completed batches are saved.{retriesInShorterPassages && ' Resume uses shorter passages where the local model stopped generating.'}</Notice>}
+          <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
+            {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
+            {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" tabIndex={0} aria-label="Full translation text"
+              onMouseUp={event => captureViewSelection(event.currentTarget, 'fullTranslation')}>
+              <Markdown annotations={viewAnnotations(paper, 'fullTranslation')}>{paper.connectedTranslation}</Markdown>
+            </article> : <Empty title={paper.blocks.length ? 'No full translation yet' : 'No readable text yet'} body={!paper.blocks.length
+              ? 'Use MinerU OCR from Paper or Original before translating this PDF.'
+              : structuredFull ? 'The full draft reuses completed Reader blocks and translates the remaining text in document order.'
+              : 'This optional pass translates longer passages with context. The bilingual reader remains available separately.'} />}
+          </div>
+        </div>}
+        </>}
+      </div>
+    </main>
+    <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button id="inspector-undo-annotation" className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" aria-describedby="note-save-hint" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><div className="note-save-actions"><span id="note-save-hint" className={workspaceSave.status === 'error' ? 'error' : undefined}>{workspaceSave.status === 'error' ? 'Not saved to disk' : workspaceSave.status === 'saving' ? 'Saving note…' : 'Notes save automatically'}</span><button className="button blue" onClick={saveNote}>{workspaceSave.status === 'error' ? 'Retry note save' : 'Save note'}</button></div></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !trimLibraryText(termDraft)} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
+    {selection?.showQuickLookup && !modal && (!inspector || focus) && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={openSelectionInspector} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
+    {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
+    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); dismissModal(); } }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+      {setupWaitMessage && <p role="status">{setupWaitMessage}</p>}
+      {closeFailure && <div role="alert"><Notice tone="error" onClose={() => setCloseFailure('')}>{closeFailure}</Notice></div>}
+      {modal === 'pdfComment' && pdfComment && <>
+        <p className="muted">Page {pdfComment.page}{pdfComment.author && <> · {pdfComment.author}</>}</p>
+        <p className="pdf-comment-body" dir="auto">{pdfComment.body}</p>
+      </>}
+
+      {modal === 'onboarding' && <Onboarding settings={settings} onSettings={updateSettings} onFinish={finishOnboarding} onOpenSetup={() => finishOnboarding('setup')} progress={setupProgress} pullProgress={pullProgress} models={models} onInstall={installLocalComponents} onDownload={model => { setPullModel(model.id); return downloadModel(model.id, model); }} onBackgroundStatus={setStatus} onBusyChange={handleOnboardingBusy} />}
+      {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstall={installLocalComponents}
+        taskSetup={taskSetup} onChooseModels={() => openSettings(taskSetup)} />}
+      {modal === 'settings' && <SettingsPanel key={taskSetup ? 'task' : `manual-${settingsSection}`} initialSection={settingsSection} settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)} taskSetup={taskSetup}
+        onOnboarding={openOnboarding} onOpenSetup={() => openSetup()} onClearData={() => setModal('clearData')} archiveCleanup={archiveCleanup} onRetryArchiveCleanup={retryArchiveCleanup}
+        modelTools={{ models, ollamaError, pulling, cancelling: cancellingPull, progress: pullProgress, message: modelDownloadMessage, error: modelDownloadError,
+          name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,
+          onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}
+        openAITools={{ ...openAIState, onKeyStatus: refreshOpenAIKeyStatus, onSaveKey: saveOpenAIKey, onRemoveKey: removeOpenAIKey, onConsent: setOpenAIConsent, onRefresh: refreshOpenAIModels }}
+        hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
+        updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, portableHandoff: updateInfo?.canCloseForPortable, readySetupTag, setupOnClose, onScheduleSetup: scheduleSetup, onUseUpdate: updateActionAvailable ? finishUpdateDownload : null, updateActionLabel, updateActionBusy: Boolean(busy || usingUpdate), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onSkip: skipUpdate, onCheck: () => checkForUpdates(false) }} />}
+      {modal === 'glossary' && <SavedTerminology glossary={glossary} saving={glossarySaving} error={glossaryError} onRemove={removeTerm} />}
+      {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} onEditLabel={editLibraryLabel} persistenceWarning={libraryPersistenceWarning} />}
+      {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={returnToLibrary} onCancel={returnToLibrary} />}
+      {modal === 'more' && <div className="menu-list">
+        <button disabled={!paper} onClick={openTranslationRange}><Languages size={17} /> Translation Range</button>
+        <button onClick={() => setModal('library')}><Library size={17} /> Paper Library</button>
+        <button onClick={() => reextractAsNew()} disabled={!!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button>
+        <button onClick={() => setModal('glossary')}><Languages size={17} /> Saved Terminology</button>
+        <button disabled={!canSummarize || !!busy} onClick={startSummaryFromMenu}><Sparkles size={17} /> Generate Summary</button>
+        <button disabled={!fullHasSource || !!busy} onClick={startFullTranslationFromMenu}><Languages size={17} /> Generate Full Translation</button>
+        <button onClick={() => { setModal(''); runMineru(); }} disabled={paper?.type !== 'pdf' || !!busy}><FileText size={17} /> Parse with MinerU</button>
+        <button disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}><Download size={17} /> {defaultExportLabel}</button>
+        <button disabled={!canExport || !!busy} onClick={() => setModal('export')}><FileText size={17} /> Export Options…</button>
+        <button disabled={!paper} onClick={() => { setModal(''); toggleFocus(); }}><Focus size={17} /> {focus ? 'Exit Focus Reading' : 'Focus Reading'}</button>
+        <button onClick={() => openSettings()}><Settings2 size={17} /> Settings</button>
+      </div>}
+      {modal === 'range' && <div className="menu-list">
+        <button disabled={!!busy || !abstractConclusionIds.length} onClick={() => { setModal(''); translateBlocks(abstractConclusionIds); }}>Abstract & Conclusion <small>{abstractConclusionIds.length} blocks</small></button>
+        <button disabled={!!busy || !currentSectionIds.length} onClick={() => { setModal(''); translateBlocks(currentSectionIds); }}>{currentSection ? 'Current section: ' + currentSection.title : 'No current section'} <small>{currentSectionIds.length} blocks</small></button>
+        {currentSection && <button disabled={!queuedSectionCount} onClick={() => { if (prioritizeSection(currentSection)) setModal(''); }}>Prioritize current section in queue{queuedSectionIds && <small>{queuedSectionCount ? `${queuedSectionCount} queued ${queuedSectionCount === 1 ? 'block' : 'blocks'}` : 'No queued blocks'}</small>}</button>}
+        {sections.map(section => <button key={section.startId} disabled={!!busy || !section.unfinished.length} onClick={() => { setModal(''); translateBlocks(section.unfinished); }}>Choose section: {section.title}<small>{section.unfinished.length} unfinished blocks</small></button>)}
+        <button disabled={!!busy || !unfinishedTranslationIds.length} onClick={() => { setModal(''); translateBlocks(unfinishedTranslationIds); }}>All unfinished blocks <small>{unfinishedTranslationIds.length} blocks</small></button>
+      </div>}
+
+      {modal === 'attachment' && <PaperAttachment attachment={attachment} Markdown={Markdown} />}
+      {modal === 'clearData' && <ClearDataConfirmation onRemove={clearSavedData} onCancel={() => openSettings(null, 'data')} />}
+      {modal === 'export' && <div className="menu-list"><button onClick={exportBundle}><Download size={17} /> Export portable Markdown bundle</button>{[['original', 'Original Markdown'], ['translated', 'Translated Markdown'], ['bilingual', 'Bilingual Markdown'], ['analysis', 'Summary, sources and notes'], ...(paper.connectedTranslation ? [['full', 'Full Translation Markdown']] : [])].map(([kind, label]) => <button key={kind} onClick={() => exportMarkdown(kind)}><Download size={17} /> {label}</button>)}</div>}
+    </div></div></div>}
+  </div>;
+}
+
+createRoot(document.getElementById('root')).render(<App />);

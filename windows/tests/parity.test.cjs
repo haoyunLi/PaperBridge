@@ -1,0 +1,792 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+test('MinerU Markdown keeps figures and tables separate from translatable captions', async () => {
+  const { parsedMarkdownBlocks, anchorText } = await import('../src/academicMarkdown.mjs');
+  const markdown = [
+    '# Results',
+    '',
+    'Ashish Vaswani<sup>∗</sup> measured the result.',
+    '',
+    '![plot](data:image/png;base64,AAAA)  ',
+    'Figure 1: Architecture.',
+    '',
+    'Table 1: Scores.',
+    '<table><tr><td>42</td></tr></table>',
+    '',
+    '$$E=mc^2$$',
+    '',
+    '<IMG src="images/panel.png" alt="Observed score > 42">',
+    'Figure 2: Summary of outcomes.',
+    '',
+    '```python',
+    'print(42)',
+    '```'
+  ].join('\n');
+  const blocks = parsedMarkdownBlocks(markdown);
+  assert.deepEqual(blocks.map(block => [block.heading, block.resource]), [
+    [true, false], [false, false], [false, true], [false, false],
+    [false, false], [false, true], [false, true], [false, true], [false, false], [false, true]
+  ]);
+  assert.equal(blocks[3].text, 'Figure 1: Architecture.');
+  assert.equal(blocks[4].text, 'Table 1: Scores.');
+  assert.equal(blocks[7].text, '[Figure]');
+  assert.equal(blocks[8].text, 'Figure 2: Summary of outcomes.');
+  assert.equal(anchorText(blocks[1], 'source'), 'Ashish Vaswani∗ measured the result.');
+});
+
+test('reference exclusion stops when methods resume after bibliography', async () => {
+  const { referenceBlockIds, sectionRanges } = await import('../src/paper.mjs');
+  const blocks = [
+    { id: 1, text: 'Introduction', heading: true },
+    { id: 2, text: 'The actual study body.' },
+    { id: 3, text: 'References', heading: true },
+    { id: 4, text: '[1] Example paper, 2024.' },
+    { id: 5, text: 'STAR Methods', heading: true },
+    { id: 6, text: 'Reproducible methods after references.' }
+  ];
+  assert.deepEqual([...referenceBlockIds(blocks)], [3, 4]);
+  assert.deepEqual(sectionRanges(blocks), [
+    { title: 'Introduction', startId: 1, ids: [1, 2] },
+    { title: 'STAR Methods', startId: 5, ids: [5, 6] }
+  ]);
+});
+
+test('translation sections use explicit and inline headings, preserve IDs and match overview words', async () => {
+  const { sectionRanges, overviewSectionIds } = await import('../src/paper.mjs');
+  const body = { id: 2, text: 'The article starts without a standalone heading.' };
+  assert.deepEqual(sectionRanges([{ id: 1, text: 'Figure 1', resource: true }]), []);
+  assert.deepEqual(sectionRanges([body]), [{ startId: 2, title: 'Document', ids: [2] }]);
+  const blocks = [body,
+    { id: 3, text: 'Abstract: Our blinded reviewers repeated each measurement.' },
+    { id: 4, text: 'Figure 2', resource: true },
+    { id: 5, text: 'Both reviewers reported similar findings.' },
+    { id: 6, text: 'Abstraction Mechanisms', sourceMarkdown: '## Abstraction Mechanisms' },
+    { id: 8, text: '2 Methods We retained all evidence from both independent reviewers' },
+    { id: 9, text: 'concluding remarks', sourceMarkdown: '### concluding remarks' },
+    { id: 10, text: 'The independent analyses reached the same conclusion.' },
+    { id: 11, text: '结论', heading: true },
+    { id: 12, text: '研究结果在两组样本中一致。' }];
+  const groups = sectionRanges(blocks);
+  assert.deepEqual(groups.map(s => [s.title, s.ids]), [
+    ['Opening material', [2]], ['Abstract:', [3, 5]], ['Abstraction Mechanisms', [6]], ['2 Methods', [8]],
+    ['concluding remarks', [9, 10]], ['结论', [11, 12]]
+  ]);
+  assert.deepEqual(overviewSectionIds(groups), [3, 5, 9, 10, 11, 12]);
+  assert.deepEqual(overviewSectionIds([
+    { title: 'Préabstract', ids: [1] }, { title: 'Conclusion論', ids: [2] },
+    { title: 'Non_abstract', ids: [3] }, { title: 'Abstract / Résumé', ids: [4] }
+  ]), [4]);
+});
+
+test('reference ranges recognize inline and unlabelled bibliographies without losing later body text', async () => {
+  const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
+  const { planConnectedBatches } = await import('../src/connectedTranslation.mjs');
+  const blocks = [
+    { id: 11, text: 'The team calibrated the sensors.' },
+    { id: 23, text: 'References to previous studies informed the baseline.' },
+    { id: 26, text: 'The control and treatment differed.' },
+    { id: 31, text: '[1] Ng, A. (2021). Results for the previous sensor. Journal of Testing.' },
+    { id: 32, text: '[2] J. Lee and P. Moss. Sensors in the field. Proceedings of Testing, 2022.' },
+    { id: 33, text: '[3] Renée Moreau, Liam Clarke, and Amy Gold. Estimating calibration error, 2018.' },
+    { id: 41, text: 'Appendix A. The team repeated the calibration with cold water.' },
+    { id: 43, text: 'The cold-water measurements agreed with the baseline.' }
+  ];
+  for (const prefix of ['', '9. References: ']) {
+    const sample = blocks.map(block => block.id === 31 ? { ...block, text: prefix + block.text } : block);
+    assert.deepEqual([...referenceBlockIds(sample)], [31, 32, 33]);
+    assert.deepEqual(summarySourceBlocks(sample).map(block => block.id), [11, 23, 26, 41, 43]);
+    assert.deepEqual(translationRangeIds(sample), [11, 23, 26, 41, 43]);
+    const plan = planConnectedBatches(sample);
+    assert.deepEqual(plan.map(batch => batch.kind), ['translation', 'original', 'original', 'original', 'translation']);
+    assert.deepEqual(plan.slice(1, 4).map(batch => batch.source), sample.slice(3, 6).map(block => block.text));
+    assert.match(plan.at(-1).source, /Appendix A\./);
+  }
+  const protocol = [
+    '1. Repeat the 2021 calibration with a fresh sensor.',
+    '2. Apply the 2022 baseline using https://example.test/protocol.',
+    '3. Compare the 2024 measurements with the workshop notes.'
+  ];
+  assert.deepEqual([...referenceBlockIds([...blocks.slice(0, 3), ...protocol.map((text, i) => ({ id: 90 + i, text }))])], []);
+  const discussion = [
+    'Lee (2021) tested an earlier implementation.',
+    'Moreau et al. (2022) reported a smaller margin of error.',
+    'Ng and Moss (2023) repeated the calibration with a new sensor.'
+  ];
+  assert.deepEqual([...referenceBlockIds([...blocks.slice(0, 3), ...discussion.map((text, i) => ({ id: 91 + i, text }))])], []);
+});
+
+test('pasted bibliography boundaries drive the translation queue and summary without hiding DOI discussion', async () => {
+  const { blocksFromText } = await import('../src/text.mjs');
+  const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
+  for (const { name, paragraphs, referenceIds } of require('./mac-parity/fixtures.json').bibliographies) {
+    const blocks = blocksFromText(paragraphs.join('\n\n'));
+    const expectedBody = blocks.filter(block => !referenceIds.includes(block.id));
+    assert.deepEqual(blocks.map(block => block.text), paragraphs, name + ' source and paragraph boundaries');
+    assert.deepEqual([...referenceBlockIds(blocks)], referenceIds, name);
+    assert.deepEqual(translationRangeIds(blocks), expectedBody.map(block => block.id), name);
+    assert.deepEqual(summarySourceBlocks(blocks).map(block => block.text), expectedBody.map(block => block.text), name);
+  }
+  const wrapped = require('./mac-parity/fixtures.json').bibliographies.find(f => f.paragraphs.some(text => text.includes('\n')));
+  const saved = wrapped.paragraphs.map((text, i) => ({ id: i + 1, text: text.replaceAll('\n', ' ') }));
+  assert.deepEqual([...referenceBlockIds(saved)], wrapped.referenceIds, 'previously saved flattened methods and body');
+  for (const sentence of [
+    'We used the 2021 data at https://doi.org/10.1234/record.',
+    'See the protocol (2022). Its DOI is https://doi.org/10.1234/record.',
+    'A different source. (2023). We reused https://doi.org/10.1234/record after conversion.'
+  ]) {
+    const body = ['Introduction', 'We compared the archives.', 'The following steps reproduce the analysis.',
+      ...['first', 'second', 'third'].map(id => sentence.replace('record', id))];
+    assert.deepEqual([...referenceBlockIds(blocksFromText(body.join('\n\n')))], [], sentence);
+  }
+});
+
+test('contents links keep body paragraphs available in Markdown and in saved documents', async () => {
+  const { referenceBlockIds, reviewSavedReferenceCoverage } = await import('../src/references.mjs');
+  const { parsedMarkdownBlocks } = await import('../src/academicMarkdown.mjs');
+  const blocks = parsedMarkdownBlocks([
+    '# Table of Contents', 'Introduction ........ 1', '## References', '## Introduction',
+    'Calibration was repeated independently.', '## References',
+    '[1] Ng, A. (2021). Instrument calibration. Journal of Testing.', '## Appendix A', 'Additional observations.'
+  ].join('\n\n'));
+  assert.deepEqual([...referenceBlockIds(blocks)], [6, 7]);
+  const old = { blocks, summary: { source: 'Saved summary' }, connectedTranslation: 'Saved translation' };
+  assert.deepEqual(reviewSavedReferenceCoverage(old), { ...old, summary: { ...old.summary, stale: true }, connectedStale: true });
+  const fresh = { ...old, summary: { ...old.summary, contentsChecked: true }, connectedContentsChecked: true };
+  assert.equal(reviewSavedReferenceCoverage(fresh), fresh);
+  const genuine = { ...old, blocks: [blocks[0], blocks[5], blocks[6], ...blocks.slice(7)] };
+  assert.deepEqual([...referenceBlockIds(genuine.blocks)], [6, 7], 'an actual citation directly follows the heading');
+  assert.equal(reviewSavedReferenceCoverage(genuine), genuine);
+});
+
+test('a split author list stays in references before a lettered appendix in a two-column PDF', async () => {
+  const { referenceBlockIds, summarySourceBlocks, translationRangeIds } = await import('../src/paper.mjs');
+  const body = { id: 1, text: 'We measured the temperature of the chamber.' };
+  const title = { id: 8, heading: true, text: 'A. Measurement Tables' };
+  const appendix = { id: 9, text: 'The appendix lists every calibration run.' };
+  const references = [
+    { id: 2, heading: true, text: 'References' },
+    { id: 3, text: '[34] H. Doe. Calibration at high temperatures, 2016.' },
+    { id: 4, text: '[35] P. Silva. Estimating instrument drift, 2017. [36] J. Stone,' },
+    { id: 5, heading: true, text: 'Z. Lake, A. Field, M. Snow, et al. Long-term' },
+    { id: 6, text: 'measurements of sensor drift. 2018. ' + Array.from({ length: 16 }, (_, i) =>
+      '[' + (i + 37) + '] J. White. Findings from the extended calibration trial and the field measurements. 2020.').join(' ') }
+  ];
+  const blocks = [body, ...references, title, appendix];
+  assert.ok(references.at(-1).text.length > 1200);
+  assert.deepEqual([...referenceBlockIds(blocks)], [2, 3, 4, 5, 6]);
+  assert.deepEqual(translationRangeIds(blocks), [1, 8, 9]);
+  assert.deepEqual(summarySourceBlocks(blocks).map(block => block.id), [1, 8, 9]);
+  assert.deepEqual([...referenceBlockIds([body, ...references.slice(0, 3), title, references.at(-1)])], [2, 3, 4]);
+});
+
+test('a grouped PLOS bibliography stays in the original paper and leaves the appendix eligible', async () => {
+  const { referenceCoverageVersion, reviewSavedReferenceCoverage, referenceBlockIds, splitLeadingReferenceHeading } = await import('../src/references.mjs');
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const source = require('./mac-parity/good-enough/reader.json').blocks.at(-1).text;
+  const heading = 'References ' + source;
+  assert.deepEqual(splitLeadingReferenceHeading(heading), ['References', source]);
+  const blocks = ['Main observation.', heading, 'Appendix', 'We verified the control.'].map((text, index) => ({ id: index + 1, text }));
+  assert.deepEqual([...referenceBlockIds(blocks)], [2]);
+  const note = { text: 'observation', body: 'Retain my note' };
+  const old = { name: 'Laboratory record', blocks, summary: { source: 'Saved conclusion', contentsChecked: true },
+    connectedTranslation: 'Existing draft', connectedContentsChecked: true, viewNotes: [note] };
+  for (const connectedShared of [true, false]) {
+    const reviewed = reviewSavedReferenceCoverage({ ...old, connectedShared });
+    assert.ok(reviewed.summary.stale && reviewed.connectedStale);
+    assert.equal(reviewed.connectedTranslation, old.connectedTranslation);
+    assert.equal(reviewed.viewNotes, old.viewNotes);
+    const fresh = { ...old, connectedShared, summary: { ...old.summary, referenceCoverageVersion }, connectedReferenceCoverageVersion: referenceCoverageVersion };
+    assert.equal(reviewSavedReferenceCoverage(fresh), fresh);
+  }
+  const alreadyExcluded = { ...old, blocks: [{ id: 0, text: 'References' }, ...blocks.slice(1)] };
+  assert.equal(reviewSavedReferenceCoverage(alreadyExcluded), alreadyExcluded);
+  const original = markdownDocuments(old, undefined, 'original')[0].content;
+  assert.ok(original.includes(source) && original.includes('We verified the control.'));
+  const narrative = 'References 1. Please follow the numbered instructions to verify the response. 2. ' + 'Continue observing. '.repeat(70);
+  assert.deepEqual(splitLeadingReferenceHeading(narrative), [narrative]);
+});
+
+test('translation range counts exactly the unfinished queue including headings', async () => {
+  const { referenceBlockIds, translationRangeIds } = await import('../src/paper.mjs');
+  const blocks = [
+    { id: 1, text: 'Abstract', heading: true, status: 'pending' },
+    { id: 2, text: 'Body', status: 'ok' },
+    { id: 3, text: 'Figure', resource: true, status: 'pending' },
+    { id: 4, text: 'Methods', heading: true, status: 'failed' },
+    { id: 5, text: 'References', heading: true, status: 'pending' },
+    { id: 6, text: 'Citation entry', status: 'pending' }
+  ];
+  const references = referenceBlockIds(blocks);
+  assert.deepEqual(translationRangeIds(blocks, null, references), [1, 4]);
+  assert.deepEqual(translationRangeIds(blocks, [2, 3, 4, 5], references), [4]);
+  assert.deepEqual(translationRangeIds(blocks, [], references), []);
+  assert.deepEqual(translationRangeIds(blocks, [2], references, 2), [2], 'an explicit single-paragraph retry may replace an existing result');
+  assert.deepEqual(translationRangeIds(blocks, [2], references, 1), [], 'retrying another paragraph must not bypass completed filtering');
+  assert.deepEqual(translationRangeIds(blocks, [3], references, 3), [], 'resources remain protected');
+  assert.deepEqual(translationRangeIds(blocks, [5], references, 5), [], 'excluded references remain protected');
+});
+
+test('MinerU imports require readable structured text while preserving companion resources', async () => {
+  const { readableMineruBlocks } = await import('../src/academicMarkdown.mjs');
+  for (const markdown of ['', ' \n ', '![Cover](cover.png)', '$$x^2$$', '# References\n\nAn excluded citation.']) {
+    assert.throws(() => readableMineruBlocks(markdown), /MinerU returned no readable blocks/);
+  }
+  const blocks = readableMineruBlocks('# Methods\n\nThe model compares two groups.\n\n![Result](figure.png)');
+  assert.deepEqual(blocks.map(block => block.resource), [false, false, true]);
+  assert.equal(blocks[2].sourceMarkdown, '![Result](figure.png)');
+});
+
+test('library labels preserve Unicode graphemes and bound sorted, unique tags', async () => {
+  const { libraryLabel } = await import('../src/paper.mjs');
+  const grapheme = '👩‍🔬';
+  const longTag = '文'.repeat(50);
+  const tags = Array.from({ length: 24 }, (_, index) => `t${String(index).padStart(2, '0')}`).reverse();
+  const label = libraryLabel(`  ${grapheme.repeat(201)}  `, ` Beta, Alpha, Beta,, ${longTag}, ${tags.join(', ')}`);
+  assert.equal(label.libraryTitle, grapheme.repeat(200));
+  assert.deepEqual(label.tags, ['Alpha', 'Beta', ...tags.reverse().slice(0, 18)]);
+  assert.deepEqual(libraryLabel('  Title  ', ` ${longTag}, ${longTag} `), { libraryTitle: 'Title', tags: ['文'.repeat(40)] });
+});
+
+test('summary source links require an exact quote in a real source block', async () => {
+  const { parseSummaryClaims, summarySourceCandidates } = await import('../src/paper.mjs');
+  const passage = 'The measured intervention improved response time in the tested sample by twelve percent.';
+  const blocks = [{ id: 7, text: passage }];
+  const quote = 'improved response time in the tested sample';
+  const output = JSON.stringify({ claims: [{ text: 'A supported claim', sources: [{ paragraphID: 7, quote }, { paragraphID: 99, quote }, { paragraphID: 7, quote: 'invented source quotation here' }] }] });
+  const claims = parseSummaryClaims(output, blocks);
+  assert.deepEqual(claims[0].sources, [{ paragraphID: 7, quote }]);
+  assert.deepEqual(parseSummaryClaims('Model wrote plain text [7].', blocks)[0].sources, []);
+  assert.deepEqual(parseSummaryClaims(output, blocks, [])[0].sources, []);
+  assert.deepEqual(summarySourceCandidates(JSON.stringify({ claims: [{ text: 'A claim', sources: [{ paragraphID: 'P7' }, { paragraphID: 'P99' }] }] }), blocks), [[7]]);
+  assert.deepEqual(summarySourceCandidates('unstructured summary', blocks), []);
+});
+
+test('summary excerpts keep original paragraph IDs and whole Unicode characters under the tagged limit', async () => {
+  const { summarySourceBlocks, summarySourceBatches, parseSummaryClaims } = await import('../src/paper.mjs');
+  const tail = 'The last trial showed a clear limitation.';
+  const long = `${'文'.repeat(5994)}😀${'字'.repeat(6040)}${tail}`;
+  const source = summarySourceBlocks([
+    { id: 1, heading: true, text: 'Introduction' },
+    { id: 2, text: long },
+    { id: 3, resource: true, text: 'Image' },
+    { id: 4, heading: true, text: 'References' },
+    { id: 5, text: 'Excluded citation.' },
+    { id: 6, heading: true, text: 'Appendix' },
+    { id: 7, text: 'The appendix remains eligible.' }
+  ]);
+  assert.deepEqual(source.map(block => block.id), [1, 2, 6, 7]);
+  const batches = summarySourceBatches(source);
+  assert.equal(batches.flat().filter(block => block.id === 2).map(block => block.text).join(''), long);
+  assert.ok(batches.every(batch => batch.map(({ id, text }) => `[P${id}]\n${text}`).join('\n\n').length <= 6000));
+  assert.ok(batches.flat().every(block => !/[\uD800-\uDBFF]$|^[\uDC00-\uDFFF]/.test(block.text)));
+  const response = JSON.stringify({ claims: [{ text: 'Limitation', sources: [{ paragraphID: 'P2', quote: tail }] }] });
+  assert.deepEqual(parseSummaryClaims(response, batches[0])[0].sources, []);
+  assert.deepEqual(parseSummaryClaims(response, batches.at(-1))[0].sources, [{ paragraphID: 2, quote: tail }]);
+});
+
+test('summary batches keep a complete supporting sentence and exact PDF whitespace', async () => {
+  const { summarySourceBatches, parseSummaryClaims } = await import('../src/paper.mjs');
+  const intro = 'The baseline was calibrated on the first morning. '.repeat(7).trim();
+  const sentence = 'The sensor ' + 'recorded each observation '.repeat(220) + 'before the independent reviewers inspected the archive.';
+  const tailQuote = sentence.slice(-300);
+  const blocks = [{ id: 37, text: intro + ' ' + sentence }];
+  const batches = summarySourceBatches(blocks);
+  assert.deepEqual(batches, [[{ id: 37, text: intro }], [{ id: 37, text: sentence }]]);
+  const response = JSON.stringify({ claims: [{ text: 'The archive was inspected.', sources: [{ paragraphID: 37, quote: tailQuote }] }] });
+  assert.deepEqual(parseSummaryClaims(response, batches[1])[0].sources, [{ paragraphID: 37, quote: tailQuote }]);
+  const formatted = ('The instrument measured\t\t52.4 units;   both samples   agreed,  within tolerance.  ').repeat(110).trim();
+  const excerpts = summarySourceBatches([{ id: 13, text: formatted }]).flat();
+  assert.ok(excerpts.length >= 2);
+  assert.ok(excerpts.every(block => formatted.includes(block.text) && block.text.length <= 5900));
+  assert.equal(excerpts.map(b => b.text.replace(/\s/g, '')).join(''), formatted.replace(/\s/g, ''));
+});
+
+test('summary evidence preserves source spelling, complete Unicode characters, and previously verified citations', async () => {
+  const { parseSummaryClaims, revalidateSummaryClaims, remapSummaryEvidence, validatedSummaryQuote, summaryQuoteMatch } = await import('../src/paper.mjs');
+  const fixtures = require('./mac-parity/fixtures.json').summaryEvidence;
+  for (const fixture of fixtures) {
+    const text = fixture.source.repeat(fixture.repeat ?? 1);
+    const quote = fixture.quote.repeat(fixture.repeat ?? 1);
+    assert.equal(validatedSummaryQuote(text, quote), fixture.valid ? text : null, fixture.name);
+  }
+  const source = 'Le cafe\u0301 contient exactement trois mesures.';
+  const blocks = [{ id: 2, text: 'Début. ' + source + ' Fin.' }];
+  const canonical = { paragraphID: 2, quote: source.normalize('NFC') };
+  const actual = { paragraphID: 2, quote: source };
+  const output = text => JSON.stringify({ claims: [{ text, sources: [canonical, actual] }] });
+  const title = 'a'.repeat(1199) + '👩🏽‍🔬';
+  assert.deepEqual(parseSummaryClaims(output(title + 'extra'), blocks, [canonical]), [{ text: title, sources: [actual] }]);
+  assert.deepEqual(parseSummaryClaims(output(title), blocks, [{ ...canonical, paragraphID: 1 }])[0].sources, []);
+  assert.deepEqual(parseSummaryClaims(output(title), [{ id: 2, text: 'A different excerpt.' }, { id: 1, text: source }])[0].sources, []);
+  const unstructured = 'a'.repeat(2999) + '👩🏽‍🔬';
+  assert.equal(parseSummaryClaims(unstructured + 'extra', blocks)[0].text, unstructured);
+  const partial = 'A long observation by a researcher 👩';
+  assert.equal(validatedSummaryQuote(partial + '🏽‍🔬.', partial), null);
+  assert.equal(validatedSummaryQuote(partial + '🏽‍🔬. ' + partial + '.', partial), partial);
+  assert.equal(summaryQuoteMatch(source + ' ' + canonical.quote, canonical.quote, { unique: true }), null);
+  assert.deepEqual(summaryQuoteMatch(blocks[0].text, canonical.quote, { unique: true }),
+    { text: source, offset: blocks[0].text.indexOf(source) });
+  const claims = [{ text: 'Finding', sources: [canonical] }];
+  assert.deepEqual(revalidateSummaryClaims(claims, blocks)[0].sources, [actual]);
+  assert.deepEqual(remapSummaryEvidence({ claims }, blocks, [{ id: 1, text: canonical.quote }],
+    { start: 0, beforeEnd: 1, afterEnd: 1 }).claims[0].sources, [{ ...canonical, paragraphID: 1 }]);
+});
+
+test('structured Markdown editions preserve the source, unfinished passages, and ready translations', async () => {
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const blocks = [
+    { id: 1, sourceMarkdown: '# Study', heading: true, status: 'ok', translationMarkdown: '# Étude' },
+    { id: 2, sourceMarkdown: 'A completed paragraph.', status: 'ok', translationMarkdown: 'Une phrase.\n\nUne autre phrase.' },
+    { id: 3, sourceMarkdown: 'A paragraph awaiting translation.', status: 'pending' },
+    { id: 4, sourceMarkdown: 'A paragraph awaiting retry.', status: 'failed', error: 'Model timed out', translation: 'Stale output' },
+    { id: 5, sourceMarkdown: '![Figure](images/plot.png)', resource: true, status: 'ok', translation: 'Wrong figure' }
+  ];
+  const mineruMarkdown = blocks.map(block => block.sourceMarkdown).join('\n\n\n');
+  const paper = { name: 'Study', sourceMode: 'mineru', mineruMarkdown, blocks, connectedTranslation: 'An older saved draft',
+    taskSettings: { sourceLanguage: 'English', targetLanguage: 'French' } };
+  const docs = Object.fromEntries(markdownDocuments(paper, 'French').map(document => [document.kind, document.content]));
+  assert.equal(docs.original, mineruMarkdown);
+  assert.match(docs.translated, /^# Étude\n\nUne phrase\./);
+  assert.match(docs.translated, /A paragraph awaiting translation\.\n\nA paragraph awaiting retry\.\n\n!\[Figure\]\(images\/plot\.png\)$/);
+  assert.doesNotMatch(docs.translated, /Stale output|Wrong figure|Untranslated block/);
+  assert.match(docs.bilingual, /^# Study\n\n# Étude[\s\S]*> \*\*French translation\*\*\n>\n> Une phrase\.\n>\n> Une autre phrase\./);
+  assert.equal(docs.full, docs.translated);
+  assert.equal(markdownDocuments(paper, 'French', 'full')[0].content, 'An older saved draft');
+  assert.match(docs.analysis, /\[Translation failed\] Model timed out/);
+});
+
+test('PDF text bundle retains the original passage when a translation is unavailable', async () => {
+  const { markdownDocuments } = await import('../src/exportDocuments.mjs');
+  const blocks = [{ id: 1, text: 'Translated paragraph.', status: 'ok', translation: 'Une traduction.' },
+    { id: 2, text: 'Pending paragraph.', status: 'pending' }];
+  const paper = { name: 'Article.pdf', type: 'pdf', sourceMode: 'pdf', blocks };
+  const docs = Object.fromEntries(markdownDocuments(paper, 'French').map(document => [document.kind, document.content]));
+  assert.equal(docs.translated, 'Une traduction.\n\nPending paragraph.');
+  assert.match(docs.bilingual, /Pending paragraph\.\n\n> \*\*Translation\*\*\n>\n> \[Translation unavailable\]/);
+  assert.match(markdownDocuments(paper, 'French', 'translated')[0].content, /\[Untranslated block 2\]/);
+});
+
+test('portable bundle writes real image assets and the unchanged original PDF', () => {
+  const { writeBundle } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-'));
+  const pdf = path.join(parent, 'source.pdf');
+  const original = Buffer.from('%PDF-1.4\nsource bytes');
+  fs.writeFileSync(pdf, original);
+  try {
+    const image = Buffer.from('image bytes');
+    const data = `data:image/png;base64,${image.toString('base64')}`;
+    const result = writeBundle(parent, { name: 'Test Paper.pdf', type: 'pdf' }, [
+      { name: 'Original', filename: 'paper_original.md', content: `![plot](${data})` },
+      { name: 'Bilingual', filename: 'paper_bilingual_en_fr.md', content: `![plot](${data})` }
+    ], pdf);
+    const digest = crypto.createHash('sha256').update(image).digest('hex');
+    assert.equal(result.assets, 1);
+    assert.equal(fs.readFileSync(path.join(result.folder, 'original.pdf')).compare(original), 0);
+    assert.equal(fs.readFileSync(path.join(result.folder, 'assets', `${digest}.png`)).compare(image), 0);
+    assert.equal(path.basename(result.folder), 'Test Paper_PaperBridge');
+    assert.deepEqual(fs.readdirSync(result.folder).sort(), ['assets', 'original.pdf', 'paper_bilingual_en_fr.md', 'paper_original.md']);
+    assert.match(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), new RegExp(`assets/${digest}\\.png`));
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('portable bundles keep HTML images, retained MinerU files and link fragments and report missing assets', () => {
+  const { writeBundle } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-assets-'));
+  try {
+    const source = path.join(parent, 'parsed');
+    fs.mkdirSync(source);
+    fs.writeFileSync(path.join(source, 'support data.csv'), 'a,b\n1,2');
+    fs.writeFileSync(path.join(source, 'legacy.png'), 'older image');
+    fs.writeFileSync(path.join(parent, 'private.csv'), 'outside parser output');
+    fs.mkdirSync(path.join(parent, 'outside'));
+    fs.writeFileSync(path.join(parent, 'outside', 'escape.csv'), 'outside via link');
+    fs.symlinkSync(path.join(parent, 'outside'), path.join(source, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+    const pdf = path.join(parent, 'scan.pdf');
+    fs.writeFileSync(pdf, 'exact original');
+    const image = `data:image/png;base64,${Buffer.from('embedded image').toString('base64')}`;
+    const content = [
+      `![Figure](${image} "Caption title")`,
+      `<table><tr><td><img src='${image}' alt="Embedded cell"><img src="legacy.png"></td></tr></table>`,
+      '[Data](<support data.csv> "Supplement") and [Second link](support%20data.csv#row-1).',
+      '[Original](./original.pdf#page=2) [Remote](https://example.org/image.png) [Section](#results)',
+      '![Missing](figures/gone.png) [Missing again](figures/gone.png#figure)',
+      '[Outside](%2E%2E/private.csv)',
+      '[Linked outside](linked/escape.csv)',
+      '```html\n<img src="in-a-code-example.png">\n```'
+    ].join('\n\n');
+    const bundle = writeBundle(parent, { name: 'Scan.pdf', type: 'pdf', sourceMode: 'mineru' }, [{ name: 'Original', filename: 'paper_original.md', content }], pdf, source);
+    assert.equal(bundle.assets, 3);
+    assert.deepEqual(bundle.missingAssetPaths, ['../private.csv', 'figures/gone.png', 'linked/escape.csv']);
+    const exported = fs.readFileSync(path.join(bundle.folder, 'paper_original.md'), 'utf8');
+    const embedded = exported.match(/!\[Figure\]\((assets\/\w+\.png) "Caption title"\)/)?.[1];
+    const legacy = exported.match(/alt="Embedded cell"><img src="(assets\/source\/legacy\.png)"/)?.[1];
+    const csv = exported.match(/\[Data\]\(<(assets\/source\/support%20data\.csv)> "Supplement"\)/)?.[1];
+    assert.ok(embedded && legacy && csv);
+    assert.ok(exported.includes(`<img src='${embedded}' alt="Embedded cell">`));
+    assert.ok(exported.includes(`[Second link](${csv}#row-1)`));
+    assert.ok(exported.includes('[Original](original.pdf#page=2) [Remote](https://example.org/image.png) [Section](#results)'));
+    assert.ok(exported.includes('```html\n<img src="in-a-code-example.png">\n```'));
+    for (const [file, expected] of [[embedded, 'embedded image'], [legacy, 'older image'], [csv, 'a,b\n1,2'], ['original.pdf', 'exact original']]) {
+      assert.equal(fs.readFileSync(path.join(bundle.folder, decodeURIComponent(file)), 'utf8'), expected);
+    }
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('bundle filenames are safe, case-insensitively unique and preserve generated PDF index names', async () => {
+  const { writeBundle, writeBundleFacsimile, safeName } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-names-'));
+  try {
+    for (const name of ['CON', 'prn', 'NUL.txt', 'com1', 'LPT9', 'com¹.notes', 'LPT³']) assert.equal(safeName(name), `_${name}`);
+    assert.equal(safeName('a<bad>:name?. . '), 'a-bad--name-');
+    assert.equal(safeName('...'), 'PaperBridge');
+    const pdf = path.join(parent, 'source.pdf');
+    fs.writeFileSync(pdf, 'unchanged original PDF');
+    const documents = [
+      { name: 'Original label stays readable', filename: 'paper_original.md', content: 'first' },
+      { name: 'Same name with different casing', filename: 'PAPER_ORIGINAL.md', content: 'second' },
+      { name: 'Device', filename: 'CON.md', content: 'device' },
+      { name: 'Unsafe', filename: '../escape.md', content: 'contained' },
+      { name: 'Trailing', filename: 'trailing. .md', content: 'trimmed' },
+      { name: 'Index collision', filename: 'Original Pages.md', content: 'user document' }
+    ];
+    const result = writeBundle(parent, { name: 'Paper.draft.pdf', type: 'pdf' }, documents, pdf);
+    assert.equal(path.basename(result.folder), 'Paper.draft_PaperBridge');
+    assert.deepEqual(fs.readdirSync(result.folder).sort(), ['..-escape.md', 'Original Pages-2.md', 'PAPER_ORIGINAL-2.md', '_CON.md', 'original.pdf', 'paper_original.md', 'trailing.md'].sort());
+    assert.equal(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), 'first');
+    assert.equal(fs.readFileSync(path.join(result.folder, 'PAPER_ORIGINAL-2.md'), 'utf8'), 'second');
+    assert.equal(fs.existsSync(path.join(parent, 'escape.md')), false);
+    await writeBundleFacsimile({ ...result, renderedPages: new Set() }, 0, false);
+    assert.equal(fs.readFileSync(path.join(result.folder, 'Original Pages-2.md'), 'utf8'), 'user document');
+    assert.match(fs.readFileSync(path.join(result.folder, 'Original Pages.md'), 'utf8'), /could not be opened for page previews/);
+    const second = writeBundle(parent, { name: 'Paper.draft.pdf' }, [{ name: 'Legacy name', content: 'legacy compatibility' }]);
+    assert.equal(path.basename(second.folder), 'Paper.draft_PaperBridge-2');
+    assert.equal(fs.readFileSync(path.join(second.folder, 'Legacy name.md'), 'utf8'), 'legacy compatibility');
+    const third = writeBundle(parent, { name: 'Paper.draft.pdf' }, [{ name: 'Third', filename: 'paper_original.md', content: 'third' }]);
+    assert.equal(path.basename(third.folder), 'Paper.draft_PaperBridge-3');
+    assert.equal(fs.readFileSync(path.join(result.folder, 'paper_original.md'), 'utf8'), 'first');
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('PDF facsimile bundles include only completed page images and preserve the translated body', async () => {
+  const { writeBundle, writeBundleFacsimile } = require('../electron/bundle.cjs');
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-facsimile-'));
+  const pdf = path.join(parent, 'source.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.4\nsource bytes');
+  try {
+    const documents = [
+      { kind: 'full', name: 'Full Translation', filename: 'paper_full_translation_fr.md', content: 'Saved translated text.' },
+      { kind: 'analysis', name: 'Analysis', filename: 'paper_analysis_notes.md', content: 'Exact notes.' }
+    ];
+    const bundle = writeBundle(parent, { name: 'PDF text.pdf', type: 'pdf', facsimile: true }, documents, pdf);
+    await writeBundleFacsimile({ ...bundle, renderedPages: new Set([1, 120]) }, 125, true);
+    const full = fs.readFileSync(path.join(bundle.folder, 'paper_full_translation_fr.md'), 'utf8');
+    assert.match(full, /first 120 of 125 pages/);
+    assert.match(full, /Page export stopped/);
+    assert.doesNotMatch(full, /^## Page 121$/m, 'A stopped export lists only the completed previews');
+    assert.match(full, /\(original\.pdf\)/);
+    assert.deepEqual([...full.matchAll(/pages\/page-(\d+)\.png/g)].map(match => match[1]), ['001', '120']);
+    assert.match(full, /# Full translation of selectable text\n\nSaved translated text\.\n$/);
+    assert.equal(fs.readFileSync(path.join(bundle.folder, 'paper_analysis_notes.md'), 'utf8'), 'Exact notes.');
+
+    const structured = writeBundle(parent, { name: 'MinerU.pdf', type: 'pdf' }, documents, pdf);
+    await writeBundleFacsimile({ ...structured, renderedPages: new Set() }, 1, false);
+    assert.match(fs.readFileSync(path.join(structured.folder, 'Original Pages.md'), 'utf8'), /previews are unavailable/);
+    assert.equal(fs.readFileSync(path.join(structured.folder, 'paper_full_translation_fr.md'), 'utf8'), 'Saved translated text.');
+    const manifest = path.join(structured.folder, 'Original Pages.md');
+    assert.match(fs.readFileSync(manifest, 'utf8'), /\(original\.pdf#page=1\)/);
+    await writeBundleFacsimile({ ...structured, renderedPages: new Set() }, Number.MAX_SAFE_INTEGER, false);
+    const huge = fs.readFileSync(manifest, 'utf8');
+    assert.ok(huge.length < 2_000_000, 'Unusually large counts keep a bounded index and links to both ends');
+    assert.ok(huge.includes('(original.pdf#page=' + Number.MAX_SAFE_INTEGER + ')'));
+  } finally {
+    if (!path.resolve(parent).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('PDF page archives share exact PDF bytes, detect damaged entries and clear with workspace data', async () => {
+  const { createPageArchive } = require('../electron/pdf-page-archive.cjs');
+  const { createStore } = require('../electron/storage.cjs');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-page-archive-'));
+  const pdfBytes = Buffer.from('%PDF-1.4\narchive fixture');
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+Xf1sAAAAASUVORK5CYII=', 'base64');
+  try {
+    const store = createStore(root);
+    const hash = crypto.createHash('sha256').update(pdfBytes).digest('hex');
+    const pdf = store.pdfPath(hash);
+    fs.mkdirSync(path.dirname(pdf));
+    fs.writeFileSync(pdf, pdfBytes);
+    const { version } = require('pdfjs-dist/package.json');
+    const cache = path.join(root, 'pdf-page-cache');
+    const legacyFolders = [2, 3].map(revision => path.join(cache, `pdfjs-png-v${revision}-${version}`, hash));
+    for (const legacy of legacyFolders) {
+      fs.mkdirSync(legacy, { recursive: true });
+      const legacyEntry = (name, bytes) => fs.writeFileSync(path.join(legacy, name),
+        Buffer.concat([crypto.createHash('sha256').update(bytes).digest(), bytes]));
+      legacyEntry('page-001.png.entry', image);
+      legacyEntry('page-count.entry', Buffer.from('2'));
+    }
+    const archive = await createPageArchive(root, pdf);
+    assert.deepEqual(archive.status(), { cachedPageCount: 0, cachedPages: [] }, 'Previews rendered without CJK maps or color management must be regenerated');
+    assert.equal(archive.readPage(1), null);
+    archive.savePage(1, image);
+    archive.savePageCount(2);
+    const copy = path.join(root, 'new extraction.pdf');
+    fs.copyFileSync(pdf, copy);
+    const same = await createPageArchive(root, copy, { expectedFingerprint: hash });
+    assert.deepEqual(same.status(), { cachedPageCount: 2, cachedPages: [1] });
+    assert.deepEqual(same.readPage(1), image);
+    assert.equal(same.readPage(2), null);
+    fs.appendFileSync(copy, ' changed');
+    assert.equal(await createPageArchive(root, copy, { expectedFingerprint: hash }), null);
+    assert.equal(await createPageArchive(root, copy, { isCurrent: () => false }), null);
+    const changed = await createPageArchive(root, copy);
+    assert.deepEqual(changed.status(), { cachedPageCount: 0, cachedPages: [] });
+    assert.equal(same.matches(fs.readFileSync(copy)), false);
+    const folder = path.join(cache, `pdfjs-png-v4-${version}`, hash);
+    const imageFile = path.join(folder, 'page-001.png.entry');
+    const damaged = fs.readFileSync(imageFile);
+    damaged[damaged.length - 1] ^= 1;
+    fs.writeFileSync(imageFile, damaged);
+    assert.equal(same.readPage(1), null);
+    same.savePage(1, image);
+    assert.deepEqual(same.readPage(1), image);
+    fs.writeFileSync(path.join(folder, 'page-count.entry'), 'damaged');
+    assert.deepEqual(same.status(), { cachedPageCount: 0, cachedPages: [1] });
+    for (const legacy of legacyFolders) assert.ok(fs.existsSync(path.join(legacy, 'page-001.png.entry')));
+    store.clearData();
+    assert.equal(fs.existsSync(cache), false);
+    assert.deepEqual(fs.readFileSync(pdf), pdfBytes);
+  } finally {
+    if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected test folder');
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('split and merge retain exact note and highlight anchors', async () => {
+  const { splitBlockAt, mergeBlocks } = await import('../src/paper.mjs');
+  const original = { id: 1, text: 'First sentence. Second sentence.', status: 'ok', translation: 'old', bookmark: true,
+    highlights: [{ text: 'Second', offset: 16, color: 'amber' }],
+    notes: [{ id: 'n', text: 'Second', offset: 16, kind: 'source', body: 'Keep this' }] };
+  const [left, right] = splitBlockAt(original, 15);
+  assert.equal(right.text, 'Second sentence.');
+  assert.equal(right.highlights[0].offset, 0);
+  assert.equal(right.notes[0].offset, 0);
+  assert.equal(left.bookmark, true);
+  const merged = mergeBlocks(left, right);
+  assert.equal(merged.text, original.text);
+  assert.equal(merged.highlights[0].offset, 16);
+  assert.equal(merged.notes[0].offset, 16);
+});
+
+test('edited source retains unresolved notes and both highlight sides for review', async () => {
+  const { editedBlock, revalidateSummaryClaims } = await import('../src/paper.mjs');
+  const before = { id: 1, text: 'A unique phrase explains the result.', translation: 'old', status: 'ok',
+    highlights: [{ text: 'unique phrase', offset: 2, color: 'amber' }], translationHighlights: [{ text: 'old', offset: 0, color: 'teal' }],
+    notes: [{ id: 'note', text: 'unique phrase', offset: 2, kind: 'source', body: 'Saved idea' }] };
+  const changed = editedBlock(before, 'A different result appears here.');
+  assert.deepEqual(changed.highlights, [{ ...before.highlights[0], needsReview: true }]);
+  assert.deepEqual(changed.translationHighlights, [{ ...before.translationHighlights[0], needsReview: true }]);
+  assert.equal(changed.notes[0].needsReview, true);
+  assert.equal(changed.notes[0].body, 'Saved idea');
+  assert.equal(changed.status, 'pending');
+  const claims = [{ text: 'A claim', sources: [{ paragraphID: 1, quote: 'A unique phrase explains the result.' }] }];
+  assert.deepEqual(revalidateSummaryClaims(claims, [changed])[0].sources, []);
+});
+
+test('summary evidence follows structural edits only within the original passage or its replacements', async () => {
+  const { remapSummaryEvidence } = await import('../src/paper.mjs');
+  const quote = 'The same exact evidence words were printed.';
+  const blocks = (...texts) => texts.map((text, index) => ({ id: index + 1, text }));
+  const before = blocks('Introductory paragraph.', quote, `The final finding. ${quote}`);
+  const sources = id => ({ paragraphID: id, quote });
+  const summary = { source: 'A finding.', claims: [{ text: 'A finding.', sources: [sources(3)] }] };
+  const remapped = (after, range, current = summary) => remapSummaryEvidence(current, before, after, range);
+
+  const shifted = remapped(blocks('Introductory paragraph.', 'New paragraph.', quote, before[2].text),
+    { start: 0, beforeEnd: 1, afterEnd: 2 });
+  assert.equal(shifted.stale, true);
+  assert.deepEqual(shifted.claims[0].sources, [sources(4)]);
+  assert.deepEqual(remapped(blocks(before[0].text, quote, 'Revised final finding.'),
+    { start: 2, beforeEnd: 3, afterEnd: 3 }).claims[0].sources, []);
+  assert.deepEqual(remapped(blocks(before[0].text, quote, quote, quote),
+    { start: 2, beforeEnd: 3, afterEnd: 4 }).claims[0].sources, []);
+  assert.deepEqual(remapped(blocks(before[0].text, `${quote} ${before[2].text}`),
+    { start: 1, beforeEnd: 3, afterEnd: 2 },
+    { ...summary, claims: [{ ...summary.claims[0], sources: [sources(2), sources(3)] }] }).claims[0].sources, [sources(2)]);
+});
+
+test('MinerU paragraph pages follow unique source text without changing saved work', async () => {
+  const { locateMineruPages, readableMineruBlocks } = await import('../src/academicMarkdown.mjs');
+  const longText = 'A distinct passage verified against the selectable text layer.';
+  const crossPage = 'A PDF block stitched across two pages has no reliable single-page location.';
+  const ambiguous = 'A recurring passage appears in both portions of the document.';
+  const parts = 'Two OCR fragments together describe the same exact result.';
+  const blocks = readableMineruBlocks(['# Section on the second page', parts, ambiguous, longText, crossPage, '![Image](photo.png)'].join('\n\n'));
+  blocks[3].translation = 'Existing translation';
+  blocks[3].notes = [{ body: 'Existing note' }];
+  const hints = [{ page: 2, text: 'Section on the second page' }, { page: 2, text: 'Two OCR fragments together' },
+    { page: 2, text: 'describe the same exact result.' }, { page: 2, text: ambiguous }, { page: 3, text: ambiguous },
+    { page: 99, text: longText }];
+  const pdf = [{ page: 4, text: longText }, { page: 2, text: ambiguous }, { page: 4, endPage: 5, text: crossPage }];
+  const located = locateMineruPages(blocks, hints, pdf, 5);
+  assert.deepEqual(located.map(block => block.page), [2, 2, null, 4, null, null]);
+  assert.deepEqual(located[3], { ...blocks[3], page: 4 });
+  assert.equal(locateMineruPages(located, hints, pdf, 5), located);
+});
+
+test('spanning OCR metadata restores the first and last pages without misplacing a repeated fragment', async () => {
+  const { locateMineruPages } = await import('../src/academicMarkdown.mjs');
+  const text = 'The observations include a continuation of the same measurement on the next page.';
+  const tail = 'the same measurement on the next page.';
+  const work = { text, translation: 'saved translation', bookmark: true, notes: [{ text: 'measurement' }] };
+  const hints = [{ page: 2, endPage: 3, text }, { page: 3, text: tail }];
+  const old = [{ ...work, page: 2 }, { text: tail }, { ...work, page: 1 }, { text }];
+  const located = locateMineruPages(old, hints, [], 3);
+  assert.deepEqual(located, [{ ...work, page: 2, endPage: 3 }, { text: tail, page: 3 }, old[2], { text, page: 2, endPage: 3 }]);
+  assert.equal(locateMineruPages(located, hints, [], 3), located);
+  assert.equal(locateMineruPages(old, [hints[0]], [], 2), old);
+  assert.equal(locateMineruPages(old, [hints[0], { page: 4, endPage: 5, text }], [], 5), old);
+});
+
+test('manual merge maps duplicate quotes through trimmed and collapsed whitespace on each side', async () => {
+  const { mergeBlocks } = await import('../src/paper.mjs');
+  const left = '  repeat   repeat  ';
+  const right = '\t repeat\t\trepeat.  ';
+  const note = (text, offset) => ({ text, offset, kind: 'source', body: 'Quoted source', displayOffset: offset });
+  const merged = mergeBlocks({ text: left, notes: [note('repeat', left.lastIndexOf('repeat'))],
+    highlights: [note('repeat   repeat', left.indexOf('repeat'))] },
+  { text: right, notes: [note('repeat', right.lastIndexOf('repeat'))], highlights: [note('repeat', right.indexOf('repeat'))] });
+  assert.equal(merged.text, 'repeat repeat repeat repeat.');
+  assert.deepEqual(merged.notes.map(item => [item.offset, item.displayOffset, item.needsReview]), [[7, 7, false], [21, 21, false]]);
+  assert.deepEqual([merged.highlights[1].offset, merged.highlights[1].needsReview], [14, false]);
+  assert.equal(merged.highlights[0].needsReview, true);
+  assert.equal(merged.highlights[0].text, 'repeat   repeat');
+});
+
+test('Reader reflow counts graphemes and keeps duplicate quotes anchored despite changing sentence spacing', async () => {
+  const { reflowBlock } = await import('../src/paper.mjs');
+  const text = 'The 👩‍🔬 repeats.    It repeats. It repeats.';
+  const originals = [...text.matchAll(/repeats/g)].map(({ index }) => ({ text: 'repeats', offset: index, color: 'amber' }));
+  const block = { text, highlights: originals };
+  const graphemes = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].length;
+  assert.equal(reflowBlock(block, graphemes)[0], block);
+  const result = reflowBlock(block, 27);
+  assert.deepEqual(result.map(piece => piece.text), ['The 👩‍🔬 repeats. It repeats.', 'It repeats.']);
+  assert.deepEqual(result.flatMap(piece => piece.highlights.map(highlight => highlight.offset)),
+    result.flatMap(piece => [...piece.text.matchAll(/repeats/g)].map(match => match.index)));
+  assert.ok(result.every(piece => piece.highlights.every(mark => mark.needsReview === false)));
+});
+
+test('sentence reflow keeps the annotated phrase in its new block', async () => {
+  const { reflowBlock } = await import('../src/paper.mjs');
+  const original = { id: 1, text: 'First complete sentence. Second complete sentence. Third complete sentence.',
+    notes: [{ id: 'n', text: 'Third', offset: 51, kind: 'source', body: 'Remember this' }],
+    highlights: [{ text: 'Third', offset: 51, color: 'blue' }] };
+  const pieces = reflowBlock(original, 30);
+  assert.equal(pieces.length, 3);
+  assert.equal(pieces[2].text, 'Third complete sentence.');
+  assert.equal(pieces[2].notes[0].offset, 0);
+  assert.equal(pieces[2].highlights[0].offset, 0);
+  assert.equal(reflowBlock({ text: 'One very long sentence without a safe boundary.' }, 10).length, 1);
+});
+
+test('safe splitting and reflow recognize closing quotes and CJK sentences while keeping abbreviations intact', async () => {
+  const { reflowBlock, splitBlockNearMiddle } = await import('../src/paper.mjs');
+  const english = { text: 'Dr. Smith described Fig. 2. They wrote “The result is stable.” The later trial confirmed it.' };
+  assert.deepEqual(reflowBlock(english, 40).map(block => block.text), [
+    'Dr. Smith described Fig. 2.', 'They wrote “The result is stable.”', 'The later trial confirmed it.'
+  ]);
+  const chinese = { text: '作者解释机制。研究结果一致！后续仍需验证。', bookmark: true,
+    translationHighlights: [{ id: 'translated', text: 'mechanism', offset: 4, color: 'amber' }] };
+  const pieces = reflowBlock(chinese, 8);
+  assert.deepEqual(pieces.map(block => block.text), ['作者解释机制。', '研究结果一致！', '后续仍需验证。']);
+  assert.ok(pieces.every(block => block.bookmark));
+  assert.deepEqual(pieces.flatMap(block => block.translationHighlights), [{ ...chinese.translationHighlights[0], needsReview: true }]);
+  assert.deepEqual(splitBlockNearMiddle({ text: '作者解释机制。研究结果一致！' }).map(block => block.text), ['作者解释机制。', '研究结果一致！']);
+  assert.equal(splitBlockNearMiddle({ text: 'Dr. Smith measured the outcome.' }).length, 1);
+  assert.deepEqual(reflowBlock({ text: '「低温だ。」とても長い測定だった。' }, 6).map(block => block.text),
+    ['「低温だ。」', 'とても長い測定だった。']);
+  const reported = '「低温か？」と研究者は尋ねた。';
+  assert.deepEqual(reflowBlock({ text: reported }, 6).map(block => block.text), [reported]);
+  const quotedResult = '«\u202fLes résultats sont stables.\u202f»';
+  const nextSentence = 'Une seconde étude les confirme.';
+  assert.deepEqual(reflowBlock({ text: quotedResult + ' ' + nextSentence }, 35).map(block => block.text), [quotedResult, nextSentence]);
+});
+
+test('merging repairs a hyphenated word and preserves annotations with verified positions', async () => {
+  const { mergeBlocks } = await import('../src/paper.mjs');
+  const left = { text: 'Our trans-', highlights: [{ text: 'trans-', offset: 4, color: 'amber' }],
+    translationHighlights: [{ id: 'left', text: 'a', offset: 0, color: 'amber' }] };
+  const right = { text: 'lation succeeds.', notes: [{ id: 'note', text: 'succeeds', offset: 7, displayOffset: 7, body: 'Keep' }],
+    translationHighlights: [{ id: 'right', text: 'b', offset: 0, color: 'teal' }] };
+  const merged = mergeBlocks(left, right);
+  assert.equal(merged.text, 'Our translation succeeds.');
+  assert.equal(merged.highlights[0].needsReview, true);
+  assert.equal(merged.notes[0].offset, merged.text.indexOf('succeeds'));
+  assert.equal(merged.notes[0].displayOffset, merged.notes[0].offset);
+  assert.equal(merged.notes[0].needsReview, false);
+  assert.deepEqual(merged.translationHighlights.map(item => [item.id, item.needsReview]), [['left', true], ['right', true]]);
+});
+
+test('PDF code repair preserves commands, indentation and notes when splitting or merging listings', async () => {
+  const { editedParagraphs, mergeBlocks, reflowBlock } = await import('../src/paper.mjs');
+  const { pdfListingMarkdown } = await import('../src/text.mjs');
+  const text = 'echo start\n  read data\n    save FILE';
+  const block = { id: 3, page: 2, text, sourceMarkdown: pdfListingMarkdown(text), translation: 'old',
+    notes: [{ text: 'FILE', offset: text.indexOf('FILE'), body: 'Keep the filename' }] };
+  const [fixed] = editedParagraphs(block, '  ' + text.replace('start', 'begin'));
+  assert.equal(fixed.text, '  echo begin\n  read data\n    save FILE');
+  assert.equal(fixed.sourceMarkdown, pdfListingMarkdown(fixed.text));
+  assert.equal(fixed.notes[0].offset, fixed.text.indexOf('FILE'));
+  const [first, second] = editedParagraphs(fixed, fixed.text.replace('\n    save', '\n\n    save'));
+  assert.equal(first.text, '  echo begin\n  read data');
+  assert.equal(second.text, '    save FILE');
+  assert.equal(second.notes[0].offset, 9);
+  assert.equal(second.sourceMarkdown, pdfListingMarkdown(second.text));
+  const merged = mergeBlocks(first, { ...second, page: 3 });
+  assert.equal(merged.text, fixed.text);
+  assert.equal(merged.sourceMarkdown, pdfListingMarkdown(fixed.text));
+  assert.equal(merged.endPage, 3);
+  assert.equal(merged.notes[0].offset, fixed.text.indexOf('FILE'));
+  assert.equal(reflowBlock(merged, 2)[0], merged);
+  assert.deepEqual(editedParagraphs(fixed, ' \n\t\n'), []);
+});
+
+test('saving a manual edit splits at blank lines and moves exact annotations into their new blocks', async () => {
+  const { editedParagraphs } = await import('../src/paper.mjs');
+  const original = { id: 2, text: 'First sentence. Second sentence.', translation: 'old', status: 'ok', bookmark: true,
+    notes: [{ id: 'exact', text: 'Second', offset: 16, kind: 'source', body: 'Keep this' },
+      { id: 'crossing', text: 'sentence. Second', offset: 6, kind: 'source', body: 'Review this' }],
+    highlights: [{ text: 'Second', offset: 16, color: 'amber' }] };
+  const parts = editedParagraphs(original, ' First sentence.\r\n \r\nSecond\r\n  sentence. ');
+  assert.deepEqual(parts.map(block => block.text), ['First sentence.', 'Second sentence.']);
+  assert.ok(parts.every(block => block.bookmark && block.status === 'pending' && !block.translation));
+  assert.equal(parts[0].notes[0].needsReview, true);
+  assert.equal(parts[1].notes[0].id, 'exact');
+  assert.equal(parts[1].notes[0].offset, 0);
+  assert.equal(parts[1].highlights[0].offset, 0);
+  assert.deepEqual(editedParagraphs(original, ' \n \n '), []);
+  assert.equal(editedParagraphs(original, ` ${original.text} `)[0], original);
+
+  const repeated = { ...original, text: 'Same phrase. Same phrase.', highlights: [],
+    notes: [{ id: 'second', text: 'Same phrase', offset: 13, kind: 'source', body: 'Second occurrence' }] };
+  const [first, second] = editedParagraphs(repeated, 'Same phrase.\n\nSame phrase.');
+  assert.deepEqual(first.notes, []);
+  assert.equal(second.notes[0].offset, 0);
+  assert.equal(second.notes[0].needsReview, false);
+});

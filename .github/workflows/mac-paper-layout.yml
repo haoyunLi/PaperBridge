@@ -1,0 +1,49 @@
+name: Check the published paper layout on Mac
+permissions:
+  contents: read
+on:
+  push:
+    tags: ['mac-pdf-check-*']
+  workflow_dispatch:
+
+jobs:
+  compare:
+    runs-on: macos-15
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the printed footnote and figure pages with PDFKit and PaperBridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 https://arxiv.org/pdf/1706.03762v7 -o "$RUNNER_TEMP/article.pdf"
+          (cd "$RUNNER_TEMP" && echo "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697  article.pdf" | shasum -a 256 -c -)
+          xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift PaperBridge/Services/PDFTextExtractor.swift \
+            PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/SelectableAcademicText.swift PaperBridge/Views/PDFDocumentView.swift \
+            windows/tests/mac-paper-layout/Observe.swift -o "$RUNNER_TEMP/observe"
+          "$RUNNER_TEMP/observe" "$RUNNER_TEMP/article.pdf" "$RUNNER_TEMP/reading.json"
+          cat "$RUNNER_TEMP/reading.json"
+      - name: Read the two-column ACL article and its publication notice with PDFKit
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fLsS --retry 3 https://aclanthology.org/N19-1423.pdf -o "$RUNNER_TEMP/bert.pdf"
+          (cd "$RUNNER_TEMP" && echo "987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4  bert.pdf" | shasum -a 256 -c -)
+          xcrun swiftc PaperBridge/Models.swift PaperBridge/Services/TextProcessing.swift PaperBridge/Services/PDFTextExtractor.swift \
+            windows/tests/mac-paper-layout/ObserveProceedings.swift -o "$RUNNER_TEMP/proceedings"
+          "$RUNNER_TEMP/proceedings" "$RUNNER_TEMP/bert.pdf" "$RUNNER_TEMP/proceedings.json"
+      - name: Read the table and interrupted body columns in the published ResNet PDF
+        if: contains(github.ref_name, 'resnet-table')
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 https://arxiv.org/pdf/1512.03385 -o "$RUNNER_TEMP/resnet.pdf"
+          (cd "$RUNNER_TEMP" && echo "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a  resnet.pdf" | shasum -a 256 -c -)
+          xcrun swift windows/tests/mac-paper-layout/ObserveColumnTable.swift "$RUNNER_TEMP/resnet.pdf" "$RUNNER_TEMP/column-table.json" windows/tests/mac-paper-layout/resnet-figure.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-paper-layout
+          path: |
+            ${{ runner.temp }}/reading.json
+            ${{ runner.temp }}/proceedings.json
+            ${{ runner.temp }}/column-table.json
+          if-no-files-found: error

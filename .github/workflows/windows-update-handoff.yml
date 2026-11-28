@@ -1,0 +1,88 @@
+name: Verify installed Windows update delivery
+permissions:
+  contents: read
+  actions: read
+on:
+  push:
+    tags: ['windows-handoff-check-*']
+  workflow_call:
+    inputs:
+      release_feed:
+        type: string
+        required: true
+jobs:
+  verify:
+    runs-on: windows-2025
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [public, on-close, wizard]
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - name: Choose the verified public release
+        env:
+          VERIFIED_RELEASE: ${{ inputs.release_feed }}
+        run: |
+          $feed = $env:VERIFIED_RELEASE
+          if (!$feed) {
+            $feed = (Invoke-RestMethod 'https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json') | ConvertTo-Json -Compress -Depth 4
+          }
+          if (($feed | ConvertFrom-Json).version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid public target' }
+          "PAPERBRIDGE_VERIFIED_FEED=$feed" >> $env:GITHUB_ENV
+      - name: Build and install an earlier client on the fresh machine
+        run: |
+          npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm version 0.1.0 --no-git-tag-version --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm exec -- electron-builder --win nsis --x64 --publish never
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $install = Join-Path $env:RUNNER_TEMP 'PaperBridge update delivery'
+          $setup = (Resolve-Path release/PaperBridge-Windows-0.1.0-x64-Setup.exe).Path
+          $p = Start-Process -FilePath $setup -ArgumentList "/S /currentuser /D=$install" -Wait -PassThru -WindowStyle Hidden
+          if ($p.ExitCode -ne 0) { throw "Initial Setup failed with exit code $($p.ExitCode)" }
+          "PAPERBRIDGE_TEST_EXECUTABLE=$install/PaperBridge.exe" >> $env:GITHUB_ENV
+      - name: Observe the Internet-marked download in the Windows shell
+        timeout-minutes: 8
+        if: matrix.scenario != 'wizard'
+        env:
+          PAPERBRIDGE_VERIFY_WIZARD: 'true'
+          PAPERBRIDGE_TEST_SETUP_ON_CLOSE: ${{ matrix.scenario == 'on-close' }}
+        run: node tests/public-installed-update.cjs
+      - name: Retrieve the exact Setup from its release build
+        if: matrix.scenario == 'wizard'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = ($env:PAPERBRIDGE_VERIFIED_FEED | ConvertFrom-Json).version
+          $runs = gh api "repos/$env:GITHUB_REPOSITORY/actions/workflows/windows.yml/runs?branch=windows-v$v&event=push&per_page=5" | ConvertFrom-Json
+          $id = ($runs.workflow_runs | Where-Object head_branch -eq "windows-v$v" | Select-Object -First 1).id
+          if (!$id) { throw "Cannot locate the release build for $v" }
+          gh run download $id --repo $env:GITHUB_REPOSITORY --name PaperBridge-Windows --dir (Join-Path $env:RUNNER_TEMP 'PaperBridge release build')
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node tests/public-installed-update.cjs --seed-only
+      - name: Complete the release build's interactive setup and observe its first window
+        if: matrix.scenario == 'wizard'
+        shell: powershell
+        run: ./tests/finish-update-wizard.ps1
+      - name: Read the pre-upgrade bookmark and note in the installed update
+        if: matrix.scenario == 'wizard'
+        run: node tests/public-installed-update.cjs --verify-restored
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-installed-update-${{ matrix.scenario }}
+          path: windows/test-artifacts/installed-update.json
+          if-no-files-found: ignore

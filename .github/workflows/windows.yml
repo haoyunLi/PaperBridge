@@ -1,0 +1,410 @@
+name: Windows desktop
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [main]
+    tags: ['windows-v*']
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+      - 'PaperBridge/**/*.swift'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/windows.yml'
+      - 'PaperBridge/**/*.swift'
+
+jobs:
+  mac-reference:
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the macOS source on the shared reading and translation fixtures
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          services=(PaperBridge/Services/*.swift)
+          services=("${services[@]:#*/AppUpdateController.swift}")
+          xcrun swiftc PaperBridge/Models.swift PaperBridge/PaperReaderViewModel*.swift PaperBridge/Utilities/*.swift \
+            PaperBridge/Views/PaperBridgeUI.swift PaperBridge/Views/SelectableAcademicText.swift PaperBridge/Views/PDFDocumentView.swift PaperBridge/Views/MarkdownPreviewView.swift \
+            "${services[@]}" windows/tests/mac-parity/*.swift \
+            -o "$RUNNER_TEMP/paperbridge-reference"
+          node windows/tests/mac-parity/long-facsimile.cjs "$RUNNER_TEMP/long-facsimile.pdf"
+          "$RUNNER_TEMP/paperbridge-reference" windows/tests/mac-parity/fixtures.json "$RUNNER_TEMP/mac-reference.json"
+      - name: Observe local model discovery and download completion on macOS
+        run: |
+          xcrun swiftc PaperBridge/Services/OllamaClient.swift windows/tests/mac-ollama/Observe.swift -o "$RUNNER_TEMP/observe-ollama"
+          node windows/tests/mac-ollama/compare.cjs "$RUNNER_TEMP/mac-reference.json" "$RUNNER_TEMP/observe-ollama"
+      - name: Inspect the menus in the published Mac application
+        run: bash windows/tests/mac-menu/observe.sh "$RUNNER_TEMP/mac-reference.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-reading-reference
+          path: ${{ runner.temp }}/mac-reference.json
+          if-no-files-found: error
+  build:
+    needs: mac-reference
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-reading-reference
+          path: ${{ runner.temp }}/mac-reference
+      - name: Compare Windows results with native macOS results
+        run: node tests/mac-parity/compare.mjs "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
+      - name: Compare local model discovery and download completion with macOS
+        run: node tests/mac-ollama/compare.cjs "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
+      - name: Verify Windows release version
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        run: |
+          $packageVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:GITHUB_REF_NAME -ne "windows-v$packageVersion") {
+            throw "Tag $env:GITHUB_REF_NAME must match Windows package version $packageVersion"
+          }
+      - name: Build Windows preview
+        if: ${{ !(startsWith(github.ref, 'refs/tags/windows-v') && vars.WINDOWS_SIGNING_MODE == 'azure') }}
+        run: npm run dist
+      - name: Build and sign the release with Azure Artifact Signing
+        if: startsWith(github.ref, 'refs/tags/windows-v') && vars.WINDOWS_SIGNING_MODE == 'azure'
+        env:
+          WINDOWS_SIGNING_PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+          WINDOWS_SIGNING_ENDPOINT: ${{ vars.WINDOWS_SIGNING_ENDPOINT }}
+          WINDOWS_SIGNING_ACCOUNT: ${{ vars.WINDOWS_SIGNING_ACCOUNT }}
+          WINDOWS_SIGNING_PROFILE: ${{ vars.WINDOWS_SIGNING_PROFILE }}
+          AZURE_TENANT_ID: ${{ secrets.WINDOWS_SIGNING_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.WINDOWS_SIGNING_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.WINDOWS_SIGNING_CLIENT_SECRET }}
+        run: npm run dist:signed
+      - name: Verify release binaries and write checksums
+        id: release-assets
+        shell: pwsh
+        env:
+          SIGNING_MODE: ${{ vars.WINDOWS_SIGNING_MODE }}
+          PUBLISHER: ${{ vars.WINDOWS_SIGNING_PUBLISHER }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $signatureNote = 'Unsigned Windows preview.'
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:SIGNING_MODE) {
+            if ($env:SIGNING_MODE -ne 'azure') { throw 'Unknown Windows signing mode' }
+            $files = @('release/win-unpacked/PaperBridge.exe', "release/PaperBridge-Windows-$version-x64-Setup.exe", "release/PaperBridge-Windows-$version-x64-Portable.exe")
+            ./scripts/check-publisher.ps1 -Files $files -Publisher $env:PUBLISHER
+            $signatureNote = "Timestamped Windows publisher signature verified for $env:PUBLISHER."
+          }
+          "signature_note=$signatureNote" >> $env:GITHUB_OUTPUT
+          foreach ($target in @('Setup', 'Portable')) {
+            $name = "PaperBridge-Windows-$version-x64-$target.exe"
+            $binary = Get-Item -LiteralPath "release/$name" -ErrorAction Stop
+            if ($binary.Length -le 0) { throw "Empty release binary $name" }
+            $hash = (Get-FileHash -LiteralPath $binary.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            Set-Content -LiteralPath "release/$name.sha256" -Value "$hash  $name" -Encoding ascii
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+      - name: Verify the packaged Edit menu and Windows keyboard layouts
+        shell: pwsh
+        run: |
+          $env:PAPERBRIDGE_MAC_REFERENCE = "$env:RUNNER_TEMP/mac-reference/mac-reference.json"
+          $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
+          node tests/relaunch-visible-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:edit-menu-e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/journal-reflow-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/journal-preview-quotes-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/journal-reader-occurrences-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/cjk-pdf-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/cjk-pdf-e2e.cjs --legacy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/mixed-cid-recovery-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/style-guide-e2e.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/update-reconnect-e2e.cjs --stale
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/update-reconnect-e2e.cjs --during-check
+      - name: Keep equation-adjacent prose readable in the packaged app
+        shell: pwsh
+        run: |
+          $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
+          node tests/equation-prose-e2e.cjs
+      - name: Verify onboarding and desktop setup workflows
+        timeout-minutes: 20
+        shell: pwsh
+        run: |
+          $env:PAPERBRIDGE_MAC_REFERENCE = Join-Path $env:RUNNER_TEMP 'mac-reference/mac-reference.json'
+          $env:PAPERBRIDGE_TEST_EXECUTABLE = (Resolve-Path release/win-unpacked/PaperBridge.exe).Path
+          $desktopSuites = @('test:onboarding-e2e', 'test:onboarding-startup-e2e', 'test:renderer-recovery-e2e', 'test:settings-models-e2e', 'test:model-memory-recovery-e2e', 'test:openai-settings-e2e', 'test:paper-settings-e2e', 'test:sidebar-settings-e2e', 'test:last-opened-e2e', 'test:import-progress-e2e', 'test:import-modes-e2e', 'test:scanned-original-e2e', 'test:pdf-journal-export-e2e', 'test:export-names-e2e', 'test:interrupted-bundle-e2e', 'test:translation-range-actions-e2e', 'test:structured-draft-e2e', 'test:pdf-hyphenation-e2e', 'test:task-isolation-e2e', 'test:mineru-detect-e2e', 'test:update-restart-e2e', 'test:setup-components-e2e', 'test:menu-state-e2e', 'test:menu-ui-e2e', 'test:official-links-e2e', 'test:note-autosave-e2e', 'test:saved-annotations-e2e', 'test:rich-annotation-review-e2e', 'test:reading-history-e2e', 'test:reader-toolbar-e2e', 'test:paragraph-selection-e2e', 'test:layout-parity-e2e', 'test:sidebar-layout-e2e', 'test:short-workspace-e2e', 'test:paste-text-e2e', 'test:reader-actions-e2e', 'test:quality-review-e2e', 'test:vertical-pdf-e2e', 'test:rotated-pdf-e2e', 'test:bidi-pdf-e2e', 'test:pdf-links-e2e', 'test:archive-cleanup-e2e', 'test:clear-locked-workspace-e2e', 'test:writing-direction-e2e', 'test:paragraph-editor-e2e', 'test:heading-parity-e2e', 'test:outline-e2e', 'test:markdown', 'test:markdown-navigation-e2e', 'test:nested-resource-e2e', 'test:paper-attachments-e2e', 'test:supplement-text-e2e', 'test:connected-translation-e2e', 'test:summary-e2e', 'test:terminology-e2e', 'test:legacy-output-language-e2e', 'test:reader-review-e2e', 'test:e2e')
+          foreach ($suite in $desktopSuites) {
+            npm run $suite
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - run: npm run test:packaged
+      - name: Open a PDF after launching Portable twice
+        run: node tests/portable-relaunch-pdf.cjs
+      - name: Launch final Portable and installed Setup application
+        timeout-minutes: 8
+        shell: pwsh
+        run: ./tests/check-distribution.ps1 -Directory release -Version (Get-Content package.json -Raw | ConvertFrom-Json).version -MacReference (Join-Path $env:RUNNER_TEMP 'mac-reference/mac-reference.json')
+      - name: Preserve failed desktop screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-desktop-failure-screenshots
+          path: |
+            windows/test-artifacts/**/failure.png
+            windows/test-artifacts/**/failure-diagnostics.json
+            windows/test-artifacts/**/close-diagnostics.json
+            windows/test-artifacts/**/progress.log
+            windows/test-artifacts/**/*zoom*.png
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PaperBridge-Windows
+          path: |
+            windows/release/PaperBridge-Windows-*-x64-*.exe
+            windows/release/PaperBridge-Windows-*-x64-*.exe.sha256
+          if-no-files-found: error
+      - name: Check the release tag before staging public downloads
+        id: release-stage
+        if: startsWith(github.ref, 'refs/tags/windows-v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -cne "windows-v$version") { throw "Package version and tag differ" }
+          $url = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag"
+          $response = Invoke-WebRequest $url -Headers @{Authorization="Bearer $env:GH_TOKEN"} -SkipHttpErrorCheck
+          $stage = $true
+          if ($response.StatusCode -eq 200) {
+            $existing = $response.Content | ConvertFrom-Json
+            $missing = $false
+            foreach ($kind in 'Portable','Setup') {
+              foreach ($suffix in '.exe','.exe.sha256') {
+                $name = "PaperBridge-Windows-$version-x64-$kind$suffix"
+                $asset = @($existing.assets | Where-Object name -ceq $name)
+                if ($asset.Count -eq 0) { $missing = $true; continue }
+                $digest = (Get-FileHash -LiteralPath "release/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($asset.Count -ne 1 -or $asset[0].digest -cne "sha256:$digest") {
+                  throw "The tag already has different bytes for $name. Publish a new version."
+                }
+              }
+            }
+            if ($missing -and !$existing.prerelease -and !$existing.draft) { throw "An existing stable release has incomplete assets." }
+            $stage = $existing.draft -or $missing
+          } elseif ($response.StatusCode -ne 404) { throw "Could not inspect release tag (HTTP $($response.StatusCode))" }
+          "stage=$($stage.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Stage Windows binaries as a public prerelease
+        if: steps.release-stage.outputs.stage == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: PaperBridge for Windows ${{ steps.release-assets.outputs.version }}
+          make_latest: 'false'
+          prerelease: true
+          draft: false
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          body: |
+            PaperBridge for Windows is a development preview for Windows x64.
+
+            - **Setup** installs PaperBridge for the current Windows user.
+            - **Portable** runs directly after download.
+            - The project's [GitHub build attestations](${{ github.server_url }}/${{ github.repository }}/attestations) identify the tagged workflow that built each executable.
+            - The attached `-provenance.json` lets PaperBridge verify the origin of either executable during an in-app update.
+            - Each executable has a SHA-256 checksum. ${{ steps.release-assets.outputs.signature_note }}
+
+            You can open and annotate PDFs immediately. Use **Local AI setup** to install Ollama and the translation model when you first need local AI. MinerU is optional for scanned PDFs and structured extraction.
+
+            See the [Windows README](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/windows/README.md) for changes and setup details.
+          files: |
+            windows/release/PaperBridge-Windows-*-x64-*.exe
+            windows/release/PaperBridge-Windows-*-x64-*.exe.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  attest-windows-release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: PaperBridge-Windows
+          path: built
+      - name: Sign the build provenance of both Windows executables
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: 'built/PaperBridge-Windows-*-x64-*.exe'
+          create-storage-record: false
+      - name: Name the build proof for the release
+        env:
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          cp -- "$BUNDLE_PATH" "PaperBridge-Windows-${GITHUB_REF_NAME#windows-v}-provenance.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-provenance
+          path: PaperBridge-Windows-*-provenance.json
+          if-no-files-found: error
+
+  stage-build-provenance:
+    needs: attest-windows-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-build-provenance
+      - name: Attach the signed build proof to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          name="PaperBridge-Windows-${GITHUB_REF_NAME#windows-v}-provenance.json"
+          assets=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          if ! grep -Fxq "$name" <<< "$assets"; then
+            gh release upload "$GITHUB_REF_NAME" "$name" --repo "$GITHUB_REPOSITORY"
+          fi
+
+  verify-public-download:
+    outputs:
+      release_feed: ${{ steps.public-download.outputs.release_feed }}
+    needs: [build, stage-build-provenance]
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: windows-latest
+    timeout-minutes: 12
+    permissions:
+      attestations: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify both public Windows executables
+        id: public-download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        working-directory: windows
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $dir = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'Public downloads')
+          $tag = "windows-v$version"
+          $response = Invoke-WebRequest "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } -SkipHttpErrorCheck
+          if ($response.StatusCode -ne 200) { throw "Could not read release $tag (HTTP $($response.StatusCode))" }
+          $release = $response.Content | ConvertFrom-Json
+          if ($release.tag_name -cne $tag -or $release.draft) { throw "Expected publicly downloadable release $tag" }
+          $proofName = "PaperBridge-Windows-$version-provenance.json"
+          $proof = Join-Path $dir.FullName $proofName
+          Invoke-WebRequest "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$proofName" -OutFile $proof -MaximumRetryCount 3
+          $feed = [ordered]@{ version = $version; files = [ordered]@{} }
+          foreach ($kind in @('Portable', 'Setup')) {
+            $name = "PaperBridge-Windows-$version-x64-$kind.exe"
+            $asset = @($release.assets | Where-Object name -eq $name)
+            if ($asset.Count -ne 1) { throw "Expected exactly one $name" }
+            $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag/$name"
+            $file = Join-Path $dir.FullName $name
+            Invoke-WebRequest $url -OutFile $file -MaximumRetryCount 3
+            Invoke-WebRequest "$url.sha256" -OutFile "$file.sha256" -MaximumRetryCount 3
+            $download = Get-Item -LiteralPath $file
+            if ($download.Length -ne $asset[0].size -or $download.VersionInfo.ProductVersion -notin @($version, "$version.0")) {
+              throw "Unexpected size or product version for $name"
+            }
+            $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset[0].digest -cne "sha256:$hash" -or (Get-Content "$file.sha256" -Raw).Trim() -cne "$hash  $name") {
+              throw "Public checksum mismatch for $name"
+            }
+            gh attestation verify $file --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/windows.yml" --source-ref $env:GITHUB_REF --source-digest $env:GITHUB_SHA --deny-self-hosted-runners
+            if ($LASTEXITCODE -ne 0) { throw "GitHub build provenance verification failed for $name" }
+            gh attestation verify $file --bundle $proof --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/windows.yml" --source-ref $env:GITHUB_REF --source-digest $env:GITHUB_SHA --deny-self-hosted-runners
+            if ($LASTEXITCODE -ne 0) { throw "Public build proof verification failed for $name" }
+            $feed.files[$kind] = [ordered]@{ size = $download.Length; sha256 = $hash }
+          }
+          "portable=$(Join-Path $dir.FullName "PaperBridge-Windows-$version-x64-Portable.exe")" >> $env:GITHUB_OUTPUT
+          "release_feed=$($feed | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
+      - uses: actions/setup-node@v4
+        if: steps.public-download.outputs.portable != ''
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+      - uses: actions/download-artifact@v4
+        if: steps.public-download.outputs.portable != ''
+        with:
+          name: mac-reading-reference
+          path: ${{ runner.temp }}/mac-reference
+      - name: Open both public downloads and check the installed reader against macOS
+        if: steps.public-download.outputs.portable != ''
+        shell: pwsh
+        working-directory: windows
+        env:
+          PUBLIC_PORTABLE: ${{ steps.public-download.outputs.portable }}
+        run: |
+          npm ci --ignore-scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          ./tests/check-distribution.ps1 -Directory (Split-Path $env:PUBLIC_PORTABLE) -Version $version -MacReference (Join-Path $env:RUNNER_TEMP 'mac-reference/mac-reference.json')
+      - name: Read a paper offline with the publicly downloaded Portable
+        if: steps.public-download.outputs.portable != ''
+        shell: pwsh
+        working-directory: windows
+        env:
+          PUBLIC_PORTABLE: ${{ steps.public-download.outputs.portable }}
+        run: |
+          node tests/portable-relaunch-pdf.cjs "$env:PUBLIC_PORTABLE"
+
+  verify-update-handoff:
+    needs: verify-public-download
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/windows-update-handoff.yml
+    with:
+      release_feed: ${{ needs.verify-public-download.outputs.release_feed }}
+
+  publish-update-feed:
+    needs: [verify-public-download, verify-update-handoff]
+    if: github.repository == 'haoyunLi/PaperBridge' && startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/github-script@v8
+        env:
+          VERIFIED_RELEASE: ${{ needs.verify-public-download.outputs.release_feed }}
+        with:
+          script: |
+            const { publishReleaseFeed } = require('./windows/scripts/publish-release-feed.cjs');
+            const { publishDownloadPage } = require('./windows/scripts/publish-download-page.cjs');
+            const verified = { repos: github.rest.repos, repo: context.repo,
+              ref: context.ref, feed: JSON.parse(process.env.VERIFIED_RELEASE) };
+            core.info(await publishReleaseFeed({ ...verified, promotePrerelease: true }));
+            core.info(await publishDownloadPage(verified));
+            core.info(await publishDownloadPage({ ...verified, windowsGuide: true }));
+            core.info(await publishDownloadPage({ ...verified, windowsHomepage: true }));

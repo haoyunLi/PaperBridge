@@ -1,0 +1,60 @@
+.reading-appearance-trigger {
+  anchor-name: --reading-appearance-trigger;
+}
+
+.reading-appearance-popover {
+  position: fixed;
+  position-anchor: --reading-appearance-trigger;
+  inset: auto;
+  top: calc(anchor(bottom) + 8px);
+  right: anchor(right);
+  width: min(300px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  margin: 0;
+  padding: 16px;
+  border: 1px solid #cfc6b8;
+  border-radius: 10px;
+  background: #fffdf8;
+  color: #122033;
+  box-shadow: 0 12px 30px #12203326;
+  overflow: auto;
+}
+
+.reading-appearance-popover h2 {
+  margin: 0 0 14px;
+  font-size: 15px;
+}
+
+.reading-appearance-popover .reading-appearance-help {
+  margin: 12px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #56606c;
+}
+
+.reading-appearance-sliders {
+  display: grid;
+  gap: 12px;
+}
+
+.reading-appearance-sliders .reading-appearance-control {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.reading-appearance-value {
+  color: #56606c;
+  font-variant-numeric: tabular-nums;
+}
+
+.reading-appearance-sliders input[type=range] {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  accent-color: #0a59d6;
+}

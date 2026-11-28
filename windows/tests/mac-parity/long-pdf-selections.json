@@ -1,0 +1,16 @@
+[
+  {
+    "name": "Single page",
+    "first": 2,
+    "last": 2,
+    "start": "This paper focuses on these",
+    "end": "the date of download."
+  },
+  {
+    "name": "Across pages",
+    "first": 2,
+    "last": 3,
+    "start": "Many of our recommendations",
+    "end": "Decide on communication strategies"
+  }
+]

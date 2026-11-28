@@ -1,0 +1,220 @@
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { _electron: electron } = require('playwright-core');
+
+async function waitFor(predicate, label, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try { if (await predicate()) return; } catch { /* the atomic file may be between revisions */ }
+    await new Promise(resolve => setTimeout(resolve, 30));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function selectText(page, selector, quote) {
+  await page.evaluate(({ selector, quote }) => {
+    const host = document.querySelector(selector);
+    const source = host?.textContent || '';
+    const offset = source.indexOf(quote);
+    if (offset < 0 || offset !== source.lastIndexOf(quote)) throw new Error(`Expected one exact quote: ${quote}`);
+    const range = document.createRange();
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    let cursor = 0;
+    let started = false;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const end = cursor + node.textContent.length;
+      if (!started && offset < end) { range.setStart(node, offset - cursor); started = true; }
+      if (started && offset + quote.length <= end) { range.setEnd(node, offset + quote.length - cursor); break; }
+      cursor = end;
+    }
+    const selected = window.getSelection(); selected.removeAllRanges(); selected.addRange(range);
+    host.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }, { selector, quote });
+  await page.waitForFunction(text => document.querySelector('.inspector blockquote')?.textContent === text, quote);
+}
+
+async function launch(root, workspace) {
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ executablePath, args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const page = await app.firstWindow({ timeout: 20000 });
+  page.setDefaultTimeout(15000);
+  await page.bringToFront();
+  await page.setViewportSize({ width: 1320, height: 900 });
+  await page.locator('#block-1').waitFor({ timeout: 20000 });
+  return { app, page };
+}
+
+async function run() {
+  const root = path.resolve(__dirname, '..');
+  const artifacts = path.join(root, 'test-artifacts');
+  fs.mkdirSync(artifacts, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'note-autosave-'));
+  const progress = message => fs.appendFileSync(path.join(workspace, 'progress.log'), message + '\n');
+  fs.mkdirSync(path.join(workspace, 'papers'), { recursive: true });
+  const id = crypto.createHash('sha256').update('PaperBridge note autosave fixture').digest('hex');
+  const paperPath = path.join(workspace, 'papers', `${id}.json`);
+  const settings = {
+    ollamaBaseURL: 'http://127.0.0.1:11434', translationModel: 'test:1b', summaryModel: 'test:1b', explainModel: 'test:1b', quickLookupModel: 'test:1b',
+    sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', autoCheckUpdates: false, onboardingCompletedVersion: 1
+  };
+  const fixture = {
+    id, name: 'Note autosave fixture', type: 'text', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+    taskSettings: settings, explanationLanguage: 'English', inspectorOpen: true, extraction: 'Pasted text', position: { block: 1, tab: 'Reader', displayMode: 'source' },
+    blocks: [{ id: 1, text: 'Alpha passage has a Beta control sentence.', translation: '', status: 'pending',
+      notes: [{ id: 'stale', text: 'Alpha passage', offset: 0, kind: 'source', body: 'review me', needsReview: true }],
+      highlights: [{ id: 'highlight', text: 'Alpha passage', offset: 0, color: 'amber' }] }]
+  };
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify(settings));
+  fs.writeFileSync(paperPath, JSON.stringify(fixture));
+  fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
+  const readPaper = () => JSON.parse(fs.readFileSync(paperPath, 'utf8'));
+
+  let app;
+  let page;
+  try {
+    progress('launching the reader');
+    ({ app, page } = await launch(root, workspace));
+    progress('checking keyboard selection');
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    await page.locator('.reader-top .search').focus();
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Reader text');
+    await page.keyboard.press('Shift+ArrowRight');
+    assert.equal(await page.locator('.inspector blockquote').textContent(), 'A');
+    await page.keyboard.press('ArrowLeft');
+    await page.locator('.inspector blockquote').waitFor({ state: 'detached' });
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    const textarea = page.getByPlaceholder('What should you remember?');
+    assert.equal(await textarea.inputValue(), '', 'review-needed note must not populate a new editing session');
+    assert.equal(await page.evaluate(() => CSS.highlights.get('paperbridge-note')?.size || 0), 0, 'review-needed note must stay out of the text');
+
+    progress('editing a note and undoing changes');
+    const exactBody = '  first draft with spaces  \n';
+    await textarea.fill(exactBody);
+    await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), '350 ms note autosave');
+    await page.locator('.save-status.saved').waitFor();
+    assert.equal(readPaper().blocks[0].highlights.length, 1);
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])][0]?.toString()), 'Alpha passage');
+    await textarea.blur();
+
+    await textarea.fill('edit one');
+    await textarea.fill('edit two');
+    await textarea.fill('edit three');
+    await page.getByRole('button', { name: 'Save note', exact: true }).click();
+    await page.getByRole('button', { name: 'Undo last change', exact: true }).click();
+    await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), 'one undo for one typing session');
+
+    await textarea.fill('New edit still focused when undo is invoked');
+    await waitFor(() => app.evaluate(({ Menu }) => Menu.getApplicationMenu().getMenuItemById('command:undoAnnotation').enabled), 'annotation menu enabled for unblurred note');
+    await app.evaluate(({ Menu, BrowserWindow }) => {
+      const item = Menu.getApplicationMenu().getMenuItemById('command:undoAnnotation');
+      item.click(item, BrowserWindow.getAllWindows()[0]);
+    });
+    await waitFor(async () => await textarea.inputValue() === exactBody, 'native annotation undo restores focused editor');
+    await waitFor(() => readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === exactBody), 'native undo persists restored text');
+
+    progress('switching selection and clearing an annotation');
+    await selectText(page, '#block-1 .source-text', 'Beta control');
+    await page.getByPlaceholder('What should you remember?').fill('selection switch flushes me');
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    await waitFor(() => readPaper().blocks[0].notes.some(item => item.text === 'Beta control' && item.body === 'selection switch flushes me'), 'selection-switch flush');
+
+    await textarea.fill('');
+    await waitFor(() => !readPaper().blocks[0].notes.some(item => !item.needsReview && item.text === 'Alpha passage'), 'empty-body note removal');
+    assert.equal(readPaper().blocks[0].highlights.length, 1, 'clearing a note must retain its highlight');
+    assert.equal(await page.evaluate(() => [...(CSS.highlights.get('paperbridge-note') || [])].map(range => range.toString()).join()), 'Beta control');
+    assert.equal(readPaper().blocks[0].notes.some(item => item.id === 'stale' && item.needsReview), true, 'review record remains isolated');
+
+    await textarea.fill('flush this exact body on close');
+    progress('closing the reader with a pending note');
+    await app.close();
+    app = null;
+    assert.equal(readPaper().blocks[0].notes.some(item => !item.needsReview && item.body === 'flush this exact body on close'), true, 'normal quit must flush a pending note');
+    assert.deepEqual(pageErrors, []);
+
+    progress('reopening the reader and testing retry after a disk error');
+    ({ app, page } = await launch(root, workspace));
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    assert.equal(await page.getByPlaceholder('What should you remember?').inputValue(), 'flush this exact body on close');
+    const papers = path.dirname(paperPath);
+    const moved = path.join(workspace, 'temporarily-unavailable-papers');
+    fs.renameSync(papers, moved);
+    fs.writeFileSync(papers, 'The note test temporarily occupies the papers directory.');
+    const editor = page.getByRole('textbox', { name: 'Note for selected passage' });
+    const hint = page.locator('#note-save-hint');
+    const retry = page.locator('.inspector').getByRole('button', { name: 'Retry note save', exact: true });
+    try {
+      await Promise.all([
+        hint.filter({ hasText: 'Saving note…' }).waitFor(),
+        editor.fill('retry keeps this exact note')
+      ]);
+      await page.locator('.save-status.error').waitFor({ timeout: 10000 });
+      await hint.filter({ hasText: 'Not saved to disk' }).waitFor();
+      await retry.click();
+      await page.locator('.save-status.error').waitFor();
+      assert.equal(await editor.inputValue(), 'retry keeps this exact note');
+      const disk = JSON.parse(fs.readFileSync(path.join(moved, path.basename(paperPath)), 'utf8'));
+      assert.ok(disk.blocks[0].notes.some(item => item.body === 'flush this exact body on close'));
+    } finally {
+      fs.unlinkSync(papers);
+      fs.renameSync(moved, papers);
+    }
+    await retry.click();
+    await hint.filter({ hasText: 'Notes save automatically' }).waitFor();
+    await page.locator('.save-status.saved').waitFor();
+    assert.equal(readPaper().blocks[0].notes.some(item => item.body === 'retry keeps this exact note'), true);
+    await app.close();
+    app = null;
+    ({ app, page } = await launch(root, workspace));
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    assert.equal(await page.getByRole('textbox', { name: 'Note for selected passage' }).inputValue(), 'retry keeps this exact note');
+    await page.screenshot({ path: path.join(artifacts, 'note-autosave.png') });
+    progress('typing a last note while a preference is finishing on close');
+    const lastNote = 'One more observation while the reader is saving.';
+    await app.evaluate(({ ipcMain }, lastNote) => {
+      const settingsSave = ipcMain._invokeHandlers.get('settings:save');
+      const paperSave = ipcMain._invokeHandlers.get('paper:save');
+      ipcMain.removeHandler('settings:save');
+      ipcMain.removeHandler('paper:save');
+      ipcMain.handle('settings:save', async (event, value) => {
+        if (value.autoCheckUpdates) await new Promise(resolve => { global.releaseNoteTestSettings = resolve; });
+        return settingsSave(event, value);
+      });
+      ipcMain.handle('paper:save', async (event, snapshot) => {
+        if (snapshot.blocks[0].notes.some(item => item.body === lastNote)) await new Promise(resolve => setTimeout(resolve, 1000));
+        return paperSave(event, snapshot);
+      });
+    }, lastNote);
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Updates', exact: true }).click();
+    await page.getByLabel(/Check official Windows releases/).check();
+    await waitFor(() => app.evaluate(() => Boolean(global.releaseNoteTestSettings)), 'settings write started');
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+    await selectText(page, '#block-1 .source-text', 'Alpha passage');
+    await page.evaluate(() => {
+      window.closeStartedForNoteTest = new Promise(resolve => window.paperBridge.onPrepareClose(resolve));
+    });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await page.evaluate(() => window.closeStartedForNoteTest);
+    await page.getByRole('textbox', { name: 'Note for selected passage' }).fill(lastNote);
+    const lastClose = app.waitForEvent('close', { timeout: 15000 });
+    await app.evaluate(() => global.releaseNoteTestSettings());
+    await lastClose; app = null;
+    assert.ok(readPaper().blocks[0].notes.some(item => item.body === lastNote), 'close must save an edit received during a parallel settings write');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json'), 'utf8')).autoCheckUpdates, true);
+    console.log('Note autosave checks passed: exact whitespace, review isolation, 350 ms debounce, session undo, selection flush, clear semantics, quit flush, sticky status and retry.');
+  } catch (error) {
+    progress(String(error.stack || error));
+    await page?.screenshot({ path: path.join(workspace, 'failure.png'), timeout: 5000 }).catch(() => {});
+    const retry = page?.getByRole('button', { name: 'Retry save', exact: true });
+    if (await retry?.isVisible().catch(() => false)) await retry.click({ timeout: 3000 }).catch(() => {});
+    throw error;
+  } finally {
+    await app?.close().catch(() => {});
+  }
+}
+
+run().catch(error => { console.error(error); process.exitCode = 1; });

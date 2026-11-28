@@ -1,0 +1,73 @@
+.sidebar-scroll { color-scheme: dark; scrollbar-color: #526982 #122033; }
+.sidebar-library-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  margin: 0 0 12px;
+  border: 1px solid #304966;
+  border-radius: 7px;
+  background: #182a41;
+  color: inherit;
+  font: 13px/1.4 "Segoe UI", sans-serif;
+  text-align: left;
+}
+.sidebar-library-button:hover:not(:disabled) { background: #243a56; }
+.document-details { margin-bottom: 12px; }
+.document-details summary {
+  padding: 6px 2px;
+  color: #dce6f3;
+  font-size: 13px;
+  cursor: pointer;
+}
+.document-details[open] summary { margin-bottom: 8px; }
+.document-details .side-group { margin-bottom: 0; }
+.document-details .side-group + .side-group { margin-top: 12px; }
+.document-outline .side-label > span, .document-bookmarks .side-label > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.document-outline .outline-row, .document-bookmarks .outline-row {
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border: 0;
+  font: 13px/1.4 "Segoe UI", sans-serif;
+  min-width: 0;
+}
+.document-outline .outline-row + .outline-row { margin-top: 4px; }
+.document-outline .outline-row::before {
+  content: "";
+  flex: none;
+  width: 2px;
+  height: 18px;
+  background: transparent;
+}
+.document-outline .outline-row[aria-current="location"]::before { background: #84b4fc; }
+.document-outline .outline-title, .document-bookmarks .outline-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.document-outline .outline-row > small {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.document-bookmarks .bookmark-row > span { min-width: 0; }
+.document-bookmarks .bookmark-row small { display: block; margin-top: 3px; font-size: 11px; }
+.document-bookmarks .bookmark-row > svg { flex: none; }
+.document-outline .outline-row:focus-visible, .document-bookmarks .outline-row:focus-visible,
+.document-details summary:focus-visible, .sidebar-library-button:focus-visible {
+  outline: 2px solid #84b4fc;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+@media (forced-colors: active) {
+  .document-outline .outline-row[aria-current="location"]::before { background: Highlight; forced-color-adjust: none; }
+}

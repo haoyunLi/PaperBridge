@@ -1,0 +1,1280 @@
+{
+  "sourceSHA256": "ed60d4b71c36d650757c7adfe1d52afb5b6b125b7b747f74f79d5ad80e94c017",
+  "blocks": [
+    {
+      "id": 1,
+      "page": 1,
+      "text": "PERSPECTIVE",
+      "heading": true,
+      "translation": "观点"
+    },
+    {
+      "id": 2,
+      "page": 1,
+      "text": "Good enough practices in scientific computing",
+      "translation": "科学计算中的“足够好”实践"
+    },
+    {
+      "id": 3,
+      "page": 1,
+      "text": "☯ ☯ ☯ ☯ ☯ Greg Wilson1 *, Jennifer Bryan2 , Karen Cranston3 , Justin Kitzes4 , Lex Nederbragt5 , ☯",
+      "translation": "☯ ☯ ☯ ☯ ☯ 格雷·威尔逊1 *, 珍妮弗·布莱恩2 , 凯伦·克兰斯顿3 , 贾斯汀·基茨4 , 莱克斯·内德布拉格5"
+    },
+    {
+      "id": 4,
+      "page": 1,
+      "text": "Tracy K. Teal6",
+      "heading": true,
+      "translation": "特蕾西·凯·蒂尔6"
+    },
+    {
+      "id": 5,
+      "page": 1,
+      "text": "1 Software Carpentry Foundation, Austin, Texas, United States of America, 2 RStudio and Department of",
+      "heading": true,
+      "translation": "1. 软件Carpentry 基金会，美国德克萨斯州奥斯汀"
+    },
+    {
+      "id": 6,
+      "page": 1,
+      "text": "Statistics, University of British Columbia, Vancouver, British Columbia, Canada, 3 Department of Biology, Duke University, Durham, North Carolina, United States of America, 4 Energy and Resources Group, University of California, Berkeley, Berkeley, California, United States of America, 5 Centre for Ecological and Evolutionary Synthesis, University of Oslo, Oslo, Norway, 6 Data Carpentry, Davis, California, United States of America",
+      "translation": "统计学，英属哥伦比亚大学，温哥华，不列颠哥伦比亚省，加拿大； 3 杜克大学生物学系，达勒姆，北卡罗来纳州，美国； 4 加州大学伯克利分校能源与资源研究组，伯克利，加利福尼亚州，美国； 5 奥斯陆大学生态与进化合成中心，奥斯陆，挪威； 6 数据Carpentry，得文，加利福尼亚州，美国"
+    },
+    {
+      "id": 7,
+      "page": 1,
+      "text": "☯ These authors contributed equally to this work.* gvwilson@software-carpentry.org",
+      "translation": "☯ 这些作者对这项工作贡献均等。* gvwilson@software-carpentry.org"
+    },
+    {
+      "id": 8,
+      "page": 1,
+      "text": "Author summary",
+      "translation": "作者摘要"
+    },
+    {
+      "id": 9,
+      "page": 1,
+      "text": "Computers are now essential in all branches of science, but most researchers are never taught the equivalent of basic lab skills for research computing. As a result, data can get lost, analyses can take much longer than necessary, and researchers are limited in how effectively they can work with software and data. Computing workflows need to follow a1111111111 the same practices as lab projects and notebooks, with organized data, documented steps, a1111111111 and the project structured for reproducibility, but researchers new to computing often a1111111111 don’t know where to start. This paper presents a set of good computing practices that a1111111111 every researcher can adopt, regardless of their current level of computational skill. These a1111111111 practices, which encompass data management, programming, collaborating with colleagues, organizing projects, tracking work, and writing manuscripts, are drawn from a wide variety of published sources from our daily lives and from our work with volunteer organizations that have delivered workshops to over 11,000 people since 2010.",
+      "translation": "计算机已成为所有科学领域不可或缺的工具，但大多数研究人员从未接受过与研究计算相关的基本实验室技能的培训。因此，数据可能会丢失，分析所需的时间可能会大大增加，并且研究人员在软件和数据处理方面的能力受到限制。计算工作流程需要遵循与实验室项目和笔记本相同的实践，包括有组织的、记录的步骤，以及项目结构化以实现可重复性，但对于刚接触计算的研究人员，他们往往不知道从何入手。本文提出了一套适用于所有研究人员的良好计算实践，无论其当前的计算技能水平如何。这些实践涵盖数据管理、编程、与同事合作、组织项目、跟踪工作以及撰写论文等内容，这些实践均来自各种已发表的来源，包括我们日常生活中以及我们与自愿组织合作，该组织自 2010 年以来，向超过 11,000 人提供工作坊。"
+    },
+    {
+      "id": 10,
+      "page": 1,
+      "text": "OPEN ACCESS",
+      "heading": true,
+      "translation": "开放获取"
+    },
+    {
+      "id": 11,
+      "page": 1,
+      "text": "Citation: Wilson G, Bryan J, Cranston K, Kitzes J,",
+      "heading": true,
+      "translation": "引用：Wilson G, Bryan J, Cranston K, Kitzes J,"
+    },
+    {
+      "id": 12,
+      "page": 1,
+      "text": "Nederbragt L, Teal TK (2017) Good enough practices in scientific computing. PLoS Comput Biol 13(6): e1005510. https://doi.org/10.1371/ Overview journal.pcbi.1005510 We present a set of computing tools and techniques that every researcher can and should conEditor: Francis Ouellette, Ontario Institute for sider adopting. These recommendations synthesize inspiration from our own work, from the",
+      "translation": "Nederbragt L, Teal TK (2017) 科学计算中的“足够好”实践。 *PLoS Comput Biol* 13(6): e1005510. https://doi.org/10.1371/ Overview journal.pcbi.1005510。 我们提出了一套计算工具和技术，每位研究人员都应该采用。 这些建议是基于我们自己的工作，以及其他相关研究的综合。 编辑：弗朗西斯·欧勒特，安大略研究所"
+    },
+    {
+      "id": 13,
+      "page": 1,
+      "text": "Cancer Research, CANADA",
+      "heading": true,
+      "translation": "癌症研究, 加拿大"
+    },
+    {
+      "id": 14,
+      "page": 1,
+      "text": "experiences of the thousands of people who have taken part in Software Carpentry and Data Published: June 22, 2017 Carpentry workshops over the past 6 years, and from a variety of other guides. Our recomCopyright: © 2017 Wilson et al. This is an open mendations are aimed specifically at people who are new to research computing. access article distributed under the terms of the Creative Commons Attribution License, which",
+      "translation": "基于过去 6 年内参加软件Carpentry和数据工作坊的数千名参与者的经验，以及来自各种其他指南的经验。 我们的建议专门针对那些刚接触研究计算的人。\n版权：© 2017 Wilson 等。 这是一篇开放获取文章，根据 Creative Commons Attribution 许可进行分发。"
+    },
+    {
+      "id": 15,
+      "page": 1,
+      "text": "Introduction",
+      "heading": true,
+      "translation": "引言"
+    },
+    {
+      "id": 16,
+      "page": 1,
+      "text": "permits unrestricted use, distribution, and reproduction in any medium, provided the original Three years ago, a group of researchers involved in Software Carpentry and Data Carpentry author and source are credited. wrote a paper called \"Best Practices for Scientific Computing\" [1]. That paper provided recomFunding: The authors received no specific funding mendations for people who were already doing significant amounts of computation in their for this work. research. However, as computing has become an essential part of science for all researchers, Competing interests: The authors have declared there is a larger group of people new to scientific computing, and the question then becomes, that no competing interests exist. \"where to start?\"",
+      "translation": "允许在任何媒介中，不受限制地使用、分发和复制，前提是注明原始作者和来源。 三年前，一组参与软件Carpentry和数据Carpentry的作者撰写了一篇名为“科学计算的最佳实践”的论文 [1]。 这篇论文为那些已经进行大量计算的研究人员提供了建议。 然而，随着计算已成为所有研究人员科学研究中不可或缺的一部分，因此，出现了一个更大的新参与者群体，问题变成了“该如何开始？”\n\nFunding: 作者未收到本次工作的任何特定资助。\nCompeting interests: 作者已声明不存在任何利益冲突。"
+    },
+    {
+      "id": 17,
+      "page": 2,
+      "text": "This paper focuses on these first accessible skills and perspectives—the \"good enough\" practices—for scientific computing: a minimum set of tools and techniques that we believe every researcher can and should consider adopting. It draws inspiration from many sources [2–8], from our personal experience, and from the experiences of the thousands of people who have taken part in Software Carpentry and Data Carpentry workshops over the past 6 years.",
+      "translation": "本文重点关注这些易于获得的技能和视角——“足够好”的实践——在科学计算领域：一套我们认为每个研究人员都应该考虑采用的，最小化的工具和技术。本文借鉴了许多来源 [2–8]，包括我们的个人经验，以及在过去 6 年内参加软件Carpentry和数据Carpentry工作坊的数千人的经验。"
+    },
+    {
+      "id": 18,
+      "page": 2,
+      "text": "Our intended audience is researchers who are working alone or with a handful of collaborators on projects lasting a few days to several months. A practice is included in our list if large numbers of researchers use it and large numbers of people are still using it months after first trying it out. We include the second criterion because there is no point in recommending something that people won’t actually adopt.",
+      "translation": "我们的目标读者是那些独立工作或与少数合作者合作，进行数天到数月项目的研究人员。如果一项实践被大量研究人员采用，并且在尝试后几个月仍然被大量人使用，我们就会将其列入我们的清单。我们包含第二个标准，因为没有必要推荐那些人们实际上不会采用的东西。"
+    },
+    {
+      "id": 19,
+      "page": 2,
+      "text": "Many of our recommendations are for the benefit of the collaborator every researcher cares about most: their future self (as the joke goes, yourself from 3 months ago doesn’t answer email. . .). Change is hard, and if researchers don’t see those benefits quickly enough to justify the pain, they will almost certainly switch back to their old way of doing things. This rules out many practices, such as code review, that we feel are essential for larger-scale development(Section 6).",
+      "translation": "我们许多建议都是为了让合作者受益，而合作者最关心的就是：他们的未来自己（正如玩笑所说，3个月前的人不会回复邮件……）。 改变是艰难的，如果研究人员没有在短时间内看到足够的益处来证明其价值，他们几乎肯定会回到原来的做法。 这排除了许多做法，例如代码审查，这些做法我们认为对于大规模开发至关重要（第6节）。"
+    },
+    {
+      "id": 20,
+      "page": 2,
+      "text": "We organize our recommendations into the following topics (Box 1):",
+      "translation": "我们将我们的建议组织成以下主题（参见图 1）："
+    },
+    {
+      "id": 21,
+      "page": 2,
+      "text": "• Data management: saving both raw and intermediate forms, documenting all steps, creating tidy data amenable to analysis.",
+      "translation": "• 数据管理：保存原始和中间形式，记录所有步骤，创建适合分析的整洁数据。"
+    },
+    {
+      "id": 22,
+      "page": 2,
+      "text": "• Software: writing, organizing, and sharing scripts and programs used in an analysis.",
+      "translation": "• 软件：编写、组织和共享用于分析的脚本和程序。"
+    },
+    {
+      "id": 23,
+      "page": 2,
+      "text": "• Collaboration: making it easy for existing and new collaborators to understand and contribute to a project.",
+      "translation": "• 协作： 方便现有和新参与者理解并参与项目。"
+    },
+    {
+      "id": 24,
+      "page": 2,
+      "text": "• Project organization: organizing the digital artifacts of a project to ease discovery and understanding.",
+      "translation": "• 项目组织：对项目中的数字资料进行组织，以方便查找和理解。"
+    },
+    {
+      "id": 25,
+      "page": 2,
+      "text": "• Tracking changes: recording how various components of your project change over time.",
+      "translation": "• 跟踪变更：记录项目各个组成部分随时间的变化情况。"
+    },
+    {
+      "id": 26,
+      "page": 2,
+      "text": "• Manuscripts: writing manuscripts in a way that leaves an audit trail and minimizes manual merging of conflicts.",
+      "translation": "• 稿件：以一种方式撰写稿件，以便留下可追溯的记录，并最大限度地减少手动冲突合并。"
+    },
+    {
+      "id": 27,
+      "page": 2,
+      "text": "Data management Data within a project may need to exist in various forms, ranging from what first arrives to what is actually used for the primary analyses. Our recommendations have 2 main themes.",
+      "translation": "数据管理 项目中的数据可能以多种形式存在，从最初接收到的数据到实际用于主要分析的数据。 我们的建议主要分为两个方面。"
+    },
+    {
+      "id": 28,
+      "page": 2,
+      "text": "One is to work towards ready-to-analyze data incrementally, documenting both the intermediate data and the process. We also describe the key features of \"tidy data\", which can be a powerful accelerator for analysis [5, 8].",
+      "translation": "第一种方法是逐步构建可分析的数据，同时记录中间数据和流程。我们还描述了“整洁数据”的关键特征，这可以成为分析的强大加速器 [5, 8]。"
+    },
+    {
+      "id": 29,
+      "page": 2,
+      "text": "• Save the raw data (1a). Where possible, save data as originally generated (i.e., by an instrument or from a survey). It is tempting to overwrite raw data files with cleaned-up versions, but faithful retention is essential for rerunning analyses from start to finish, for recovery from analytical mishaps, and for experimenting without fear. Consider changing file permissions to read-only or using spreadsheet protection features so that it is harder to damage raw data by accident or to hand edit it in a moment of weakness.",
+      "translation": "• 保存原始数据 (1a)。 尽可能以原始生成的方式保存数据（即，通过仪器或调查）。 倾向于用清理后的版本覆盖原始数据文件，但保持原始数据的完整性对于从头到尾重新运行分析、从分析错误中恢复以及在没有顾虑的情况下进行实验至关重要。 考虑更改文件权限为只读，或使用电子表格保护功能，以防止意外损坏原始数据或在情绪低落时随意修改。"
+    },
+    {
+      "id": 30,
+      "page": 2,
+      "text": "Some data will be impractical to manage in this way. For example, you should avoid making local copies of large, stable databases. In that case, record the exact procedure used to obtain the raw data, as well as any other pertinent information, such as an official version number or the date of download.",
+      "translation": "某些数据可能难以以这种方式进行管理。例如，您应避免创建大型、稳定的数据库的本地副本。在这种情况下，请记录用于获取原始数据的确切步骤，以及任何其他相关信息，例如官方版本号或下载日期。"
+    },
+    {
+      "id": 31,
+      "page": 3,
+      "text": "Box 1. Summary of practices",
+      "translation": "图 1. 实践总结"
+    },
+    {
+      "id": 32,
+      "page": 3,
+      "text": "1. Data management",
+      "translation": "1. 数据管理"
+    },
+    {
+      "id": 33,
+      "page": 3,
+      "text": "a Save the raw data. b Ensure that raw data are backed up in more than one location. c Create the data you wish to see in the world. d Create analysis-friendly data. e Record all the steps used to process data. f Anticipate the need to use multiple tables, and use a unique identifier for every record. g Submit data to a reputable DOI-issuing repository so that others can access and cite it.",
+      "translation": "a 保存原始数据。\nb 确保原始数据在多个位置进行备份。\nc 创建您希望在世界中看到的数据。\nd 创建便于分析的数据。\ne 记录所有用于处理数据的步骤。\nf 预先考虑需要使用多个表格的情况，并为每个记录使用唯一的标识符。\ng 将数据提交到信誉良好的 DOI 发布机构，以便其他人可以访问和引用它。"
+    },
+    {
+      "id": 34,
+      "page": 3,
+      "text": "2. Software",
+      "translation": "2. 软件"
+    },
+    {
+      "id": 35,
+      "page": 3,
+      "text": "a Place a brief explanatory comment at the start of every program. b Decompose programs into functions. c Be ruthless about eliminating duplication. d Always search for well-maintained software libraries that do what you need. e Test libraries before relying on them. f Give functions and variables meaningful names. g Make dependencies and requirements explicit. h Do not comment and uncomment sections of code to control a program’s behavior. i Provide a simple example or test data set. j Submit code to a reputable DOI-issuing repository.",
+      "translation": "a 在每个程序开头添加简短的解释性注释。\nb 将程序分解为函数。\nc 尽可能地消除重复代码。\nd 始终寻找经过良好维护的软件库，以满足您的需求。\ne 在使用库之前进行测试。\nf 为函数和变量赋予有意义的名称。\ng 明确说明依赖关系和要求。\nh 不要通过注释和取消注释代码来控制程序的行为。\nj 提供一个简单的示例或测试数据集。\nj 将代码提交到信誉良好的 DOI 发布库。"
+    },
+    {
+      "id": 36,
+      "page": 3,
+      "text": "3. Collaboration",
+      "translation": "3. 合作"
+    },
+    {
+      "id": 37,
+      "page": 3,
+      "text": "a Create an overview of your project. b Create a shared \"to-do\" list for the project. c Decide on communication strategies. d Make the license explicit. e Make the project citable.",
+      "translation": "a 概述您的项目。\nb 创建一个共享的“待办事项”列表。\nc 确定沟通策略。\nd 明确许可协议。\ne 使项目可引用。"
+    },
+    {
+      "id": 38,
+      "page": 3,
+      "text": "4. Project organization",
+      "translation": "4. 项目组织"
+    },
+    {
+      "id": 39,
+      "page": 3,
+      "text": "a Put each project in its own directory, which is named after the project. b Put text documents associated with the project in the doc directory. c Put raw data and metadata in a data directory and files generated during cleanup and analysis in a results directory. d Put project source code in the src directory. e Put external scripts or compiled programs in the bin directory.",
+      "translation": "a 将每个项目放在单独的目录中，该目录名称应与项目名称相对应。\nb 将与项目相关的文本文档放在“doc”目录中。\nc 将原始数据和元数据放在“data”目录中，以及在清理和分析过程中生成的文件的目录放在“results”目录中。\nd 将项目源代码放在“src”目录中。\ne 将外部脚本或编译后的程序放在“bin”目录中。"
+    },
+    {
+      "id": 40,
+      "page": 4,
+      "text": "f Name all files to reflect their content or function.",
+      "translation": "将所有文件命名，以便反映其内容或功能。"
+    },
+    {
+      "id": 41,
+      "page": 4,
+      "text": "5. Keeping track of changes",
+      "translation": "5. 跟踪变更"
+    },
+    {
+      "id": 42,
+      "page": 4,
+      "text": "a Back up (almost) everything created by a human being as soon as it is created. b Keep changes small. c Share changes frequently. d Create, maintain, and use a checklist for saving and sharing changes to the project. e Store each project in a folder that is mirrored off the researcher’s working machine. f Add a file called CHANGELOG.txt to the project’s docs subfolder. g Copy the entire project whenever a significant change has been made. h Use a version control system.",
+      "translation": "a 尽快备份（几乎）所有由人类创建的内容。\nb 保持更改的幅度较小。\nc 频繁地分享更改。\nd 创建、维护并使用一个清单，用于保存和共享项目中的更改。\ne 将每个项目存储在与研究人员的工作机器镜像的文件夹中。\nf 在项目的文档子文件夹中添加一个名为 CHANGELOG.txt 的文件。\ng 每次进行重大更改时，复制整个项目。\nh 使用版本控制系统。"
+    },
+    {
+      "id": 43,
+      "page": 4,
+      "text": "6. Manuscripts",
+      "translation": "6. 稿件"
+    },
+    {
+      "id": 44,
+      "page": 4,
+      "text": "a Write manuscripts using online tools with rich formatting, change tracking, and reference management. b Write the manuscript in a plain text format that permits version control.",
+      "translation": "a 使用具有丰富格式、更改跟踪和参考文献管理功能的在线工具撰写稿件。\nb 以纯文本格式撰写稿件，以便进行版本控制。"
+    },
+    {
+      "id": 45,
+      "page": 4,
+      "text": "• Ensure that raw data are backed up in more than one location (1b). If external hard drives are used, store them off-site of the original location. Universities often have their own datastorage solutions, so it is worthwhile to consult with your local Information Technology (IT) group or library. Alternatively, cloud computing resources, like Amazon Simple Storage Service (Amazon S3), Google Cloud Storage, or Microsoft Azure are reasonably priced and reliable. For large data sets, for which storage and transfer can be expensive and time-con-suming, you may need to use incremental backup or specialized storage systems, and people in your local IT group or library can often provide advice and assistance on options at your university or organization as well.",
+      "translation": "• 确保原始数据存储在多个位置（1b）。如果使用外部硬盘，应将其存储在原始位置之外。许多大学都有自己的数据存储解决方案，因此与您当地的信息技术（IT）部门或图书馆咨询是有价值的。 此外，诸如亚马逊简单存储服务（Amazon S3）、谷歌云存储或微软 Azure 等云计算资源，价格合理且可靠。 对于大型数据集，其存储和传输可能成本高昂且耗时，您可能需要使用增量备份或专门的存储系统。 您的当地 IT 部门或图书馆的人员通常可以就您所在大学或组织的选项提供建议和协助。"
+    },
+    {
+      "id": 46,
+      "page": 4,
+      "text": "• Create the data you wish to see in the world (1c). Create the data set you wish you had received. The goal here is to improve machine and human readability, but not to do vigorous data filtering or add external information. Machine readability allows automatic processing using computer programs, which is important when others want to reuse your data. Specific examples of nondestructive transformations that we recommend at the beginning of analysis include the following:",
+      "translation": "• 创建您希望在世界中看到的数据 (1c)。 创建您希望收到的数据集。 这里的目标是提高机器和人类的可读性，但不是进行激进的数据过滤或添加外部信息。 机器的可读性允许使用计算机程序进行自动处理，这在其他人希望重用您的数据时非常重要。 我们建议在分析的早期进行的不破坏性转换的具体示例包括以下内容："
+    },
+    {
+      "id": 47,
+      "page": 4,
+      "text": "File formats: Convert data from closed, proprietary formats to open, nonproprietary formats that ensure machine readability across time and computing setups [9]. Good options include CSV for tabular data, JSON, YAML, or XML for nontabular data such as graphs (the nodeand-arc kind), and HDF5 for certain kinds of structured data.",
+      "translation": "文件格式：将数据从封闭、专有格式转换为开放、非专有格式，以确保在不同时间、不同计算环境中实现机器可读性 [9]。 好的选择包括：CSV 用于表格数据、JSON、YAML 或 XML 用于非表格数据（如图，例如节点和弧），以及 HDF5 用于某些类型的结构化数据。"
+    },
+    {
+      "id": 48,
+      "page": 4,
+      "text": "Variable names: Replace inscrutable variable names and artificial data codes with selfexplaining alternatives, e.g., rename variables called name1 and name2 to personal_ name and family_name, recode the treatment variable from 1 vs. 2 to untreated vs. treated, and replace artificial codes for missing data, such as \"-99,\" with NA, a code used in most programming languages to indicate that data are \"Not Available\" [10].",
+      "translation": "变量名：用更易于理解的替代方案替换难以理解的变量名和人工数据代码，例如将名为 name1 和 name2 的变量重命名为 personal_name 和 family_name，将治疗变量从 1 vs. 2 重编码为未接受治疗 vs. 接受治疗，并将用于缺失数据的人工代码（如 -99）替换为 NA，这是在大多数编程语言中用于指示“数据不可用”的代码 [10]。"
+    },
+    {
+      "id": 49,
+      "page": 5,
+      "text": "Fig 1. Example of gathering columns to create tidy data. https://doi.org/10.1371/journal.pcbi.1005510.g001",
+      "translation": "图 1. 示例：通过收集列来创建整洁的数据。 https://doi.org/10.1371/journal.pcbi.1005510.g001"
+    },
+    {
+      "id": 50,
+      "page": 5,
+      "text": "File names: Store especially useful metadata as part of the file name itself, while keeping the file name regular enough for easy pattern matching. For example, a file name like 2016-05-alaska-b.csv makes it easy for both people and programs to select by year or by location.",
+      "translation": "在文件名本身中存储特别有用的元数据，同时保持文件名足够规范，以便于模式匹配。例如，文件名如“2016-05-阿拉斯加-b.csv”可以方便地由人或程序根据年份或地点进行选择。"
+    },
+    {
+      "id": 51,
+      "page": 5,
+      "text": "• Create analysis-friendly data (1d). Analysis can be much easier if you are working with socalled \"tidy\" data [5]. Two key principles are as follows:",
+      "translation": "• 创建便于分析的数据 (1d)。如果能够使用所谓的“整洁”数据 [5]，分析将变得更加容易。以下是两个关键原则："
+    },
+    {
+      "id": 52,
+      "page": 5,
+      "text": "Make each column a variable: Don’t cram 2 variables into one; e.g., \"male_treated\" should be split into separate variables for sex and treatment status. Store units in their own variable or in metadata, e.g., \"3.4\" instead of \"3.4kg\".",
+      "translation": "**将每个变量分开：** 不要将 2 个变量合并到一个变量中；例如，“male_treated”应分别存储性别和治疗状态，而不是合并成一个变量。 将单位存储在单独的变量中，或在元数据中，例如，将“3.4”存储为“3.4kg”。"
+    },
+    {
+      "id": 53,
+      "page": 5,
+      "text": "Make each row an observation: Data often come in a wide format, because that facilitated data entry or human inspection. Imagine 1 row per field site and then columns for measurements made at each of several time points. Be prepared to gather such columns into a variable of measurements, plus a new variable for time point. Fig 1 presents an example of such a transformation.",
+      "translation": "数据通常以宽格式呈现，因为这便于数据录入或人工检查。 想象一下，每行对应一个观测点，然后列出在多个时间点所做的测量值。 准备好将这些列组合成一个测量值的变量，以及一个时间点的变量。 图 1 呈现了这种转换的一个例子。"
+    },
+    {
+      "id": 54,
+      "page": 5,
+      "text": "• Record all the steps used to process data (1e). Data manipulation is as integral to your analysis as statistical modeling and inference. If you do not document this step thoroughly, it is impossible for you or anyone else to repeat the analysis.",
+      "translation": "• 记录所有用于处理数据的步骤 (1e)。 数据处理对于您的分析至关重要，与统计建模和推论一样重要。 如果您没有充分记录这些步骤，您或任何其他人都无法重复分析。"
+    },
+    {
+      "id": 55,
+      "page": 5,
+      "text": "The best way to do this is to write scripts for every stage of data processing. This might feel frustratingly slow, but you will get faster with practice. The immediate payoff will be the ease with which you can redo data preparation when new data arrive. You can also reuse data preparation steps in the future for related projects. For very large data sets, data preparation may also include writing and saving scripts to obtain the data or subsets of the data from remote storage.",
+      "translation": "最好的方法是为数据处理的每个阶段编写脚本。 这种方法可能会让人感到效率低下，但通过实践，你会变得更加高效。 立即的收益在于，你可以轻松地在收到新数据时重新进行数据准备。 此外，你还可以将来为相关项目重复使用数据准备步骤。 对于非常大的数据集，数据准备还可能包括编写和保存脚本，以便从远程存储获取数据或数据的子集。"
+    },
+    {
+      "id": 56,
+      "page": 5,
+      "text": "Some data-cleaning tools, such as OpenRefine, provide a graphical user interface but also automatically keep track of each step in the process. When tools like these or scripting are not feasible, it’s important to clearly document every manual action (what menu was used, what column was copied and pasted, what link was clicked, etc.). Often, you can at least capture what action was taken, if not the complete why. For example, choosing a region of interest in an image is inherently interactive, but you can save the region chosen as a set of boundary coordinates.",
+      "translation": "一些数据清洗工具，如 OpenRefine，提供图形用户界面，但也能自动跟踪整个过程中的每个步骤。当使用这些工具或脚本时不可行，则重要的是清晰地记录每一步手动操作（例如，使用了哪个菜单、复制和粘贴了哪个列、点击了哪个链接等）。通常，至少可以记录采取了哪些操作，即使无法完全解释原因。例如，在图像中选择感兴趣区域是本质上交互式的，但可以将选择的区域保存为一组边界坐标。"
+    },
+    {
+      "id": 57,
+      "page": 5,
+      "text": "• Anticipate the need to use multiple tables, and use a unique identifier for every record(1f). Raw data, even if tidy, are not necessarily complete. For example, the primary data table might hold the heart rate for individual subjects at rest and after a physical challenge, identified via a subject ID. Demographic variables, such as subject age and sex, are stored in a second table and will need to be brought in via merging or lookup. This will go more smoothly if subject ID is represented in a common format in both tables, e.g., always as \"14025\" versus\"14,025\" in one table and \"014025\" in another. It is generally wise to give each record or unit a unique, persistent key and to use the same names and codes when variables in 2 data sets refer to the same thing.",
+      "translation": "• 预先考虑需要使用多个表格，并为每个记录使用唯一的标识符 (1f)。 即使原始数据看起来整洁，也不一定完整。 例如，主数据表格可能包含个体在休息和进行体力活动后心率，并通过个体 ID 进行标识。 人口统计变量，如个体年龄和性别，存储在第二个表格中，并且需要通过合并或查找来引入。 如果两个表格都以相同的格式表示个体 ID（例如，始终为“14025”而不是一个表格中的“14,025”和另一个表格中的“014025”），则会更顺利。 通常，为每个记录或单元提供唯一的、持久的键，并在 2 个数据集中的变量引用相同内容时使用相同的名称和代码。"
+    },
+    {
+      "id": 58,
+      "page": 6,
+      "text": "• Submit data to a reputable DOI-issuing repository so that others can access and cite it(1g). Your data are as much a product of your research as the papers you write and just as likely to be useful to others (if not more so). Sites such as Figshare, Dryad, and Zenodo allow others to find your work, use it, and cite it; we discuss licensing in Section 3 below. Follow your research community’s standards for how to provide metadata. Note that there are 2 types of metadata: metadata about the data set as a whole and metadata about the content within the data set. If the audience is humans, write the metadata (the README file) for humans. If the audience includes automatic metadata harvesters, fill out the formal metadata and write a good README file for the humans [11].",
+      "translation": "• 将数据提交到信誉良好的 DOI 发布机构，以便其他人可以访问和引用它（1g）。 您的数据与您撰写的论文一样，也是您研究的产出，并且同样有可能对其他人有用（甚至更实用）。 例如，Figshare、Dryad 和 Zenodo 等网站允许其他人找到您的工作、使用它并引用它；我们在下文的第 3 节中讨论了许可问题。 遵循您研究领域的标准，以提供元数据。 请注意，元数据有两种类型：一种是关于整个数据集的元数据，另一种是关于数据集内部内容的元数据。 如果目标读者是人类，请为人类编写元数据（README 文件）。 如果目标读者包括自动元数据提取工具，请填写正式的元数据，并为人类编写一个好的 README 文件 [11]。"
+    },
+    {
+      "id": 59,
+      "page": 6,
+      "text": "Taken in order, the recommendations above will produce intermediate data files with increasing levels of cleanliness and task specificity. An alternative approach to data management would be to fold all data-management tasks into a monolithic procedure for data analysis, so that intermediate data products are created \"on the fly\" and stored only in memory, not saved as distinct files.",
+      "translation": "按照上述建议，将生成具有越来越高清洁度和任务特定性的中间数据文件。另一种数据管理方法是，将所有数据管理任务整合到一个统一的程序中，用于数据分析，从而“即时”生成中间数据产品，并仅存储在内存中，而不是作为单独的文件保存。"
+    },
+    {
+      "id": 60,
+      "page": 6,
+      "text": "While the latter approach may be appropriate for projects in which very little data cleaning or processing is needed, we recommend the explicit creation and retention of intermediate products. Saving intermediate files makes it easy to rerun parts of a data analysis pipeline, which in turn makes it less onerous to revisit and improve specific data-processing tasks.",
+      "translation": "虽然这种方法可能适用于需要很少数据清理或处理的项目，但我们建议明确创建和保留中间产品。 存储中间文件可以轻松地重新运行数据分析流程的一部分，从而使回顾和改进特定数据处理任务变得更加容易。"
+    },
+    {
+      "id": 61,
+      "page": 6,
+      "text": "Breaking a lengthy workflow into pieces makes it easier to understand, share, describe, and modify. This is particularly true when working with large data sets, for which storage and transfer of the entire data set is not trivial or inexpensive.",
+      "translation": "将冗长的工作流程分解成更小的部分，可以使其更容易理解、共享、描述和修改。 尤其是在处理大型数据集时，将整个数据集的存储和传输并非易事或成本不高。"
+    },
+    {
+      "id": 62,
+      "page": 6,
+      "text": "Software",
+      "heading": true,
+      "translation": "软件"
+    },
+    {
+      "id": 63,
+      "page": 6,
+      "text": "If you or your group are creating tens of thousands of lines of software for use by hundreds of people you have never met, you are doing software engineering. If you’re writing a few dozen lines now and again and are probably going to be their only user, you may not be doing engineering, but you can still make things easier on yourself by adopting a few key engineering practices. What’s more, adopting these practices will make it easier for people to understand and (re)use your code.",
+      "translation": "如果您或您的团队正在编写数万行代码，用于数百人使用，那么您正在进行软件工程。如果您偶尔编写几十行代码，并且很可能只有您自己使用，那么您可能不属于软件工程范畴，但您仍然可以通过采用一些关键的工程实践来简化工作。更重要的是，采用这些实践将使他人更容易理解和（重新）使用您的代码。"
+    },
+    {
+      "id": 64,
+      "page": 6,
+      "text": "The core realization in these practices is that being readable, reusable, and testable are all side effects of writing modular code, i.e., of building programs out of short, single-purpose functions with clearly-defined inputs and outputs [12]. Much has been written on this topic[12–14], and this section focuses on practices that best balance ease of use with benefit for you and collaborators.",
+      "translation": "这些实践的核心在于，可读性、可重用性和可测试性都是编写模块化代码（即，将程序构建为由短、单一功能的函数，具有明确的输入和输出）的副作用 [12]。 这一主题已经有大量文献 [12–14]，本节重点介绍那些能够最好地平衡易用性和对您和合作者的益处。"
+    },
+    {
+      "id": 65,
+      "page": 6,
+      "text": "• Place a brief explanatory comment at the start of every program (2a), no matter how short it is. That comment should include at least 1 example of how the program is used; remember, a good example is worth a thousand words. Where possible, the comment should also indicate reasonable values for parameters. An example of such a comment is shown below.",
+      "translation": "• 在每个程序（2a）的开头，添加简短的解释性注释。该注释应至少包含一个示例，说明该程序的使用方法；请记住，一个好的示例胜过千言万语。如果可能，注释还应标明合理的参数值。以下是一个示例："
+    },
+    {
+      "id": 66,
+      "page": 7,
+      "text": "Synthesize image files for testing circularity estimation algorithm.",
+      "translation": "合成图像文件，用于测试圆形性估计算法。"
+    },
+    {
+      "id": 67,
+      "page": 7,
+      "text": "Usage: make_images.py -f fuzzing -n flaws -o output -s seed -v -w size where:-f fuzzing: fuzzing range of blobs (typically 0.0–0.2)-n flaws: p(success) for # flaws/sample (e.g. 0.5–0.8)-o output: name of output file-s seed: random number generator seed (large integer)-v: verbose-w size: image width/height in pixels (typically 480–800)-h: show help message",
+      "translation": "用法：make\\_images.py -f fuzzing -n flaws -o output -s seed -v -w size\n\n其中：\n-f fuzzing：模糊范围（通常为 0.0–0.2）\n-n flaws：每样本中成功的概率（例如 0.5–0.8）\n-o output：输出文件名\n-s seed：随机数生成器的种子（大整数）\n-v：详细模式\n-w size：图像宽度/高度（像素，通常为 480–800）\n-h：显示帮助消息"
+    },
+    {
+      "id": 68,
+      "page": 7,
+      "text": "• Decompose programs into functions (2b) that are no more than 1 page (about 60 lines) long. A function is a reusable section of software that can be treated as a black box by the rest of the program. The syntax for creating functions depends on programming language, but generally, you name the function, list its input parameters, and describe what information it produces. Functions should take no more than 5 or 6 input parameters and should not reference outside information.",
+      "translation": "• 将程序分解为不超过 1 页（约 60 行）的函数（2b）。 函数是可重用的软件部分，可以被程序的其他部分视为一个“黑盒”。 创建函数的语法取决于编程语言，但通常，你需要为函数命名、列出其输入参数，并描述其产生的信息。 函数应最多包含 5 或 6 个输入参数，并且不应引用外部信息。"
+    },
+    {
+      "id": 69,
+      "page": 7,
+      "text": "The key motivation here is to fit the program into the most limited memory of all: ours.",
+      "translation": "关键动机在于将程序尽可能地适应我们自身最有限的内存资源。"
+    },
+    {
+      "id": 70,
+      "page": 7,
+      "text": "Human short-term memory is famously incapable of holding more than about 7 items at once [15]. If we are to understand what our software is doing, we must break it into chunks that obey this limit, then create programs by combining these chunks. Putting code into functions also makes it easier to test and troubleshoot when things go wrong.",
+      "translation": "人类的短期记忆，以能够同时记住大约7个项目而闻名 [15]。 如果我们要理解我们的软件在做什么，我们必须将其分解为符合这一限制的块，然后通过组合这些块来创建程序。 将代码放入函数中，也有助于在出现问题时进行测试和调试。"
+    },
+    {
+      "id": 71,
+      "page": 7,
+      "text": "• Be ruthless about eliminating duplication (2c). Write and reuse functions instead of copying and pasting code, and use data structures like lists instead of creating many closely related variables, e.g., create score = (1, 2, 3) rather than score1, score2, and score3.",
+      "translation": "• 务必彻底消除重复（2c）。编写并重用函数，而不是复制粘贴代码，并使用如列表等数据结构，而不是创建大量紧密相关的变量，例如，创建 score = (1, 2, 3) 而不是 score1, score2, 和 score3。"
+    },
+    {
+      "id": 72,
+      "page": 7,
+      "text": "Also, look for well-maintained libraries that already do what you’re trying to do. All programming languages have libraries that you can import and use in your code. This is code that people have already written and made available for distribution that has a particular function. For instance, there are libraries for statistics, modeling, mapping, and many more. Many languages catalog the libraries in a centralized source, for instance, R has CRAN, Python has PyPI, and so on. Thus, always search for well-maintained software libraries that do what you need (2d) before writing new code yourself, but test libraries before relying on them (2e).",
+      "translation": "查找并使用经过良好维护的库，这些库已经实现了你想要的功能。所有编程语言都有库，你可以导入并使用在你的代码中。这些是人们已经编写并提供给其他使用者的，具有特定功能的代码。例如，有统计、建模、地图绘制等方面的库。许多语言都将这些库集中在一个来源中，例如 R 语言有 CRAN，Python 语言有 PyPI 等。因此，在编写新的代码之前，始终查找并使用经过良好维护的软件库，以满足你的需求（2d），但在使用之前，务必测试这些库（2e）。"
+    },
+    {
+      "id": 73,
+      "page": 7,
+      "text": "• Give functions and variables meaningful names (2f), both to document their purpose and to make the program easier to read. As a rule of thumb, the greater the scope of a variable, the more informative its name should be; while it’s acceptable to call the counter variable in a loop i or j, things that are reused often, such as the major data structures in a program, should not have 1-letter names. Remember to follow each language’s conventions for names, such as net_charge for Python and NetCharge for Java.",
+      "translation": "• 赋予函数和变量有意义的名称 (2f)，既是为了记录其用途，也为了使程序更易于阅读。一般来说，变量的作用域越大，其名称就应该越具信息性；虽然在循环中调用计数变量 i 或 j 是可以的，但如程序中经常重用的主要数据结构，不应使用 1 个字母的名称。请务必遵循每种语言的命名约定，例如 Python 中的 net\\_charge 和 Java 中的 NetCharge。"
+    },
+    {
+      "id": 74,
+      "page": 7,
+      "text": "Tab completion",
+      "translation": "自动补全"
+    },
+    {
+      "id": 75,
+      "page": 7,
+      "text": "Almost all modern text editors provide tab completion, so that typing the first part of a variable name and then pressing the tab key inserts the completed name of the variable.",
+      "translation": "几乎所有现代文本编辑器都提供自动补全功能，因此，只需输入变量名称的一部分，然后按下 Tab 键，即可自动补全变量名称。"
+    },
+    {
+      "id": 76,
+      "page": 7,
+      "text": "Employing this means that meaningful, longer variable names are no harder to type than terse abbreviations.",
+      "translation": "采用这种方法，使用有意义且较长的变量名，与使用简短的缩写没有本质区别。"
+    },
+    {
+      "id": 77,
+      "page": 7,
+      "text": "• Make dependencies and requirements explicit (2g). This is usually done on a perproject rather than per-program basis, i.e., by adding a file called something like requirements.txt to the root directory of the project or by adding a \"Getting Started\" section to the README file.",
+      "translation": "• 明确依赖和要求 (2g)。 这通常在项目层面进行，而不是在程序层面，即通过在项目的根目录中添加一个名为 requirements.txt 的文件，或者在 README 文件中添加一个“开始使用”部分。"
+    },
+    {
+      "id": 78,
+      "page": 8,
+      "text": "• Do not comment and uncomment sections of code to control a program’s behavior (2h), since this is error prone and makes it difficult or impossible to automate analyses. Instead, put if/else statements in the program to control what it does.",
+      "translation": "• 不要使用代码中的注释和取消注释来控制程序的行为（2小时），因为这容易出错，并且会使分析难以自动化。相反，在程序中添加 if/else 语句来控制其执行。"
+    },
+    {
+      "id": 79,
+      "page": 8,
+      "text": "• Provide a simple example or test data set (2i) that users (including yourself) can run to determine whether the program is working and whether it gives a known correct output for a simple known input. Such a \"build-and-smoke test\" is particularly helpful when supposedly innocent changes are being made to the program or when it has to run on several different machines, e.g., the developer’s laptop and the department’s cluster.",
+      "translation": "• 提供一个简单的示例或测试数据集 (2i)，供用户（包括您自己）运行，以确定程序是否正常工作，以及是否能为已知输入产生预期的正确输出。 这种“构建和测试”方法在程序进行“无辜”修改时或需要在多个不同的机器上运行（例如，开发人员的笔记本电脑和部门的集群）时尤其有用。"
+    },
+    {
+      "id": 80,
+      "page": 8,
+      "text": "• Submit code to a reputable DOI-issuing repository (2j) upon submission of paper, just as you do with data. Your software is as much a product of your research as your papers and should be as easy for people to credit. DOIs for software are provided by Figshare and Zenodo. Zenodo integrates directly with GitHub.",
+      "translation": "• 在提交论文时，将代码提交到信誉良好的提供DOI的存储库（2j），就像提交数据一样。 您的软件与您的论文一样，是您研究的产物，因此应该尽可能方便他人进行引用。 软件的DOI由Figshare和Zenodo提供。 Zenodo可以直接与GitHub集成。"
+    },
+    {
+      "id": 81,
+      "page": 8,
+      "text": "Collaboration",
+      "heading": true,
+      "translation": "合作"
+    },
+    {
+      "id": 82,
+      "page": 8,
+      "text": "You may start working on projects by yourself or with a small group of collaborators you already know, but you should design it to make it easy for new collaborators to join. These collaborators might be new grad students or postdocs in the lab or they might be you returning to a project that has been idle for some time. As summarized in [16], you want to make it easy for people to set up a local workspace so that they can contribute, help them find tasks so that they know what to contribute, and make the contribution process clear so that they know how to contribute. You also want to make it easy for people to give you credit for your work.",
+      "translation": "您可以单独或与您已认识的小团队合作进行项目，但您应该设计它，以便新合作者能够轻松加入。这些合作者可能是实验室的新研究生或博士后，或者可能是您重新参与一个一段时间未进行的项目。正如[16]总结的，您希望让人们能够轻松地设置本地工作空间，以便他们能够贡献，帮助他们找到任务，以便他们知道如何贡献，并使贡献过程清晰，以便他们知道如何贡献。您还希望让人们能够认可您的工作。"
+    },
+    {
+      "id": 83,
+      "page": 8,
+      "text": "• Create an overview of your project (3a). Have a short file in the project’s home directory that explains the purpose of the project. This file (generally called README, README.txt, or something similar) should contain the project’s title, a brief description, up-to-date contact information, and an example or 2 of how to run various cleaning or analysis tasks. It is often the first thing users and collaborators on your project will look at, so make it explicit how you want people to engage with the project. If you are looking for more contributors, make it clear that you welcome contributors and point them to the license (more below) and ways they can help.",
+      "translation": "• 编写项目概述 (3a)。 在项目的主目录下创建一个简短的文件，解释项目的目的。 该文件（通常称为 README、README.txt 或类似名称）应包含项目的标题、简要描述、最新的联系信息，以及运行各种清理或分析任务的示例。 许多用户和项目合作者会首先查看此文件，因此请明确说明您希望人们如何与项目互动。 如果您希望吸引更多贡献者，请明确表示欢迎贡献，并引导他们了解许可证（见下文）以及他们可以提供的帮助方式。"
+    },
+    {
+      "id": 84,
+      "page": 8,
+      "text": "You should also create a CONTRIBUTING file that describes what people need to do in order to get the project going and use or contribute to it, i.e., dependencies that need to be installed, tests that can be run to ensure that software has been installed correctly, and guidelines or checklists that your project adheres to.",
+      "translation": "你应该创建一个 CONTRIBUTING 文件，描述人们需要采取哪些步骤来启动项目、使用或贡献到该项目中，例如：需要安装的依赖项、可以运行的测试以确保软件已正确安装，以及该项目遵循的指南或检查清单。"
+    },
+    {
+      "id": 85,
+      "page": 8,
+      "text": "• Create a shared \"to-do\" list (3b). This can be a plain text file called something like notes.txt or todo.txt, or you can use sites such as GitHub or Bitbucket to create a new issue for each to-do item (you can even add labels such as \"low hanging fruit\" to point newcomers at issues that are good starting points). Whatever you choose, describe the items clearly so that they make sense to newcomers.",
+      "translation": "• 创建一个共享的“待办事项”列表 (3b)。 这可以是名为 notes.txt 或 todo.txt 的纯文本文件，或者您可以使用像 GitHub 或 Bitbucket 这样的网站，为每个待办事项创建一个新任务（您甚至可以添加标签，如“易于处理的任务”，以引导新手关注好的起始点）。 无论您选择哪种方式，请清晰地描述这些事项，以便新手能够理解。"
+    },
+    {
+      "id": 86,
+      "page": 8,
+      "text": "• Decide on communication strategies (3c). Make explicit decisions about (and publicize where appropriate) how members of the project will communicate with each other and with externals users/collaborators. This includes the location and technology for email lists, chat channels, voice/video conferencing, documentation, and meeting notes, as well as which of these channels will be public or private.",
+      "translation": "• 确定沟通策略（3C）。明确决定（并在适当情况下公开）项目成员之间以及与外部用户/合作者之间的沟通方式。这包括电子邮件列表、聊天频道、语音/视频会议、文档和会议记录的地点和技术，以及这些渠道的公开或私密性。"
+    },
+    {
+      "id": 87,
+      "page": 9,
+      "text": "• Make the license explicit (3d). Have a LICENSE file in the project’s home directory that clearly states what license(s) apply to the project’s software, data, and manuscripts. Lack of an explicit license does not mean there isn’t one; rather, it implies the author is keeping all rights and others are not allowed to reuse or modify the material.",
+      "translation": "• 明确声明许可协议 (3D)。在项目的根目录下包含一个 LICENSE 文件，清晰地说明适用于该项目的软件、数据和手稿的许可协议。 缺少明确的许可协议并不意味着没有，而是表明作者保留所有权利，其他人不得重新使用或修改材料。"
+    },
+    {
+      "id": 88,
+      "page": 9,
+      "text": "We recommend Creative Commons licenses for data and text, either CC-0 (the \"No Rights Reserved\" license) or CC-BY (the \"Attribution\" license, which permits sharing and reuse but requires people to give appropriate credit to the creators). For software, we recommend a permissive open source license such as the MIT, BSD, or Apache license [17].",
+      "translation": "我们建议使用 Creative Commons 许可协议，适用于数据和文本，即 CC-0（“不保留版权”许可）或 CC-BY（“署名”许可），该许可允许共享和再利用，但要求使用者给予适当的署名。对于软件，我们建议使用宽松的开源许可，例如 MIT、BSD 或 Apache 许可 [17]。"
+    },
+    {
+      "id": 89,
+      "page": 9,
+      "text": "What not to do",
+      "translation": "不应做"
+    },
+    {
+      "id": 90,
+      "page": 9,
+      "text": "We recommend against the \"no commercial use\" variations of the Creative Commons licenses because they may impede some forms of reuse. For example, if a researcher in a developing country is being paid by her government to compile a public health report, she will be unable to include your data if the license says \"noncommercial\". We recommend permissive software licenses rather than the GNU General Public License (GPL) because it is easier to integrate permissively licensed software into other projects; see chapter 3 in[17].",
+      "translation": "我们建议不要使用“禁止商业用途”的 Creative Commons 许可变体，因为它们可能会阻碍某些形式的再利用。例如，如果一位在发展中国工作的研究人员，由她的政府支付费用来编制一份公共卫生报告，如果许可声明为“非商业用途”，她将无法包含您的数据。我们建议使用更宽松的软件许可，而不是 GNU 通用公共许可证 (GPL)，因为后者更容易将获得宽松许可的软件整合到其他项目中；请参见第 3 章中的[17]。"
+    },
+    {
+      "id": 91,
+      "page": 9,
+      "text": "• Make the project citable (3e) by including a CITATION file in the project’s home directory that describes how to cite this project as a whole and where to find (and how to cite) any data sets, code, figures, and other artifacts that have their own DOIs. The example below shows the CITATION file for the Ecodata Retriever (https://github.com/weecology/retriever); for an example of a more detailed CITATION file, see the one for the khmer project (https://github.com/dib-lab/khmer).",
+      "translation": "• 使项目易于引用 (3e)，在项目的根目录下包含一个 CITATION 文件，描述如何引用整个项目，以及在哪里查找（和如何引用）任何具有独立 DOI 的数据集、代码、图表和其他成果。 下面的示例显示了 Ecodata Retriever 的 CITATION 文件（https://github.com/weecology/retriever）；要查看更详细的 CITATION 文件的示例，请查看 khmer 项目的 CITATION 文件（https://github.com/dib-lab/khmer）。"
+    },
+    {
+      "id": 92,
+      "page": 9,
+      "text": "Please cite this work as:",
+      "translation": "好的实践"
+    },
+    {
+      "id": 93,
+      "page": 9,
+      "text": "Morris, B.D. and E.P. White. 2013. \"The EcoData Retriever: improving access to existing ecological data\". PLoS ONE 8:e65848. http://doi.org/doi:10.1371/journal.pone.0065848",
+      "translation": "莫里斯, B.D. 和 E.P. White. 2013. \"EcoData Retriever: 提高现有生态数据访问的途径\". *PLoS ONE* 8:e65848. http://doi.org/doi:10.1371/journal.pone.0065848"
+    },
+    {
+      "id": 94,
+      "page": 9,
+      "text": "Project organization Organizing the files that make up a project in a logical and consistent directory structure will help you and others keep track of them. Our recommendations for doing this are drawn primarily from [2, 3].",
+      "translation": "项目组织：以逻辑和一致的方式组织构成项目的文件，将有助于您和他人对其进行跟踪。 我们的建议主要基于 [2, 3]。"
+    },
+    {
+      "id": 95,
+      "page": 9,
+      "text": "• Put each project in its own directory, which is named after the project (4a). Like deciding when a chunk of code should be made a function, the ultimate goal of dividing research into distinct projects is to help you and others best understand your work. Some researchers create a separate project for each manuscript they are working on, while others group all research on a common theme, data set, or algorithm into a single project.",
+      "translation": "• 将每个项目放在单独的目录中，该目录名称与项目名称相同 (4a)。 类似于决定何时将一段代码转换为函数，将研究划分为不同的项目，最终目标是帮助您和他人更好地理解您的工作。 一些研究人员为每个正在撰写的论文创建一个单独的项目，而另一些研究人员则将所有在同一主题、数据集或算法上的研究整合到一个项目中。"
+    },
+    {
+      "id": 96,
+      "page": 9,
+      "text": "As a rule of thumb, divide work into projects based on the overlap in data and code files. If 2 research efforts share no data or code, they will probably be easiest to manage independently.",
+      "translation": "作为一般原则，将工作分解为基于数据和代码文件的项目。如果 2 项研究工作没有共享任何数据或代码，那么它们可能更容易独立管理。"
+    },
+    {
+      "id": 97,
+      "page": 9,
+      "text": "If they share more than half of their data and code, they are probably best managed together, while if you are building tools that are used in several projects, the common code should probably be in a project of its own. Projects do often require their own organizational model, but below are general recommendations on how you can structure data, code, analysis outputs, and other files. The important concept is that it is useful to organize the project by the types of files and that consistency helps you effectively find and use things later.",
+      "translation": "如果它们共享超过一半的数据和代码，那么最好将它们一起管理；而如果正在构建用于多个项目的工具，那么公共代码应该放在一个单独的项目中。项目通常需要自己的组织结构，但以下是一些关于如何组织数据、代码、分析结果和其他文件的通用建议。 重要的是，通过按文件类型来组织项目，可以提高效率，并且保持一致性有助于您在以后更有效地查找和使用这些资源。"
+    },
+    {
+      "id": 98,
+      "page": 10,
+      "text": "• Put text documents associated with the project in the doc directory (4b). This includes files for manuscripts, documentation for source code, and/or an electronic lab notebook recording your experiments. Subdirectories may be created for these different classes of files in large projects.",
+      "translation": "• 将与项目相关的文本文档放在 doc 目录 (4b) 中。 这包括论文、源代码文档以及/或电子实验室笔记本中记录实验的文件。 在大型项目中，可以为不同类型的文件创建子目录。"
+    },
+    {
+      "id": 99,
+      "page": 10,
+      "text": "• Put raw data and metadata in a data directory and files generated during cleanup and analysis in a results directory (4c), where \"generated files\" includes intermediate results such as cleaned data sets or simulated data, as well as final results such as figures and tables.",
+      "translation": "• 将原始数据和元数据存储在数据目录中，并将在清理和分析过程中生成的文件的结果存储在结果目录中 (4c)，其中“生成的文件的”包括中间结果，如清理后的数据集或模拟数据，以及最终结果，如图表和表格。"
+    },
+    {
+      "id": 100,
+      "page": 10,
+      "text": "The results directory will usually require additional subdirectories for all but the simplest projects. Intermediate files such as cleaned data, statistical tables, and final publication-ready figures or tables should be separated clearly by file-naming conventions or placed into different subdirectories; those belonging to different papers or other publications should be grouped together. Similarly, the data directory might require subdirectories to organize raw data based on time, method of collection, or other metadata most relevant to your analysis.",
+      "translation": "通常，结果目录需要额外的子目录，除非是最简单的项目。中间文件，如清理后的数据、统计表格以及最终的、可用于发表的图表或表格，应通过文件命名约定或放置在不同的子目录中进行明确区分；属于不同论文或其他出版物的，应一起归类。类似地，数据目录可能需要子目录来组织原始数据，根据时间、收集方法或其他最相关的元数据进行分类。"
+    },
+    {
+      "id": 101,
+      "page": 10,
+      "text": "• Put project source code in the src directory (4d). src contains all of the code written for the project. This includes programs written in interpreted languages such as R or Python; those written in compiled languages like Fortran, C++, or Java; as well as shell scripts, snippets of SQL used to pull information from databases; and other code needed to regenerate the results.",
+      "translation": "• 将项目源代码放在 src 目录（4d）。 src 目录包含项目的所有代码，包括使用解释型语言（如 R 或 Python）编写的程序；使用编译型语言（如 Fortran、C++ 或 Java）编写的程序；以及用于从数据库中提取信息的 SQL 脚本、片段；以及其他用于重新生成结果的代码。"
+    },
+    {
+      "id": 102,
+      "page": 10,
+      "text": "This directory may contain 2 conceptually distinct types of files that should be distinguished either by clear file names or by additional subdirectories. The first type is files or groups of files that perform the core analysis of the research, such as data cleaning or statistical analyses. These files can be thought of as the \"scientific guts\" of the project.",
+      "translation": "此目录可能包含两种在概念上不同的文件类型，这些文件类型应通过清晰的文件名或额外的子目录进行区分。第一种类型是执行研究核心分析的文件或文件组，例如数据清理或统计分析。这些文件可以被认为是项目的“科学核心”。"
+    },
+    {
+      "id": 103,
+      "page": 10,
+      "text": "The second type of file in src is controller or driver scripts that contain all the analysis steps for the entire project from start to finish, with particular parameters and data input/output commands. A controller script for a simple project, for example, may read a raw data table, import and apply several cleanup and analysis functions from the other files in this directory, and create and save a numeric result. For a small project with 1 main output, a single controller script should be placed in the main src directory and distinguished clearly by a name such as \"runall\". The short example in Box 2 is typical of scripts of this kind; note how it uses 1 variable, TEMP_DIR, to avoid repeating the name of a particular directory 4 times.",
+      "translation": "src 中的第二种类型的文件是控制器或驱动脚本，其中包含整个项目的全部分析步骤，从开始到结束，包括特定的参数和数据输入/输出命令。 例如，对于一个简单的项目，一个控制器脚本可能读取原始数据表，从该目录中的其他文件中导入和应用多个清理和分析函数，并创建和保存一个数值结果。 对于一个只有 1 个主要输出的小项目，应该将单个控制器脚本放在主 src 目录中，并使用诸如 \"runall\" 之类的名称进行明确区分。 如图 2 中所示的简短示例，是此类脚本的典型示例；请注意，它使用 1 个变量 TEMP_DIR，以避免在 4 次中重复指定特定目录的名称。"
+    },
+    {
+      "id": 104,
+      "page": 10,
+      "text": "• Put compiled programs in the bin directory (4e). bin contains executable programs compiled from code in the src directory (the name bin is an old Unix convention and comes",
+      "translation": "• 将编译后的程序放在 bin 目录中 (4e)。 bin 目录包含从 src 目录中编译的代码生成的可执行程序 (“bin”这个名称是旧的 Unix 约定，并且…)"
+    },
+    {
+      "id": 105,
+      "page": 10,
+      "text": "Box 2. Example of a \"runall\" script",
+      "translation": "示例： \"runall\" 脚本"
+    },
+    {
+      "id": 106,
+      "page": 10,
+      "text": "TEMP_DIR = ./temp_zip_files echo \"Packaging zip files required by analysis tool. . .\" mkdir $(TEMP_DIR) \u0003./src/make-zip-files.py $(TEMP_DIR) .dat echo \"Analyzing. . .\"./bin/sqr_mean_analyze -i $(TEMP_DIR) -b \"temp\" echo \"Cleaning up. . .\"",
+      "translation": "TEMP_DIR = ./temp_zip_files\necho \"打包分析工具所需的 zip 文件。\"\nmkdir $(TEMP_DIR)\n\u0003./src/make-zip-files.py $(TEMP_DIR) .dat\necho \"正在分析。\"\n./bin/sqr_mean_analyze -i $(TEMP_DIR) -b \"temp\"\necho \"清理。\""
+    },
+    {
+      "id": 107,
+      "page": 10,
+      "text": "rm -rf $(TEMP_DIR)",
+      "heading": true,
+      "translation": "rm -rf $(TEMP_DIR)"
+    },
+    {
+      "id": 108,
+      "page": 11,
+      "text": "from the term \"binary\"). Projects that do not have any executable programs compiled from code in the src directory will not require bin.",
+      "translation": "从“二进制”这一术语。如果项目没有从 src 目录中编译的任何可执行程序，则不需要 bin 目录。"
+    },
+    {
+      "id": 109,
+      "page": 11,
+      "text": "Scripts versus programs",
+      "translation": "脚本与程序"
+    },
+    {
+      "id": 110,
+      "page": 11,
+      "text": "We use the term \"script\" to mean \"something that is executed directly as is\" and \"program\" to mean \"something that is explicitly compiled before being used\". The distinction is more one of degree than kind—libraries written in Python are actually compiled to bytecode as they are loaded, for example—so one other way to think of it is \"things that are edited directly\" and \"things that are not edited directly\".",
+      "translation": "我们使用“脚本”一词来表示“直接执行的程序”，以及“程序”一词来表示“在使用前必须显式编译的程序”。这种区别更多的是一种程度上的差异，而不是本质上的差异——例如，用 Python 编写的库在加载时实际上会被编译成字节码——因此，另一种思考方式是“可以直接编辑的东西”和“不能直接编辑的东西”。"
+    },
+    {
+      "id": 111,
+      "page": 11,
+      "text": "External scripts",
+      "translation": "外部脚本"
+    },
+    {
+      "id": 112,
+      "page": 11,
+      "text": "If src is for human-readable source code and bin is for compiled binaries, where should projects put scripts that are executed directly—particularly ones that are brought in from outside the project? On the one hand, these are written in the same languages as the project-specific scripts in src; on the other, they are executable, like the programs in bin.",
+      "translation": "如果 `src` 用于可读的人类代码，而 `bin` 用于编译后的二进制文件，那么项目应该将直接执行的脚本放在哪里——特别是那些从项目外部引入的脚本？一方面，这些脚本使用与项目特定脚本相同的语言；另一方面，它们是可执行的，就像 `bin` 中的程序一样。"
+    },
+    {
+      "id": 113,
+      "page": 11,
+      "text": "The answer is that it doesn’t matter, as long as each team’s projects follow the same rule.",
+      "translation": "答案是，只要每个团队的项目都遵循相同的规则，就不重要。"
+    },
+    {
+      "id": 114,
+      "page": 11,
+      "text": "As with many of our other recommendations, consistency and predictability are more important than hairsplitting.",
+      "translation": "与我们其他许多建议类似，一致性和可预测性比细致的差别更重要。"
+    },
+    {
+      "id": 115,
+      "page": 11,
+      "text": "• Name all files to reflect their content or function (4f). For example, use names such as bird_count_table.csv, manuscript.md, or sightings_analysis.py.Do not use sequential numbers (e.g., result1.csv, result2.csv) or a location in a final manuscript (e.g., fig_3_a.png), since those numbers will almost certainly change as the project evolves.",
+      "translation": "• 将所有文件命名为反映其内容或功能的名称 (4f)。例如，使用诸如 bird_count_table.csv、manuscript.md 或 sightings_analysis.py 这样的名称。不要使用序列号（例如，result1.csv、result2.csv）或在最终稿中使用的位置（例如，fig_3_a.png），因为这些数字几乎肯定会随着项目的发展而改变。"
+    },
+    {
+      "id": 116,
+      "page": 11,
+      "text": "The structure shown in Box 3 is a concrete example of how a simple project might be organized following these recommendations. The root directory contains a README file that provides an overview of the project as a whole, a CITATION file that explains how to reference it, and a LICENSE file that states the licensing. The data directory contains a single CSV file",
+      "translation": "如图 3 所示的结构，是一个具体的例子，展示了如何按照这些建议对一个简单的项目进行组织。根目录包含一个 README 文件，该文件概述了整个项目的各个方面，一个 CITATION 文件，用于说明如何引用，以及一个 LICENSE 文件，声明许可协议。数据目录包含一个 CSV 文件。"
+    },
+    {
+      "id": 117,
+      "page": 11,
+      "text": "Box 3. Project layout",
+      "translation": "图 3. 项目布局"
+    },
+    {
+      "id": 118,
+      "page": 11,
+      "text": ".",
+      "translation": "良好实践"
+    },
+    {
+      "id": 119,
+      "page": 11,
+      "text": "|- - CITATION",
+      "heading": true,
+      "translation": "引文"
+    },
+    {
+      "id": 120,
+      "page": 11,
+      "text": "|- - README",
+      "heading": true,
+      "translation": "- README"
+    },
+    {
+      "id": 121,
+      "page": 11,
+      "text": "|- - LICENSE",
+      "heading": true,
+      "translation": "|- - 许可"
+    },
+    {
+      "id": 122,
+      "page": 11,
+      "text": "|- - requirements.txt |- - data | |- - birds_count_table.csv |- - doc | |- - notebook.md | |- - manuscript.md | |- - changelog.txt |- - results | |- - summarized_results.csv |- - src | |- - sightings_analysis.py | |- - runall.py with tabular data on bird counts (machine-readable metadata could also be included here).",
+      "translation": "|- - requirements.txt |- - 数据 | |- - birds_count_table.csv |- - 文档 | |- - notebook.md | |- - manuscript.md | |- - changelog.txt |- - 结果 | |- - summarized_results.csv |- - src | |- - sightings_analysis.py | |- - runall.py，包含关于鸟类数量的表格数据（机器可读的元数据也可以在此处包含）。"
+    },
+    {
+      "id": 123,
+      "page": 12,
+      "text": "The src directory contains sightings_analysis.py, a Python file containing functions to summarize the tabular data, and a controller script runall.py that loads the data table, applies functions imported from sightings_analysis.py, and saves a table of summarized results in the results directory.",
+      "translation": "`src` 目录包含 `sightings_analysis.py`，这是一个 Python 文件，其中包含用于总结表格数据的函数，以及 `runall.py` 控制脚本，该脚本加载数据表、导入并应用来自 `sightings_analysis.py` 的函数，并将总结结果保存到 `results` 目录中。"
+    },
+    {
+      "id": 124,
+      "page": 12,
+      "text": "This project doesn’t have a bin directory because it does not rely on any compiled software. The doc directory contains 2 text files written in Markdown, 1 containing a running lab notebook describing various ideas for the project and how these were implemented, and the other containing a running draft of a manuscript describing the project findings.",
+      "translation": "由于该项目不依赖任何编译后的软件，因此没有“bin”目录。“doc”目录包含 2 个以 Markdown 编写的文本文件，一个包含实验室笔记，记录了项目中的各种想法以及这些想法的实施情况，另一个包含一份手稿草稿，描述了项目的研究结果。"
+    },
+    {
+      "id": 125,
+      "page": 12,
+      "text": "Keeping track of changes Keeping track of changes that you or your collaborators make to data and software is a critical part of research. Being able to reference or retrieve a specific version of the entire project aids in reproducibility for you leading up to publication, when responding to reviewer comments, and when providing supporting information for reviewers, editors, and readers.",
+      "translation": "跟踪变更：跟踪您或您的合作者对数据和软件所做的变更，是研究中的一项关键任务。能够引用或检索整个项目的特定版本，有助于您在准备发表、回复评审意见以及向评审员、编辑和读者提供支持性信息时，实现可重复性。"
+    },
+    {
+      "id": 126,
+      "page": 12,
+      "text": "We believe that the best tools for tracking changes are the version control systems that are used in software development, such as Git, Mercurial, and Subversion. They keep track of what was changed in a file, when, and by whom and synchronize changes to a central server so that multiple contributors can manage changes to the same set of files.",
+      "translation": "我们认为，用于跟踪变化的最佳工具是软件开发中使用的版本控制系统，例如 Git、Mercurial 和 Subversion。它们会记录文件的更改内容、时间以及更改者，并同步更改到中央服务器，以便多个贡献者可以管理同一组文件的更改。"
+    },
+    {
+      "id": 127,
+      "page": 12,
+      "text": "While these version control tools make tracking changes easier, they can have a steep learning curve. Thus, we provide 2 sets of recommendations, (1) a systematic manual approach for managing changes and (2) version control in its full glory, and you can use the first while working towards the second or just jump into version control.",
+      "translation": "虽然这些版本控制工具使跟踪更改变得更容易，但它们也可能具有陡峭的学习曲线。因此，我们提供 2 种建议：(1) 一种系统化的手动方法，用于管理更改，以及 (2) 版本控制的完整应用。您可以先使用第一种方法，然后逐步过渡到第二种，或者直接使用版本控制。"
+    },
+    {
+      "id": 128,
+      "page": 12,
+      "text": "Whatever system you chose, we recommend that you do the following:",
+      "translation": "无论您选择哪种系统，我们建议您执行以下操作："
+    },
+    {
+      "id": 129,
+      "page": 12,
+      "text": "• Back up (almost) everything created by a human being as soon as it is created (5a). This includes scripts and programs of all kinds, software packages that your project depends on, and documentation. A few exceptions to this rule are discussed below.",
+      "translation": "• 尽快备份（几乎）所有由人类创建的内容（5a）。 这包括各种类型的脚本和程序、项目所依赖的软件包以及文档。 以下是一些对此规则的例外情况。"
+    },
+    {
+      "id": 130,
+      "page": 12,
+      "text": "• Keep changes small (5b). Each change should not be so large as to make the change tracking irrelevant. For example, a single change such as \"Revise script file\" that adds or changes several hundred lines is likely too large, as it will not allow changes to different components of an analysis to be investigated separately. Similarly, changes should not be broken up into pieces that are too small. As a rule of thumb, a good size for a single change is a group of edits that you could imagine wanting to undo in one step at some point in the future.",
+      "translation": "• 保持修改幅度适中 (5b)。每次修改不应过于大，以至于无法区分不同的修改。例如，例如“修改脚本文件”这样的修改，如果添加或修改了数百行代码，则可能过于庞大，因为这会使对分析不同组件的修改无法单独调查。同样，也不应将修改分解成过小的部分。一般来说，一个合适的修改应该是可以想象在未来某个时间点，用一步操作撤销的编辑集合。"
+    },
+    {
+      "id": 131,
+      "page": 12,
+      "text": "• Share changes frequently (5c). Everyone working on the project should share and incorporate changes from others on a regular basis. Do not allow individual investigator’s versions of the project repository to drift apart, as the effort required to merge differences goes up faster than the size of the difference. This is particularly important for the manual versioning procedure described below, which does not provide any assistance for merging simultaneous, possibly conflicting changes.",
+      "translation": "• 频繁共享变更 (5c)。所有参与项目的人员应定期共享并整合来自其他人的变更。不要允许每个研究人员的项目仓库版本彼此分离，因为合并差异所需的工作量比差异的大小更快地增加。这对于以下手动版本控制程序尤其重要，该程序不提供任何帮助来合并同时发生的、可能冲突的变更。"
+    },
+    {
+      "id": 132,
+      "page": 12,
+      "text": "• Create, maintain, and use a checklist for saving and sharing changes to the project (5d).",
+      "translation": "• 创建、维护和使用一个检查清单，用于保存和共享项目中的更改（5d）。"
+    },
+    {
+      "id": 133,
+      "page": 12,
+      "text": "The list should include writing log messages that clearly explain any changes, the size and content of individual changes, style guidelines for code and updating to-do lists, and bans on committing half-done work or broken code. See [18] for more on the proven value of checklists.",
+      "translation": "包括编写清晰的日志消息，以明确说明任何更改，更改的规模和内容，代码风格指南以及更新待办事项列表，并禁止提交未完成或有缺陷的代码。有关清单的实际价值的更多信息，请参见 [18]。"
+    },
+    {
+      "id": 134,
+      "page": 12,
+      "text": "• Store each project in a folder that is mirrored off the researcher’s working machine (5e) using a system such as Dropbox or a remote version control repository such as GitHub.",
+      "translation": "• 将每个项目存储在与研究人员的工作机器同步的文件夹中，使用如 Dropbox 或 GitHub 这样的远程版本控制仓库。"
+    },
+    {
+      "id": 135,
+      "page": 13,
+      "text": "Synchronize that folder at least daily. It may take a few minutes, but that time is repaid the moment a laptop is stolen or its hard drive fails.",
+      "translation": "至少每天同步该文件夹。 这可能需要几分钟，但一旦笔记本电脑被盗或其硬盘出现故障，这段时间就会得到回报。"
+    },
+    {
+      "id": 136,
+      "page": 13,
+      "text": "Manual versioning Our first suggested approach, in which everything is done by hand, has 2 additional parts:",
+      "translation": "手动版本控制 我们的第一种建议的方法，即一切都手动完成，包含 2 个额外步骤："
+    },
+    {
+      "id": 137,
+      "page": 13,
+      "text": "• Add a file called CHANGELOG.txt to the project’s docs subfolder (5f), and make dated notes about changes to the project in this file in reverse chronological order (i.e., most recent first). This file is the equivalent of a lab notebook and should contain entries like those shown below.",
+      "translation": "• 在项目的“docs”子文件夹（5f）中添加一个名为“CHANGELOG.txt”的文件，并在该文件中以时间倒序（即最近的变更优先）记录项目变更的日期信息。 此文件相当于实验室笔记本，应包含类似于以下内容的条目。"
+    },
+    {
+      "id": 138,
+      "page": 13,
+      "text": "## 2016-04-08 \u0003 Switched to cubic interpolation as default. \u0003 Moved question about family's TB history to end of questionnaire.## 2016-04-06 \u0003 Added option for cubic interpolation. \u0003 Removed question about staph exposure (can be inferred from blood test results).",
+      "translation": "## 2016-04-08 \u0003 默认采用三次插值法。\u0003 将关于家庭成员结核病病史的问题移动到问卷末尾。## 2016-04-06 \u0003 添加三次插值法的选项。\u0003 移除关于金黄色葡萄球菌感染的问题（可以通过血液检测结果推断）。"
+    },
+    {
+      "id": 139,
+      "page": 13,
+      "text": "• Copy the entire project whenever a significant change has been made (5g) (i.e., one that materially affects the results), and store that copy in a subfolder whose name reflects the date in the area that’s being synchronized. This approach results in projects being organized as shown below:",
+      "translation": "• 每次进行重大变更时，复制整个项目 (例如，影响结果的变更) (5g)，并将该副本存储在子文件夹中，该文件夹的名称应反映所同步区域的日期。 这种方法会导致项目按照以下方式进行组织："
+    },
+    {
+      "id": 140,
+      "page": 13,
+      "text": ". |- - project_name | |- - current | | |- - . . .project content as described earlier. . . | |- - 2016-03-01 | | |- - . . .content of 'current' on Mar 1, 2016 | |- - 2016-02-19 | | |- - . . .content of 'current' on Feb 19, 2016",
+      "translation": ". |- - 项目名称 | |- - 当前 | | |- - . . .项目内容，如前所述。 . . | |- - 2016-03-01 | | |- - . . .2016年3月1日的“当前”内容 | |- - 2016-02-19 | | |- - . . .2016年2月19日的“当前”内容"
+    },
+    {
+      "id": 141,
+      "page": 13,
+      "text": "Here, the project_name folder is mapped to external storage (such as Dropbox), current is where work is being done, and other folders within project_name are old versions.",
+      "translation": "在此，`project_name` 文件夹映射到外部存储（例如 Dropbox），`current` 文件夹是工作目录，而 `project_name` 文件夹内的其他文件夹则包含旧版本。"
+    },
+    {
+      "id": 142,
+      "page": 13,
+      "text": "Data are cheap, time is expensive Copying everything like this may seem wasteful, since many files won’t have changed, but consider: a terabyte hard drive costs about US$50 retail, which means that 50 Gigabytes costs less than US$5. Provided large data files are kept out of the backed-up area (discussed below), this approach costs less than the time it would take to select files by hand for copying.",
+      "translation": "数据成本低，时间成本高。 这种方式复制所有内容可能看起来是浪费，因为许多文件可能没有更改，但请考虑：一个1TB的硬盘大约售价50美元，这意味着50GB的价格低于5美元。 如果大型数据文件被排除在备份区域之外（见下文讨论），这种方法比手动选择文件进行复制的时间更少。"
+    },
+    {
+      "id": 143,
+      "page": 13,
+      "text": "This manual procedure satisfies the requirements outlined above without needing any new tools. If multiple researchers are working on the same project, though, they will need to coordinate so that only a single person is working on specific files at any time. In particular, they may wish to create 1 change log file per contributor and to merge those files whenever a backup copy is made.",
+      "translation": "该手动流程满足上述要求，无需任何新工具。然而，如果多个研究人员同时参与同一项目，则需要协调，以确保在任何时候，只有一个人处理特定的文件。特别是，他们可能希望为每个贡献者创建一个变更日志文件，并在每次备份时合并这些文件。"
+    },
+    {
+      "id": 144,
+      "page": 14,
+      "text": "Version control systems What the manual process described above requires most is self-discipline. The version control tools that underpin our second approach—the one we use in our own projects—don’t just accelerate the manual process, they also automate some steps while enforcing others and thereby require less self-discipline for more reliable results.",
+      "translation": "版本控制系统。上述手动流程最需要的是自律。我们采用的第二种方法——我们自身项目所使用的版本控制工具——不仅加速了手动流程，还自动化了一些步骤，同时强制执行其他步骤，从而需要更少的自律，以获得更可靠的结果。"
+    },
+    {
+      "id": 145,
+      "page": 14,
+      "text": "• Use a version control system (5h) to manage changes to a project.",
+      "translation": "• 使用版本控制系统（5小时）来管理项目中的变更。"
+    },
+    {
+      "id": 146,
+      "page": 14,
+      "text": "• Box 4 briefly explains how version control systems work. It’s hard to know what version control tool is most widely used in research today, but the one that’s most talked about is undoubtedly Git. This is largely because of GitHub, a popular hosting site that combines the technical infrastructure for collaboration via Git with a modern web interface. GitHub is free for public and open source projects and for users in academia and nonprofits. GitLab is a well-regarded alternative that some prefer, because the GitLab platform itself is free and open source. Bitbucket provides free hosting for both Git and Mercurial repositories but does not have nearly as many scientific users.",
+      "translation": "• 盒 4 简要介绍了版本控制系统的工作原理。 很难确定目前在研究领域中，最常用的版本控制工具是什么，但毫无疑问，Git 是最受关注的。 这主要归功于 GitHub，这是一个流行的托管网站，它将通过 Git 进行协作的技术基础设施与现代 Web 界面相结合。 GitHub 适用于公共和开源项目，以及学术界和非营利组织的个人使用，且是免费的。 GitLab 是一种备受推崇的替代方案，一些人更喜欢它，因为 GitLab 平台本身是免费且开源的。 Bitbucket 提供了 Git 和 Mercurial 仓库的免费托管，但用户数量远不及 GitHub。"
+    },
+    {
+      "id": 147,
+      "page": 14,
+      "text": "What not to put under version control The benefits of version control systems don’t apply equally to all file types. In particular, version control can be more or less rewarding depending on file size and format. First, file comparison in version control systems is optimized for plain text files, such as source code. The",
+      "translation": "不应纳入版本控制的内容\n\n版本控制系统的优势并不适用于所有文件类型。 尤其，版本控制的价值取决于文件的大小和格式。 首先，版本控制系统中的文件比较主要针对纯文本文件，例如源代码。"
+    },
+    {
+      "id": 148,
+      "page": 14,
+      "text": "Box 4. How version control systems work A version control system stores snapshots of a project’s files in a repository. Users modify their working copy of the project, then save changes to the repository when they wish to make a permanent record and/or share their work with colleagues. The version control system automatically records when the change was made and by whom, along with the changes themselves.",
+      "translation": "图 4. 版本控制系统的工作原理：版本控制系统在存储库中存储项目的文件的快照。用户修改其项目的副本，然后在希望创建永久记录和/或与同事共享工作时，将更改保存到存储库中。版本控制系统会自动记录更改的时间、创建者以及更改本身。"
+    },
+    {
+      "id": 149,
+      "page": 14,
+      "text": "Crucially, if several people have edited 1 or more files simultaneously, the version control system will detect any overlapping changes and require conflicts to be resolved before storing the result. Modern version control systems allow repositories to be synchronized with each other, so that no 1 repository becomes a single point of failure.",
+      "translation": "至关重要的是，如果多人同时编辑 1 个或多个文件，版本控制系统将检测任何重叠的更改，并要求在存储结果之前解决冲突。 现代版本控制系统允许仓库相互同步，从而避免任何单个仓库成为单一故障点。"
+    },
+    {
+      "id": 150,
+      "page": 14,
+      "text": "Tool-based version control has several benefits over manual version control:• Instead of requiring users to make backup copies of the whole project, version control safely stores just enough information to allow old versions of files to be recreated on demand.• Instead of relying on users to choose sensible names for backup copies, the version control system timestamps all saved changes automatically.• Instead of requiring users to be disciplined about completing the change log, version control systems prompt them every time a change is saved. They also keep a 100% accurate record of what was actually changed as opposed to what the user thought they changed, which can be invaluable when problems crop up later.• Instead of simply copying files to remote storage, version control checks to see whether doing that would overwrite anyone else’s work. If so, they facilitate identifying conflict and merging changes.",
+      "translation": "基于工具的版本控制，相较于手动版本控制，具有以下优势：\n\n•   与其要求用户创建整个项目的备份副本，不如版本控制系统安全地存储足够的信息，以便按需重构旧版本的文件。\n•   与其依赖用户为备份副本选择合适的名称，不如版本控制系统自动记录所有保存的更改的时间戳。\n•   与其要求用户严格记录更改，不如版本控制系统每次保存更改时都会提醒他们。 此外，它们还能够准确记录实际更改的内容，与用户所认为的更改进行对比，这在出现问题时非常有用。\n•   与其简单地将文件复制到远程存储，不如版本控制系统检查这样做是否会覆盖其他人的工作。 如果是，它们可以帮助识别冲突并合并更改。"
+    },
+    {
+      "id": 151,
+      "page": 15,
+      "text": "ability to see so-called \"diffs\" is one of the great joys of version control. Unfortunately, while Microsoft Office files (like the .docx files used by Word) or other binary files, e.g., PDFs, can be stored in a version control system, it is not possible to pinpoint specific changes from 1 version to the next. Tabular data (such as CSV files) can be put in version control, but changing the order of the rows or columns will create a big change for the version control system, even if the actual data have not changed.",
+      "translation": "能够观察所谓的“差异”是版本控制的巨大优势之一。然而，虽然 Microsoft Office 文件（如 Word 使用的 .docx 文件）或其他二进制文件，例如 PDF，可以存储在版本控制系统中，但无法从一个版本到下一个版本明确地识别具体的更改。 表格数据（如 CSV 文件）可以存储在版本控制系统中，但更改行或列的顺序会给版本控制系统带来很大的变化，即使实际数据没有改变。"
+    },
+    {
+      "id": 152,
+      "page": 15,
+      "text": "Second, raw data should not change and therefore should not require version tracking.",
+      "translation": "其次，原始数据不应被修改，因此不应需要版本跟踪。"
+    },
+    {
+      "id": 153,
+      "page": 15,
+      "text": "Keeping intermediate data files and other results under version control is also not necessary if you can regenerate them from raw data and software. However, if data and results are small, we still recommend versioning them for ease of access by collaborators and for comparison across versions.",
+      "translation": "同样，如果能够从原始数据和软件中重新生成中间数据文件和其他结果，则无需对这些进行版本控制。然而，如果数据和结果较小，我们仍然建议对它们进行版本控制，以便方便与合作者共享，以及在不同版本之间进行比较。"
+    },
+    {
+      "id": 154,
+      "page": 15,
+      "text": "Third, today’s version control systems are not designed to handle megabyte-sized files, never mind gigabytes, so large data or results files should not be included (as a benchmark for\"large\", the limit for an individual file on GitHub is 100 MB). Some emerging hybrid systems such as Git Large File Storage (LFS) put textual notes under version control while storing the large data in a remote server, but these are not yet mature enough for us to recommend.",
+      "translation": "第三，当今的版本控制系统并非设计用于处理兆字节甚至吉字节级别的文件，因此，大型数据或结果文件不应包含在内（作为“大型”的基准，GitHub上单个文件的限制为100 MB）。一些新兴的混合系统，如Git Large File Storage (LFS)，可以将文本注释纳入版本控制，同时将大型数据存储在远程服务器上，但这些系统目前尚未成熟到可以推荐使用。"
+    },
+    {
+      "id": 155,
+      "page": 15,
+      "text": "Inadvertent sharing Researchers dealing with data subject to legal restrictions that prohibit sharing (such as medical data) should be careful not to put data in public version control systems. Some institutions may provide access to private version control systems, so it is worth checking with your IT department.",
+      "translation": "意外共享 研究人员处理受法律限制的数据（例如医疗数据），应特别注意不要将数据上传到公共版本控制系统。一些机构可能提供访问私有版本控制系统的权限，因此建议与IT部门进行确认。"
+    },
+    {
+      "id": 156,
+      "page": 15,
+      "text": "Additionally, be sure not to unintentionally place security credentials such as passwords and private keys in a version control system where it may be accessed by others.",
+      "translation": "务必不要将安全凭证，如密码和私钥，存储在版本控制系统中，以便他人访问。"
+    },
+    {
+      "id": 157,
+      "page": 15,
+      "text": "Manuscripts",
+      "heading": true,
+      "translation": "稿件"
+    },
+    {
+      "id": 158,
+      "page": 15,
+      "text": "An old joke says that doing the research is the first 90% of any project; writing up is the other 90%. While writing is rarely addressed in discussions of scientific computing, computing has changed scientific writing just as much as it has changed research.",
+      "translation": "一个老笑话说，进行研究是任何项目的 90%；撰写报告是另外的 90%。虽然在科学计算的讨论中，很少提及写作，但计算已经对科学写作的影响，与它对研究的影响一样大。"
+    },
+    {
+      "id": 159,
+      "page": 15,
+      "text": "A common practice in academic writing is for the lead author to send successive versions of a manuscript to coauthors to collect feedback, which is returned as changes to the document, comments on the document, plain text in email, or a mix of all 3. This allows coauthors to use familiar tools but results in a lot of files to keep track of and a lot of tedious manual labor to merge comments to create the next master version.",
+      "translation": "在学术写作中，一种常见做法是，主要作者将手稿的多个版本发送给合作作者，以收集反馈意见。这些反馈意见可能以修改后的文档、对文档的评论、电子邮件中的纯文本或这三种方式的组合形式返回。 这种做法允许合作作者使用熟悉的工具，但会导致需要管理大量的文件，并进行大量的手动工作来合并评论，以创建下一版本的最终版本。"
+    },
+    {
+      "id": 160,
+      "page": 15,
+      "text": "Instead of an email-based workflow, we recommend mirroring good practices for managing software and data to make writing scalable, collaborative, and reproducible. As with our recommendations for version control in general, we suggest that groups choose 1 of 2 different approaches for managing manuscripts. The goals of both are to do as follows:",
+      "translation": "与其采用基于电子邮件的工作流程，我们建议采用管理软件和数据的良好实践，以实现可扩展、协作和可重复的写作。 类似于我们对一般版本控制的建议，我们建议团队选择以下两种不同的方法之一来管理手稿： 两种方法的共同目标如下："
+    },
+    {
+      "id": 161,
+      "page": 15,
+      "text": "• Ensure that text is accessible to yourself and others now and in the future by making a single master document that is available to all coauthors at all times.",
+      "translation": "• 确保现在和未来，文本对您和他人都是可访问的，通过创建一个所有合作作者随时可访问的单一主文档来实现。"
+    },
+    {
+      "id": 162,
+      "page": 15,
+      "text": "• Reduce the chances of work being lost or people overwriting each other’s work.",
+      "translation": "• 降低工作被丢失或人员互相覆盖的风险。"
+    },
+    {
+      "id": 163,
+      "page": 15,
+      "text": "• Make it easy to track and combine contributions from multiple collaborators.",
+      "translation": "• 方便追踪和整合来自多个合作者的贡献。"
+    },
+    {
+      "id": 164,
+      "page": 15,
+      "text": "• Avoid duplication and manual entry of information, particularly in constructing bibliographies, tables of contents, and lists.",
+      "translation": "• 避免重复和手动输入信息，尤其是在构建参考文献、目录和列表时。"
+    },
+    {
+      "id": 165,
+      "page": 16,
+      "text": "• Make it easy to regenerate the final published form (e.g., a PDF) and to tell if it is up to date.",
+      "translation": "• 方便生成最终发布的版本（例如，PDF），并确定其是否是最新的。"
+    },
+    {
+      "id": 166,
+      "page": 16,
+      "text": "• Make it easy to share that final version with collaborators and to submit it to a journal.",
+      "translation": "• 方便与合作者共享最终版本，并提交给期刊。"
+    },
+    {
+      "id": 167,
+      "page": 16,
+      "text": "The first rule is. . .",
+      "translation": "第一条规则是……"
+    },
+    {
+      "id": 168,
+      "page": 16,
+      "text": "The workflow you choose is less important than having all authors agree on the workflow before writing starts. Make sure to also agree on a single method to provide feedback, be it an email thread or mailing list, an issue tracker (like the ones provided by GitHub and Bitbucket), or some sort of shared online to-do list.",
+      "translation": "您选择的工作流程不如所有作者在写作开始前就达成一致意见重要。 此外，务必就提供反馈的方式达成一致，无论采用电子邮件线程、邮件列表、问题跟踪系统（如 GitHub 和 Bitbucket 提供的），还是某种共享的在线待办事项清单。"
+    },
+    {
+      "id": 169,
+      "page": 16,
+      "text": "Single master online Our first alternative will already be familiar to many researchers:",
+      "translation": "单一主服务器，在线。 我们的第一个替代方案，对于许多研究人员来说应该已经非常熟悉："
+    },
+    {
+      "id": 170,
+      "page": 16,
+      "text": "• Write manuscripts using online tools with rich formatting, change tracking, and reference management (6a), such as Google Docs. With the document online, everyone’s changes are in one place and hence don’t need to be merged manually.",
+      "translation": "• 使用具有丰富格式、更改跟踪和参考文献管理功能的在线工具撰写稿件（6a），例如 Google Docs。 这样，当文档在线时，所有人的更改都集中在一个地方，因此无需手动合并。"
+    },
+    {
+      "id": 171,
+      "page": 16,
+      "text": "We realize that, in many cases, even this solution is asking too much from collaborators who see no reason to move forward from graphical desktop tools. To satisfy them, the manuscript can be converted to a desktop editor file format (e.g., Microsoft Word .docx or LibreOffice .odt) after major changes, then downloaded and saved in the doc folder. Unfortunately, this means merging some changes and suggestions manually, as existing tools cannot always do this automatically when switching from a desktop file format to text and back(although Pandoc can go a long way).",
+      "translation": "我们意识到，在许多情况下，即使这种解决方案也要求合作者放弃使用图形桌面工具，这对于那些不认为从图形桌面工具转向其他方式有必要的人来说，可能过于苛刻。为了满足他们的需求，在进行重大修改后，可以将手稿转换为桌面编辑文件格式（例如，Microsoft Word .docx 或 LibreOffice .odt），然后下载并保存到“doc”文件夹中。然而，这意味着需要手动合并一些修改和建议，因为现有的工具在从桌面文件格式转换为文本以及反之时，通常无法自动完成此操作（尽管 Pandoc 可以发挥一定作用）。"
+    },
+    {
+      "id": 172,
+      "page": 16,
+      "text": "Text-based documents under version control The second approach treats papers exactly like software and has been used by researchers in mathematics, astronomy, physics, and related disciplines for decades:",
+      "translation": "基于文本的文档在版本控制下。 这种方法将论文视为软件，并已被数学、天文学、物理学等相关领域的研究人员用于数十年："
+    },
+    {
+      "id": 173,
+      "page": 16,
+      "text": "• Write the manuscript in a plain text format that permits version control (6b), such as LaTeX or Markdown, and then convert them to other formats, such as PDF, as needed using scriptable tools like Pandoc.",
+      "translation": "• 以纯文本格式撰写稿件，以便进行版本控制（6b），例如使用 LaTeX 或 Markdown，然后使用 Pandoc 等可脚本化的工具将它们转换为其他格式，如 PDF。"
+    },
+    {
+      "id": 174,
+      "page": 16,
+      "text": "Using a version control system provides good support for finding and merging differences resulting from concurrent changes. It also provides a convenient platform for making comments and performing review.",
+      "translation": "使用版本控制系统，可以很好地支持查找和合并因并发更改而产生的差异。 此外，它还提供了一个方便的平台，用于添加注释和进行审查。"
+    },
+    {
+      "id": 175,
+      "page": 16,
+      "text": "This approach reuses the version control tools and skills used to manage data and software and is a good starting point for fully reproducible research. However, it requires all contributors to understand a much larger set of tools, including Markdown or LaTeX, Make, BiBTeX, and Git/GitHub.",
+      "translation": "这种方法重用用于管理数据和软件的版本控制工具和技能，是进行完全可重复研究的良好起点。然而，它要求所有贡献者理解一套更大的工具，包括 Markdown 或 LaTeX、Make、BiBTeX 和 Git/GitHub。"
+    },
+    {
+      "id": 176,
+      "page": 16,
+      "text": "Why two recommendations for manuscripts?",
+      "translation": "为什么对稿件提出两项建议？"
+    },
+    {
+      "id": 177,
+      "page": 16,
+      "text": "We initially recommended that researchers should always use plain text in version control to manage manuscripts. However, several members of our community felt strongly that the learning curve associated with this recommendation was a significant barrier to entry. For example, Stephen Turner wrote:",
+      "translation": "我们最初建议研究人员应始终使用纯文本进行版本控制来管理稿件。然而，我们的社区中多名成员强烈认为，这种建议所带来的学习曲线，对新手来说是一个重大的障碍。例如，史蒂芬·特纳写道："
+    },
+    {
+      "id": 178,
+      "page": 16,
+      "text": ". . .try to explain the notion of compiling a document to an overworked physician you collaborate with. Oh, but before that, you have to explain the difference between plain text and word processing. And text editors. And Markdown/LaTeX compilers. And BiBTeX. And Git. And GitHub. Etc. Meanwhile, he/she is getting paged from the OR. . .",
+      "translation": "……尝试向您合作的、工作繁忙的医生解释“编译文档”的概念。不过，在此之前，您必须解释一下纯文本、文字处理软件、文本编辑器、Markdown/LaTeX 编译器、BiBTeX 以及 Git 和 GitHub 的区别。与此同时，他/她正在被急诊室呼叫。"
+    },
+    {
+      "id": 179,
+      "page": 17,
+      "text": ". . .as much as we want to convince ourselves otherwise, when you have to collaborate with those outside the scientific computing bubble, the barrier to collaborating on papers in this framework is simply too high to overcome. Good intentions aside, it always comes down to, \"just give me a Word document with tracked changes\", or similar.",
+      "translation": ". . . 尽管我们可能希望自己相信，但当需要与科学计算领域之外的人合作时，在这一框架下合作撰写论文的障碍，实际上是无法克服的。 即使出于好意，最终仍然需要“给我一个带有修订记录的 Word 文档”，或者类似的要求。"
+    },
+    {
+      "id": 180,
+      "page": 17,
+      "text": "Similarly, Arjun Raj [19] said in a blog post:",
+      "translation": "同样，Arjun Raj [19] 在一篇博客文章中表示："
+    },
+    {
+      "id": 181,
+      "page": 17,
+      "text": "Google Docs excels at easy sharing, collaboration, simultaneous editing, commenting, and reply-to-commenting. Sure, one can approximate these using text-based systems and version control. The question is why anyone would like to. . .",
+      "translation": "Google Docs 在易于共享、协作、实时编辑、评论和回复评论方面表现出色。当然，可以使用基于文本的系统和版本控制来近似实现这些功能。问题在于，为什么有人会选择这样做。"
+    },
+    {
+      "id": 182,
+      "page": 17,
+      "text": "The goal of reproducible research is to make sure one can reproduce. . . computational analyses. The goal of version control is to track changes to source code. These are fundamentally distinct goals, and while there is some overlap, version control is merely a tool to help achieve that and comes with so much overhead and baggage that it is often not worth the effort.",
+      "translation": "可重复研究的目标是确保能够重现……计算分析。版本控制的目标是跟踪源代码的变更。这两个目标本质上是不同的，虽然存在一定的重叠，但版本控制只是一个辅助工具，其复杂性和冗余性使其在许多情况下并不值得投入精力。"
+    },
+    {
+      "id": 183,
+      "page": 17,
+      "text": "Collaborative editing in something like Google Docs does not have all the benefits of text-based formats (notably, being able to store manuscripts in the same place, and in the same way, as other materials). However, it does meet the requirements that we initially outlined. We still recommend against using desktop tools like LibreOffice and Microsoft Word with either email or file-sharing services like Dropbox, as workflows based on these do not scale beyond a small number of participants.",
+      "translation": "在像 Google Docs 这样的协作编辑工具中，与基于文本的格式相比，并没有所有优势（例如，能够将手稿存储在相同的位置和相同的方式，与其他材料一起）。然而，它确实满足了我们最初提出的要求。我们仍然建议避免使用像 LibreOffice 和 Microsoft Word 这样的桌面工具，以及像电子邮件或 Dropbox 这样的文件共享服务，因为基于这些工具的工作流程无法扩展到参与者数量有限的情况下。"
+    },
+    {
+      "id": 184,
+      "page": 17,
+      "text": "Supplementary materials Supplementary materials often contain much of the work that went into the project, such as tables and figures or more elaborate descriptions of the algorithms, software, methods, and analyses. In order to make these materials as accessible to others as possible, do not rely solely on the PDF format, since extracting data from PDFs is notoriously hard. Instead, we recommend separating the results that you may expect others to reuse (e.g., data in tables, data behind figures) into separate, text-format files in formats such as CSV, JSON, YAML, XML, or HDF5. We recommend against more innovative formats in deference to an old saying: \"What’s oldest lasts longest\". The same holds for any commands or code you want to include as supplementary material: use the format that most easily enables reuse (source code files, Unix shell scripts, etc.).",
+      "translation": "补充材料 通常包含项目中所做的大量工作，例如表格和图表，或算法、软件、方法和分析的更详细描述。为了使这些材料尽可能方便他人使用，请不要仅依赖 PDF 格式，因为从 PDF 中提取数据非常困难。相反，我们建议将您可能希望他人重用的结果（例如，表格中的数据、图表背后的数据）分别整理为文本格式的文件，例如 CSV、JSON、YAML、XML 或 HDF5。我们建议避免使用更创新的格式，以遵循一句古老的格言：“最古老的，最长久”。同样，如果您希望将任何命令或代码作为补充材料，请使用最容易实现重用的格式（例如，源代码文件、Unix  shell 脚本等）。"
+    },
+    {
+      "id": 185,
+      "page": 17,
+      "text": "What we left out We have deliberately left many good tools and practices off our list, including some that we use daily, because they only make sense on top of the core practices described above or because it takes a larger investment before they start to pay off.",
+      "translation": "我们有意在清单中省略了许多优秀的工具和实践，包括一些我们每天使用的工具，因为它们只有在上述核心实践的基础上才能发挥作用，或者需要更大的投入才能开始产生效益。"
+    },
+    {
+      "id": 186,
+      "page": 17,
+      "text": "• Branches. A branch is a \"parallel universe\" within a version control repository. Developers create branches so that they can make multiple changes to a project independently. They are central to the way that experienced developers use systems like Git, but they add an extra layer of complexity to version control for newcomers. Programmers got along fine in the days of CVS and Subversion without relying heavily on branching, and branching can be adopted without significant disruption after people have mastered a basic edit-commit workflow.",
+      "translation": "• 分支。分支是一个“平行宇宙”，存在于版本控制仓库中。开发者创建分支，以便他们可以独立地对项目进行多次修改。分支是经验丰富的开发者使用诸如 Git 之类的系统的方式的关键，但对于初学者来说，它们增加了版本控制的复杂性。在 CVS 和 Subversion 的时代，程序员无需过多依赖分支，并且在人们掌握了基本的编辑-提交工作流程后，可以无缝地采用分支。"
+    },
+    {
+      "id": 187,
+      "page": 18,
+      "text": "• Build tools. Tools like Make were originally developed to recompile pieces of software that had fallen out of date. They are now also used to regenerate data and entire papers; when one or more raw input files change, Make can automatically rerun those parts of the analysis that are affected, regenerate tables and plots, and then regenerate the human-readable PDF that depends on them. However, newcomers can achieve the same behavior by writing shell scripts that rerun everything; these may do unnecessary work, but given the speed of today’s machines, that is unimportant for small projects.",
+      "translation": "• 构建工具。例如，Make 最初是为了重新编译已过时的软件片段而开发的。现在，它们也被用于生成数据和整个论文；当一个或多个原始输入文件发生变化时，Make 可以自动重新运行受影响的部分、重新生成表格和图表，然后重新生成依赖于它们的可读 PDF 文件。然而，新手可以通过编写脚本来执行所有操作来实现相同的功能；虽然这些脚本可能会进行不必要的操作，但在今天的机器速度下，这对于小型项目来说并不重要。"
+    },
+    {
+      "id": 188,
+      "page": 18,
+      "text": "• Unit tests. A unit test is a small test of 1 particular feature of a piece of software. Projects rely on unit tests to prevent regression, i.e., to ensure that a change to 1 part of the software doesn’t break other parts. While unit tests are essential to the health of large libraries and programs, we have found that they usually aren’t compelling for solo exploratory work(note, for example, the lack of a test directory in Noble’s rules [3]). Rather than advocating something which people are unlikely to adopt, we have left unit testing off this list.",
+      "translation": "• 单元测试。 单元测试是对软件中特定功能的较小测试。 项目依赖单元测试来防止回归，即确保对软件中某个部分进行更改不会破坏其他部分。 尽管单元测试对于大型库和程序的健康至关重要，但我们发现，它们通常不适用于个人探索性工作（例如，Noble 的规则中缺少测试目录 [3]）。 而我们没有推广一个不太可能被采用的东西，因此我们没有将单元测试列入此清单。"
+    },
+    {
+      "id": 189,
+      "page": 18,
+      "text": "• Coverage. Every modern programming language comes with tools to report the coverage of a set of test cases, i.e., the set of lines that are and aren’t actually executed when those tests are run. As with unit testing, this only starts to pay off as projects grow larger and is therefore not recommended here.",
+      "translation": "• 覆盖率。 任何现代编程语言都自带工具，用于报告一组测试用例的覆盖率，即在运行这些测试用例时，实际执行的行数和未执行的行数。 类似于单元测试，这种方法只有在项目规模较大时才开始发挥作用，因此在这里不推荐使用。"
+    },
+    {
+      "id": 190,
+      "page": 18,
+      "text": "• Continuous integration. Tools like Travis-CI automatically run a set of user-defined commands whenever changes are made to a version control repository. These commands typically execute tests to make sure that software hasn’t regressed, i.e., that things which used to work still do. These tests can be run either before changes are saved (in which case, the changes can be rejected if something fails) or after (in which case, the project’s contributors can be notified of the breakage). CI systems are invaluable in large projects with many contributors but pay fewer dividends in smaller projects where code is being written to do specific analyses.",
+      "translation": "• 持续集成。例如，Travis-CI 自动在每次对版本控制仓库进行更改时，运行一组用户定义的命令。这些命令通常执行测试，以确保软件没有出现退化，即，以前正常工作的功能仍然正常。这些测试可以在更改保存之前或之后执行（如果出现问题，则可以拒绝更改，或通知项目贡献者）。在大型项目和许多贡献者的情况下，持续集成系统非常有用，但在代码编写用于特定分析的小型项目中，其价值较小。"
+    },
+    {
+      "id": 191,
+      "page": 18,
+      "text": "• Profiling and performance tuning. Profiling is the act of measuring where a program spends its time and is an essential first step in tuning the program (i.e., making it run faster).",
+      "translation": "• 性能分析和优化。 性能分析是指测量程序在何处花费时间，是优化程序（即使其运行更快）的关键第一步。"
+    },
+    {
+      "id": 192,
+      "page": 18,
+      "text": "Both are worth doing but only when the program’s performance is actually a bottleneck; in our experience, most users spend more time getting the program right in the first place.",
+      "translation": "两者都值得尝试，但前提是程序性能确实是瓶颈；根据我们的经验，大多数用户更倾向于在最初就确保程序能够正常运行。"
+    },
+    {
+      "id": 193,
+      "page": 18,
+      "text": "• The semantic web. Ontologies and other formal definitions of data are useful, but in our experience, even simplified things like Dublin Core are rarely encountered in the wild.",
+      "translation": "• 语义网。 本体和其它形式的数据定义是有用的，但在我们的经验中，即使是简化的事物，如 Dublin Core，也很少在实际应用中出现。"
+    },
+    {
+      "id": 194,
+      "page": 18,
+      "text": "• Documentation. Good documentation is a key factor in software adoption, but in practice, people won’t write comprehensive documentation until they have collaborators who will use it. They will, however, quickly see the point of a brief explanatory comment at the start of each script, so we have recommended that as a first step.",
+      "translation": "• 文档。 良好的文档是软件采用的关键因素，但在实际应用中，人们通常不会在有合作者使用的情况下编写全面的文档。 然而，他们会很快认识到在每个脚本的开头添加简短的说明性注释的价值，因此我们建议作为第一步。"
+    },
+    {
+      "id": 195,
+      "page": 18,
+      "text": "• A bibliography manager. Researchers should use a reference manager of some sort, such as Zotero, and should also obtain and use an ORCID to identify themselves in their publications, but discussion of those is outside the scope of this paper.",
+      "translation": "• 一种参考文献管理工具。研究人员应使用某种参考文献管理工具，例如 Zotero，并且也应获取并使用 ORCID 标识符，以便在他们的出版物中进行标识。但关于这些的讨论超出了本文的范围。"
+    },
+    {
+      "id": 196,
+      "page": 18,
+      "text": "• Code reviews and pair programming. These practices are valuable in projects with multiple people making large software contributions, which is not typical for the intended audience for this paper [20].",
+      "translation": "• 代码审查和配对编程。这些实践在涉及多个人进行大规模软件贡献的项目中非常有用，而这与本文的目标读者群体并不常见 [20]。"
+    },
+    {
+      "id": 197,
+      "page": 19,
+      "text": "One important observation about this list is that many experienced programmers actually do some or all of these things even for small projects. It makes sense for them to do so because(a) they’ve already paid the learning cost of the tool, so the time required to implement for the\"next\" project is small, and (b) they understand that their project will need some or all of these things as it scales up, so they might as well put it in place now.",
+      "translation": "这个列表的一个重要观察是，许多经验丰富的程序员实际上会执行其中一些或全部操作，即使对于小型项目。 这样做是有道理的，因为（a）他们已经支付了使用这些工具的学习成本，因此“下一个”项目的实施时间很短；（b）他们理解，随着项目的规模扩大，他们需要使用其中一些或全部功能，因此最好现在就进行实施。"
+    },
+    {
+      "id": 198,
+      "page": 19,
+      "text": "The problem comes when those experienced developers give advice to people who haven’t already mastered the tools and don’t realize (yet) that they will save time if and when their project grows. In that situation, advocating unit testing with coverage checking and continuous integration is more likely to overwhelm newcomers rather than aid them.",
+      "translation": "问题出现在经验丰富的开发者给那些尚未掌握工具的人提供建议时，他们可能没有意识到，当项目发展时，采用单元测试、覆盖率检查和持续集成实际上可以节省时间。在这种情况下，推广单元测试、覆盖率检查和持续集成，反而可能让新手感到困惑，而不是帮助他们。"
+    },
+    {
+      "id": 199,
+      "page": 19,
+      "text": "Conclusion",
+      "heading": true,
+      "translation": "结论"
+    },
+    {
+      "id": 200,
+      "page": 19,
+      "text": "We have outlined a series of practices for scientific computing based on our collective experience and the experience of the thousands of researchers we have met through Software Carpentry, Data Carpentry, and similar organizations. These practices are pragmatic, accessible to people who consider themselves new to computing, and can be applied by both individuals and groups. Most importantly, these practices make researchers more productive individually by enabling them to get more done in less time and with less pain. They also accelerate research as a whole by making computational work (which increasingly means all work) more reproducible.",
+      "translation": "我们总结了一系列基于我们集体经验以及通过软件Carpentry、数据Carpentry等组织与数千名研究人员的交流，得出的科学计算实践。这些实践具有实用性，易于被那些认为自己是计算机新手的人理解，并且可以由个人或团队应用。最重要的是，这些实践通过使研究人员能够在更短的时间内，以更少的精力完成更多工作，从而提高其个人生产力。此外，这些实践还可以加速整体研究，因为它们使计算工作（即越来越意味着所有工作）更具可重复性。"
+    },
+    {
+      "id": 201,
+      "page": 19,
+      "text": "However, progress will not happen by itself. The practices described here are increasingly incentivized by requirements from journals and funding agencies, but the time and skills required to actually do them are still not being valued.",
+      "translation": "然而，进展并非自动发生。本文中描述的实践，正日益受到期刊和资助机构的要求推动，但实际上执行这些实践所需要的时力和技能，仍然没有得到充分的重视。"
+    },
+    {
+      "id": 202,
+      "page": 19,
+      "text": "At a local level, principal investigators (PIs) can have the most impact, requiring that the research their lab produces follow these recommendations. Even if a PI doesn’t have a background in computation, they can require that students show and share their code in lab meetings and with lab mates, those data are available and accessible to all in the lab, and that computational methods sections are comprehensive. PIs can also value the time it takes to do these things effectively and provide opportunities for training.",
+      "translation": "在本地层面，主要研究人员（PIs）可以发挥最大的影响，要求其实验室的研究成果遵循这些建议。即使PI没有计算背景，他们也可以要求学生在实验室会议和与实验室成员的交流中展示和分享他们的代码，确保这些数据对实验室内的所有人员都可用且可访问，并要求计算方法部分内容全面。PIs还可以重视有效地完成这些任务所需的时间，并提供培训机会。"
+    },
+    {
+      "id": 203,
+      "page": 19,
+      "text": "Universities can also support such efforts. While this is often provided by IT or high performance computing (HPC) groups, research librarians are an often underappreciated resource.",
+      "translation": "大学也可以支持这些努力。虽然这通常由信息技术或高性能计算 (HPC) 组提供，但研究图书馆员往往被低估了。"
+    },
+    {
+      "id": 204,
+      "page": 19,
+      "text": "Librarians have thought about and worked with data and provenance even before these computational challenges, and, increasingly, universities have dedicated data librarians on staff who have an explicit service role.",
+      "translation": "图书馆员在面临这些计算挑战之前，就已经开始思考和处理数据和来源信息。 此外，越来越多的大学已经设立了专门的数据图书馆员，他们拥有明确的服务角色。"
+    },
+    {
+      "id": 205,
+      "page": 19,
+      "text": "Many campuses also have self-organized groups led by students who wish to learn from each other, which may operate independently or in concert with organizations like Software Carpentry, Data Carpentry, or The Hacker Within.",
+      "translation": "许多大学也设有由学生自发组织的团体，这些团体旨在互相学习，可能独立运作或与诸如软件Carpentry、数据Carpentry或The Hacker Within等组织合作。"
+    },
+    {
+      "id": 206,
+      "page": 19,
+      "text": "Finally, many funding agencies now require data-management plans, education, and outreach activities. The true cost of implementing these plans includes training; it is unfair as well as counterproductive to insist that researchers do things without teaching them how. We believe it is now time for funders to invest in such training; we hope that our recommendations will help shape consensus on what \"good enough\" looks like and how to achieve it.",
+      "translation": "最后，许多资助机构现在要求制定数据管理计划、教育和宣传活动。实施这些计划的真实成本包括培训；要求研究人员在没有提供指导的情况下进行工作是不公平且具有破坏性的。我们认为现在是资助机构投资于此类培训的时候；我们希望我们的建议能够帮助形成对“足够好”的共识，以及如何实现它。"
+    },
+    {
+      "id": 207,
+      "page": 19,
+      "text": "Acknowledgments",
+      "heading": true,
+      "translation": "致谢"
+    },
+    {
+      "id": 208,
+      "page": 19,
+      "text": "We are grateful to Arjun Raj (University of Pennsylvania), Steven Haddock (Monterey Bay Aquarium Research Institute), Stephen Turner (University of Virginia), Elizabeth Wickes(University of Illinois), and Garrett Grolemund (RStudio) for their feedback on early versions of this paper, to those who contributed during the outlining of the manuscript, and to everyone involved in Data Carpentry and Software Carpentry for everything they have taught us.",
+      "translation": "我们感谢阿琼·拉杰（宾夕法尼亚大学）、史蒂文·哈德科克（蒙特雷湾研究机构）、史蒂芬·特纳（弗吉尼亚大学）、伊丽莎白·维克斯（伊利诺伊大学）和加雷特·格罗姆兰德（RStudio）对本文早期版本的反馈，以及在手稿的编排过程中贡献的人员，以及所有参与数据Carpentry和软件Carpentry的人员，感谢他们所传授的一切。"
+    },
+    {
+      "id": 209,
+      "page": 20,
+      "text": "References",
+      "heading": true
+    },
+    {
+      "id": 210,
+      "page": 20,
+      "text": "1. Wilson G, Aruliah DA, Brown CT, Hong NPC, Davis M, Guy RT, et al. Best Practices for Scientific Computing. PLoS Biol. 2014; 12(1):e1001745. https://doi.org/10.1371/journal.pbio.1001745 PMID: 24415924 2. Gentzkow M, Shapiro JM. Code and Data for the Social Sciences: A Practitioner’s Guide; 2014. https://web.stanford.edu/~gentzkow/research/CodeAndData.pdf. 3. Noble WS. A Quick Guide to Organizing Computational Biology Projects. PLoS Comput Biol. 2009; 5(7). https://doi.org/10.1371/journal.pcbi.1000424 PMID: 19649301 4. Brown CT. How to grow a sustainable software development process; 2015. http://ivory.idyll.org/blog/2015-growing-sustainable-software-development-process.html. 5. Wickham H. Tidy Data. Journal of Statistical Software. 2014; 59(1):1–23. https://doi.org/10.18637/jss. v059.i10 6. Kitzes J. Reproducible Workflows; 2016. http://datasci.kitzes.com/lessons/python/reproducible_ workflow.html. 7. Sandve GK, Nekrutenko A, Taylor J, Hovig E. Ten Simple Rules for Reproducible Computational Research. PLoS Comput Biol. 2013; 9(10). https://doi.org/10.1371/journal.pcbi.1003285 PMID: 24204232 8. Hart EM, Barmby P, LeBauer D, Michonneau F, Mount S, Mulrooney P, et al. Ten simple rules for digital data storage. PLoS Comput Biol. 2016; https://doi.org/10.1371/journal.pcbi.1005097 PMID: 27764088 9. U. of Illinois Library. File Formats and Organization. http://www.library.illinois.edu/sc/services/data_ management/file_formats.html. 10. White EP, Baldridge E, Brym ZT, Locey KJ, McGlinn DJ, Supp SR. Nine Simple Ways to Make It Easier to (Re)use Your Data. Ideas in Ecology and Evolution. 2013; 6(2). 11. Wickes E. Comment on \"Metadata\"; 2015. https://github.com/swcarpentry/good-enough-practices-in-scientific-computing/issues/3#issuecomment-157410442. 12. Hunt A, Thomas D. The Pragmatic Programmer. Addison-Wesley; 1999. 13. Martin Robert C. Clean Code: A Handbook of Agile Software Craftsmanship. Addison-Wesley; 2008. 14. McConnell Steve. Code Complete: A Practical Handbook of Software Construction. Microsoft Press; 2004. 15. Miller GA. The Magical Number Seven, Plus or Minus Two: Some Limits on Our Capacity for Processing Information. Psychological Review. 1956; 63(2):81–97 PMID: 13310704 16. Steinmacher I, Graciotto Silva M, Gerosa M, Redmiles DF. A Systematic Literature Review on the Barriers Faced by Newcomers to Open Source Software Projects. Information and Software Technology. 2015; 59(C). https://doi.org/10.1016/j.infsof.2014.11.001 17. St Laurent AM. Understanding Open Source and Free Software Licensing. O’Reilly Media; 2004. http://www.oreilly.com/openbook/osfreesoft/book/. 18. Gawande A. The Checklist Manifesto: How to Get Things Right. Picador; 2011. 19. Raj A. From over-reproducibility to a reproducibility wish-list; 2016. http://rajlaboratory.blogspot.ca/2016/03/from-over-reproducibility-to.html. 20. Petre M, Wilson G. Code Review For and By Scientists. In: Katz D, editor. Proc. WSSSPE 2014; 2014."
+    }
+  ]
+}

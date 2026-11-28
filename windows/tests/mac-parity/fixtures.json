@@ -1,0 +1,936 @@
+{
+  "pastedFrontMatter": [
+    {
+      "name": "joined title and names",
+      "text": "High Resolution Spectroscopy for Distant Stellar Systems Alice Martin1, Brian West2, and Mira Lopez2\n\n1 Department of Astronomy 2 University Observatory\n\nAbstract\n\nThe exposures were repeated on three nights using the same detector."
+    },
+    {
+      "name": "separate names and numbered affiliations",
+      "text": "High Resolution Spectroscopy for Distant Stellar Systems\n\nAlice Martin1, Brian West2, and Mira Lopez2\n\n1 Department of Astronomy 2 University Observatory\n\nAbstract\n\nThe exposures were repeated on three nights using the same detector."
+    },
+    {
+      "name": "heading with body in a single paragraph",
+      "text": "The flux was recorded under stable conditions. 2 Methods The samples were cooled overnight before imaging."
+    },
+    {
+      "name": "printed reference heading before first citation",
+      "text": "References [1] Martin, A. (2021). A catalogue of winter observations. Journal of Testing."
+    },
+    {
+      "name": "isolated section heading between sentences",
+      "text": "The detector was calibrated on three nights.\n\n3 Results\n\nThe brightness remained constant in all observations."
+    },
+    {
+      "name": "scientific title containing numerals",
+      "text": "A Survey of CO2 Absorption Across Ten Nearby Stars"
+    },
+    {
+      "name": "single line breaks from the clipboard",
+      "text": "The observations were made using a stable reference source.\nThe residual difference was small.\n\nThe last exposure was taken at midnight."
+    },
+    {
+      "name": "single physical newlines",
+      "text": "2 Methods\nThe observations were made using a stable reference source.\nThe last exposure was taken at midnight."
+    }
+  ],
+  "readerSearch": {
+    "blocks": [
+      {"source": "Étude de l’échelle. Final boundary", "translation": "next sentence"},
+      {"source": "An E\u0301chelle spectrum and a CO₂ line.", "translation": "Le café noir."},
+      {"source": "Die Straße und die Maße", "translation": "A flux calibration."},
+      {"source": "ΟΣ and the µm units", "translation": ""},
+      {"source": "Iodine, ı and ﬂux", "translation": "Istanbul"},
+      {"source": "A figure in İstanbul.", "translation": ""},
+      {"source": "Untranslated block", "translation": null},
+      {"source": "ß", "translation": null},
+      {"source": "ﬂ", "translation": null},
+      {"source": "İ", "translation": null},
+      {"source": "ı", "translation": null},
+      {"source": "æ", "translation": null},
+      {"source": "e\u0301", "translation": null},
+      {"source": "x\u0304", "translation": null},
+      {"source": "𝑥", "translation": null},
+      {"source": "A\u0308\u0304", "translation": null},
+      {"source": "한글", "translation": null}
+    ],
+    "queries": ["  ÉCHELLE  ", "E\u0301CHELLE", "echelle", "CAFE\u0301", "boundary next", "undefined", "STRASSE", "SS", "ος", "οσ", "μm", "flux", "CO2", "CO₂", "Istanbul", "  \n\t  ", "translation", "etude", "s", "f", "l", "i", "I", "i\u0307", "ı", "ae", "e", "ß", "fl", "é", "İ", "\u0301", "x", "x\u0304", "\u0304", "𝑥", "a", "ä", "ǟ", "한글"]
+  },
+  "summaryConsolidation": {
+    "paragraphs": [
+      "The reference sensor stayed stable throughout the controlled trial.",
+      "The thermal chamber was calibrated before every recorded run.",
+      "The study included only a single manufacturing site."
+    ],
+    "excerpt": {
+      "claims": [
+        {
+          "text": "The reference sensor was stable.",
+          "sources": [
+            {
+              "paragraphID": 1,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            },
+            {
+              "paragraphID": 1,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            },
+            {
+              "paragraphID": 9,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            }
+          ]
+        },
+        {
+          "text": "The chamber was calibrated.",
+          "sources": [
+            {
+              "paragraphID": 2,
+              "quote": "The thermal chamber was calibrated before every recorded run."
+            }
+          ]
+        },
+        {
+          "text": "The result may generalize.",
+          "sources": [
+            {
+              "paragraphID": 3,
+              "quote": "The experiment represented all manufacturing sites."
+            }
+          ]
+        },
+        {
+          "text": "Only one site was studied.",
+          "sources": [
+            {
+              "paragraphID": 3,
+              "quote": "The study included only a single manufacturing site."
+            }
+          ]
+        }
+      ]
+    },
+    "merge": {
+      "claims": [
+        {
+          "text": "Calibration and stability were documented.",
+          "sources": [
+            {
+              "paragraphID": 2,
+              "quote": "The thermal chamber was calibrated before every recorded run."
+            },
+            {
+              "paragraphID": 1,
+              "quote": "The reference sensor stayed stable throughout the controlled trial."
+            },
+            {
+              "paragraphID": 3,
+              "quote": "The study included only a single manufacturing site."
+            }
+          ]
+        },
+        {
+          "text": "The trial tested every manufacturing site.",
+          "sources": [
+            {
+              "paragraphID": 2,
+              "quote": "The trial tested every manufacturing site."
+            }
+          ]
+        },
+        {
+          "text": "Only one site was studied.",
+          "sources": [
+            {
+              "paragraphID": 3,
+              "quote": "The study included only a single manufacturing site."
+            }
+          ]
+        },
+        {
+          "text": "An unverified interpretation.",
+          "sources": []
+        }
+      ]
+    }
+  },
+  "summaryEvidence": [
+    {
+      "name": "decomposed accent in PDF text",
+      "source": "Le café contient exactement trois mesures.",
+      "quote": "Le café contient exactement trois mesures.",
+      "valid": true
+    },
+    {
+      "name": "decomposed accent in model output",
+      "source": "Le café contient exactement trois mesures.",
+      "quote": "Le café contient exactement trois mesures.",
+      "valid": true
+    },
+    {
+      "name": "ten supplementary characters",
+      "source": "🧪",
+      "quote": "🧪",
+      "repeat": 10,
+      "valid": false
+    },
+    {
+      "name": "twenty ideographs",
+      "source": "𠀀",
+      "quote": "𠀀",
+      "repeat": 20,
+      "valid": true
+    },
+    {
+      "name": "five hundred ideographs",
+      "source": "𠀀",
+      "quote": "𠀀",
+      "repeat": 500,
+      "valid": true
+    },
+    {
+      "name": "more than five hundred graphemes",
+      "source": "é",
+      "quote": "é",
+      "repeat": 501,
+      "valid": false
+    },
+    {
+      "name": "case and accents are significant",
+      "source": "La surface du béton dépasse la limite mesurée.",
+      "quote": "La surface du beton depasse la limite mesuree.",
+      "valid": false
+    },
+    {
+      "name": "compatibility-equivalent scientific units stay distinct",
+      "source": "The temperature rose by 25 ℉ during the second trial.",
+      "quote": "The temperature rose by 25 °F during the second trial.",
+      "valid": false
+    }
+  ],
+  "connectedBatches": [
+    {
+      "name": "extended graphemes within one batch across paragraphs",
+      "paragraphs": [
+        {
+          "text": "𠮷",
+          "repeat": 1600
+        },
+        {
+          "text": "é",
+          "repeat": 1500
+        }
+      ]
+    },
+    {
+      "name": "unbroken extended characters at the batch edge",
+      "paragraphs": [
+        {
+          "text": "x",
+          "repeat": 4799,
+          "suffix": "👩‍🔬followup"
+        }
+      ]
+    },
+    {
+      "name": "entire calibration sentence moves to the next batch",
+      "paragraphs": [
+        {
+          "prefix": "The reference sensor was stable. It was tested in a second chamber. This provided the reference used in the next trial. ",
+          "text": "The sensor calibration was repeated ",
+          "repeat": 131,
+          "suffix": "in both trials."
+        }
+      ]
+    },
+    {
+      "name": "two paragraph breaks count toward the maximum",
+      "paragraphs": [
+        {
+          "text": "x",
+          "repeat": 4795
+        },
+        {
+          "text": "abc"
+        },
+        {
+          "text": "tiny final paragraph"
+        }
+      ]
+    },
+    {
+      "name": "model receives composed and decomposed symbols as written",
+      "paragraphs": [
+        {
+          "text": "The signal é and force 𝑭 were measured. ",
+          "repeat": 120,
+          "suffix": "Last run."
+        }
+      ]
+    }
+  ],
+  "summaryBatches": [
+    {
+      "name": "keep a long complete sentence together when the preceding sentences fill its remaining space",
+      "paragraphs": [
+        {
+          "prefix": "The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The baseline was calibrated on the first morning. The sensor ",
+          "text": "recorded each observation ",
+          "repeat": 220,
+          "suffix": "before the independent reviewers inspected the archive."
+        }
+      ]
+    },
+    {
+      "name": "no split inside a decomposed grapheme",
+      "paragraphs": [
+        {
+          "text": "é",
+          "repeat": 5901
+        }
+      ]
+    },
+    {
+      "name": "short preface shares the first long paragraph batch",
+      "paragraphs": [
+        {
+          "text": "Background observations."
+        },
+        {
+          "text": "𠀀",
+          "repeat": 6001
+        }
+      ]
+    },
+    {
+      "name": "combined emoji count as one character",
+      "paragraphs": [
+        {
+          "text": "👩🏽‍🔬",
+          "repeat": 1800
+        },
+        {
+          "text": "方法",
+          "repeat": 1800
+        }
+      ]
+    }
+  ],
+  "bibliographies": [
+    {
+      "name": "title-first and institutional DOI entries without a References heading",
+      "paragraphs": [
+        "Introduction",
+        "We compared multiple instruments.",
+        "The readings agreed.",
+        "There was a single exception.",
+        "The calibration needs further work.",
+        "A catalogue of winter observations. (2021). https://doi.org/10.1234/winter.",
+        "openLAB. (2022b). Raw sensor readings. doi:10.1234/readings.",
+        "Échantillons du lac. (2023). https://doi.org/10.1234/lake."
+      ],
+      "referenceIds": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "methods and body on the same physical block after references",
+      "paragraphs": [
+        "Introduction",
+        "We compared multiple instruments.",
+        "The readings agreed.",
+        "There was a single exception.",
+        "The calibration needs further work.",
+        "References",
+        "Technical memo in the archive.",
+        "4.2 Materials and methods\nWe used a fresh sample.",
+        "The team repeated measurements after thawing."
+      ],
+      "referenceIds": [
+        6,
+        7
+      ]
+    },
+    {
+      "name": "punctuated methods heading after an undated catalogue entry",
+      "paragraphs": [
+        "Introduction",
+        "We compared multiple instruments.",
+        "The readings agreed.",
+        "There was a single exception.",
+        "The calibration needs further work.",
+        "References",
+        "Technical memo in the archive.",
+        "Methods;",
+        "The team repeated measurements after thawing."
+      ],
+      "referenceIds": [
+        6,
+        7
+      ]
+    },
+    {
+      "name": "emcee excerpt ending in three citations with lowercase surname particles",
+      "paragraphs": [
+        "Introduction",
+        "We compared sampling methods.",
+        "Both teams examined the same data.",
+        "The estimates agreed.",
+        "The checks were repeated.",
+        "Speagle, J. S. (2019). dynesty: A Dynamic Nested Sampling Package for Estimating Bayesian Posteriors and Evidences. arXiv e-prints, arXiv:1904.02180. Retrieved from http://arxiv.org/abs/1904.02180",
+        "ter Braak, C. J. F. (2006). A Markov Chain Monte Carlo version of the genetic algorithm Differential Evolution: easy Bayesian computing for real parameter spaces. Statistics and Computing, 16(3), 239–249. doi:10.1007/s11222-006-8769-1",
+        "ter Braak, C. J. F., & Vrugt, J. A. (2008). Differential evolution Markov chain with snooker updater and fewer chains. Statistics and Computing, 18(4), 435–446. doi:10.1007/s11222-008-9104-9"
+      ],
+      "referenceIds": [
+        6,
+        7,
+        8
+      ]
+    },
+    {
+      "name": "a contents entry before the article and its actual bibliography",
+      "paragraphs": [
+        "Contents",
+        "References",
+        "Introduction",
+        "We calibrated each sensor independently.",
+        "All three sensors produced repeatable measurements.",
+        "References",
+        "[1] Ng, A. (2021). Calibration stability. Journal of Testing.",
+        "Appendix A",
+        "The appendix records the individual measurements."
+      ],
+      "referenceIds": [
+        6,
+        7
+      ]
+    }
+  ],
+  "resourceBoundaries": [
+    "- Validate the chart data\n  against the original PDF.\n- Render all panels.\nThe reviewer confirmed both comparisons.",
+    "The settings are listed below.\nModel | Input field | Limit\n:--- | :---: | ---:\nmodel_A | read_csv | 12\nmodelB | input_y | 28\n\nCalibration continued after the table.",
+    "Results before the table.\n<TABLE>\n<tr><td>12.5</td><td>28</td></tr>\n</table>\n\nThe difference remained significant.",
+    "<figure></FIGURE>\n\nThe image was acquired twice.",
+    "<DETAILS>\n<summary>Reader configuration</summary>\n<p>Details here.</p>\n</details>\n\nBoth readers identified the same record.",
+    "~~~text\nThis example mentions ~~~ in the middle of a line.\naccuracy = 0.86\n~~~\nThe values were averaged."
+  ],
+  "scientificNotation": [
+    "The calibration uses `model_A` for archive data and `modelA` for new observations. The C# library fits `sigma_x` for each series.",
+    "We compare A* search with the p_value criterion using **paired estimates**.",
+    "For the λ_fit estimator, [variable x_y](https://example.org/data) denotes a local parameter."
+  ],
+  "papers": [
+    {
+      "name": "Extraction review of copied lab notes",
+      "blocks": [
+        {
+          "text": "We measured the reference intensity against standards such as\u200b"
+        },
+        {
+          "text": "The observer left the interval partly trans‐\u0085"
+        },
+        {
+          "text": "\u200b 1.25 × 10\u200b"
+        },
+        {
+          "text": "The baseline for the second exposure is defined as\ufeff"
+        },
+        {
+          "text": "We compared the time evolution of the reference spectrum to the independent lamp exposure obtained at the same temperature.\ufeff"
+        },
+        {
+          "text": "We compared the time evolution of the reference spectrum to the independent lamp exposure obtained at the same temperature.\u200b"
+        },
+        {
+          "text": "The same sample was reread using the original detector."
+        }
+      ]
+    },
+    {
+      "name": "distinct scientific section identifiers",
+      "blocks": [
+        { "text": "Calibration for model_A in C#", "sourceMarkdown": "## Calibration for `model_A` in C#" },
+        { "text": "The first calibration uses the archived observations." },
+        { "text": "Calibration for modelA in C#", "sourceMarkdown": "## Calibration for `modelA` in C#" },
+        { "text": "The second calibration uses the new observations." },
+        { "text": "Conclusions for A* search", "sourceMarkdown": "## **Conclusions** for A* search" },
+        { "text": "Both estimates use the same evaluation set." }
+      ]
+    },
+    {
+      "name": "inline-abstract-and-boundaries",
+      "blocks": [
+        {
+          "text": "This paper begins with a preface before formal sections."
+        },
+        {
+          "text": "Abstract: The study evaluates how well the bilingual reader preserves equations and quoted passages. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations. The experiment reports exact source passages and their locations."
+        },
+        {
+          "text": "Abstraction Mechanisms"
+        },
+        {
+          "text": "This section has its own evidence and does not belong to the abstract."
+        },
+        {
+          "text": "Methods"
+        },
+        {
+          "text": "Too short."
+        },
+        {
+          "text": "Results\nThe trials recovered both delimiters of the displayed equation in every preserved sample."
+        },
+        {
+          "text": "III. Discussion"
+        },
+        {
+          "text": "Evidence from a small fixture applies only to the configurations included in the test."
+        },
+        {
+          "text": "Conclusion"
+        },
+        {
+          "text": "The source material can be checked independently before using the translated text."
+        }
+      ]
+    },
+    {
+      "name": "structured-headings",
+      "blocks": [
+        {
+          "text": "材料与方法",
+          "sourceMarkdown": "## 材料与方法"
+        },
+        {
+          "text": "我们把两次运行得到的译文逐字符比较，并核对公式、文献编号、段落跳转和保存的批注是否一致。"
+        },
+        {
+          "text": "custom lowercase heading",
+          "sourceMarkdown": "### custom lowercase heading"
+        },
+        {
+          "text": "An unrelated section contributes no evidence to the previous method."
+        },
+        {
+          "text": "结论",
+          "sourceMarkdown": "# 结论"
+        },
+        {
+          "text": "两端读取相同的输入，可以直接比较章节范围和阅读定位，复核同一段原文上的每一个差异。"
+        }
+      ]
+    },
+    {
+      "name": "unicode-boundaries",
+      "blocks": [
+        {
+          "text": "Methods"
+        },
+        {
+          "text": "👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬"
+        },
+        {
+          "text": "👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬👩‍🔬"
+        },
+        {
+          "text": "٢.١ Results"
+        },
+        {
+          "text": "The measurements include both boundary cases and keep the full source text."
+        }
+      ]
+    },
+    {
+      "name": "no-headings",
+      "blocks": [
+        {
+          "text": "An unheaded paragraph still provides a source that readers can return to."
+        },
+        {
+          "text": "A second paragraph tests whether the range begins with the right source."
+        }
+      ]
+    },
+    {
+      "name": "extraction-hints",
+      "blocks": [
+        {
+          "text": "the typed formula ends with an incom-"
+        },
+        {
+          "text": "the measured values are defined as"
+        },
+        {
+          "text": "١٢٣ × ٤٥"
+        },
+        {
+          "text": "this deliberately long paragraph contains enough ordinary lowercase words to trigger a missing sentence ending in the quality check"
+        },
+        {
+          "text": "A complete sentence with terminal punctuation."
+        }
+      ]
+    },
+    {
+      "name": "literal listings and multilingual extraction hints",
+      "blocks": [
+        {
+          "text": "TEMP_DIR = ./temp_zip_files\necho \"Packaging zip files required by analysis tool. . .\"\n./src/make-zip-files.py $(TEMP_DIR) *.dat",
+          "sourceMarkdown": "```\nTEMP_DIR = ./temp_zip_files\necho \"Packaging zip files required by analysis tool. . .\"\n./src/make-zip-files.py $(TEMP_DIR) *.dat\n```"
+        },
+        {
+          "text": "model αwhere we"
+        },
+        {
+          "text": "model α, where we"
+        },
+        {
+          "text": "The calibration used repeated readings. äβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβäβ measured frag-"
+        }
+      ]
+    },
+    {
+      "name": "empty",
+      "blocks": []
+    }
+  ],
+  "markdown": [
+    "Before $$E=mc^2$$ and `const sample = \"$&\"` After",
+    "Before $x+y$ with \\(v_i\\), \\[a=b\\] and https://example.org/method After",
+    "Before ![chart](images/chart.png) and <sup>2</sup> After",
+    "Before __PAPERBRIDGE_TOKEN_42__ and `sample $' $&` After"
+  ],
+  "merges": [
+    {
+      "name": "ordinary",
+      "left": "A short sentence.",
+      "right": "A second sentence."
+    },
+    {
+      "name": "short token and digit",
+      "left": "A 3-",
+      "right": "D representation."
+    },
+    {
+      "name": "long token and uppercase",
+      "left": "A feature-",
+      "right": "XYZ module."
+    },
+    {
+      "name": "short token and uppercase",
+      "left": "micro-",
+      "right": "RNA expression."
+    },
+    {
+      "name": "compound suffix",
+      "left": "The attention-",
+      "right": "Based network."
+    },
+    {
+      "name": "suffix with punctuation",
+      "left": "an attention-",
+      "right": "based, approach."
+    },
+    {
+      "name": "nested compound",
+      "left": "state-of-the-",
+      "right": "art measurements."
+    },
+    {
+      "name": "numbers",
+      "left": "Experiment 12-",
+      "right": "3 shows the result.",
+      "windowsText": "Experiment 12-3 shows the result."
+    },
+    {
+      "name": "source whitespace",
+      "left": " \tRepeated   quote and   quote.  ",
+      "right": " \tAnother\t\tquote. \t"
+    },
+    {
+      "name": "punctuation",
+      "left": "ratio (",
+      "right": "x/y)"
+    },
+    {
+      "name": "chinese punctuation",
+      "left": "结果",
+      "right": "，见下图。"
+    },
+    {
+      "name": "heading and body",
+      "left": "Results",
+      "right": "We find a difference."
+    },
+    {
+      "name": "source trailing separator",
+      "left": "path/",
+      "right": "segment"
+    },
+    {
+      "name": "empty left",
+      "left": "",
+      "right": "   body "
+    },
+    {
+      "name": "empty right",
+      "left": "first  half",
+      "right": " \t"
+    },
+    {
+      "name": "combining characters",
+      "left": "A ééééé-",
+      "right": "X signal."
+    },
+    {
+      "name": "model identifier",
+      "left": "The GPT-",
+      "right": "4 model.",
+      "windowsText": "The GPT-4 model."
+    },
+    {
+      "name": "separate arithmetic sign",
+      "left": "The difference is x -",
+      "right": "2 units.",
+      "windowsText": "The difference is x - 2 units."
+    },
+    {
+      "name": "printed compound hyphen",
+      "left": "a low‐",
+      "right": "resolution figure.",
+      "windowsText": "a low‐resolution figure."
+    },
+    {
+      "name": "anchors across paragraphs",
+      "left": "First echo and another echo.",
+      "right": "A second paragraph echoes the result.",
+      "marks": [
+        {
+          "paragraph": 1,
+          "quote": "echo",
+          "offset": 23,
+          "body": "second echo"
+        },
+        {
+          "paragraph": 2,
+          "quote": "echoes",
+          "offset": 19,
+          "body": "right note"
+        },
+        {
+          "paragraph": 1,
+          "quote": "译文",
+          "offset": 0,
+          "body": "translation note",
+          "translation": true
+        }
+      ]
+    },
+    {
+      "name": "anchor removed with line-break hyphen",
+      "left": "A micro-",
+      "right": "RNA sequence repeats.",
+      "marks": [
+        {
+          "paragraph": 1,
+          "quote": "micro-",
+          "offset": 2,
+          "body": "old spelling"
+        },
+        {
+          "paragraph": 2,
+          "quote": "sequence",
+          "offset": 4,
+          "body": "sequence note"
+        }
+      ]
+    },
+    {
+      "name": "hyphenated language pair at line break",
+      "left": "The English-",
+      "right": "to-German task.",
+      "windowsText": "The English-to-German task."
+    },
+    {
+      "name": "continued root before a hyphenated adjective",
+      "left": "an inter-",
+      "right": "national-based comparison."
+    }
+  ],
+  "pageBoundaries": [
+    {
+      "name": "proper name continuing the PLOS method",
+      "left": "Some data-cleaning tools, such as",
+      "right": "OpenRefine, provide a graphical user interface and keep track of each step in the process."
+    },
+    {
+      "name": "an independent dot-product equation on the next page",
+      "left": "The calibration used a scaled dot product",
+      "right": "q · k = q1k1 + q2k2"
+    },
+    {
+      "name": "an ordinary paragraph after a detached equation",
+      "left": "test voltage = current + voltage",
+      "right": "where this paragraph describes a separate measurement."
+    },
+    {
+      "name": "a closing square bracket at the beginning of a page",
+      "left": "We applied the correction for the long interval [sample 2",
+      "right": "] to the other measurement."
+    },
+    {
+      "name": "hyphenated word across pages",
+      "left": "The authors propose a reproducible metho-",
+      "right": "dology for this experiment."
+    },
+    {
+      "name": "scientific dimension across pages",
+      "left": "This coordinate system uses a 3-",
+      "right": "D representation of each sample."
+    },
+    {
+      "name": "model number across pages",
+      "left": "We evaluate predictions from GPT-",
+      "right": "4 across two physical pages.",
+      "windowsText": "We evaluate predictions from GPT-4 across two physical pages."
+    },
+    {
+      "name": "numerical range across pages",
+      "left": "The range of scores was 12-",
+      "right": "3 in the source table."
+    },
+    {
+      "name": "same-page style compound across pages",
+      "left": "We used this attention-",
+      "right": "based method in all experiments."
+    },
+    {
+      "name": "complete sentence across pages",
+      "left": "We observed a small improvement.",
+      "right": "the next independent paragraph follows."
+    },
+    {
+      "name": "numbered list on new page",
+      "left": "The previous paragraph trails off with inter-",
+      "right": "2. separate the training and validation samples."
+    },
+    {
+      "name": "standalone table heading on new page",
+      "left": "We keep this word fragment model-",
+      "right": "Table 2: Model predictions for each sample."
+    },
+    {
+      "name": "new section on the next page",
+      "left": "The methods are described in detail below",
+      "right": "3 Results"
+    }
+  ],
+  "reflows": [
+    {
+      "name": "ordinary paragraphs",
+      "text": "This sentence ends here. The second sentence gives evidence. The third sentence confirms the result.",
+      "target": 50
+    },
+    {
+      "name": "one indivisible sentence",
+      "text": "This is an unusually long sentence with no safe break in the middle of it.",
+      "target": 20
+    },
+    {
+      "name": "three CJK sentences",
+      "text": "这一段介绍方法。第二句描述结果。第三句指出局限。",
+      "target": 17
+    },
+    {
+      "name": "graphemes fitting together",
+      "text": "This test uses 👩‍🔬👩‍🔬👩‍🔬. This test ends here. Another sentence follows.",
+      "target": 42
+    },
+    {
+      "name": "combining characters",
+      "text": "The value is éééé. We measure it. A final sentence follows.",
+      "target": 34
+    },
+    {
+      "name": "spaces between sentences",
+      "text": "This result is stable.    The model agrees.   A third sentence follows.",
+      "target": 42
+    },
+    {
+      "name": "fits without mutation",
+      "text": "An example with 👩‍🔬👩‍🔬. A final sentence.",
+      "target": 37
+    },
+    {
+      "name": "oversized first sentence",
+      "text": "This single sentence greatly exceeds our small limit without any valid break. Next. Last.",
+      "target": 16
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "target": 20
+    },
+    {
+      "name": "PLOS figure reference",
+      "text": "We measured each sample twice (Fig. 2). The interval in Fig. 3 was narrower. The full data set is available in the archive.",
+      "target": 42
+    },
+    {
+      "name": "parenthesized citation and abbreviation",
+      "text": "The earlier results (Smith et al., 2020; Fig. 3) agree with our measurements. See also Sec. 2.4. An independent team repeated the analysis.",
+      "target": 60
+    },
+    {
+      "name": "French quotation and numbered figure",
+      "text": "La figure 2 montre les mesures. « Les valeurs restent stables. » Les auteurs ont répété la mesure.",
+      "target": 40,
+      "windowsParagraphs": ["La figure 2 montre les mesures.", "« Les valeurs restent stables. »", "Les auteurs ont répété la mesure."]
+    },
+    {
+      "name": "Spanish academic abbreviation",
+      "text": "¿Son estables los datos? Sí. Los resultados se muestran en la Fig. 2. La tabla incluye el intervalo.",
+      "target": 37
+    },
+    {
+      "name": "German graph with decimal comma",
+      "text": "Die Temperatur betrug 3,5 °C. Die Messung ist in Abb. 2 dargestellt. Danach folgte die Kontrolle.",
+      "target": 38
+    },
+    {
+      "name": "Arabic question mark",
+      "text": "هل تم قياس درجة الحرارة؟ نعم، تم القياس مرتين. وأعيد الاختبار في المساء.",
+      "target": 26
+    },
+    {
+      "name": "Hindi sentence endings",
+      "text": "पहला वाक्य पूरा हुआ। दूसरे चरण में नमूने मापे गए। तीसरा वाक्य निष्कर्ष देता है।",
+      "target": 21
+    },
+    {
+      "name": "Japanese quote and citation",
+      "text": "「この差は有意か？」と研究者は尋ねた。図2に結果を示す。試験を二度繰り返した。",
+      "target": 19,
+      "windowsParagraphs": ["「この差は有意か？」と研究者は尋ねた。", "図2に結果を示す。", "試験を二度繰り返した。"]
+    },
+    {
+      "name": "separate Japanese quotations",
+      "text": "「二つの試料を比較した。」「どちらの測定値も一致した。」その後、第三の試験を行った。",
+      "target": 14,
+      "windowsParagraphs": ["「二つの試料を比較した。」", "「どちらの測定値も一致した。」", "その後、第三の試験を行った。"]
+    },
+    {
+      "name": "separate Chinese quoted statements",
+      "text": "「第一组已经完成测量。」「第二组需要复核。」接下来，我们检查了全部数据。",
+      "target": 13,
+      "windowsParagraphs": ["「第一组已经完成测量。」", "「第二组需要复核。」", "接下来，我们检查了全部数据。"]
+    },
+    {
+      "name": "numbered citation after a sentence",
+      "text": "The two measurements agree [3, 4]. The control data vary. Agreement was previously reported [12–14].",
+      "target": 42
+    }
+  ]
+}

@@ -1,0 +1,1642 @@
+# Windows 全软件功能复查
+
+## 恢复长批次翻译
+
+本地模型报告重复输出或输出达到长度限制后，点击「Resume unfinished batches」会将受影响的批次按更短的原文片段重试。分段保留公式、链接、作者行和段落分隔。已有存档中的 Ollama 错误也可识别，同一任务中成功保存的其他批次继续复用。该行为只应用于明确恢复的 Ollama 任务。[AMD 论文实测](AMD_DEVICE_TEST.md) · [全文翻译回归](tests/connected-translation.test.cjs)
+
+## 清理后到达的论文读取结果
+
+在最近论文中打开另一篇已加书签的 PDF，暂缓返回已读出的论文，然后执行「清除所有保存数据」。旧版在清理后重新显示这篇论文，并把正文、书签及上次打开的记录写回磁盘。现在确认清理时会撤销之前的打开请求。默认选择保留两个归档 PDF 和两个外部原件。清理完成后也会重置最近论文的搜索词并收起研究检查器，之后导入的论文不会被旧搜索词隐藏。[清理与延迟读取测试](tests/clear-locked-workspace-e2e.cjs)
+
+## 标题栏里的 AI 服务状态
+
+手动刷新 Ollama 时，旧标题栏一直显示就绪。标题栏现在与侧栏同时显示检查中、就绪或连接失败。窗口变窄时，论文标题下方会显示所选服务及状态，包括 OpenAI 是否已暂停。最近论文列表可通过悬停或屏幕阅读器查看完整题目，并标明当前论文。测试包含两篇开头相同、结尾不同的长标题论文，以及翻译进行中和切换完成后的列表状态。[设置与标题栏测试](tests/sidebar-settings-e2e.cjs)
+
+用真实 15 页论文打开全文翻译，关闭窄窗的文档与检查器浮层。在 125% 应用缩放、784 × 561 的有效视口里，题目与下方信息相距 6 像素，正文可滚动高度为 402 像素；Ollama 状态仍可读。常规视口中间距为 8 像素。两种尺寸均无整页横向溢出。
+
+## 新版窗口刚出现时关闭
+
+0.2.144 的公开安装包已通过下载和启动检查，但在全新 Windows 上完成升级后立即关闭，阅读器未能正常退出。该版本保留为预发布。本机对刚出现的原生窗口发送普通关闭请求，旧包两次均未退出。修复后主进程保留这次请求，等阅读界面接好保存回调再送达，连续五次均正常退出。分发检查会再次从安装目录启动程序并在第一个窗口出现时关闭。[原生启动检查](tests/launch-distribution.ps1)
+
+0.2.147 的公开安装包在全新 Windows 上完成升级，立即关窗后再启动能读回笔记和书签。退出时打开安装包的场景也观察到真实 SmartScreen 和阅读器里的任务栏提示。该场景留下两个验收用子进程，任务因此超时，正式更新清单未推广这个版本。验收脚本现在等待所启动的测试进程及其通信通道关闭。[公开安装包与升级实测](https://github.com/haoyunLi/PaperBridge/actions/runs/46140981317)
+
+## 专注阅读里的选区操作
+
+专注阅读时重新选中文字，可以直接翻译、解释或转到笔记。关闭浮动卡片后，翻译和解释快捷键会重新显示当前选段的结果。宽窗口进入笔记时保留原侧栏。长选段在卡片上显示两行，完整引文仍可由辅助功能读取，跨越长度边界的 Unicode 字符也保持完整。[阅读回归](tests/e2e.cjs) · [选区边界回归](tests/selection-edges-e2e.cjs)
+
+## 安装版退出时打开更新
+
+在 Settings → Updates 下载并校验安装包后，可以勾选在本次退出时打开该版本的 Windows Setup。也可取消勾选，或立即打开向导。桌面回归覆盖了取消系统打开请求、文件内容变更和成功交接。前两种情况保留窗口、笔记与书签，并取消这一次安排。[更新回归](tests/update-restart-e2e.cjs)
+
+## 导入界面的进度与返回目标
+
+有论文打开时，导入页显示取消后会返回的论文名。首次导入显示当前文件和处理阶段。耗时按分、秒显示，超过十秒后提示首次解析可能用时较长。阶段和计时器在辅助功能树中分开，系统偏好减少动态效果时进度条保持静止。打包版覆盖了空工作区、命名论文、模拟一分钟以上的等待、两种动态效果偏好以及取消后回到原位置。[导入进度回归](tests/import-progress-e2e.cjs)
+
+## 更新下载在关窗期间被移动
+
+在便携版点击关闭并定位更新后移动已下载的文件，先前阅读器会退出。现在程序在最后一次保存后重新核验下载，文件已移动时保留窗口和笔记，提示重新下载。重新下载后可完成原操作。[更新操作回归](tests/update-restart-e2e.cjs)
+
+## 退出途中继续输入笔记
+
+关闭时，如果设置仍在写入，窗口可能短暂保持可编辑。在打包版的设置写入期间补充一条笔记，并将论文保存再延迟一秒，旧版丢失了这句补充。修复后等到笔记和偏好都已写入再退出，磁盘中的论文包含最后输入的完整句子。[笔记退出回归](tests/note-autosave-e2e.cjs)
+
+## Markdown 资源包写入时退出或文件被占用
+
+在 Windows 上用另一个进程占用双语 Markdown，短暂占用解除后，三份阅读版各保留一份原页索引。文件持续被占用时，程序报告写入失败，并保留该文件的已有正文。另在打包版中占用原文 Markdown，等第一次替换实际失败后立即关闭阅读器，解除占用后对照重新导出的 Markdown、逐页 PNG 和源 PDF，文件内容一致。[Windows 文件占用](tests/locked-bundle-index.test.cjs) · [打包版退出回归](tests/interrupted-bundle-e2e.cjs)
+
+## 保存超过十秒时的关窗行为
+
+把设置保存延迟 13 秒后点击关闭窗口，旧逻辑在 10.2 秒后退出，重开时自动更新开关回到了旧值。打包版现在会显示 Windows 对话框，默认继续等待。设置落盘会自动收起提示并退出，本机实测为 13.4 秒，重开后取回了新值。写入失败时仍可在设置页重试。[打包版设置回归](tests/paper-settings-e2e.cjs)
+
+## 立即退出仍会保存最后一次设置
+
+在 Updates 中关闭自动检查后立即退出，Windows 会等待这项设置写入。实测将磁盘写入延迟 950 毫秒，此前程序已退出而旧选项仍然开启，现在重开后保持关闭。若写入失败，当前设置页会显示原因并保留所选值，文件恢复可写后再次关闭即可保存。[设置退出与重试回归](tests/paper-settings-e2e.cjs)
+
+## 双击另一个版本时识别当前窗口
+
+重复打开同一版本仍会恢复原窗口，包括已最小化或移到屏幕外的窗口。另一次启动报告不同版本号时，原生 Windows 对话框显示两个版本号。实测选择 **Keep reading** 后继续在当前段落写笔记，选择 **Save and close** 后笔记和书签都已保存。回归测试运行两个实际的打包进程，并在第一个进程中模拟较早的版本号。[双进程回归](tests/relaunch-visible-e2e.cjs)
+
+## 高缩放下的论文标题、搜索与撤销
+
+在 320 × 280 的有效阅读窗口中，文章标题占一整行。三种显示模式、查找框和撤销按钮都可直接操作，正文仍可滚动。按 Ctrl+F 会收起盖住阅读区的浮层并将焦点移到可见的搜索框。在 400% 页面缩放的打包版中验证了中文搜索、清空和切换译文。[Reader 操作回归](tests/reader-toolbar-e2e.cjs)
+
+Windows 发布工作流现在为整组桌面验收指定打包后的 PaperBridge.exe。先前默认从源码启动的测试共用同一个启动函数，逐次核对进程路径，并使用测试工作区内的独立 Windows 用户配置目录。[桌面验收启动方式](tests/launch-test-reader.cjs)
+
+## 便携版更新时保存并关闭旧窗口
+
+旧便携版运行时，直接双击另一版本会回到已有窗口。在 0.2.140 的更新提示或 Settings → Updates 选择 **Close and show portable update**，程序会等待笔记和阅读位置保存，复核下载文件，再释放旧窗口的单实例锁。保存失败时可以继续编辑并重试。用真实 GitHub 便携包验证了包含中文、空格和逗号的更新目录，文件资源管理器选中了正确的 EXE，从选中的路径重新启动后，原书签和中文译文均已恢复。Windows 下载器使用较短的临时文件名，给互联网来源标记留出路径长度。测试中候选程序模拟旧版本发起检查，实际下载并打开的是公开 0.2.126。[更新与笔记保存回归](tests/update-restart-e2e.cjs) · [真实发布包的校验回归](tests/public-update-proof.cjs)
+
+## PDF 全选与取消
+
+在 125 页实验记录上，快速连续按 Ctrl+A、Ctrl+C、Esc 会取消仍在准备的复制并保留剪贴板原内容。已选中全部 125 页时，Esc 会清除选区。正常复制仍与 macOS PDFKit 的 5,016 个字符逐字一致。[原 PDF 键盘回归](tests/pdf-select-all-e2e.cjs)
+
+## 调整阅读外观后保留所在段落
+
+改变正文字号、行距和阅读宽度时，阅读器保留顶部段落、段内位置，以及右侧正在解释的段落。进入另一章节后调整显示宽度，按返回或前进也会重新定位到原段落内的阅读位置。[外观与阅读位置回归](tests/paragraph-selection-e2e.cjs)
+
+## 清理与导入期间的阅读位置
+
+Windows 占用文件导致清理失败时，原论文、书签和附件仍在。解除占用并重试后，即使旧阅读器又发出滚动事件，已清除的论文也不会重新出现在文库。采用默认选项时仍保留归档 PDF。[文件锁与延迟保存](tests/clear-locked-workspace-e2e.cjs)
+
+开始解析另一份 PDF 后，进度页的滚动不会修改原论文。实测从第 8 段开始导入，缩小窗口并取消后，正文回到同一段内的位置。[打包版导入与取消](tests/import-progress-e2e.cjs)
+
+## 本机 CPU 翻译回退
+
+在 RX 7800 XT 机器上另启仅能看到 CPU 的本地 Ollama 服务。PaperBridge 用已安装的 TranslateGemma 4B 逐段翻译，三次均测得显存分配为 0，内存分配为 2,888,250,162 字节。译文保留了 12.5%、14.8%、300 K、1.25 V、p = 0.08，以及原文关于因果和统计显著性的否定。在同一机器重新启用 GPU 后，Ollama 的 ROCm 日志显示选中了独立的 RX 7800 XT，三次显存分配均为 2,881,948,220 字节。两种模式的三段中文逐字相同，重开后也一致。[实际模型与阅读器验收](tests/live-large-model.cjs)
+
+## 跨屏重开与返回阅读历史
+
+从第 12 段滚到第 14 段后立即关闭，即使磁盘上最后一条定时保存仍是第 12 段，下次用较窄的窗口也会恢复第 14 段。在章节跳转后缩小窗口再返回，正文与解释面板各自恢复原位置。[阅读历史与退出回归](tests/paragraph-selection-e2e.cjs)
+
+## 窄窗口的目录与书签
+
+在 726 像素宽的阅读器里，从侧栏用 Enter 打开章节或书签会收起侧栏，键盘焦点随正文移到目标段落。实测两次返回均恢复原先阅读的第 12 段和解释面板中的第 2 段。[打包版回归](tests/paragraph-selection-e2e.cjs)
+
+## 改变窗口尺寸后继续阅读
+
+在 1500 与 1016 像素宽的窗口间切换后，阅读器保留顶部段落和段内位置。从 832 像素宽的窗口重开时实测仍停在第 12 段，右侧仍解释第 2 段。用鼠标从第 12 段滚到第 14 段后立即缩小窗口，也会保留刚到达的第 14 段。缓存中已有的旧阅读记录也可打开。[阅读位置回归](tests/paragraph-selection-e2e.cjs)
+
+## 在解析设置中确认实际设备
+
+切换 MinerU backend 后，Parsing 在同一处显示本次检测到的设备。在本机用同一份传真实测 Auto 选择 RX 7800 XT 的 DirectML；兼容模式使用 CPU。两种选择都能重启恢复并得到一致的文字。[真机对照](tests/live-ocr-device-switch.cjs)
+
+Windows 开发分支首页曾指向 0.2.74，而主仓库首页和 Windows 指南已经指向 0.2.126。发布流程现在按同一份已验证更新清单同步三个入口。[下载入口更新逻辑](scripts/publish-download-page.cjs)
+
+## 停止 Windows 解析与阅读位置验收
+
+旧版取消解析或 MinerU 安装步骤时只终止启动器。在有独立子进程的回归用例中，两个后台任务仍在运行。0.2.132 一起终止当前作业的进程树。用本机实际的 MinerU 导入 20 页论文后点「Cancel Import」，确认该任务的解析器、控制台和 Python 进程都已退出，上一本打开的论文、书签和外部 PDF 都保留。[进程树回归](tests/worker-cancel.test.cjs) · [本机真实解析器](tests/live-ocr-cancel.cjs)
+
+另在 1016 × 706 的阅读窗口验证了拆段和合段撤销。从滚轮定位到打开按钮，Windows 为显示按钮滚动了 159.2 像素；撤销后精确回到打开编辑器时的位置。宽窗口和窄窗口均保存独立的段落选择。[阅读位置回归](tests/paragraph-selection-e2e.cjs)
+
+## 跨过扫描件和空白页的原文笔记
+
+六页光谱记录在第 2、5 页有原生文字，中间夹着传真扫描和空白页。Mac 原生复制取出两页共 184 个字符。Windows 0.2.130 可以保存正确范围，重启定位时却过早将它标为需要复核。0.2.131 等待中间页读取完毕，再逐段核对原文。实际用旧版留下的笔记重开后，原笔记 ID 和两页定位均保留；另一个已改动引文的笔记仍提示复核。原文区按 Esc 会一起清除可见选区和检查器中的选文。[Mac 原生运行](https://github.com/haoyunLi/PaperBridge/actions/runs/46118939494) · [Windows 跨扫描页笔记](tests/pdf-select-all-e2e.cjs)
+
+## 窄窗口中的侧栏和阅读区
+
+在 726 × 564 的阅读窗口，旧版重开论文后侧栏会盖住阅读标签。0.2.130 在侧栏需要覆盖正文时默认收起。手动打开后可用 Esc 收起，键盘焦点回到侧栏开关；再打开，搜索草稿还在。同一篇论文上，Reader 和 Overview 的多色重叠高亮和笔记在重启、缩放后均能定位。[窗口、焦点和高亮验证](tests/overlapping-highlights-e2e.cjs)
+
+125 页实验记录也已与 Mac 原生复制逐字核对。两端得到相同的 5,016 个字符，包含每页观测记录且顺序一致。Windows 只绘制两个完整页位图，保存的 125 页笔记重启后可回到原选区。[Mac PDFKit 记录](https://github.com/haoyunLi/PaperBridge/actions/runs/46118442608) · [Windows 全页选择测试](tests/pdf-select-all-e2e.cjs)
+
+## 再次打开时找回屏幕外的阅读窗口
+
+在真实双屏桌面把阅读窗口移到两台屏幕以外，再启动一份 0.2.128，应用进程能响应，但窗口依然不可见。0.2.129 找回标题栏完全够不到的窗口。保留可拖动的半露窗口位置。已实测正常和最小化两种情况，均回到同一窗口、同一篇论文，书签保留。[打包程序二次启动](tests/relaunch-visible-e2e.cjs)
+
+## 在资料库中连续编辑论文标签
+
+0.2.128 在编辑中按 Esc、点关闭、取消或点对话框外，会返回原资料库。搜索、滚动位置和键盘焦点保留。保存后如果论文离开当前筛选，焦点移到相邻条目；没有匹配条目时回到搜索框。标题或标签输入框按 Enter 可保存，输入法候选确认期间仍可继续编辑。
+
+在本机打包版用 45 篇论文筛出 41 项，滚动 1684 像素后用六种方式离开编辑器。中文标题通过 Chromium 的输入法组合事件录入，原书签保留。索引写入失败后的重试、延迟保存时打开设置、重启及重新导入原文的回归也通过。[资料库键盘与滚动](tests/library-edit-return-e2e.cjs) · [资料库持久化](tests/last-opened-e2e.cjs)
+
+## 高显示缩放下的首次启动
+
+当主屏幕可用空间只有 854 × 467 或 640 × 350 个逻辑像素时，旧版仍要求窗口至少为 980 × 620，右侧和底部会超出工作区。0.2.127 按显示器可用区域设置首次窗口和可缩放的最低尺寸，给 Windows 原生边框留出空间。在新资料库的矮窗口中，检查器默认收起。已保存的论文仍恢复自己的面板选择。
+
+在本机以 175%、300% 和 400% 的进程显示缩放启动打包版，都能完成引导、打开带中英文长标题的论文、翻到第二页、重启回到该页。在两台实际显示器的 125% 和 200% Windows 缩放之间来回移动窗口，标题保持两行，实测总高 62.5 个逻辑像素。系统显示设置保持原样。[首次启动](tests/scaled-startup-e2e.cjs) · [物理双屏](tests/multi-display-e2e.cjs)
+
+## 原 PDF 全选与复制
+
+旧版在原文区按 Ctrl+A 会选中侧栏，20 页论文只有两页进入选区。0.2.126 在文档区全选所有可读页，按 Esc 可取消，紧接着按 Ctrl+C 也会等待剩余页面。光谱仪四页记录复制出 381 个字符，顺序和换行与 Mac 原生复制一致。20 页全文复制到最后一条参考文献和页脚，只绘制了两个完整页位图，重启后仍可定位含 20 页的笔记。笔记输入框内的 Ctrl+A 继续选择输入的内容。[Mac 运行记录](https://github.com/haoyunLi/PaperBridge/actions/runs/46115784911) · [Windows 打包版](tests/pdf-select-all-e2e.cjs)
+
+## 清除已勾选的归档副本时意外退出
+
+默认保留归档 PDF。勾选一起删除时，在旧版实际删完三份中的第一份后强制结束进程，重启能看见另外两份文件，但找不到重试入口。0.2.125 将勾选时的文件清单和工作区移除一起提交。以相同方式中断并重启后，Settings 的 Local Data 可以只清除剩余两份，另行加入的归档和三份外部原件全部保留。提交前中断会恢复旧资料，也不会发起新的副本清理。[打包版终止与重开](tests/archive-cleanup-e2e.cjs) · [提交前后恢复](tests/workspace-clear.test.cjs)
+
+## 原 PDF 中的审阅留言
+
+在同一份双页校准记录上，PDFKit 命中三处批注并读出三位作者和对应原文。Windows 0.2.123 点击便笺和高亮没有打开留言。0.2.124 的 Original 和 Paper 原页模式支持鼠标和键盘打开，关闭后焦点返回刚读过的批注。另在高亮内拖选「77 K」写下自己的笔记，重启后能从笔记定位到原句，三条审阅留言也可继续打开，归档 PDF 与输入文件逐字节相同。[Mac 原生记录](https://github.com/haoyunLi/PaperBridge/actions/runs/46114251452) · [Windows 打包版测试](tests/pdf-comments-e2e.cjs)
+
+## PDF 命令链接与跨行引用
+
+Windows 0.2.123 依次激活维修记录里的六个命令链接，页码为 1 → 2 → 4 → 3 → 4 → 3 → 1，与原生 PDFKit 一致。两段分开的引用共享一个键盘焦点。缩放和窗口变窄后，中间无关的文字也不会打开 DOI。[Mac 实测](https://github.com/haoyunLi/PaperBridge/actions/runs/46113818959) · [Windows 实测](tests/pdf-named-actions-e2e.cjs)
+
+## 原 PDF 中的目录、交叉引用和 DOI
+
+用同一份四页仪器手册对照 Mac 和 Windows。Mac 原生 PDFView 执行了四个页内动作，取得一个 DOI 外链。0.2.121 在首页点击光谱和 DOI 都没有反应。0.2.122 在 Original 和 Paper 的原 PDF 模式下可以点击原页链接，目录跳到第 3 页的光谱读数或第 2 页的命名目标，返回目录也可用键盘 Enter。后退和前进恢复对应页，重启保留表格位置。外链经过应用现有的系统浏览器入口，测试记录了交接的准确 DOI，未请求外站。[Mac 原生动作](https://github.com/haoyunLi/PaperBridge/actions/runs/46113010777) · [Windows 打包版](tests/pdf-links-e2e.cjs)
+
+从链接的文字内部拖选「spectrum at 532 nm」仍能写笔记、重启并定位原句。RX 7800 XT 上从 Reader 翻译所链接的仪器表格，得到「表 1. 检测器的增益为 8。」[导向表格的设备测试](tests/pdf-links-e2e.cjs)
+
+## 空间不足时的整套 Markdown 导出
+
+0.2.120 导出中写入一部分后模拟磁盘空间不足，四个独立验收场景分别留下了 19 字节的正文 Markdown、原 PDF、第二页 PNG 或原页索引。0.2.121 将每个文件写完整后再放到最终名称，包括嵌入图、复制的附件和用于浏览的页图。失败提示给出导出目录和重试方式。已写好的第一页和原 PDF 仍可使用，索引不会引用失败的页图。在同一父目录重试，成功生成的五个文件与第一次成功导出的对应文件逐字节一致。用户选择停止时，先前已完成的页面仍按原设计保留。[打包版的四次中断与重试](tests/interrupted-bundle-e2e.cjs)
+
+## 论文记录被 Windows 占用时清理与恢复
+
+0.2.119 在两篇已保存论文中遇到一个被其他进程占用的记录时，会先删除另一篇的记录、解析附件和页图缓存，确认框内也看不到失败原因。0.2.120 会在同一磁盘暂存各条记录，全部就绪后才提交清理。用 Windows 进程持有真实文件锁时，确认框解释了失败原因，两篇论文、书签、术语、页图、附件和归档 PDF 都还在。重启后取消勾选归档，再次清理成功，两份归档和两份磁盘原件均逐字节核对。[打包版实测](tests/clear-locked-workspace-e2e.cjs)
+
+另在子进程移走第二条记录后强制退出，重启恢复了原有书签和附件。提交后再强制退出，重启只清理本次移出的内容。已有同名新记录时，恢复保留新旧两份并给出原记录的位置。[中断恢复测试](tests/workspace-clear.test.cjs)
+
+## PDF 里的希伯来语、阿拉伯语和波长单位
+
+同一页六行仪器读数中，0.2.118 把希伯来语的单词和阿拉伯语的字形按从左到右的绘制顺序拼接。0.2.119 读取 PDF 标记给出的逻辑顺序，在同一段落内重排字词，并把阿拉伯语位置字形还原为可搜索的文字。Mac PDFKit 的六行正文与 Windows 对应，Mac 将两组拉丁数字与单位提取为「nm 532」和「K 298」；Windows 保留源文件中的「532 nm」和「298 K」。只有带有可验证顺序的标记文本使用这条路径。[Mac PDFKit 结果](https://github.com/haoyunLi/PaperBridge/actions/runs/46111448462) · [Windows 打包版验收](tests/bidi-pdf-e2e.cjs)
+
+旧包用鼠标选不中「לא השתנה」（没有变化）。新包可以向左拖选这两个词、保存 PDF 笔记并在重启后跳回相同字词，导出的原文 Markdown 也保留六行读数的顺序。另从旧包留下的笔记定位到「532 nm」，恢复独立副本后，旧版笔记和书签均保留。RX 7800 XT 上的 TranslateGemma 4B 把末行译为「标签“设备校准”记录在 532 纳米处。」
+
+## 仪器补充材料的编码和返回位置
+
+Mac 原生阅读器实际打开了六个文件，包含 UTF‑16 两种字节序的温度记录、仪器文本、制表符表格、Markdown 协议，以及 UTF‑8 CSV 和 JSON。Windows 0.2.117 在第一份记录中显示了 11 个替代字符。0.2.118 按字节序标记读取，在协议内继续打开标定 JSON，重启后仍可打开。导出并移动整个文件夹后，六个文件均与源文件字节一致。Mac WebKit 在该无字节序标记的 JSON 上显示了乱码，Windows 按 UTF‑8 保留了样本名和单位。[Mac 原生结果](https://github.com/haoyunLi/PaperBridge/actions/runs/46110437295) · [Windows 打包版验收](tests/supplement-text-e2e.cjs)
+
+同一份协议内从第二个数据链接返回时，0.2.117 把键盘焦点移到了第一个链接，折叠了已展开的仪器设置。0.2.118 恢复展开状态和滚动位置，再用 Tab 可以读到紧接着的图表链接。[返回操作验收](tests/paper-attachments-e2e.cjs)
+
+同一打包版在 RX 7800 XT 上从图像型传真 PDF 开始，MinerU 4.1.7 自动选择 DirectML。TranslateGemma 4B 的 2,881,948,220 字节全部在显存中。18.9 秒内完成原页 OCR、段落翻译和共享全文译稿，中文保留了「532 nm」和三次试验中峰值位置未变的结论。[设备测试](tests/live-ocr.cjs)
+
+## 旋转存储的实验记录
+
+同一份四页光谱仪记录在纸面上均能正读，PDF 内部分别使用 0°、90°、180°、270°。0.2.115 在后两页从底行读回标题，第二页的三行被并入一段。0.2.116 按实际字形方向和页面旋转恢复坐标，Windows 读出的十二行与 Mac PDFKit 原页逐行对应。以原方向绘制的正文和单独旋转的图轴标签沿用原有排法。
+
+在第二页从第一条测量记录拖到下一条，旧版选中了最后几个词和标题。新版选中两行的连续文字，保留中间换行。重启后可以从两条笔记分别定位整段或其中的「633 nm」。从旧版创建新副本时也验证了旧笔记定位和原 PDF 字节。[Mac 原页文本](https://github.com/haoyunLi/PaperBridge/actions/runs/46109143930) · [Windows 原页和 Reader](tests/rotated-pdf-e2e.cjs)
+
+## 混合书写方向、导出中断与打开更新包
+
+0.2.115 用 Mac 原生阅读器实际显示的四段实验记录对照 Windows。希伯来语和阿拉伯语段落里的引文编号、波长、单位与句号恢复了相同的视觉顺序。夹有希伯来语的英文和带有拉丁单位的中文也逐项比较了位置。Paper 和 Reader 保留纸面的左边距。鼠标从右到左划选希伯来语短语后写入笔记，重启可定位相同的文字。[Mac 文字位置](https://github.com/haoyunLi/PaperBridge/actions/runs/46108543490) · [Windows 阅读及选区恢复](tests/writing-direction-e2e.cjs)
+
+用包含手写补充的现有 Markdown 做覆盖导出，在写完一小部分时模拟空间不足，0.2.114 留下了截断文件。0.2.115 完整写好新内容后再替换原文件。已在 253 个 UTF-16 单元的汉字和表情文件名上验证空间不足、Windows 只读属性、成功重试，以及每一步的文件字节。[导出验收](tests/export-names-e2e.cjs)
+
+打开应用内更新时，如果 Windows 仍在等候，设置和横幅会提示到任务栏查看确认窗口，并保留定位已下载文件的操作。测试覆盖等待期间手动检查、切换界面、在文件资源管理器显示下载、Windows 返回错误后的重试。[更新验收](tests/update-restart-e2e.cjs)
+
+## 竖排日文的原页、Reader 与旧论文恢复
+
+用两页分光实验记录对照 Mac PDFKit 与 Windows。第一页有三列竖排日文，第二页逐字定位两列，并在下方横排英文。0.2.113 把几列和标题合并，按从左到右读，部分日文还被插入空格。0.2.114 从右到左、每列从上往下读取，八行逐行对应 Mac 原页和实际印刷顺序，保留横排英文的位置。用鼠标从上往下选中原页的「三回の測定」，也能从右列开头拖到中列。跨列选区按印刷顺序取文，重启后可从笔记跳回同一段选区。旧论文按其原始字符位置定位已有 PDF 笔记。
+
+在旧打包版已有批注的论文中，从 Original 的提示恢复到新副本后，旧论文的文字、书签和批注仍可读取。横排英中旧论文恢复及 20 页期刊论文导出也已回归。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46106568161) · [竖排导入与恢复](tests/vertical-pdf-e2e.cjs)
+
+## 长论文文件名的 Markdown 导出
+
+0.2.112 从含中英文和表情的长文件名导出原文、译文、双语与分析笔记时，四次给出了相同的默认名称，截断点还留下半个表情符号。0.2.113 从名称中间缩短标题，保留完整字符以及末尾标明版本和语言的部分。四份 Markdown 在同一文件夹中分别保存，资源包保留 `_PaperBridge` 名称和逐字节相同的原 PDF。缺少旧译文语言记录时，双语阅读版默认以 `_bilingual_text.md` 结尾，带摘要和笔记的分析版使用 Mac 默认的 `_bilingual.md`。[公开应用工作流的桌面测试](tests/export-names-e2e.cjs) · [旧译文及重启](tests/legacy-output-language-e2e.cjs)
+
+## 提取质量提示与重新提取的取消操作
+
+0.2.112 在 46 段实验记录里识别出 43 处疑似提取问题。旧版漏报 3 段、误报 2 段，均涉及从论文复制的不可见字符。新版对齐 Mac 对断词、未完成短语、数字碎片与句末标点的判断。展开 Overview 的第 40 条提示可跳到双语 Reader，后续段落也可单独对照原文并修正。重启后修正和书签均保留。[Mac 原生评估](https://github.com/haoyunLi/PaperBridge/actions/runs/46104750742) · [打包版操作](tests/quality-review-e2e.cjs)
+
+选择「Re-extract PDF as New Copy」后，在准备页面图像时取消，应用会释放尚未保存的新副本。再次提取成功后只保留一次新归档。实测选中的磁盘文件逐字节一致，先前论文的书签保留。设置中的清除数据操作仍默认保留已保存的归档，单独勾选后才删除归档。[取消、重试与保留已保存副本](tests/import-progress-e2e.cjs) · [清除设置](tests/pdf-drop-e2e.cjs)
+
+## 原页和导出图中的 ICC 色彩配置
+
+两份 PDF 各画了相同的三阶灰度，一份用线性 RGB 编码，另一份用常规 sRGB 编码，并都嵌入了相应配置。Mac PDFKit 在明确的 sRGB 画布上读出 120、177、225。Windows 0.2.110 直接显示了线性文件的原始数值 48、112、192。0.2.111 使用安装包内的 PDF.js 色彩转换模块，断网后原页显示 119、177、225，导出的页面 PNG 取样相同，原始 PDF 保持逐字节一致。曾由 0.2.110 缓存的旧页面图也重新渲染。[Mac 原生取样](https://github.com/haoyunLi/PaperBridge/actions/runs/46103656002) · [Windows 原页和导出](tests/scanned-original-e2e.cjs)
+
+另在 ResNet 原论文第 4 页图 3 上取六处不同的网络层填充色，Windows 打包版与 Mac PDFKit 的 sRGB 值在每个通道均只相差 1。[ResNet 原论文](https://arxiv.org/abs/1512.03385) · [Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46103840495) · [Windows 图表和正文对照](tests/resnet-table-e2e.cjs)
+
+## 翻译风格说明和断网后的更新提示
+
+Mac 以用户能读到的字符（字素簇）计算风格说明的 2,000 字和提示词中论文标题的 300 字。Windows 0.2.109 使用 UTF-16 长度，一组带组合重音的输入显示已用 2,000 字，实际只保存了约一半。0.2.110 对比六组 Mac AppSettings 编解码、每篇论文的设置、模型指令和缓存标识，覆盖组合重音、旗帜、家庭 emoji、零宽空格和 BOM。Windows 打包版也验证了输入计数、退出重开和真实 4B 请求。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46102438539) · [Windows 风格说明操作](tests/style-guide-e2e.cjs)
+
+0.2.109 的自动检查在断网时会尝试两个官方入口，网络恢复后要等定时检查或手动操作。0.2.110 在恢复连接时重试，保留原有的每日成功检查缓存。已有旧记录时，设置会显示上次发现该版本的日期。用真实的网络状态切换事件验证了启动时断网、检查中途重新联网、关闭自动检查以及短时间重复联网。另用本机打包版访问 GitHub 实际更新源，成功读取当时已发布的 0.2.108。[联网恢复测试](tests/update-reconnect-e2e.cjs)
+
+## 旧论文缺页时从归档恢复
+
+0.2.109 在旧论文的原页能识别一种情况，页面有中、日或韩文字，但保存的 PDF Reader 在该页没有这些文字。Original 和 Paper 都会提供 “Recover PDF text in new copy”。点击后直接用归档提取文字并跳到对应 Reader 段落。原论文的编辑、译文、书签和笔记保存在原条目中。More 菜单仍可选择另一个 PDF 重新提取。已用 Mac PDFKit 对照三页原文，并真机测试从文件缺失中重试、重开新副本和返回有译文的旧论文。[混排论文桌面回归](tests/mixed-cid-recovery-e2e.cjs) · [AMD 实测记录](AMD_DEVICE_TEST.md)
+
+## 多语言原页、扫描图片和高对比度标注
+
+0.2.108 在离线的 PDF 文字层模式下读取安装包自带的字符映射、字体和图像解码器。同一份中、日、韩三页原件的 PDFKit 文字层有九行，Mac 1.10.0 的 Reader 提取器保留两行韩文，Windows Reader 保留九行。曾被 0.2.107 存成空白的工作区可以原位复查，也支持再次打开原件触发复查。已核对旧笔记、原始 PDF 的字节、重开后的三个译文版本和导出页面的墨迹。[文字恢复与导出](tests/cjk-pdf-e2e.cjs)
+
+用 JPEG 2000 与普通 Flate 两种编码装入相同的三色图。在每个平台自己的显示色彩空间中，两种编码的取样完全相同。另用同一份 Group 4 单色扫描核对了黑白区域，并在 Windows 完成 OCR 和全文翻译。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46100914629) · [AMD 测量](AMD_DEVICE_TEST.md)
+
+在本机打包版模拟系统强制颜色时，旧版会将透明 PDF 文字层涂黑，三个高亮按钮也难以区分。修复后在 Original、Paper 的明暗两种强制配色中，未标注的正文与原页像素相同，选中或标注时有可见变化。三个按钮显示颜色名称；琥珀、钴蓝、珊瑚三类标注使用实线、双线、点线，退出重开仍可区分。[原页截图对照](tests/long-facsimile-e2e.cjs) · [重叠标注](tests/overlapping-highlights-e2e.cjs)
+
+## 术语、笔记保存和 PDF 键盘定位
+
+在 macOS 1.10.0 的原版阅读模型与 Windows 中依次保存 20 个术语并执行 10 组查询。核对了同方向替换、反向词条、重音与大小写、最长词优先、磁盘重开及删除。上限也按实际行为逐项比对，来源最多 160 个字素、译法最多 300 个、模型每次最多接收 24 对术语，500 条已满时仍可替换已有词条。[Mac 参考运行](https://github.com/haoyunLi/PaperBridge/actions/runs/46098753654) · [Windows 对照](tests/mac-parity/terminology.mjs)
+
+Windows 的检查器现在在笔记编辑处显示保存状态。实测时暂时占用测试工作区的论文目录，写入失败后看到 “Not saved to disk”；原笔记保留在磁盘，草稿继续显示。恢复该目录后，点击 “Retry note save”，退出再打开仍能读到草稿的完整内容。[笔记窗口测试](tests/note-autosave-e2e.cjs)
+
+在 125 页 PDF 的 Original 和 Paper 原页视图中，轻微滚动仍能查看所选原文的查词浮窗，选区离开阅读区域后收起。已有选区时 Ctrl+Home 和 Ctrl+End 能跳到整份 PDF 的首尾。在 RX 7800 XT 上翻译第 125 条并重开，页码、原文及译文均已恢复。[PDF 导航和导出](tests/long-facsimile-e2e.cjs)
+
+## 清除本地工作区和归档副本
+
+0.2.117 在真实 Windows 文件共享锁下测试了三个归档副本。明确勾选清除后，两个被占用的文件会留待重试，第三个会被删除。重启后可以在 Local Data 单独重试原来的清理请求。测试期间重新导入了其中一篇，新增书签和归档都被保留，另外一份解除占用的旧归档才被删除。后来改变的文件也会保留。再次以默认选项清除工作区会取消此前的待清理列表。三个磁盘原文件均逐字节核对。[重启、重试与重新导入](tests/archive-cleanup-e2e.cjs)
+
+Mac 的「清除所有保存数据」会移除应用归档的 PDF。Windows 的确认框增加了对应选项。取消后返回设置的 Local Data 页；保留或移除副本后，空白工作区会显示处理结果。用期刊论文在临时工作区验证了两个选项，外部源文件的字节一致。Windows 文件共享锁阻止删除归档时，工作区仍会重置，并提示可以重试。释放共享锁后能够删除剩余副本。[桌面操作](tests/pdf-drop-e2e.cjs) · [Windows 文件共享锁](tests/storage.test.cjs)
+
+## 混合 PDF 与补充材料的图注
+
+用同一份三页 PDF 检查文字层、扫描文字和空白页。DirectML 在 RX 7800 XT 上取得第 2 页文字，Reader 可以跳到对应段落并翻译。第 3 页原本沿用整篇文档的“已识别”提示，现在显示本页没有可读内容；旧工作区若缺少页码，会明确提示页码未知。按 Esc 关闭查词浮窗或术语表后，原选区与结果继续保留。任务状态使阅读区略微移动时，只要选区还可见，仍能读完浮窗中的结果。[混合扫描实测](tests/live-mixed-ocr.cjs)
+
+补充材料中的独立 Markdown 图片现在像 Mac 一样将图注显示在图下。从 Paper、Reader、Full Translation 三个入口打开校准手册，均能看到 530 × 418 像素的图与图注。Mac 1.10.0 的预览会拦截上一级目录的图片，0.2.105 的 Mac 测试因此未通过。改用同目录的 “Local calibration panel” 后，Mac WKWebView 已验证可见图注。[Mac 实机测试](https://github.com/haoyunLi/PaperBridge/actions/runs/46097130053)。Windows 另覆盖归档内共享图片的 “Reference response” 图注。正文行内图标、无标题图片以及已有图注的 HTML 图表也有回归覆盖。[补充材料操作](tests/paper-attachments-e2e.cjs)
+
+## 0.2.104 的 OpenAI 设置与 Mac 参考测试
+
+Windows 现在支持在密钥框中按 Enter 保存或替换。即使输入无效，提交后也立即清空密码框并显示原因。在刷新模型列表期间，界面会暂时锁定密钥操作，以免前一把密钥的结果覆盖当前列表。用打包版、临时 DPAPI 密钥和本地模型列表服务验证，无需付费请求。[设置操作回归](tests/openai-settings-e2e.cjs)
+
+0.2.103 的 GitHub 发布在编译新增的 Mac 长文对照测试时中止。0.2.104 已按原生导入器的声明修正临时工作区参数名。GitHub 的 Mac 实机读取同一个 125 页样本，输出 125 个页标题、120 张预览和 5 个省略标记。Mac 的 Reader 留下 1 条编号观测；Windows 打包版保留并按顺序显示全部 125 条。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46095274619)
+
+## 0.2.103 的长文导出、页边正文和术语表
+
+在 125 页可选中文字的 PDF 中，0.2.102 的阅读器可以回到最后一页，但导出的 Markdown 缺第 121–125 页的标题，在 Reader 中也只剩第一条观测记录。原因是各页唯一的句子都位于页边，页眉识别将句中不同的数字归为同一项。0.2.103 恢复了全部 125 条。重复期刊名与普通页码继续过滤，20 页期刊的正文、代码清单及导出回归也通过了 Mac 原生参考对照。[页边文字回归](tests/text.test.cjs) · [期刊导出回归](tests/pdf-journal-export-e2e.cjs)
+
+当 PNG 达到 120 页上限，导出的原页清单、原文、译文和双语 Markdown 均给出随后每页的编号与跳到原 PDF 的链接。超出上限一万页以上的极长文档将剩余部分合并为带起止链接的页码范围。主动停止导出时，仅列出已完成的预览。在本机用真实 4B 翻译第 125 条观测，重开及导出的译文一致。[AMD 操作与结果](AMD_DEVICE_TEST.md)
+
+术语表现在能区分没有收藏和没有搜索结果。关闭后重新打开会显示完整词表。复制内容两端的零宽空格可以清除，空译词无法保存，同方向的旧术语仍能匹配和替换。[桌面回归](tests/terminology-e2e.cjs) · [边界用例](tests/terminology.test.cjs)
+
+## 2026-11-27 与 macOS 1.10.0 的本机复查
+
+在 RX 7800 XT 上用固定的 0.2.101 源码运行发布流程列出的 47 组桌面操作。46 组首次通过。模型设置组在切换论文时等待超时，单独原样复跑通过，随后在从 GitHub 下载的 0.2.101 程序里也通过。下面列出本轮实际执行的代表动作，逐项范围见[功能映射](FEATURE_MAPPING.md)。
+
+| 功能 | 本机验证的具体操作与观察 | 可重跑的验证 |
+| --- | --- | --- |
+| 导入与原件 | 在三种解析模式下打开论文，测试失败后重试。用 20 页期刊 PDF 导出并比对原页与图文资源。0.2.102 增加拖入窗口时的落点提示，取消、离开窗口、打开对话框和拖入混合文件均有覆盖。 | [解析模式](tests/import-modes-e2e.cjs) · [原页与导出](tests/pdf-journal-export-e2e.cjs) · [文件拖放](tests/pdf-drop-e2e.cjs) |
+| 阅读与导航 | 核对书签、章节跳转、阅读历史和侧栏收起后的恢复。Mac 与 Windows 对同一组 40 个 Reader 搜索得到相同结果。 | [章节跳转](tests/outline-e2e.cjs) · [阅读历史](tests/reading-history-e2e.cjs) · [原生比较](tests/mac-parity/compare.mjs) |
+| 翻译与术语 | 从段落队列取消并续译，调整章节优先级，重开后恢复。另在公开版上用真实 4B 和 12B 核对数字、单位、因果及否定，六条译文重开后逐字一致。 | [队列操作](tests/reader-review-e2e.cjs) · [术语](tests/terminology-e2e.cjs) · [AMD 逐段结果](AMD_DEVICE_TEST.md) |
+| 解释与摘要 | 从灯泡打开指定段落，选择语言，点击解释才发出请求。0.2.102 的检查器与书签共用 Mac 式原文预览。与原生输出比对 8 个摘要引文和 4 组分批输入。 | [段落解释](tests/reader-actions-e2e.cjs) · [摘要操作](tests/summary-e2e.cjs) |
+| 选区与标注 | 在原 PDF 跨行选择、在不同工作区保存笔记并重开。0.2.102 可用右键或 Shift+F10 删除一组标注，Esc 返回原行，删除后移到相邻行，一次撤销可恢复同 ID 的两份历史笔记及高亮。 | [分组与撤销](tests/saved-annotations-e2e.cjs) · [跨页选区](tests/long-pdf-selection-e2e.cjs) |
+| 修订、资料库与恢复 | 核对拆分、合并、重排、撤销和重启恢复。Mac 与 Windows 逐项比较 23 组合并和 20 组重排。另有 5 处跨行拼接保留 Windows 对科学标点的处理，包括 `GPT-4` 和减号。 | [编辑器](tests/paragraph-editor-e2e.cjs) · [打开上次的论文](tests/last-opened-e2e.cjs) |
+| 导出、设置与更新 | 移动导出文件夹后比对补充材料链接及字节。测试重新打开首次引导、取消模型下载、恢复已选模型、跳过特定更新、手动检查和重启。NVIDIA/CUDA 仍缺本机硬件实测，当前公开包仍无 Windows 发布者签名。 | [原生导出比较](tests/mac-parity/compare.mjs) · [模型设置](tests/settings-models-e2e.cjs) · [更新恢复](tests/update-restart-e2e.cjs) |
+
+原生对照来自 GitHub macOS 运行器执行的 Swift 代码。本机桌面回归中用于控制故障和延迟的模型服务是测试替身。上表指向的 AMD 逐段报告记录了另行执行的真实模型推理。[0.2.101 的 macOS 原生参考](https://github.com/haoyunLi/PaperBridge/actions/runs/46076632056/job/140765761401)
+
+## 0.2.101 便携版在较深临时目录中启动
+
+在 RX 7800 XT 的 Windows 上，GitHub 的 0.2.98 便携版在普通临时目录能打开论文。使用同一文件和深层临时目录，启动器复制 76 个文件时只复制了 73 个。缺少的三个文件来自 PDF.js 可选的 Node 原生 Canvas 模块，目标路径长 268 到 282 个字符。阅读器使用 Chromium 的 Canvas 显示原页。
+
+0.2.101 的安装版与便携版只打包实际使用的 PDF 渲染组件。新的便携包在带空格、中文且至少长 182 个字符的临时目录里连续启动两次，第二次打开论文时回到原窗口。验证覆盖从期刊提取原文、保留作者行和渲染原 PDF。构建候选包与重新下载的公开便携包均使用这项测试。[便携版启动验收](tests/portable-relaunch-pdf.cjs)
+
+GitHub 正式发布后，本机重新下载并核对两份 EXE 的大小、SHA-256 和更新清单。便携版为 123,893,912 字节，安装版为 124,098,779 字节。长中英混排标题在两个窗口尺寸、100% 到 200% 的五档缩放下均显示为两行，标题、元数据和工具栏之间保留间距。独立 Windows 另从公开地址下载了两个文件，并从旧版完成了已校验安装程序的交接。[公开下载与阅读验收](https://github.com/haoyunLi/PaperBridge/actions/runs/46076632056/job/140770338059) · [旧版更新验收](https://github.com/haoyunLi/PaperBridge/actions/runs/46076632056/job/140771406167)
+
+## 2026-11-27 本机模型与更新提示
+
+Windows 0.2.98 在 RX 7800 XT 上用 4B、27B 翻译了同一篇英文短文。27B 使用独立的 17.4 GB 临时模型库，完成翻译、重开和清理。G08 计入对齐，111 项中还有 3 项部分对齐。[两种模型的逐段结果](AMD_DEVICE_TEST.md)
+
+Windows 0.2.100 的更新提示和 Settings → Updates 可以跳过单个版本。重新启动后不会自动提示或下载此版本，手动检查仍能找到它，下一版本会正常提示。下载到一半可以取消并重新下载，后台下载偏好会保留。使用键盘跳过时，设置中的焦点回到 Check now。[桌面回归](tests/update-restart-e2e.cjs)
+
+0.2.99 的发布检查遇到了 Windows 文件共享冲突，保存阅读位置时返回 EPERM。0.2.100 会在 270 毫秒内多次尝试原子替换。用另一个 Windows 进程锁住论文存档时，长时间占用会保留原文件并返回保存失败。短时占用解除后，一次保存即可写入新笔记和阅读位置，上一版仍在备份中。[触发问题的发布检查](https://github.com/haoyunLi/PaperBridge/actions/runs/46073610239/job/140756564428) · [实际文件锁回归](tests/storage.test.cjs)
+
+## 0.2.96 的启动反馈与模型下载
+
+全新 Windows 打开 GitHub 上的便携版时，1.5 秒后看到原生解压提示，约 11.5 秒后显示首次引导。安装版也完成了启动与导入。旧客户端从同一发布页下载新版，核对构建证明、保存当前笔记，并请求 Windows 打开安装包。本机用 Edge 下载的两个文件与发布页及应用内更新清单中的大小和 SHA-256 一致。[发布与冷启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) · [更新与笔记验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199)
+
+中文版译文通过了全新 Windows 上的实际 4B 安装与续传测试。27B 在另一台 16 GiB 机器上超时后，原论文仍可用先前安装的 4B 翻译。本机 RX 7800 XT 的型号、显存及模型盘空间均可从首次引导和设置读取。[4B 首次使用](https://github.com/haoyunLi/PaperBridge/actions/runs/45171471770) · [27B 故障恢复](https://github.com/haoyunLi/PaperBridge/actions/runs/45172171617)
+
+## 0.2.95 的公开下载与更新
+
+全新 Windows 从 GitHub Release 下载并验证了安装版和便携版，打开阅读器后完成了论文导入及 Mac 阅读结果对照。另一台 Windows 用已安装的旧客户端实际下载新版，核对互联网来源标记、SHA-256 和 GitHub 签发的构建证明，保存当前论文的书签和笔记，再将同一份安装包交给 Windows。在 RX 7800 XT 电脑上又用 Edge 从首页取得两份 EXE。从 0.2.93 实际覆盖安装后，论文、高亮、笔记和阅读外观仍在。安装向导由用户确认。[下载与阅读器验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45168290715/job/137677374786) · [更新及笔记验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45168290715/job/137679404037)
+
+在 RX 7800 XT 上，跨两页的扫描段落可以从译文分别跳到原始 PDF 的起始页和结束页。重开旧论文后译文、书签，以及原有的七份解析文件均得到保留。设置中的模型内存读数也已用纯 CPU、CPU 与 GPU 混合、GPU 三种实际运行方式核对。[AMD 真机记录](AMD_DEVICE_TEST.md)
+
+## 0.2.91 的下载、首次翻译与论文恢复
+
+公开安装版和便携版均在独立 Windows 上通过下载、SHA-256、构建证明和主窗口启动验收。本机再用上一正式版 0.2.89 实际检查更新并覆盖安装，重开后保留论文、外观、高亮和笔记。两种 EXE 目前均显示未知发布者。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45141418668/job/137584823547) · [下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.91)
+
+全新 Windows 在首次引导中安装官方 Ollama、取消模型传输并后台续传，再用 4B 模型在 CPU 上完成英译中。翻译相同两句话时，本机 RX 7800 XT 与该机器的 4B 结果逐字相同。另一台机器对 12B 重复完成了取消、续传、翻译与重启恢复。[4B 首次使用](https://github.com/haoyunLi/PaperBridge/actions/runs/45140574505) · [12B 首次使用](https://github.com/haoyunLi/PaperBridge/actions/runs/45141422747)
+
+真实论文覆盖了选区、跨页和旧数据。JOSS 论文的六处引文与 Mac 原生选区一致，十四处重复词在重启或缩放后仍可区分。BERT 论文保留了跨栏正文及行内上下标；在旧稿已有译文和书签时，重新导入可以生成独立副本。双页扫描件在文库索引写入失败后，重开仍保留 29 段、六份资源和原页码。[Mac 选区对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45130714882) · [BERT 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45137884416) · [逐项映射](FEATURE_MAPPING.md)
+
+## 0.2.89 的论文图表、选区和更新
+
+在《Attention Is All You Need》的同一份 PDF 上核对了 Windows 与 macOS PDFKit。Windows 跳过印刷区域以外的五个标题，保留十行坐标轴标签及三处图注。第 14–15 页的八处同词笔记均能在重启、缩放后回到对应印刷位置。旧版保存的可见标注可以恢复，指向隐藏图题的旧标注仍可在列表中查看。RX 7800 XT 实测也验证了按用户保存的术语重译图注，正确表达“六层中的第五层”。[Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45124348109) · [Windows 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45124989187/job/137530614117)
+
+两份 EXE 先以预发布形式上传，独立 Windows 验证公开文件的构建证明和启动后，再更新下载入口。此期间，旧客户端的两个检查入口均继续提供 0.2.88。发布后原 0.2.88 的安装版及便携版均发现 0.2.89，下载各自对应的 EXE。安装版覆盖升级后保留原论文、高亮、笔记和阅读外观。[公开发布与更新](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.89)
+
+## 0.2.88 的构建证明、论文翻译与覆盖升级（2026-11-23）
+
+GitHub 为 Setup 和 Portable 签发了构建来源证明。独立 Windows 从公开链接下载后，校验两份 EXE 对应的源码提交、标签及工作流，打开两种程序并离线读取论文。Edge 在本机从首页下载的文件保留互联网来源标记。原 0.2.87 用户可以从应用内发现更新。实测分别下载对应版本，覆盖安装后保留论文、高亮、笔记与阅读外观。此版没有 Authenticode 发布者签名。[公开下载与来源验证](https://github.com/haoyunLi/PaperBridge/actions/runs/45121877225) · [发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.88)
+
+公开 EXE 在 RX 7800 XT 上读取并翻译了求和脚注，跨页句子正确衔接。在另一篇真实期刊论文中，三段原文产生四次本地翻译请求和一批连贯译文。使用相同模型的 Mac 对照包含相同的软件名称、步骤和数据处理含义。30 个原生长段重排结果与 Windows 逐字一致。对真实阅读存档的两处长段执行拆分、撤销和重启后，笔记和相邻译文均保留。[Mac 本地模型运行](https://github.com/haoyunLi/PaperBridge/actions/runs/45118307078) · [Mac PDFKit 跨页对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45120169987)
+
+## 0.2.87 公开下载、更新和原生菜单（2026-11-23）
+
+Edge 从 GitHub 首页下载 0.2.87 的安装版和便携版，两份 EXE 的 SHA-256 都与发布页一致，互联网来源标记得到保留。0.2.85 的两个版本均检测到新版并下载了各自对应的文件。覆盖安装后重开原论文，阅读外观、高亮和笔记均保留。[独立 Windows 公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137511128787) · [Windows 0.2.87 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.87)
+
+对照公开的 Mac 1.10.0 程序核对 File、Edit、Paper、Selection 及应用菜单。Windows 实际完成了复制、剪切、粘贴、撤销、重做、全屏切换及关闭窗口。切换到德语与波兰语输入布局后，AltGr 能在笔记里分别输入 € 与 ś。旧版在两个相同短语上保存的笔记，重排后仍能分别定位到原来的位置。[Mac 原生菜单](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137507946104) · [Windows 菜单和输入验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45118911940/job/137508476622)
+
+在 RX 7800 XT 上，TranslateGemma 4B 跳过 PLOS 论文的 20 条参考文献，翻译了正文和附录；导出仍保留全部引文。源码中缺少结束符的一条公式按字面保留，两条完整公式正常排版，其后的三句正文都完成中译。公开便携版还用 TranslateGemma 4B、Qwen3 4B 分别验证了 TeX、代码和链接的保护及重开。按这次实测，历史 111 项中有 90 项对齐、21 项部分对齐。
+
+## 0.2.85 离线公式、资源导出与真实模型重试（2026-11-22）
+
+用同一份校准记录核对了表题、表头、表格数据和图注里的五个公式。Windows 便携版在 Paper、Reader 和全文翻译里使用自带字体，并保留图注代码里的字面示例。公开程序还能把两份真实附件打包到新目录，代码块中的四行示例文件名、缩进与 Mac 导出一致。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45113226495/job/137490080057)
+
+公开的 Setup 和 Portable 均未签名。两份文件的 SHA-256 与 GitHub 匹配，0.2.84 能发现新版，覆盖安装保留论文、外观和标注。在 RX 7800 XT 上，TranslateGemma 4B 有一次遗漏了代码占位符，程序保留了原文并显示重试。只重试这一段后，三段译文可以完整导出，另外两段的已有译文逐字保留。Qwen3 4B 也完成了本地测试。[独立 Windows 公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45113226495/job/137493246511) · [Windows 0.2.85 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.85)
+
+## 0.2.84 旧笔记、AMD 本地环境与覆盖升级（2026-11-22）
+
+emcee 期刊论文里的笔记在原段合并或重排后仍能跳到唯一的原句。旧偏移上的重复词保留待复核。把作者姓氏 Bazán 的重音从单字符改成组合字符后，重开仍可选中完整姓名，导出保留保存时的引文。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45111249591/job/137483860845)
+
+Edge 从 GitHub 首页下载的便携版和安装版均通过 SHA-256 校验并保留互联网来源标记。0.2.83 的两个版本都收到了 0.2.84 的更新提示并下载对应文件。覆盖安装后，论文、阅读外观、笔记和高亮均能恢复。RX 7800 XT 在 Python install manager 的默认位置以及含中文的自定义目录中找到 MinerU，两次均识别并翻译了五段扫描文字。独立版 Ollama 在指定本机端口启动，4B 模型完成了磁场句子的英译中。[独立 Windows 公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45111249591/job/137488098754) · [Windows 0.2.84 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.84)
+
+## 0.2.83 公开下载、代码排版与重叠标注（2026-11-22）
+
+PLOS 论文的八行命令在 Paper、Reader 和段落编辑器中均保留缩进及通配符。修改文件名、拆分、合并及撤销后，预览和保存的 Markdown 都反映同一份文本。原文、译文和双语摘要的笔记保留选中的全部空格。重叠高亮可逐个换色和清除，旧高亮露出的部分与 Mac 文本控件一致。缩短 emcee 论文中的段落后，两个相同单词上的笔记仍分别指向各自的位置。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45107907788/job/137473307864) · [公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45107907788/job/137476924995)
+
+两个 GitHub 发行包均从仓库首页下载并校验 SHA-256。本机从 0.2.81 覆盖升级后，原有论文、高亮、笔记和阅读外观均可恢复。RX 7800 XT 完成了 4B 模型翻译和五段扫描文字的 DirectML 识别。0.2.81 可自动检测到新版。[Windows 0.2.83 下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.83)
+
+## 0.2.81 旧笔记回跳与用户目录中的 MinerU（2026-11-22）
+
+在 *Tabbed* 的比较表中改写表头和单元格后，Mac 原生范围与公开 Windows 程序对同一组六条笔记得出了相同结果。移位的唯一引文和位置明确的重复符号可以回跳，其余四条保留并标记复核。跨两个正文段落的两条笔记也分别验证了回跳和导出。七个阅读位置均验证了三色切换、单独去掉高亮、撤销和带笔记重开。
+
+公开版在本机从标准 Python 用户安装目录找到了未加入 PATH 的 MinerU。用 RX 7800 XT 和 DirectML 从扫描件识别出五段文字并完成翻译。从 0.2.80 升级到 0.2.81 后，既有论文、高亮、笔记和阅读外观均可恢复。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.81) · [Mac 原生测试](https://github.com/haoyunLi/PaperBridge/actions/runs/45102459588/job/137456180178) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45102459588/job/137462027317)
+
+## 0.2.80 PDF 代码、译文地址与解析器回退（2026-11-22）
+
+在 20 页的 PLOS 论文中，Windows 恢复了八行命令的换行、缩进和 `*.dat` 通配符。下一页正文与目录树最后一个文件名已分开。AMD 真机验证了纯文本 Reader 和全文译稿中的地址、真实扫描件的 DirectML OCR，以及首个 MinerU 环境损坏时自动选到第二个可用环境。已有的全文翻译任务可继续使用原先的分批方式。
+
+独立 Windows 机器从 GitHub 下载并启动了两种发行包。本机从 0.2.79 升级后，论文、高亮、笔记和阅读外观均可恢复。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.80) · [Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45100192113/job/137449006571) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45100192113/job/137452622595)
+
+## 0.2.79 本地模型建议、解析环境与译文链接（2026-11-22）
+
+同一台 RX 7800 XT 此前只按 63 GiB 系统内存推荐了 27B。公开版在引导与设置页都读取到 16 GiB 独立显存，建议 12B 并保留当前 4B。标准 Python 的全局 pip 安装也会检查所属的解释器。首选 MinerU 模式遇到已确认损坏的解析环境后使用 PDF 文字层，要求 MinerU 的模式会保留当前论文和书签。
+
+本机两个已安装模型分别翻译了含网址和邮箱的段落。应用保护了完整地址，修复了中文句号被拼进网址的问题；新旧版对照、导出及重开后的三个链接均已核对。从 0.2.78 安装升级到 0.2.79 后，已有论文、笔记和阅读设置均可恢复。[发布包](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.79) · [独立 Windows 下载测试](https://github.com/haoyunLi/PaperBridge/actions/runs/45097877047/job/137445243303) · [更新清单与首页下载](https://github.com/haoyunLi/PaperBridge/actions/runs/45097877047/job/137446020255)
+
+## 0.2.78 长引文、跨页笔记和按句重排（2026-11-22）
+
+在 20 页的 *Good enough practices in scientific computing* 上选取第 2 页的长引文，以及从第 2 页延伸到第 3 页的引文。Mac PDFKit 与 Windows 公开版都保留了完整选区、页序和笔记。Windows 可以在检查器内预览、翻译和导出全文，重新打开后仍可跳回高亮。用 RX 7800 XT 和 TranslateGemma 4B 翻译其中 3,313 个字符，用时 5.97 秒；重复翻译使用缓存。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45095379801/job/137433929093)
+
+按完整句重排的原生对照增加到 20 组。Windows 保留中、日引文的开引号，并将法语引述语接在引文后。公开版通过了笔记迁移、撤销和跨显示器的桌面测试。在 125% 与 200% 两台显示器之间移动窗口后，长标题均显示为两行。通过 Edge 从仓库首页下载并核验了两份未签名 EXE，在本机从 0.2.77 升级后，原有论文、高亮、笔记与阅读设置均可打开。[公开下载验证](https://github.com/haoyunLi/PaperBridge/actions/runs/45095379801/job/137437140242) · [0.2.78 发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.78)
+
+## 0.2.77 旧 PDF 笔记、编辑后的摘要与显卡回退（2026-11-22）
+
+在 *emcee v3* 上分别测试了六条旧笔记。唯一的引文可以在原页找回，重复引文和错页保留待复核。已经保存精确范围的重复引文仍选中原来的那一处。公开 Windows 安装版与 Mac 原生 PDFKit 给出了相同结果。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137427173509) · [公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137430573406)
+
+在 213 段的 *Good enough practices in scientific computing* 上拆分第 19 段，六条既有摘要引文同步改号，导出的分析报告提示摘要需要复核。撤销并重开后，六条引文都回到原段。Mac 在编辑后清除当前摘要和全文译稿，Windows 保留旧稿并标明过期，两端撤销都恢复原有内容。Windows 菜单也能重新生成旧版本保存、丢失科学符号的摘要。
+
+RX 7800 XT 上的正式版使用 Qwen3 4B Instruct 与 TranslateGemma 4B，分 11 批处理同一份 20 页论文。本次用时 129 秒，六条双语结论含七条可跳回原段的引文。引用的文本位置经过程序核对，结论对原意的概括仍需读者判断。扫描 PDF 的五个文字块经 DirectML 识别并完成翻译。旧 PyTorch 报告 CUDA 可用但无法执行实际运算时，MinerU 现在对该次导入使用 CPU。这个分支使用受控故障验证，尚未在实体 NVIDIA 显卡上验收。
+
+从仓库首页通过 Edge 下载的两份 EXE 均通过 SHA-256 核验。实际安装 0.2.76 后升级到 0.2.77，论文、高亮、笔记和阅读设置都保留。文件保持未签名，首页和应用内更新清单均已切换。[0.2.77 发布页](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.77) · [下载清单发布任务](https://github.com/haoyunLi/PaperBridge/actions/runs/45093205366/job/137431486460)
+
+## 0.2.76 短路径启动、离线附件与双屏阅读（2026-11-22）
+
+0.2.75 的打包检查发现，便携版在 Windows 短路径中解压时，阅读器载入失败后的 **Try again** 会被误拦。0.2.76 统一了窗口加载和校验所用的阅读器地址。用实际公开下载连续打开两次，重试后原窗口可导入并阅读 PDF。在 AMD 电脑上从 GitHub 首页分别下载两个 EXE，核对 SHA-256，验证了互联网来源标记、从 0.2.74 安装升级到 0.2.76、重开论文及保留笔记、高亮和阅读设置。首页、Windows 说明页和自动更新清单均在公开包验收后切换。[macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45090437632/job/137418530223) · [GitHub 公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45090437632/job/137421750982)
+
+在 Paper、Reader、全文译稿里打开原文附带的本地文件，补充 PDF 交给系统阅读器，Markdown、CSV 和图片在应用内打开。关闭附件可回到论文。与原生 Mac 核对了五个链接的文件目标。有存档原稿时，独立 Markdown 导出保留其原始字节。移动整个便携导出目录后仍可从下一层协议访问图片与 CSV。两台实体显示器分别设为 125% 和 200%，跨屏完成六步向导并打开 PDF，长文章标题在两个缩放比例下都完整显示为两行。
+
+在 RX 7800 XT 对一篇 20 页 PLOS 论文生成双语摘要，11 批实际模型输入与 Swift 处理同一批提取文本的结果逐字相同。首次生成耗时约 90 秒，六条引文都能跳回出处并导出，此次选取集中在引言。两端各自独立提取 PDF 时也都是 11 批，段落边界有所不同。
+
+## 0.2.74 折叠图表和安装版更新（2026-11-22）
+
+公开程序在 Paper、Reader 与全文译稿都能离线显示折叠图表的图注、表题、三列定义、上下标和跨行跨列的表头。图像来自期刊 *Tabbed*，解码为 530 × 418 像素。关闭后重开，从标注列表选择图注笔记可以展开相应图表，并选中原文。[Mac 原生图表对照](https://github.com/haoyunLi/PaperBridge/actions/runs/45085949742/job/137404482141) · [公开安装版和便携版验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45085949742/job/137407737343)
+
+关闭自动检查和后台下载后，仍可在设置中手动检查并下载。用两个 0.2.74 客户端临时报告较低版本，验证手动下载的是对应版本的真实 GitHub 文件，SHA-256 一致且保留互联网来源标记。安装版的 **Open installer** 在交接前重新核验文件；测试替身记录了交给 Windows 的实际路径。便携版提供 **Show downloaded update**。另外用两份真实 0.2.73 客户端验证更新提示，并在隔离目录实际完成 0.2.73 → 0.2.74 安装升级，原论文、笔记、高亮及阅读设置均保留。SmartScreen 的交互提示取决于设备策略和文件信誉。[更新清单发布任务](https://github.com/haoyunLi/PaperBridge/actions/runs/45085949742/job/137408550962)
+
+## 0.2.73 长表格与全文译稿的阅读位置（2026-11-22）
+
+在旧版中放大字号并重开，长表格的目标行会从距读栏顶端约 4 像素处移至约 685 像素处。0.2.73 在三个论文显示模式及全文译稿保留所在行与列。用公开便携版重开真实期刊 *Tabbed* 的 `frictionless` 比较行，位置只变了 1 个 CSS 像素。另用 14 列宽表验证全文译稿的横向定位，并与原生 Mac 的同一份文档对照。B09 计为对齐，111 项基线中有 74 项对齐、37 项部分对齐。[Mac 原生验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45084352499/job/137399425954) · [公开 EXE 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45084352499/job/137402460834)
+
+在 RX 7800 XT 上通过 Edge 从首页下载了两个 EXE，核对互联网来源标记及 SHA-256，运行了离线阅读和重开测试。自动选择的 DirectML 完成扫描件识别，本机模型翻译了五个内容块。0.2.72 安装版和便携版均收到 0.2.73 更新。实际覆盖安装后，论文、高亮、笔记和阅读设置仍可用。
+
+## 0.2.72 三种论文显示模式分别恢复位置（2026-11-21）
+
+在公开 0.2.71 中打开 *Tabbed*，先在双语视图读到一段正文，再去译文视图看另一段。返回双语时，滚动位置从约 1,363 变成了 4,144 CSS 像素。用公开 0.2.72 重做同一组操作，两种视图各自回到了原处。旧存档已有的阅读位置可以继续使用。
+
+另一组用键盘访问原文、译文及双语模式中的三个不同标题。真实 Mac 工作区分别保存并重开了三个模式的位置。Windows 程序切换模式并重启后，三处标题均恢复至各自的位置。另验证了改变读栏宽度、字号及显示缩放后重开期刊，打开正文 DOI 的系统请求，以及在 100%、125%、150%、175%、200% 缩放下显示文章标题。[原生 Mac 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44952931702/job/136994624615) · [公开 Windows 安装包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44952931702/job/136997562412)
+
+在 RX 7800 XT 实测两个公开 EXE 的下载与 SHA-256，便携版离线导入、重开和恢复标注。安装版和便携版的 0.2.71 都从更新清单找到 0.2.72。实际覆盖安装后，原论文、高亮、笔记与阅读外观均保留。[首页由发布任务更新](https://github.com/haoyunLi/PaperBridge/commit/61b471f9)
+
+## 0.2.71 改变字号和栏宽后恢复论文位置（2026-11-21）
+
+在 *Tabbed* 的第 28 段关闭窗口，放大论文文字并收窄读栏后重开。旧行为会回到第 19 段；公开 0.2.71 恢复第 28 段原文，段首仍在读栏上缘。另用 100% 和 150% 显示缩放重开同一段，位置偏差在一个 CSS 像素内。Mac 原生预览和 Windows 都验证了字号和排版改变后对重名标题的恢复，Windows 另验证双语模式下的译文一侧。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44951696558/job/136990833084) · [公开 Windows 程序](https://github.com/haoyunLi/PaperBridge/actions/runs/44951696558/job/136993287891)
+
+发布任务验证两份公开 EXE 后，先刷新应用内更新清单，然后自动更新仓库首页。GitHub 首页的安装版、便携版和版本说明均指向本次验收的版本。[首页更新提交](https://github.com/haoyunLi/PaperBridge/commit/9b949ac5)
+
+## 0.2.70 正文链接、目录和关闭窗口（2026-11-21）
+
+点击 *Tabbed* 正文的 DOI，现在会向系统默认浏览器提交这条链接，论文窗口停在原处。回归测试截获系统打开请求，核对了完整 DOI。[论文](https://doi.org/10.21105/joss.08964)
+
+Mac 原生预览分别点开重名标题、中英文标题及只有标点的标题。公开 Windows 程序对照这三个目的地，在原文和译文上共完成六次跳转。用键盘激活链接，焦点和滚动位置都落在当前语言一侧的标题。跳转后立即关闭主窗口，重开时仍在原处。另从 GitHub 首页下载未签名的便携版，离线导入、重开期刊 PDF 并恢复原文标注。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44950474663/job/136987062420) · [公开安装包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44950474663/job/136989768977)
+
+使用公开 0.2.70 在 RX 7800 XT 的 DirectML 后端识别五段图像文字，并用本地 `translategemma:4b` 完成选段和全文翻译。公开 0.2.69 能提示和下载更新，实际覆盖安装后论文、高亮、笔记及阅读外观均保留。
+
+## 0.2.69 解析后端、一键安装和公开升级（2026-11-21）
+
+在同一台 RX 7800 XT 上切换 MinerU 后端，自动模式选中独显 DirectML，兼容模式显示 CPU。两种模式都从同一张扫描页读出五段，完成选段翻译和全文翻译。已就绪的环境可复用，一键安装会保留选定后端。NVIDIA 的 CUDA 路径仍待真机验证。
+
+通过 Edge 从 GitHub 首页下载了两个未签名的 EXE，SHA-256 与 Release 一致。便携版验证了离线首次使用与重开，已安装的 0.2.68 显示新版提示，升级到 0.2.69 后论文、高亮、笔记及阅读外观均保留。[公开 Windows 下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44948698940/job/136984147210)
+
+## 0.2.68 长篇 PDF 的读栏与双语导出（2026-11-21）
+
+使用 Wilson 等人的开放获取论文 *Good enough practices in scientific computing*。公开 0.2.67 新导入时把左栏的编辑、出版日期插进了右栏 Overview。0.2.68 的 Overview 正文与 PDFKit 读出的全文逐字一致，Introduction 独立起段。六位作者的单位编号及贡献符号也跟随姓名。原有译稿仍按保存时的段落和笔记位置打开。其他版式的段落边界仍可能不同。[论文原文](https://doi.org/10.1371/journal.pcbi.1005510)
+
+Mac 和 Windows 读取同一份在 RX 7800 XT 上译好的存档，分别用自己的导出器生成逐段译稿和双语稿。两种状态都比较了全部 208 个可译段落，包括 12 段含换行的译文。部分完成的存档有一个未完成段和一个失败段。逐段译稿在两处保留原文；双语稿提示译文不可用。两端的原页链接覆盖 20 页，原 PDF 与输入字节一致。Windows 双语稿还保留书签和笔记，参考文献保持原文。另用三页纯图像扫描件验证两个导出文件均提示 OCR。[Mac 原生导出](https://github.com/haoyunLi/PaperBridge/actions/runs/44946585624/job/136975151399) · [公开 Windows 下载与导出](https://github.com/haoyunLi/PaperBridge/actions/runs/44946585624/job/136977446063)
+
+从 GitHub 首页用 Edge 下载两种未签名 EXE 后，核对了 SHA-256 和互联网来源。便携版离线导入、保存和重开均通过。0.2.67 检测到 0.2.68，安装版覆盖升级后保留旧论文、高亮、笔记与阅读外观。
+
+## 0.2.67 分析报告的段落与大纲（2026-11-21）
+
+*Tabbed* 的逐段分析中，旧版会把论文标题和译文标题分别写成新的一级标题，使用 Markdown 大纲时会离开当前编号段落。0.2.67 在分析报告中保留标题的文字、行内链接和格式；论文自身的原文、全文译稿和阅读界面仍显示原有层级。用同一份保存的 AMD 译文，在 Mac 与 Windows 检查了全部 42 段原文和 42 段译文。按文档顺序比较渲染文字并归一化空白后，84 项一致。13 组标题均为其编号段落中的正文。Windows 的段落 ID 也用于资源块，导出编号跟随本机阅读器。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44944016139/job/136967210516)
+
+公开的安装版和便携版通过 GitHub 下载验收。本机使用 Edge 从仓库首页重新下载两份文件，验证 SHA-256、互联网来源标记以及便携版离线重开笔记。用公开包重新导出上述论文后，84 项文字和 13 组标题再次通过对照，摘要段的书签和笔记均保留。0.2.66 检测到 0.2.67，按安装版或便携版下载了正确的 EXE，覆盖安装保留旧论文、高亮、笔记与阅读外观。[公开 Windows 下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44944016139/job/136969561383)
+
+开发分支另修了一处扫描件导出差异。在同一份三页图像 PDF 上，0.2.66 的纯译稿带有 OCR 提示，双语稿直接进入空标注列表。开发版已在两份文件中都加上缺少可选文字、需要 OCR 的说明。Mac 的原生页面和 Windows 导出包均已验证，原始 PDF 字节和三页预览仍可读取。[开发分支修复](https://github.com/haoyunLi/PaperBridge/commit/05f3fa42f69ae1c6e2932ec87f6c091112a86d97) · [Mac 原生扫描样例](https://github.com/haoyunLi/PaperBridge/actions/runs/44944441450/job/136968526258)
+
+## 0.2.66 分析导出中的摘要与原文证据（2026-11-21）
+
+用 *Tabbed* 的两段原文和保存的 AMD 译文，在 Mac 原生程序和 Windows 阅读器中分别导出三份分析稿。没有摘要时直接显示段落。旧摘要只有双语正文时，导出保留正文。有证据的摘要按结论和原段编号列出引文，换行保留在同一个引用块。三种状态的标题和摘要部分逐字一致。另核对了一处书签、第一段的笔记、第二段的翻译错误，以及附录中的摘要笔记。摘要和标注采用相同的测试输入。[Mac 原生导出测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44942844579/job/136963622406)
+
+本机还打开了 *emcee v3* 的旧存档。当时在 RX 7800 XT 上用 qwen3:4b-instruct 生成了摘要，用 translategemma:4b 译成中文。从阅读器的导出菜单保存分析稿后，六条结论、五处原文证据和各自的原段编号都保留了。用该存档的另一个副本移除摘要，确认 0.2.65 会导出三个空栏目；修复版直接进入阅读内容。
+
+从仓库首页用 Edge 下载的两个 EXE 均与 GitHub 的 SHA-256 一致。便携版通过了离线期刊导入、启动和重开笔记测试。0.2.65 检测到 0.2.66 并下载各自对应的文件，覆盖安装后仍能打开原论文并看到高亮、笔记和已保存的阅读外观。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44942844579/job/136965965868)
+
+## 0.2.65 全文、双语导出与纯文字旧译稿（2026-11-21）
+
+Mac 原生解析器和导出器读取了 *Tabbed* 的 MinerU Markdown、两张图和在 RX 7800 XT 上保存的 42 个译块。用源块的 SHA-256 对应译文，两端都找到全部 42 个。把各自的导出文件按 Markdown 解析后，逐块核对层级、文字、链接地址、代码和表格，并按图片字节比对不同的资源路径。纯译文和全文各 54 个内容块，双语正文 96 个。空行和资源文件名可因平台而异。将结论正文标为失败时，两端都在原位保留英文。这项对照衡量两端怎样组织相同的译文。[原生测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44940497790/job/136956396144) · [论文与测试材料来源](tests/mac-parity/tabbed/LICENSE.md)
+
+如果结构化论文只保存了纯文字译文，公开 0.2.64 的全文窗口会丢失译文的标题、编号列表和引用格式。0.2.65 从原文的 Markdown 恢复这些结构。自动更新已保存的全文时，阅读器会检查整篇旧稿是否与这些段落原先组成的内容完全相同。独立编辑过的稿件、过期稿和语言冲突稿保留原有内容。
+
+公开 Setup 安装后通过了同一项离线重开测试。公开便携版的首次验收遇到 Chromium 临时端口文件的短暂占用，重跑在相同下载文件上完成了双开和阅读 PDF。验收脚本已增加对这种文件锁的等待，本机在同一公开便携版上注入一次临时文件锁错误后也通过。[公开包测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44940497790/job/136959601317)
+
+在本机用 Edge 从 GitHub 首页下载了安装版和便携版，两份文件均保留 Windows 的互联网来源标记，SHA-256 与发布记录一致。在 GitHub Releases API 不可用的测试条件下，0.2.64 的两个版本仍从公开更新清单发现 0.2.65，并下载了各自对应的文件。覆盖安装后重开旧论文，高亮、笔记和阅读外观保留；卸载后测试文库仍在。
+
+## 0.2.64 中文译文里的可点击链接（2026-11-21）
+
+在公开 0.2.62 的既有译稿中，*Tabbed* 结论的文档链接包含了一段随后的中文。0.2.64 将链接的地址和分隔符原样放回，仅翻译标签。公开便携版从「段落操作 → Translate This Paragraph」重新翻译旧段落后，译文中的「文档」链接指向与原文相同的地址，重开后仍可使用。以此存档生成全文，保存的三个既有译块均得到复用。文末的引用、表、图片和代码块逐项核对。[AMD 全文实测](AMD_DEVICE_TEST.md)
+
+原生对照曾在保存尚未完成时重开测试文库。新版测试调用 macOS 正常退出时使用的保存方法。标签构建与拉取请求的两个独立 macOS 环境都在重开后读到摘要和结论的四个已译块，选择 Methods 后增加三块。[标签构建的原生测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44938338223/job/136949826316) · [拉取请求测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44938342322)
+
+两份未签名 EXE 均在全新的 Windows 环境通过公开下载与启动测试，本机通过 Edge 从仓库首页下载的文件与发布资产校验值一致。0.2.62 的两个版本都从公开更新清单发现了 0.2.64，下载并校验了对应 EXE。实际覆盖安装保留旧论文、高亮、笔记与阅读外观。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44938338223/job/136952052863)
+
+## 0.2.62 资源位于顶部时的章节翻译（2026-11-21）
+
+在 0.2.61 选中 Abstract 的正文，再把 Methods 的表格滚到顶部，「当前章节」会变为 Methods。相同操作在原生 Mac 上会保留 Abstract。0.2.62 按视口顶部的正文定位章节；顶部为资源时，采用当前选中段落。Mac 和 Windows 对同一份样例先后执行「当前章节」「摘要和结论」，退出重开后再选择 Methods，累计译完 2、4、7 段。测试核对了每一步完成的段落原文，表格和参考文献均保留。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44936014351/job/136942665650)
+
+独立 Windows 环境下载并启动了两份公开 EXE，使用公开 Setup 安装的阅读器复测了这三个翻译范围。本机从仓库首页用 Edge 下载了未签名的安装版和便携版，互联网来源标记与 SHA-256 均经核对。RX 7800 XT 上使用真实期刊的代码块、图片和表格复测，三个位置都能选到已选正文所在的结论。0.2.61 收到 0.2.62 的更新提示，覆盖升级后旧论文、高亮、笔记和阅读外观均保留。[公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44936014351/job/136945290650) · [AMD 结果](AMD_DEVICE_TEST.md)
+
+## 0.2.61 扫描件阅读与文末缺页（2026-11-21）
+
+公开 0.2.60 打开八页横版 PDF，在 50% 文档缩放下滚到底部。窗口中第 6 页有约 230 个可见像素，但其画布已被移除，仍能看到第 7、8 页。0.2.61 根据可见页的上下边界绘制 PDF。Paper 的原文模式和 Original 页签分别验证了页尾与窗口高度变化，在 Paper 模式关闭并重开后再次检查。测试按页号核对了每张可见高度超过五个像素的页面画布中的色块。公开版在 150% 与 200% 系统显示缩放的独立进程中均绘制了第 5 至 8 页。
+
+同一份三页纯图像笔记在原生 Mac 上经 PDFKit 导入、显示和存档，再通过文库重新打开。Windows 经正常拖入、翻页、缩放、关闭和重开执行相同的阅读流程。两端的原件 SHA-256 相同，均提取到零个段落，逐段翻译、全文翻译和摘要不可用，重开后均显示横向第 2 页。Windows 同时恢复了 125% 缩放和页内偏移。[原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44933677794/job/136935567953)
+
+0.2.60 安装版检测到了公开更新。覆盖安装 0.2.61 后，旧论文、高亮、笔记与阅读外观均保留。仓库首页提供免费未签名的安装版及便携版，两份 EXE 均经过独立 Windows 环境的实际启动测试。[公开安装包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44933677794/job/136938236519) · [AMD 扫描页实测](AMD_DEVICE_TEST.md)
+
+## 0.2.60 目录里的 References 与文末引文（2026-11-21）
+
+用相同输入运行原生 Mac 的参考文献过滤和 Windows 的导入、逐段翻译队列及摘要输入。五组样例逐段比对，其中一组保留目录和引言、排除文末引文、恢复附录。另一组用 emcee 论文末尾的三条真实引文测试省略 References 标题的摘录。Windows 桌面测试同时检查了发往模型的全文批次，并核对了导出文件中的引用原文。[macOS 对照运行](https://github.com/haoyunLi/PaperBridge/actions/runs/44931093054/job/136927660482) · [AMD 旧稿恢复记录](AMD_DEVICE_TEST.md)
+
+Edge 从仓库首页取得 0.2.60 的两份未签名 EXE，均保留 Internet 区域标记，文件大小与 SHA-256 和 GitHub 资产一致。便携版可离线导入期刊 PDF。独立 Windows 环境从公开安装包启动后验证了五种 PDF 导入结果和全文翻译。实机从 0.2.59 安装版收到更新提示，覆盖升级后重新打开旧论文，原高亮、笔记与阅读外观均保留。[公开安装包验证](https://github.com/haoyunLi/PaperBridge/actions/runs/44931093054/job/136929960596)
+
+## 0.2.59 启用 OCR 与 PDF 导入模式（2026-11-21）
+
+在 RX 7800 XT 上将公开 0.2.58 设为「仅 PDF 文字层」。从本地缓存实际安装 MinerU 4.1.7 后程序报告完成，DirectML 也通过验证，但导入一页图像型扫描件仍得到 0 个可读段落。0.2.59 安装成功后会启用「优先 MinerU，失败时使用 PDF 文字」。首次向导和「本地 AI 安装」都可以直接使用已检测并通过验证的解析器。用户在安装期间另选的模式会保留。[AMD 真机记录](AMD_DEVICE_TEST.md)
+
+用同一份 *emcee v3* 期刊 PDF 分别从 Mac 阅读模型和 Windows 桌面发起导入。对照用例控制了 MinerU 成功或报错的结果，两端各自调用真实的 PDFKit 或 PDF.js 打开 PDF。下表五组均保留了之前保存的论文书签。[Mac 原生结果](https://github.com/haoyunLi/PaperBridge/actions/runs/44928677731/job/136920290190)
+
+| 导入模式 | 解析器结果 | 两端观察到的行为 |
+| --- | --- | --- |
+| 优先 MinerU | 成功 | 打开结构化内容，原 PDF 字节一致。 |
+| 优先 MinerU | 失败 | 打开 PDF 文字层，显示回退原因，原 PDF 字节一致。 |
+| 仅 MinerU | 成功 | 打开结构化内容，原 PDF 字节一致。 |
+| 仅 MinerU | 失败 | 显示导入错误，继续显示之前的论文。 |
+| 仅 PDF 文字层 | 解析器可检测 | 跳过解析器，打开可读文字与原始 PDF。 |
+
+公开便携版在上述五组条件下也通过了对照。两端都在导入前给原论文添加笔记，随后核对了笔记 ID、引文和正文。Windows 还核对了原论文的全部段落和定位数据。桌面测试中，后台安装完成时，正在生成的段落译文能正常保存。另一次测试在安装期间切换模式，再切回仅文字层，安装完成后仍保留该选择。[Mac 笔记保留对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44928988505/job/136921249337) · [Windows 构建与桌面测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44928677731/job/136920500084)
+
+从仓库首页用 Edge 下载的两份 0.2.59 EXE 都保留互联网来源标记，文件校验值与 GitHub 一致。0.2.58 安装版和便携版均能从公开更新清单提示并下载 0.2.59。实际覆盖安装后保留了旧论文、笔记、高亮和阅读外观。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44928677731/job/136922341493)
+
+## 0.2.58 跨单元格引用（2026-11-21）
+
+在公开 0.2.57 中，从 *Tabbed* 的比较表选中连续四个表头，检查器和发送给本机翻译模型的文字把列名连在了一起。0.2.58 保留浏览器复制表格时的列间隔和换行。锚点仍记录原文位置，两个不同列中的相同值可以分别做笔记。三格连选的旧笔记在成功跳回原单元格后会补回可读引文，重启仍然生效。[Windows 下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44926090164/job/136914804484) · [AMD 译文样本](AMD_DEVICE_TEST.md)
+
+用相同的两行表格，在原生 macOS Markdown 预览中选中第二列表头 Score，直到下一行末尾的 42。Windows 与 Mac 都返回了 Score、换行、Attention、制表符、42。Windows 的笔记、高亮、回跳和 Markdown 笔记导出均保留了这段引文。[Mac 原生 WebKit 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44926090164/job/136912383488) · [Windows 桌面回归](https://github.com/haoyunLi/PaperBridge/actions/runs/44926090164/job/136912658516)
+
+用 Edge 从仓库首页下载的两份 0.2.58 EXE 均带互联网来源标记，与 GitHub 的 SHA-256 相符。公开 0.2.57 的安装版和便携版均在关闭发布 API 的测试中收到 0.2.58 提示，并下载到各自对应的文件。实际覆盖安装后，论文、笔记、高亮和阅读外观均保留。
+
+## 0.2.57 后台安装期间修改解析器设置（2026-11-21）
+
+在公开 0.2.56 的「本地 AI 安装」中启动 MinerU 修复，关闭面板，改选自定义解析器并把解析后端从 pipeline 切到 auto。设置已经保存后，让测试中的安装任务返回成功，随后两项设置都被覆盖。公开 0.2.57 验证了三种操作：两项都修改时保留两项，单改后端时保留新后端并使用安装好的程序，两项都没修改时采用安装所得配置。每种情况均在重新启动后核对。测试控制了安装完成的时间，实际安装与设备验证见 [AMD 真机回归](AMD_DEVICE_TEST.md)。
+
+0.2.56 的两种公开版本均在发布 API 不可用时从更新清单提示 0.2.57，并下载了对应版本。AMD 电脑上用安装版实际覆盖升级后，原论文、高亮、笔记和阅读外观均可恢复。首次使用向导和高级安装面板现共用一处处理安装结果。独立 Windows 环境从公开 GitHub Release 下载并启动两种未签名的 EXE，从便携版读入论文并离线重开。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44924722366/job/136910435439)
+
+## 0.2.56 表格与表后的正文（2026-11-21）
+
+用同一份四页期刊 *Tabbed* 的 MinerU 结果制作了格式变体。第一张表格省略两侧竖线，另一张 HTML 表使用混合大小写的结束标签，后面紧接正文。在公开 0.2.55 中，前一张表出现「翻译段落」，后一张表吞入了随后的正文。公开 0.2.56 正确显示五行比较数据，表后原句可单独搜索、收藏和翻译，原文、译文、双语三种 Markdown 导出均保留表格。另用六组样本与 Swift 原生提取结果核对了各块的类型和范围。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44923536313/job/136905923245) · [测试用论文](https://joss.theoj.org/papers/10.21105/joss.08964)
+
+打开公开 0.2.55 保存的格式变体后，Overview 的质量提示可以定位到第 37 块，在 Reader 中对照原始 PDF。取消重新提取时，资料库保持原状。选择同一份 PDF 后，新副本有 56 块。重启后旧副本的正文与书签仍在，两份 PDF 字节一致。[公开下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44923536313/job/136907722399)
+
+在未修改的期刊 PDF 中，分别于 Reader 和 Paper 双语预览对表内三个范围做笔记。两条笔记各选中 pandas 行不同列里的一个「+」，第三条横跨 frictionless 行的三个单元格。从 Reader 的标注列表打开笔记，两种视图在重启后均能跳回原视图和原行列。
+
+## 0.2.55 恢复图表论文的结构化导入（2026-11-21）
+
+在 AMD RX 7800 XT 上用公开的 0.2.54 导入 *Tabbed* 的四页期刊 PDF，MinerU 4.1.7 的 DirectML 完成了识别，在写入图像时因 Windows 路径格式报错。应用随后退回 PDF 文字层，保留了 55 个文字块。0.2.55 让 MinerU 在可写入图像的普通路径下生成输出。若配置的临时目录过深，解析使用较短的本机用户临时目录。[期刊论文](https://joss.theoj.org/papers/10.21105/joss.08964)
+
+用公开的 0.2.55 打开这份旧资料库，在第 34 块添加书签，在 **More → Re-extract PDF as New Copy** 中选择同一份 PDF。新副本包含 54 个结构化块，原有 55 块和书签在重启后完整保留。两份 PDF 的字节一致。导出新副本的 Markdown，再把文件夹移到其他目录，原文链接能读出与解析所得 JPEG 逐字节相同的两张图，比较表和 `read_csv` 也在文内。[Windows 0.2.55 发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44921278562/job/136899665394)
+
+用 Edge 从仓库首页下载了安装版和便携版，两个文件都带 Windows 互联网来源标记，SHA-256 与 GitHub 资产及校验文件一致。独立 Windows runner 实际启动了两份下载。AMD 电脑上的 0.2.54 安装版和便携版均提示 0.2.55，安装覆盖后，论文、笔记、高亮和阅读外观均保留。长标题在两种窗口尺寸、100% 至 200% 的五档缩放下都有两行空间。[AMD 阅读与翻译样本](AMD_DEVICE_TEST.md) · [自动更新清单](https://github.com/haoyunLi/PaperBridge/blob/windows/desktop-app/windows/latest-release.json)
+
+## 0.2.54 正文搜索、摘要与原文引文（2026-11-21）
+
+用已保存的结构化论文对照两个公开便携版。在 0.2.53，Reader 显示的 `sigma_x` 搜不到，摘要模型收到的两个模型名也都变成了 `modelA`。在 0.2.54，同一段原文可以搜到一次，发给本机 Qwen 的文本逐字保留了 `model_A`、`modelA`、`C#` 和 `sigma_x`。点击摘要证据后选中了含两个科学标识符的完整原句，重启后可以再次选中。旧笔记保留原位置，受影响的旧摘要可在界面中选择重新生成。新旧资料库的摘要原文都通过 macOS 原生文本对照。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44920504542/job/136895278168) · [公开下载与启动测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44920504542/job/136897652891)
+
+## 0.2.53 结构化论文的章节名称与翻译范围（2026-11-21）
+
+在公开版 0.2.52 的旧资料库里，两个 Markdown 标题分别带有 `model_A` 和 `modelA`，都显示成 `Calibration for modelA in C`。搜索 `model_A` 时没有结果。0.2.53 从保存的原始 Markdown 读取标题。侧栏大纲、Reader 搜索和翻译范围都能区分两个名字，并保留 `C#` 和 `A*` 的标点。原先保存的笔记、正文和译文无需重新导入。
+
+把同一篇 *emcee v3* 的 MinerU 结果送入 Mac 原生章节分析与 Windows，五个章节的名字、起止段落和成员编号逐项一致。选择 Summary 后，RX 7800 XT 本机 Ollama 收到 7 个翻译请求，只完成第 15–21 段。另用带近似名称的章节，选中 `modelA` 后只翻译第 3、4 段。重启后该节显示已经完成，含下划线的另一节仍可翻译。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44917898897/job/136887345642)
+
+从首页重新下载并验证了两种未签名的 0.2.53。在 980×620 与 1180×720 窗口、100%、150%、200% 显示缩放下，分别滚到 Software、License 和 Summary 后立刻打开翻译范围，18 次均匹配原生章节和段数。200% 下从「当前章节」实际翻译了 Summary 的 7 段。在另一份带科学标识符的示例中，单选一节后重启，接着点「摘要与结论」只补译了结论的两段。[公开下载与首次启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44918062030/job/136889660248)
+
+另在旧结构化资料库的正文中复现了一个单独的问题。Reader 能显示行内代码 `sigma_x`，但搜索没有结果，发给本地摘要模型的相应文本成了 `sigmax`。下一项复查跟踪正文搜索、摘要输入与证据回跳。
+
+## 0.2.52 批注撤销与引文恢复（2026-11-21）
+
+用公开的 0.2.50 打开两页 *emcee v3* 期刊论文，先删除一条笔记，再添加书签，然后点检查器里的「撤销高亮或笔记」。旧版撤掉了书签。0.2.52 会找回笔记并保留书签。另一次测试先拆开段落，再删除笔记。通过 **Undo Paragraph Edit** 恢复段落后，那条笔记仍保持已删除，重启后也是如此。GitHub macOS runner 用同一篇论文调用原生阅读器和资料库，覆盖了这两个操作顺序。Windows 还验证了在 Original PDF 页调用段落撤销时，当前阅读模式和缩放都能保留。[Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44915960028/job/136881506043)
+
+旧资料库中，两条笔记可能共享编号。旧版打开一条无法定位的引文时，也会把另一条有效引文标成需要复核。新版只标记用户点开的那条引文及同一位置的高亮。在纯文本 Reader 中，作者名单的选区从偏移 11 移到了 16。新版定位到唯一匹配，编辑并重启后仍只有原来的笔记和高亮。如果引文出现多次且原位置已失效，或引文已经消失，保留笔记供复核。Mac 原生与 Windows 对照还验证了引文前增加一个表情符号和空格的情况。
+
+微软 Edge 从仓库首页下载的安装版与便携版均保留了 Internet 来源标记。GitHub 的独立 Windows 环境实际启动了两种公开文件，确认可见的首次向导和离线阅读。AMD 本机的 0.2.50 安装版和便携版都自动检测到 0.2.52，下载的文件大小及 SHA-256 与 Release 相符。实际覆盖安装保留了论文、笔记、高亮和阅读外观。另在 100%、125%、150%、200% 显示缩放和两种窗口尺寸核对长文章标题，标题区域能显示两行。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44915960028/job/136883478941) · [AMD 翻译样本](AMD_DEVICE_TEST.md)
+
+## 0.2.50 撤销段落编辑时恢复全文译稿（2026-11-21）
+
+macOS 在撤销段落编辑时会恢复编辑前的全文译稿。0.2.48 和 0.2.49 的公开便携版打开同一份两页期刊论文，拆分一段后撤销，原文以及 8 批共 2,960 字符的已存译稿均恢复，但仍显示需要更新，重启后也是如此。0.2.50 恢复编辑前译稿的有效状态。如果旧稿本来就需要更新，或编辑后另行生成了译稿，仍会提示复核。回归覆盖译稿文本、批次来源和语言信息发生变化的情况。[Mac 版撤销实现](https://github.com/haoyunLi/PaperBridge/blob/16e01ac42ef03bc7150365ebcf4aca5cd89f5e1d/PaperBridge/PaperReaderViewModel.swift#L1348)
+
+用 Edge 从首页下载的 0.2.50 安装版和便携版均带有 Windows 互联网来源标记。文件的 SHA-256 均与发布资产一致。便携版离线打开期刊，撤销段落拆分后完整保留了 8 个翻译批次，重启后可直接打开原稿。本机 AMD 显卡完成了该论文的双语摘要，4 处证据可跳回并选中原句。0.2.49 安装版和便携版都检测并校验了相应更新，实际覆盖安装后论文、笔记、高亮和阅读外观均保留。[下载与启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44912389416/job/136872925554)
+
+## 0.2.49 本地模型检测（2026-11-21）
+
+首次使用时，已安装模型、已加载模型以及 Windows 检测到的显卡分别表示三种状态。设置页和一键安装页现在按 Ollama 的 `/api/ps` 显示每个已加载模型的内存位置。首次打开或点击检查时只读取状态。未加载模型、服务超时以及服务未提供显存数据时，各有独立提示。该读数表示模型分配的内存，无法据此辨别 ROCm、Vulkan 或 CUDA。[Ollama 运行模型接口](https://docs.ollama.com/api/ps)
+
+安装计划、首次向导和任务检查现在将未写标签的模型名视作其 `:latest` 标签。已安装自定义模型时，选择新的翻译推荐也会保留使用它的独立助手角色。回归覆盖命名空间、不同尺寸标签以及同一模型被多个角色使用的情况。
+
+## 0.2.48 长路径下的论文导入与摘要章节（2026-11-21）
+
+公开 0.2.47 在 RX 7800 XT 上选中了 DirectML。用两页 *emcee v3* 论文测试时，嵌套的模型缓存目录导致 MinerU 在创建派生文件时报告 Windows 错误 206。在另一组测试中，便携版能从 278 字符的临时目录启动并打开练习论文，但导入 PDF 时创建解析工作目录失败。0.2.48 用 Windows 扩展长度路径准备解析目录，并把配置的缓存、PDF 和 ZIP 路径传给 MinerU 4.1+。两类失败都发生在 PDF 导入阶段，用户最早报告的启动现象仍缺少对应的错误记录。
+
+对同一份真实 MinerU Markdown，0.2.47 生成摘要时漏掉文章标题及 Software、License、Summary 三个小标题。修复后 21 个分析段落均带本机 Reader 段号，7 个参考文献块得到排除。逐段比对 macOS 的摘要请求，作者行的单位上标在 Mac 纯文本中两侧带空格，在 Windows 中紧随姓名。所有段号、正文和四个标题都经过核对。模型提示优先从正文引用证据，若有效引文就在标题中，点击仍可选中该标题里的原话。[macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44909370670/job/136861691787) · [AMD 实测](AMD_DEVICE_TEST.md)
+
+Edge 从首页下载的两份 0.2.48 EXE 哈希均与发布资产一致，均保留互联网来源标记。便携版离线打开期刊并恢复原文笔记。真实 0.2.47 的两种发行模式都发现并校验了 0.2.48 的相应更新。安装版覆盖升级及卸载后保留论文、笔记和高亮，升级还恢复了阅读外观。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44909863386/job/136865012268)
+
+## 0.2.47 离线打开已有双语摘要（2026-11-21）
+
+保存 *emcee v3* 的双语摘要并重启后，关闭该测试工作区对应的本地模型服务。公开 0.2.46 从 More → Generate Summary 打开时访问了模型列表，随后转到设置。从 GitHub 下载的 0.2.47 便携版在检查模型前复用当前论文、来源和模型设置下已有的摘要。用原工作区复测，六条结论和两种语言的文字均按原样读回，跨页列表和末段的引文可以直接跳到原文。本次离线打开访问模型服务零次。
+
+Paper 菜单和 More 使用同一操作。原文编辑后再使用菜单会请求新摘要。摘要面板上的 Regenerate 仍可主动重算，桌面回归验证了请求被截断或取消后原结果仍可读。[macOS 缓存逻辑](https://github.com/haoyunLi/PaperBridge/blob/16e01ac/PaperBridge/PaperReaderViewModel.swift#L1104) · [Windows 桌面回归](tests/summary-e2e.cjs)
+
+Edge 从 GitHub 首页下载两份 0.2.47 x64 EXE，签名状态均为 NotSigned，均带互联网来源标记，哈希与发布资产一致。用下载的便携版离线拖入 PDF，保存笔记后重启，仍能定位到 “Bazán”。真实 0.2.46 程序在 Releases API 受限的测试中发现 0.2.47 并校验了两个版本的下载。另从 0.2.46 安装版覆盖升级，论文、高亮、笔记和字号等阅读设置得到保留。两种窗口和五档缩放均为长标题保留了两行。[公开启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44907689194/job/136858455185) · [AMD 真机摘要与翻译](AMD_DEVICE_TEST.md)
+
+## 0.2.45–0.2.46 更新提示与跨页列表（2026-11-21）
+
+0.2.44 遇到 GitHub Releases API 返回 403 时，安装版和便携版都查不到新版。0.2.45 开始读取项目自己的公开更新清单。发布流程从 GitHub 下载两份发布文件，在干净的 Windows 环境中打开并离线导入论文，再公布版本、文件大小和 SHA-256。清单临时不可用时，应用仍可查询 Releases API。[公开更新清单](https://raw.githubusercontent.com/haoyunLi/PaperBridge/windows/desktop-app/windows/latest-release.json) · [0.2.45 发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44904918071/job/136850362000)
+
+让真实的 0.2.45 程序查询公开的 0.2.46 清单，同时将测试中的 Releases API 固定为返回 403。两种发行模式均识别到新版，实际下载对应的 EXE，SHA-256 与 GitHub 发布资产一致，并保留互联网来源标记。两次测试对该 API 的访问次数均为零。从 0.2.45 Setup 覆盖安装到 0.2.46 后，保存的论文、笔记、高亮和阅读外观均恢复，卸载也保留了论文数据。另用 Edge 在仓库首页下载两份 EXE，便携版离线打开期刊、搜索带重音的姓名，保存笔记并重启后定位到同一个词。[0.2.46 公开文件的 Windows 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44905984874/job/136853469118) · [更新清单发布记录](https://github.com/haoyunLi/PaperBridge/actions/runs/44905984874/job/136853961152)
+
+在同一份两页 *emcee v3* 期刊 PDF 上，0.2.45 把第 2 页两项列表与接下来的正文放进了同一个翻译块。0.2.46 新导入时，第 1–2 页的三项列表归在同一段，随后以 “emcee has been widely used” 开头的正文可以单独翻译。732 字符的列表和 323 字符的正文逐字匹配 macOS PDFKit。对旧版已保存的论文保留其分段和标注。若希望在同一份 PDF 上使用新的分段，可以在 More 中重新提取为独立副本。RX 7800 XT 上的公开便携版用两次请求翻译列表、一次请求翻译下一段。双语摘要中的六条引文均能跳回并选中原句。两种窗口、五档缩放下，长标题都有两行空间。[AMD 实测](AMD_DEVICE_TEST.md) · [macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44905984874/job/136851542921) · [论文原文](https://doi.org/10.21105/joss.01864)
+
+## 0.2.44 资料库搜索、清除数据和公开启动（2026-11-21）
+
+在公开 0.2.43 上，侧栏搜索会过滤新开的论文库，关闭库时又会把库内的搜索词带回侧栏。0.2.44 用同四个旧工作区复测，侧栏筛选、重新打开库、编辑标签并返回三个动作均保留对应的搜索状态。
+
+在测试工作区执行“清除保存数据”，0.2.43 会留下当前和旧版 MinerU 的提取文件，以及中断保存的临时副本。用相同操作测试 0.2.44，先取消时四篇论文都在。确认后库为空，三类残留都被清除。三份原始 PDF 的 SHA-256 与清除前一致，用户单独保存的 Markdown 也保留。另以 48 篇测试工作区验证列表，两次请求均为 5 毫秒，读取正文均为 0 字节。
+
+Edge 从首页下载两个 x64 EXE，文件均为未签名且带互联网区域标记。便携版离线打开了期刊原文，恢复了重音姓名上的高亮和笔记。公开 0.2.43 的启动提示发现了 0.2.44。安装版覆盖升级后保留笔记、高亮和阅读外观。验收中 GitHub 一度对手动更新检查返回 HTTP 403，限流恢复后，使用原发布文件重新走完整安装、升级及卸载流程通过。[Windows 发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44903120580/job/136845206551) · [原生 Mac 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44903120580/job/136843012507)
+
+## 0.2.43 资料库索引与升级恢复（2026-11-21）
+
+用一篇 15 页 MinerU 论文复制出 48 个独立工作区，旧版索引中均无文件修订信息。0.2.43 首次迁移读取 48 份正文，共 97,490,919 字节。之后从公开发布的程序重复启动两次，调取资料库列表各用 5 和 4 毫秒，均未读取正文。相同夹具在公开 0.2.42 上各用了 258 和 232 毫秒，每次读取 49 份正文，共 99,556,590 字节。这些耗时只衡量列表请求。打开最近一篇后可以恢复原文、书签及笔记，其他 47 个工作区逐字节保持一致。
+
+另外把四个旧测试工作区合在同一个资料库，分别从列表打开 163 段结构化论文、5 段已翻译扫描件、12 段练习文档及 28 段带全文译稿的期刊论文。逐段核对原文、译文，核对三份 PDF 的 SHA-256，重启恢复最后打开的期刊论文。索引独立工作、五组 Unicode 标签编辑和字符上限已与原生 macOS 的 WorkspaceStore 实测对照。[原生 macOS 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44902228380/job/136840326188)
+
+Edge 从仓库首页下载的 0.2.43 Setup 与 Portable 均带有互联网区域标记，SHA-256 匹配发布页。已安装的 0.2.42 能提示新版，覆盖安装后恢复笔记、高亮和阅读外观。Portable 离线拖入期刊 PDF，查找带重音的姓氏、添加笔记并重开成功。本机也触发并操作了真正的 Windows 阅读器崩溃对话框，两种按钮均有响应。[公开下载与离线启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44902228380/job/136842175101)
+
+## 0.2.41–0.2.42 论文附件与阅读器启动恢复（2026-11-21）
+
+同一个附加协议在公开 0.2.40 的搬移导出中丢失了下一级数据文件。0.2.41 从真实发布的程序打开同一工作区并导出，搬移后沿换行的链接进入第二份协议，再用单独定义的引用找到中文文件名 CSV。原 PDF、两页预览、正文译文和笔记均得到保留。对于图注换行的图片和标题换行的 CSV，还在原生 Mac 上导出并核对了文件摘要。按标签定义的引用属于 Windows 的额外覆盖。复现与修复记录为 `test-artifacts/reference-supplement-y1HzCV` 和 `test-artifacts/reference-supplement-7oXaxu`。[macOS 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44899345357/job/136831777386) · [0.2.41 公开包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44899475488/job/136833717142)
+
+另用真实的两页 ResNet 扫描件 MinerU ZIP，在原输出中加入测试协议与 CSV。按窗口阅读器使用的 Markdown 规则解析搬移后文件里的可点击地址，能从主稿进入协议、表格说明和 `结果 2026.csv`。校验了原 PDF、全部 35 条页码线索及 CSV 内容，一个未引用的文件没有解包。记录为 `test-artifacts/reference-real-kit-9132680c/result.json`。
+
+从公开 0.2.40 的应用文件运行阅读器，在测试工作区阻止本地界面脚本加载，重现了有窗口但正文完全空白的情况。恢复脚本读取后，旧版须由外部重新加载才能继续。0.2.42 的启动页面即使主界面脚本未读到，也能从键盘展开 **Trouble opening PaperBridge?** 并选择 **Try again**。模拟阅读器进程本身终止时，还单独验证了新进程打开已保存论文、书签与笔记，以及第二次终止后选择退出。两种有窗口的可复现场景均无法确定最初报告中「仍要运行后没有窗口」的具体成因。
+
+用 Edge 从仓库首页下载 0.2.42 安装版与便携版，两份 EXE 的 SHA-256 均匹配 GitHub 发布资产，均带互联网来源标记且未签名。对这份便携版暂时阻止界面脚本加载，通过重试回到首次向导，再跳过 AI 设置、离线导入论文、搜索 `Bazán` 并保存笔记。重启后定位到原文第 9 段中同一词，原 PDF 的摘要一致。在本机另从公开便携包启动应用，实际终止阅读器进程并分别操作 Windows 对话框的两个按钮；一次恢复了已保存的论文、书签和笔记，一次正常退出。0.2.41 的安装版和便携版都自动提示升级到 0.2.42，覆盖安装保留论文、阅读外观和笔记。记录为 `test-artifacts/journal-search-edge-JFiZIY`、`test-artifacts/native-reader-dialog-4XhyGY` 和 `test-artifacts/i-mwqciahu-f5s`。[0.2.42 公开下载启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44900288852/job/136836181211)
+
+0.2.42 公开包在本机识别了 16 GiB RX 7800 XT 和核显，设置页显示现有 Ollama 和两个模型就绪。两种窗口与五档缩放复核了长标题的两行高度及工具栏间距。记录为 `test-artifacts/public-amd-setup-7VFb32` 和 `test-artifacts/title-display-scale-kQKiPL`。[AMD 全文翻译及导出](AMD_DEVICE_TEST.md)
+
+另在隔离目录中创建一篇真实 MinerU 论文的 48 个工作区副本。每次读取 Windows 启动快照都会读取 49 份正文文件（含再次核对最近打开项），合计 99,521,980 字节。本机三次用时 287–311 毫秒。Mac 的 `WorkspaceStore.loadLibrary()` 只读索引。Windows 仍需在保持损坏文件和备份恢复能力的同时改善这一项。测试数据来自复制的论文，未测量用户自己的资料库。记录为 `test-artifacts/library-launch-cWiTD8`。
+
+## 0.2.39–0.2.40 作者署名和粘贴章节（2026-11-21）
+
+用同一篇两页 *emcee v3* 论文核对默认的 Reader 逐段翻译、全文翻译、导出和重启恢复。0.2.38 中文作者行丢失了单位编号，还把 Joe Zuntz 的姓名部分音译。0.2.39 在 13 位作者的姓名、顺序和附属单位编号上逐字匹配 PDF 提取的原文。大学或研究所名称仍然翻译。自定义翻译风格、匹配到作者姓名的用户术语、原来已完成的译稿仍按各自的设置和缓存处理。未编号、很长或无法确定归属的署名沿用普通翻译。这一项以论文原文为准；此 PDF 的 Mac 原生清理结果没有收录同一行完整作者。记录见 `test-artifacts/emcee-AMD-SWzlU3/result.json`。[0.2.39 公开包启动与离线阅读](https://github.com/haoyunLi/PaperBridge/actions/runs/44896720430/job/136825892644)
+
+在 macOS 原生处理器上运行八组剪贴板样例。对于正文结束后紧接的“2 Methods”，Windows 保留编号并在同一位置开始下一个阅读段落。紧贴第一条引文的 References 标题独立成段，引用开头的方括号和末尾句号得以保留。独立排版的标题和署名继续可读。旧版便携程序只能跳到 Beginning；新版开发构建的目录可以跳到第 2 块 Methods 和第 3 块 Results。旧版与修复后的桌面记录为 `test-artifacts/clipboard-journal-hu1M6Y` 和 `test-artifacts/clipboard-journal-kHz44z`。[原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44896808892)
+
+公开 0.2.40 重复了上述剪贴板操作。导入产生五个段落，目录跳转和重启恢复均通过。导出的期刊补充材料随文件夹移动后仍能打开图、CSV 和下一级 Markdown。安装版与便携版 0.2.39 都自动提示更新，安装版覆盖升级保留了论文、高亮、笔记和阅读外观，随后卸载也保留了数据。[0.2.40 公开包启动及离线阅读验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44897530664/job/136828278246)
+
+用 Microsoft Edge 从仓库首页实际下载两份 EXE，复核了各自的 SHA-256 和互联网来源标记。打开这份便携版、跳过 AI 设置后，离线导入期刊 PDF，用分解重音搜索 `Bazán`，在第 9 个阅读块保存笔记，重启后恢复到同一个词（原文偏移 15），原 PDF 的 SHA-256 一致。这次测试通过自动化启动文件，未在用户桌面手动点击 SmartScreen。记录为 `test-artifacts/browser-download-0.2.40-S8fuW4` 和 `test-artifacts/journal-search-edge-Ee7XcE`。
+
+在本地 Windows 上用该公开包的应用文件测了 980 × 620 和 1180 × 720 两种窗口。分别设置 Electron 显示缩放为 100%、125%、150%、175%、200%，核对了实际渲染比例。长中英文标题均占两行，约 62.5 个 CSS 像素，下方与元信息间隔 8 个像素，元信息与工具栏间隔 16 个像素，标题悬停可读全文。本机设置页还识别出 RX 7800 XT（16 GiB 专用显存）、AMD 核显、已就绪的 Ollama 和两个已安装模型。记录为 `test-artifacts/title-display-scale-7oIInf` 和 `test-artifacts/public-amd-setup-5Sq9F2`。[AMD 翻译实测](AMD_DEVICE_TEST.md)
+
+## 0.2.38 导出后移动补充材料（2026-11-21）
+
+公开 0.2.37 导出包的主稿可以打开附件 Markdown，但附件中的 CSV、图和另一份补充材料均已断链。此次使用同一组文件运行 macOS 原生导出器和 Windows 导出器，再分别移动整个目录。两端的原文及双语稿都能进入同一份补充材料，复核了附件原文及其图和 CSV 的 SHA-256。Windows 还会沿 Markdown 附件继续收集只在下一层引用的文件。MinerU ZIP 沿用既有解包上限，超过 64 MiB 的 Markdown 附件在导出时提示未扫描其中的链接。[原生对照与构建](https://github.com/haoyunLi/PaperBridge/actions/runs/44895078394)
+
+在实际的两页 MinerU 解析 ZIP 中加入测试协议和中文名 CSV。移走导出包后按相对链接从论文进入协议、第二层 Markdown 和 CSV，复核了查询、片段、全部 35 条页码线索和原 PDF。一个未引用的文件未进入解包目录。测试附件由项目添加。记录见 `test-artifacts/nested-real-kit-d4be4489/result.json`。
+
+从已核验的公开便携包运行此次导出。Windows 的五份 Markdown 保留了原文、译文、笔记与页面索引，原 PDF 的 SHA-256 一致，两页预览随包移动。旧包与新包的复现记录为 `test-artifacts/moved-supplement-Ga52S6/result.json` 和 `test-artifacts/moved-supplement-6eJ0N0/result.json`。另用 RX 7800 XT 完成了两页期刊论文全文翻译及重启恢复。[AMD 译文与发现](AMD_DEVICE_TEST.md)
+
+Edge 从 GitHub 首页下载的 Setup 和 Portable 均为未签名 EXE，带互联网来源标记，哈希与公开发行记录一致。从下载的便携版跳过 AI 引导后，离线导入 *emcee v3*、搜索、保存笔记并重启恢复。公开 0.2.37 两种版本都自动提示 0.2.38，便携版后台下载的文件与公开发行版逐字节一致。安装版升级保留论文、笔记、高亮与显示设置。对应记录为 `test-artifacts/browser-download-0.2.38-S7bZRK`、`test-artifacts/journal-search-edge-7BJ4zf`、`test-artifacts/public037-to038-portable-update-5rtnId` 和 `test-artifacts/i-mwqa79z4-c6c/report.json`。全新 Windows runner 从公开链接下载两种 EXE，通过首次引导和再次启动窗口检查。[公开下载启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44895078394/job/136820847883)
+
+## 0.2.37 阅读器、论文库和术语搜索（2026-11-21）
+
+用 17 个多语段落和 40 个查询比较公开的 Windows 程序与 macOS Foundation 的 `localizedCaseInsensitiveContains`，沿用 Mac 阅读器对查询首尾空白及原译文的处理。针对重音组合、印刷连字、希腊字母、数学符号、韩文和缺失译文设计的这组样例中，0.2.36 有 21 组返回不同的段落编号，0.2.37 全部一致。旧版输入 `undefined` 会列出尚无译文的段落，有时还会把上一侧原文的末尾与另一侧译文的开头当成一个匹配。新版在论文库标题与标签中也能按相同拼写规则搜索，Reader 在清除查询或按 Escape 后恢复原来的位置。公开包记录为 `test-artifacts/multilingual-search-8506os`、`test-artifacts/multilingual-search-lZW6rD`。显卡翻译记录见 [AMD 实测](AMD_DEVICE_TEST.md)。[macOS 和 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44893493123)
+
+Edge 从 GitHub 首页下载了 Setup 和 Portable，SHA-256 与公开记录一致，两份 EXE 均未签名且带有 `ZoneId=3`。便携版保留下载来源标记，复制到 `论文 软件 & 初次使用` 后在隔离工作区启动，跳过 AI 配置并导入两页 *emcee v3* 论文。用分解重音和首尾空格查 `BAZÁN`，只找到第 9 块编辑姓名。重启后点击笔记，仍准确选中偏移 15 的 `Bazán`，保存的 PDF 与输入字节一致。相同 PDF 在 0.2.36 能用原拼写找到该行，但分解重音及首尾空格会导致漏检。记录为 `test-artifacts/browser-download-0.2.37-tERzC0`、`test-artifacts/old-journal-search-Y5dH5z` 和 `test-artifacts/journal-search-edge-kmQoyn`。[原期刊论文](https://doi.org/10.21105/joss.01864)
+
+全新 Windows runner 从最终公开地址下载两个包，安装版及便携版都通过了首次启动和再次打开的验收。本机上 0.2.36 的两种发行版均自动发现 0.2.37，旧便携版后台下载的新文件匹配公开 SHA-256，覆盖安装保留论文、笔记、高亮及外观。记录为 `test-artifacts/public036-to037-portable-update-yDk1qf` 与 `test-artifacts/i-mwq9epm5-1w8/report.json`。[最终下载与启动](https://github.com/haoyunLi/PaperBridge/actions/runs/44893493123/job/136815656274)
+
+## Windows 0.2.36 便携版重复启动（2026-11-21）
+
+公开 0.2.35 的便携版把同一版本的两次启动解压到同一临时目录。最小化并再次打开时，虽然原窗口能恢复，第二次启动退出后，第一个进程目录里的 76 个文件中有 69 个已消失，包括语言文件和 PDF 使用的原生模块。0.2.36 为每次启动分配独立临时目录。同样操作后，所有 76 个文件仍在，原窗口还可以重新载入。另在第一次打开时连续启动两次，保留下来的阅读器能进入引导及练习论文。记录为 `test-artifacts/double-open-BuqFD7`、`test-artifacts/double-open-oaIeOD` 和 `test-artifacts/simultaneous-vB6PYS`。
+
+本轮发布把两项回归加入自动验收。无调试参数的启动会最小化窗口，重新打开同一个 EXE，再核对原窗口和所有运行文件。另用实际便携 EXE 在第二次打开后首次导入 *emcee v3*，检查标题及原 PDF 页面的绘制结果。全新 Windows runner 从最终公开地址重新下载了两个 EXE，并分别通过首次引导及重复启动测试。[打包及 PDF 验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44891648826/job/136808650292) · [公开文件验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44891648826/job/136810460172)
+
+Edge 从 GitHub 首页下载的两个 EXE 均带互联网标记，SHA-256 匹配发布记录。公开 0.2.35 便携版自动发现新版，后台下载的文件也与发布资产一致。0.2.35 安装版显示了更新提示，覆盖升级和卸载后保留了旧论文、笔记、高亮及阅读设置。0.2.36 的离线读者可跳过 AI 配置，导入中文文件名的 PDF，添加笔记并重启恢复。记录在 `test-artifacts/browser-download-0.2.36-zYMh9Y`、`test-artifacts/public035-to036-portable-update-he16Yc`、`test-artifacts/i-mwq8oxw7-dz4/report.json` 和 `test-artifacts/public036-reader-without-models-qMlP69`。[AMD 实测](AMD_DEVICE_TEST.md)
+
+首次并行启动多个互相独立的自动化测试工作区时，有两个测试启动器提前退出。单独运行这两项均通过。普通单工作区的重复启动已经单独验证。受影响电脑原先在资源管理器中确认运行后没有窗口的具体原因仍未确定。
+
+## Windows 0.2.35 全文分批、期刊版式和公开下载（2026-11-21）
+
+在相同输入下，两端的全文分批器对五组边界样例及一篇公开期刊论文给出了逐字相同的批次。论文对照使用 macOS PDFKit 提取的十个正文段落。Windows 另从原 PDF 独立导入，《emcee v3》标题从两块合为一块，作者上标回到对应姓名旁，左栏日期和版权信息与正文分开。两个版本的第一页保留相同的非空白字符，第二页内容和顺序一致。ResNet 和 Transformer 分别仍有 339 和 266 个块。ResNet 第三页还修复了词内的排版断词。原提取存档继续使用原来的段落编号。在公开版之间升级后点击标题笔记，仍能选中旧记录第 2 块的 `affine-invariant MCMC`。记录见 `test-artifacts/journal-corpus-foYPlC` 和 `test-artifacts/journal-title-note-jaQjJW`。[原论文](https://doi.org/10.21105/joss.01864) · [两端对照和发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44890535898)
+
+0.2.34 已翻好的批次与续译输入在升级时原样保留。用受控翻译服务使第二批中断，0.2.35 续译只发送了一次请求。重新生成后，组合重音字符完整保留在同一批次。结果在 `test-artifacts/unicode-upgrade-COJO8L`。真实模型的结果见 [AMD 设备报告](AMD_DEVICE_TEST.md)。
+
+Edge 从 GitHub 首页下载了两个 x64 EXE，互联网标记均为 `ZoneId=3`，二者均未签名，SHA-256 匹配发布记录。干净的 Windows runner 分别打开了便携版与安装后的程序。本机用离线模型地址测试了跳过引导、导入 PDF、保存笔记和重启。0.2.34 的两种版本都自动发现了 0.2.35。便携版下载的文件通过校验，安装版覆盖升级后保留了论文、标注及阅读外观。记录在 `test-artifacts/browser-download-0.2.35-ZZtyqg`、`test-artifacts/public035-reader-without-models-UvqWxb`、`test-artifacts/public034-to035-portable-update-QtEYFH` 及 `test-artifacts/i-mwq83m6b-u5c/report.json`。[公开下载启动记录](https://github.com/haoyunLi/PaperBridge/actions/runs/44890535898/job/136806730303)
+
+## Windows 0.2.34 首次设置时继续阅读（2026-11-21）
+
+macOS 引导在工具或模型下载期间提供 **Continue in Background**。以相同的本地模型服务模拟慢速下载，GitHub 上的 0.2.33 在完成或取消前锁住引导，0.2.34 能立即回到阅读器。公开便携版下载过程中打开了练习论文，随后从设置取消下载，重试成功后在同一篇论文选中模型，重启恢复。模型下载使用受控本机服务。另在 RX 7800 XT 上使用真实 Ollama 推理，复核了 PDF 脚注、目录和重启后的全文译稿。[macOS 引导](https://github.com/haoyunLi/PaperBridge/blob/16e01ac/PaperBridge/Views/OnboardingView.swift#L501-L504) · [AMD 设备报告](AMD_DEVICE_TEST.md)
+
+可选 MinerU 和解释模型步骤按 **Continue** 单独跳过，结束整个引导的 **Skip setup** 出现在前三步。在 980×620 窗口以 150% Electron 页面缩放检查了六步的前进与返回，且高级设置入口仍可操作。桌面测试还覆盖后台取消 MinerU 修复、修复完成时保留后来手选的解析器路径，以及有任务进行时的关闭、键盘焦点和重复点击。发布便携版前后对照记录在 `test-artifacts/guide-public-0.2.33-sOXHtx` 与 `test-artifacts/guide-public-0.2.34-9GBsIg`。
+
+Edge 从 GitHub 首页下载两个 EXE，均带互联网来源标记并匹配发布资产的 SHA-256。全新 Windows runner 从公开链接重新下载，分别启动便携版和安装后的程序。本机测试覆盖了跳过 AI 配置后阅读有中文文件名的 PDF、保存笔记并重启。0.2.33 安装版与便携版均自动发现 0.2.34，便携版下载了校验一致的新便携包，安装版覆盖升级后保留原有论文、注释和外观。记录在 `test-artifacts/browser-download-0.2.34-kFpbNQ`、`test-artifacts/public034-reader-without-models-aXFed3`、`test-artifacts/public033-to034-portable-update-KBNIFT` 和 `test-artifacts/i-mwq74t8l-kkk/report.json`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.34) · [公开下载与首次启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44888165575/job/136799861908)
+
+## Windows 0.2.33 公开下载及安装升级（2026-11-21）
+
+Edge 从 GitHub 首页下载 x64 安装版和便携版。两个 EXE 均带互联网来源标记，SHA-256 与发布文件一致。全新 Windows runner 从公开链接下载两个包，便携版和安装后的程序均能打开首次引导。本机在模型服务离线时跳过配置，导入中文文件名的两页 PDF 并保存标注，重启后原文、高亮和笔记均恢复。记录在 `test-artifacts/browser-download-0.2.33-AN4ggw` 和 `test-artifacts/public033-reader-without-models-wuWVQv`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.33) · [公开下载后的首次启动](https://github.com/haoyunLi/PaperBridge/actions/runs/44886630347/job/136795001952)
+
+0.2.32 的两个版本都提示升级。便携版后台下载了校验一致的 0.2.33 文件。安装版覆盖升级后恢复了原有论文、高亮、笔记和阅读外观，卸载后保留论文和设置。测试记录在 `test-artifacts/public032-to033-portable-update-z5jYii` 与 `test-artifacts/i-mwq6drmr-3r4/report.json`。
+
+## 双栏 PDF 的脚注、目录与译文（2026-11-21）
+
+在相同 SHA-256 的单页双栏 PDF 上，macOS 1.10 的 PDFKit 提取器与 Windows 阅读器逐词核对了 137 个词和编号。正文两栏、右栏小节、图注和左下附注的顺序一致。单页的印刷页码未进入正文。Windows 还在目录中单列小节，并将附注从上一段拆开。测试直接比对两端提取文本，统一空白和上标编号与正文之间的空格。[原生对照与 Windows 桌面测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44885921273)
+
+用公开 0.2.32 在 12 页 ResNet PDF 的第 3 页给脚注加高亮和笔记，再用开发版重新打开同一文件。原来的 333 个块保留，笔记仍定位到第 50 块、偏移 223。选择重新提取为独立副本后得到 339 个块。第 1 页网址脚注和第 3 页公式脚注分别独立成段，目录的“3.3. Network Architectures”能回到第 60 块。逐页比对，两次提取的非空白字符及顺序完全相同。新副本与旧工作区的原 PDF 字节一致。另从两个版本分别导入 15 页 Transformer 论文，两次均得到 266 个块，15 页的非空白字符及顺序一致。设备记录在 `test-artifacts/resnet-footnote-upgrade-M9AtFl` 和 `test-artifacts/attention-column-order-z7n0s4`。[AMD 脚注翻译](AMD_DEVICE_TEST.md)
+
+## Windows 0.2.32 公开下载、升级与论文阅读（2026-11-21）
+
+从 GitHub 首页用 Edge 下载了安装版和便携版，两份 EXE 均未签名，保留互联网来源标记 `ZoneId=3`，SHA-256 同时匹配发布资产和随附校验文件。全新 Windows runner 从公开地址下载并打开便携版，安装 Setup 并启动安装后的应用，两者均进入首次引导。本机便携版在模型和解析服务不可用时跳过配置，导入中文文件名的两页 PDF，保存笔记和高亮并在重启后恢复。浏览器记录在 `test-artifacts/browser-download-0.2.32-0MHQmH`，离线阅读记录在 `test-artifacts/public032-reader-without-models-JePwJJ`。[公开版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.32) · [两种公开下载的启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44883910590/job/136786822163)
+
+0.2.31 安装版和便携版均自动发现 0.2.32。旧便携版在空缓存中后台下载了新便携版，文件 SHA-256 匹配公开下载，并保留互联网来源标记。本机隔离安装从 0.2.31 升到 0.2.32，论文、笔记、高亮及阅读外观均可恢复，卸载后保留论文和设置。记录在 `test-artifacts/public031-to032-portable-update-Tutsc6` 和 `test-artifacts/i-mwq55ip2-o9s/report.json`。
+
+公开便携版导入 12 页双栏 ResNet 论文后，从参考文献标题到最后一条拆行作者的 15 个块（260–274）均从翻译操作中排除。紧随其后的附录标题（275）仍可翻译。15 页 Transformer 论文的双语摘要覆盖了从真实模型生成到回到原句及重启恢复的完整流程。[AMD 设备验收](AMD_DEVICE_TEST.md)
+
+## Windows 0.2.32 的摘要来源与后续长句修复（2026-11-21）
+
+在 Windows 0.2.31 中，10 个实验符号能通过 20 字符的最低引文要求，300 个扩展汉字却超过了 500 字符的上限。0.2.32 改为按完整字符计数。模型输出和 PDF 用不同 Unicode 编码表示同一重音字母时，阅读器会选中论文里保存的原句。两处原文仅有编码形式不同时，来源链接定位到段落。原始段号和文内标注偏移保留。[实现](https://github.com/haoyunLi/PaperBridge/commit/c615bd5)
+
+两端实现核对了八组引文的接受和拒绝结果、三组长段的完整分批文本，以及从初步摘取到合并的结论编号与逐条引文。Windows 桌面测试覆盖了补引文、拆段、撤销、关闭重开和从摘要定位原句。[macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44883611108/job/136784145902)
+
+RX 7800 XT 上用本机 Ollama 对《Attention Is All You Need》的已保存 PDF 文字层生成双语摘要。在 `test-artifacts/summary-amd-tvG7W9` 这次运行中，六条结论共七条引文，逐一点击均在对应的原文段落选中并显示了原句，导出的 `summary-evidence.md` 保留全部段号与引文。另一次运行 `test-artifacts/summary-amd-pruHI5` 的六条结论中四条带有已验证引文。当前原生对照使用相同的受控输入；真实论文的本机结果来自 Windows。
+
+0.2.33 修复了长段落在句中切开的问题。一条长 5,786 个字符且能独立容纳在一批里的句子，现在会完整送给模型，末尾的 300 字符引文可校验。带制表符和双空格的原文逐字保留。第四组分批样例已通过 macOS 原生与 Windows 对照。[开发分支的跨平台对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44884191963/job/136785908112)
+
+## Windows 0.2.31 公开下载与阅读验收（2026-11-21）
+
+首页提供 Windows portable 与 Windows installer 两个入口。Edge 从这两个入口下载的 EXE 均保留互联网来源标记，大小与 SHA-256 符合 GitHub 资产及校验文件。独立 Windows 环境从公开链接下载便携版并打开引导，也安装了 Setup 并启动安装后的 PaperBridge。本机从便携版跳过 AI 配置，导入中文文件名的两页 PDF，加笔记和高亮，重启后均保留。0.2.30 便携版在空缓存中发现 0.2.31，后台下载的便携版与公开文件逐字节校验一致。[发布记录](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.31) · [公开包验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44881811459/job/136780225037)
+
+安装版也实测从 0.2.30 发现更新，完成安装和重启后保留旧版保存的论文、高亮、笔记及阅读外观。隔离测试安装卸载后，论文与设置仍可读取。本机报告为 `test-artifacts/i-mwq46qdz-av4/report.json`，便携版更新记录为 `test-artifacts/public030-to031-portable-update-NDFRsL/result.json`。
+
+使用 macOS 生产 Swift 和 Windows 导入逻辑核对三组参考文献，保留和排除的段落、原文及顺序均相同。公开便携版在 RX 7800 XT 上用 `translategemma:4b` 译出参考文献后的方法段，三个以题名或机构名开头的 DOI 引文保留原文。本机记录为 `test-artifacts/public031-amd-bibliography-JobbH5/result.json`。[两端对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44881811459/job/136778604384)
+
+另外导入 12 页的《Deep Residual Learning for Image Recognition》时，公开版将参考文献末尾两个 PDF 分段误作正文。开发分支修复了作者名单和后续书目分段相连的情形。重新在 Reader 中逐段打开动作菜单或检查标题翻译按钮，第 260 至 274 段均排除，第 275 段附录可翻译。对 15 页《Attention Is All You Need》复查，266 个 PDF 分段中排除的 39 段与修复前相同。[开发分支修复](https://github.com/haoyunLi/PaperBridge/commit/44757b3)
+
+## Windows 0.2.30 公开下载与升级（2026-11-21）
+
+在仓库首页用 Edge 下载 x64 Setup 和 Portable，两个 EXE 的 SHA-256、大小和版本均符合 GitHub Release，均为未签名发布，也都保留了 Windows 互联网来源标记。GitHub 在独立 Windows 环境中打开两个公开下载并验证首次引导。本机在模型不可用的隔离工作区中跳过引导，导入带中文文件名的两页 PDF，添加笔记和高亮，重启后均可恢复。原先报告的手动系统确认后无窗口，仍需该设备的交互结果来确认具体原因。[公开下载](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.30) · [公开包启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44879565255/job/136773656470)
+
+0.2.29 的真实安装版与便携版各自发现 0.2.30。在设置中开启后台下载，收到的文件分别与新版本 Setup 和 Portable 的公开 SHA-256 相同，均保留 `ZoneId=3`。安装版还核对了交给资源管理器的实际文件。使用公开 Setup 完成升级并重启后，旧版创建的 12 个练习段落、笔记、高亮、阅读外观和图书馆标签完整。卸载隔离安装后再次核对了论文和索引。报告为 `test-artifacts/i-mwq36h8b-gz8/report.json`、`test-artifacts/public029-to030-portable-update-6TUmXM/result.json`、`test-artifacts/public030-reader-without-models-W3pRyp/result.json` 和 `test-artifacts/browser-download-0.2.30-a1L3pT/result.json`。[AMD 全文译稿验收](AMD_DEVICE_TEST.md)
+
+## Windows 0.2.29 公开下载、后台更新与阅读定位（2026-11-21）
+
+在仓库首页用 Edge 下载 Setup 和 Portable。两份文件均为未签名的 x64 EXE，SHA-256 与 GitHub 发布资产及对应校验文件相符，都保留了互联网来源标记 `ZoneId=3`。GitHub 的独立 Windows runner 从公开地址下载两份文件，启动便携版及安装后的应用，均进入首次引导。本机便携版跳过引导，在模型服务不可用时导入带中文文件名的两页 PDF，保存笔记和高亮并在重启后恢复。[公开文件与校验值](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.29) · [公开下载和启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44877257309/job/136766249081)
+
+本机实际安装的 0.2.28 提示 0.2.29，按钮给出的安装地址经 Edge 下载校验。隔离目录内升级、重启并卸载后，原论文、笔记及高亮完整。旧便携版以空缓存启动时，横幅和设置均提供便携版更新。0.2.29 支持自选后台下载。为验证第一款支持此功能的安装版，测试临时将其自报版本设为 0.2.28，下载真正发布的 0.2.29 Setup。应用在资源管理器显示文件前重新校验 SHA-256。测试截获了交给资源管理器的路径，校验了文件本身及互联网来源标记。本机报告为 `test-artifacts/i-mwq24cri-88s/report.json`、`test-artifacts/public028-to029-portable-update-bSB07F/result.json` 及 `test-artifacts/browser-download-0.2.29-sGqtmd/result.json`。
+
+在同一篇 65 节的测试文档中，0.2.28 从概览跳到正文时，目标段落第一次布局在视口顶部以下约 936 像素。0.2.29 首次布局为 15 像素，并修复了立即后退和宽度滑杆焦点。在真实两页 PDF 中，跨页的 `GPT-` 和 `4` 合为 `GPT-4` 并保留起止页。在 15 页真实论文上验证全部 266 段及 PDF 哈希，在界面中合并第 22 段，撤销并重启后，全部段落与原 PDF 均恢复。本机报告为 `test-artifacts/public-0.2.29-navigation-PRGgYk/result.json` 和 `test-artifacts/public-0.2.29-real-pdf-WvJ5uy/result.json`。[AMD 本机译文及批注对照](AMD_DEVICE_TEST.md)
+
+## Windows 0.2.28 公开下载与阅读器验收（2026-11-21）
+
+在本机通过 Edge 点击 GitHub 首页的安装版和便携版，两个文件的 SHA-256 均匹配发布资产和随附校验文件，签名状态均为 `NotSigned`，两个文件都保留了互联网来源标记 `ZoneId=3`。GitHub 的全新 Windows 环境使用这两个公开下载启动便携版和安装版，均打开首次引导。自动化直接启动 EXE，实际用户在自己设备上处理系统安全确认。[发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44874706096) · [版本及校验文件](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.28)
+
+在本机隔离目录中，0.2.27 安装版的“下载安装程序”按钮给出了 0.2.28 Setup 的公开地址。测试捕获交给外部浏览器的地址，另用隔离的 Edge 下载并核对 SHA-256。升级和重启后，旧版实际创建的论文、笔记、高亮及阅读外观仍可恢复。0.2.27 便携版在空更新缓存下自动发现 0.2.28，在横幅和设置中提供便携版入口。0.2.28 便携版在无可用模型或解析服务时，完成了跳过向导、导入带中文文件名的两页 PDF、标注及重启恢复。本机报告位于 `test-artifacts/i-mwq0v8sd-jn8/report.json`、`test-artifacts/public027-to028-portable-update-KhjJ31/result.json` 及 `test-artifacts/public028-reader-without-models-1GhQSQ/result.json`。
+
+同一份 PDF 在公开 0.2.27 中被读成 `3- D`、`GPT- 4` 和 `12- 3`。公开 0.2.28 在物理行接缝恢复为 `3D`、`GPT-4` 和 `12-3`。在 15 页的《Attention Is All You Need》中逐一比较 266 段，段号及页码都保留，唯一正文变化是 `Berkeley- Parser` 变成 `Berkeley-Parser`。`English-to-German` 保留了两个连字符。通过界面合并第 22 段再撤销、关闭并重开后，校对了全部段落及原 PDF 的 SHA-256。本机报告为 `test-artifacts/public-0.2.28-real-pdf-x9yUOx/result.json`。
+
+发布工作流以 macOS 生产 Swift 为参照，对比了 7 组论文、4 组带 Markdown 的译文、23 组段落合并和 9 组重排。五条批注样例覆盖重复片段、译文标注和原选区变化后需要复核的情况。五个断词样例单列 Windows 对科学标记和算术符号的处理。[平台对照和桌面测试](https://github.com/haoyunLi/PaperBridge/actions/runs/44874706096/job/136756851374)
+
+## Windows 0.2.27 公开下载、更新与首次使用
+
+Edge 在仓库首页下载了两份已发布的 EXE。大小与 SHA-256 均匹配 Release，两份下载均保留互联网来源标记。全新 Windows runner 下载公开文件并实际打开便携版和安装后的程序。本机从公开 0.2.26 收到 0.2.27 提示，升级后重启并恢复旧论文、阅读设置、笔记和高亮。隔离工作区让 Ollama、MinerU 均不可用，首次跳过引导，拖入带中文文件名的双页 PDF，添加笔记及高亮后重启恢复。[发布工作流](https://github.com/haoyunLi/PaperBridge/actions/runs/44871977308) · [发布与 SHA-256](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.27)
+
+0.2.27 的新版提示和 Settings → Updates 使用当前运行版本的类型。已安装版直接下载 Setup；便携版仅在目标版本已有可下载的 Portable 时显示对应按钮。下载在系统浏览器中进行。Electron 的重启测试捕获按钮交给浏览器的 URL，并对照实际公开 0.2.27 的文件清单核对两种地址。使用隔离的新版本缓存，另在打包的程序和公开便携版上验证按钮文字与“稍后”之后的设置入口。本机报告为 `test-artifacts/i-mwpzjjaw-ttg/report.json`、`test-artifacts/browser-download-0.2.27-cww7w3/result.json`、`test-artifacts/public027-reader-without-models-WDHTZd/result.json` 和 `test-artifacts/public-027-edition-o9aMs5/result.json`。
+
+macOS Swift 与 Windows 的对照已加入两端实际内置的十二段练习文档。正文、分段、章节、阅读地图、提取提示和来源段号都通过比较。连同其他六组论文输入及四组 Markdown 还原样例，均使用各自平台的生产实现。[macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44872342773/job/136749535977)
+
+## Windows 0.2.26 公开下载及 macOS 对照
+
+Edge 从仓库首页重新下载了 Setup 和 Portable。两份 EXE 的 SHA-256 与 GitHub Release 和附带校验文件一致，Windows 的互联网来源标记均为 ZoneId=3。独立的全新 Windows runner 打开公开便携版及安装后的应用并验证首次引导。在本机从公开 0.2.25 检测到 0.2.26，升级和重启后可重新打开旧论文及原有笔记、高亮。自动测试覆盖公开二进制的启动，Windows 对每台设备显示的安全确认仍由使用者操作。[发布验收](https://github.com/haoyunLi/PaperBridge/actions/runs/44870849946) · [AMD 真实推理及公式对照](AMD_DEVICE_TEST.md)
+
+对照工作流在 macOS 编译项目实际使用的 Swift 文件，再把结果传给 Windows 上的 JavaScript 实现。六组论文输入覆盖章节范围、摘要及结论段号、阅读地图摘录及跳转、提取质量提示，以及 Unicode 边界。另有四个公式、代码、图片和链接的 Markdown 还原用例。两端结果逐项一致。公开包本机报告为 `test-artifacts/browser-download-0.2.26-7o57LZ/result.json` 和 `test-artifacts/i-mwpz0rwz-qko/report.json`。[原生 macOS 与 Windows 对照](https://github.com/haoyunLi/PaperBridge/actions/runs/44871214481/job/136746054220)
+
+## Windows 0.2.25 公开下载验收
+
+[发布工作流](https://github.com/haoyunLi/PaperBridge/actions/runs/44869113723) 的构建与公开下载复测均通过。后者在另一台全新 Windows 机器下载两份 EXE，核对 SHA-256，启动便携版及安装后的程序，验证首次引导和安装版再次启动时恢复窗口。在本机，Edge 从仓库首页实际下载两份文件，均带互联网来源标记，文件哈希与 Release 一致。公开 0.2.24 安装版检查到了 0.2.25，升级和重启后原论文、笔记及高亮保留。浏览器和升级记录分别在 `test-artifacts/browser-download-0.2.25-ZxcWoP/result.json` 和 `test-artifacts/i-mwpyauo6-p4o/report.json`。本机公开便携版的生成速度、公式和译例见 [AMD 真机回归](AMD_DEVICE_TEST.md)。
+
+## 段首章节、摘要与结论范围（0.2.25）
+
+macOS 1.10.0 会识别正文首行或段首的章节标题，并将“Concluding Remarks”纳入摘要与结论的翻译范围。Windows 现在同时读取结构化标题和正文中可识别的标题，区分无标题的完整文档与第一节之前的开篇材料。参考文献和资源不生成可选章节。各节待译块只计算一次，范围计数和入队共用块 ID。一个实际的 Electron 导入测试分别保留正文内嵌的 Abstract、识别 Concluding Remarks，同时排除 Abstraction Mechanisms 及参考文献，核对了 3 次请求的原文、落盘 ID 和完成后的按钮状态。提取质量检查也按可见字符计数，识别全角数字，并跳过有效段首标题。
+
+## Windows 0.2.24 公开包验收（2026-11-20，美国中部）
+
+从 GitHub Release 实际下载 Setup 和 Portable，两份文件的 SHA-256 均与各自的校验文件和 GitHub 记录一致。便携版直接打开首次使用向导，最小化后再次双击恢复原窗口。GitHub 独立 Windows 机器和本机均完成实际安装与打开。另在本机从公开 0.2.21 查看升级提示、保存批注、安装 0.2.24，随后重启及卸载均保留数据。升级报告位于 `test-artifacts/i-mwpx8byv-fsk/report.json`。本机 RX 7800 XT 的公开包推理结果见 [AMD 回归记录](AMD_DEVICE_TEST.md)。0.2.24 构建通过 281 项单元和 36 组桌面回归。
+
+首次公开下载工作流的两份文件均已成功启动。测试进程退出后，Windows 对临时工作目录的占用使清理报错，重跑时再次复现。开发分支已将启动目录与待删除的测试目录分开，并对短时文件占用重试。分支上的下载测试直接重验已发布的同版本文件。
+
+开发分支另外对齐了 Mac 的段落拼接规则。PDF 跨行提取以及手工合并段落时，右侧标点前和左侧斜杠、左括号后会直接拼接。例如 `Ratio (A/B), measured twice.` 不会插入多余空格。新单元测试同时检查右段高亮的位置。282 项单元、PDF 提取、段落编辑及桌面主流程通过。该改动在 0.2.24 标签之后。
+
+## 第八十六阶段 · Windows 下载启动和当前页面的主操作（2026-11-20）
+
+公开 0.2.21 的 Setup 与 Portable 已从 GitHub 下载并核对 SHA-256。0.2.20 升级到 0.2.21、重启保留批注、卸载后保留资料，以及便携版修复缺失、损坏、内容不匹配的 PDF 资产均通过。该版本在继承 `ELECTRON_RUN_AS_NODE=1` 时可以复现无参数启动后立即退出。Windows 0.2.24 关闭该 Electron fuse，打开内置界面，并在读取工作区失败时提供错误信息和重试。替换首个导航的正常刷新可以继续打开阅读器。
+
+对照 macOS 1.10.0 的 `primaryWorkspaceActionTitle` 和 `reextractPDFAsNewCopy`，Windows 的顶部按钮和 Ctrl+Enter 现在按当前页执行逐段翻译、摘要或全文翻译。已有结果的页面显示完成状态。更多菜单提供论文库、术语、摘要、全文翻译和重新选择 PDF。已有粘贴文本时选择原件并生成独立 PDF，原文本书签保留。Electron 测试覆盖上述流程，以及短窗口和 200% 缩放。
+
+## 第八十五阶段：Windows 0.2.21 发布候选（2026-11-07 UTC）
+
+候选包含第 84 阶段的原件重选、内部 PDF 校验/原子修复和重复打开时最新笔记保全。前一源码提交为 `158200f2f54d3025a74617a39624f9fcb113eafd`；版本已升至 0.2.21，本地 281 项单元、Setup/Portable 构建、更新提示重启和打包启动通过。标签 CI、公开文件下载与 0.2.20→0.2.21 升级、公开 Portable 三类 PDF 资产修复验收仍待完成。公开 0.2.20 的真实 AMD 推理不改标为本候选的证据。
+
+准备的隔离发布流程见 `test-artifacts/VERIFY_RELEASE_0221_PLAN.md`，公开 PDF 修复脚本为 `verify-release-0221-pdf-recovery.cjs`。旧升级输入固定为公开 0.2.20；新版本哈希仅接受实际 GitHub 文件、checksum sidecar 与 asset digest，不使用本地候选代替。公开新功能验收通过实际拖放/字节导入覆盖损坏、合法但不匹配、缺失三个资产场景，核对工作区、译文/注释、标签、真实 PDF.js 文本/画布与重启；不声称公开包系统文件选择框已被人工操作。
+
+## 第八十四阶段：原件重选、PDF 资产修复与最新笔记保全（2026-11-07 UTC，开发分支）
+
+继续对照 Mac `reextractPDFAsNewCopy/readPaper`，Windows 原先只复制内部 PDF，无法在内部文件损坏后选择正确原件；普通同哈希导入也会因目标文件已存在而跳过修复。现在 Re-extract PDF as New Copy 先打开原生单文件选择器，使用实际选中 PDF 的字节和文件名，按原件哈希加 UUID 建立独立新副本。取消选择不创建资产、不进入导入进度，当前论文保持可见；已保存正文、译文、注释与独立标签不覆盖。新副本可选择不同原件，行为与 Mac 一致。
+
+普通 Open PDF 或拖放重开相同原件时，先比较内部文件 SHA-256：相同则不改写，缺失或不同则通过同目录自有临时文件加原子 rename 修复，仅替换 PDF 资产。写入失败保留原文件；临时名称冲突不会删除非本次创建的文件。重复打开论文先等待笔记保存，再按 ID 读取最新工作区，并优先保留当前同 ID 的内存记录，避免使用导入响应中保存之前的旧快照。
+
+新增 8 项资产/失败/取消单元，完整 **281 项单元**通过。实际 Electron 主流程覆盖两个损坏场景（无效字节、另一份合法 PDF）、重选原件/其它 PDF、独立新 ID 与原件哈希、旧论文和索引不改写、普通重开修复、取消零写入，以及故意延迟最新笔记落盘后同 PDF 重开。系统 dialog API 的选择结果由测试注入，不声称人工点击了 Windows 系统选择框。最终 `test-artifacts/phase84-main-e2e-complete.log` 通过全部主流程，导入进度/取消和粘贴恢复专项也通过。
+
+首次新测试在 Electron evaluate 环境调用不存在的 `require`，修正为 `process.getBuiltinModule`；下一次旧测试在异步切文完成前立即断言批注，改为有界等待目标批注后仍执行原断言。失败证据 `phase84-main-first-failure`、`e2e-failure-7aYHqN`、`e2e-failure-eE8H83` 均保留。产品完整性断言未放宽。公开 0.2.20 尚不包含本阶段修复。
+
+## 第八十三阶段：公开 0.2.20 的真实 AMD 长段翻译（2026-11-07 UTC）
+
+第 82 阶段公开包验收完成后，使用同一校验通过的公开 Portable，在新隔离工作区翻译已提取真实 MinerU 论文的第 32 段（Encoder，660 字符，两条公式）。实际段落动作恰好发出 363 / 296 字素的两次请求，完整 payload 与预期匹配；两条公式、English→Simplified Chinese 元数据、其它全部输出/批注、PDF 和资源原件与副本均经关闭重启保全。报告 `test-artifacts/portable-0220-amd-mineru-Y0St0z/result.json` 为 `passed=true`，渲染错误为 0，无清理错误。
+
+本次新增 Ollama 日志明确记录 RX 7800 XT、ROCm gfx1101、35/35 层 GPU，模型与显存分配均为 2,881,948,220 字节。两次请求耗时 4.837 / 0.647 秒、生成速度约 129.5 / 129.4 tokens/秒；首次包含冷加载。原生窗口尺寸/DPR 下的 CDP renderer 截图已检查，完整中文与公式可见。position-wise 被译成“位置相关”，专业译文仍需审校；本轮不执行新的 MinerU 解析或环境安装，也不据此宣称所有论文或 NVIDIA 验证通过。完整证据与范围见 [AMD 报告](AMD_DEVICE_TEST.md)。
+
+## 第八十二阶段：Windows 0.2.20 公开发布与升级验收（2026-11-07 UTC）
+
+[Windows 0.2.20](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.20) 已发布，源码标签为 `8315c8bcc606a875774a0c54b83dfed336b24567`，包含第 80–81 阶段的长段分块和独立图书馆索引。[标签 CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42359081106) 与[同提交 PR CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42359085515) 均成功，273 项单元、36 套桌面流程、安装包构建与打包启动通过。本地候选另通过单元、更新提示重启和打包启动。
+
+两份公开文件已下载并核对 `.sha256`、GitHub asset digest、字节数和 ProductVersion，Authenticode 均为 `NotSigned`。清单为 `test-artifacts/release-0.2.20-verified/verification.json`；本地同名候选先备份，再暂存公开包，没有重新构建覆盖。
+
+| 公开文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132785594 | `125debbe5e534561ad61ab757c57dcb283650b40ef6c0682fd0e51a019f3f7d1` |
+| Portable | 132574566 | `e47e7fed40a9f11666e7a31660cca63aea17a0bb93a2bd40cbc1b6a0c41bf66a` |
+
+**真实 0.2.19→0.2.20 NSIS 升级通过。** 旧公开 Setup SHA-256 为 `0683caaf7aa46d1bac982c52dc2938573bd5dcbe32d35fd5a910326cae4b78cc`。旧应用实际显示 GitHub 新版提示，并通过 UI 创建练习论文、笔记和高亮；新应用确认当前版本、迁移该论文的独立索引，保留阅读外观、批注及完整重启数据。另行加入的五类合成数据验证选择位置、输出语言缓存和组合批注删除/Undo，不声称由旧 UI 创建。卸载保留隔离论文和设置，报告 `test-artifacts/i-mw679k97-nyg/report.json` 为 `passed=true`，updater 缓存清理成功。
+
+**公开 Portable 基础与新功能验收通过。** `test-artifacts/portable-0220-c85nWm/result.json` 验证真实 15 页、266 段论文、原有第 17 段 410 字符中文译文、原 PDF 字节、标签、标题空间、粘贴、修复对话框及完整重启；单独的合成记录覆盖历史语言、选择/视口和批注。原生截图为 1306×758 CSS、DPR 1.25；490×310 短视口使用 CDP CSS 模拟，原生 200% 另由源码桌面回归覆盖。
+
+`test-artifacts/portable-0220-features-cBGZeu/result.json` 通过公开包的真实段落菜单发送恰好两次不超过 500 字素的受控请求，保留公式、链接、连续标点、Unicode 与输出语言。标签保存不改正文或备份；关闭后仅损坏测试工作区的两个正文副本，应用仍保留库条目、允许改标签，打开失败时保留当前论文。完整重启后真实 Paste Text 重导恢复同 ID 原文与标签，条目不重复，另一篇译文不变。两份 Portable 报告均 `passed=true`、渲染错误为 0，无清理错误。受控响应证明应用侧完整性，不作为模型翻译质量或 AMD 加速证据；新索引也不能重建两个副本中已经丢失的译文/注释。
+
+## 第八十一阶段：独立图书馆索引与损坏工作区恢复（2026-11-07 UTC，开发分支）
+
+上一阶段 `88f6d026bee66cc76e7b2d59b0283195ac171291` 已通过 [GitHub CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42356647724) 的 266 项单元、36 套桌面和打包启动。继续对照 Mac `WorkspaceStore.library.json` 与 `openLibraryPaper/updateLibraryMetadata`，发现 Windows 同时损坏论文正文 JSON 和备份时会丢失图书馆条目及标签。现在新增独立 `library-index.json`，可读旧论文自动建立索引；正文不可读或缺失时保留标题、标签和最后可用计数，显示 Workspace unavailable，并保留当前正在阅读的其它论文。点击无法读取的条目会提示重新导入原文。
+
+标签修改只原子写索引，不重写正常或损坏的正文/备份；正文原文件名不变。索引标签是权威值，旧保存队列写入旧标签不会使它倒退；同 ID 再导入原文后保留标签并恢复同一条目。元数据请求串行且有代次保护，关闭旧编辑框或打开其它对话框后，迟到完成不会替换新界面或段落修复草稿。退出和清除数据先等待在途元数据写入；清除数据同时删除索引及备份，保留原 PDF 的既定行为不变。
+
+读取工作区要求 id 匹配、blocks 为非空值对象组成的数组；主文件即使能解析但结构不合法，也继续尝试有效备份。非法保存会在触碰正文/索引之前失败。索引迁移暂时无法写入时，可读论文仍能打开，显示明确的持久化提示；修好存储后重新打开 Paper Library 会重试并清除提示。显式标签或正文保存失败仍报错，不能冒充已保存。沿用原来的临时文件加原子 rename，不先删除主文件。
+
+本机最终 **273 项单元**通过。完整 36 套桌面分批检查：首次小窗口 Ctrl+F 断言早于实现中的异步 focus，改为有界等待真实焦点；段落编辑测试仍拦截旧标签 paper:load，改为拦截独立 metadata IPC，保留迟到响应与草稿保护断言。原失败日志保留，两项专项重跑通过，其余流程亦通过。最后的结构校验/索引可读降级追加后，再跑 Library、段落编辑和主流程。Library 最终 `test-artifacts/last-opened-I63LXv/results.json` 覆盖真实双文件损坏、不可读状态下标签修改、失败重试、同 ID 连续改名顺序、完整重启、真实同文本粘贴恢复、启动索引写入失败及重开库修复；段落编辑报告 `paragraph-editor-tVYv0u/result.json` 验证后台标签保存不改正文或活跃草稿。错误提示和 980×620 库窗口截图已检查，无按钮裁切或重叠。
+
+此阶段仍是开发分支改进，公开 0.2.19 不包含独立索引。独立索引启用前就已同时损坏的旧正文和备份，不能凭空恢复未知标题/标签；重新导入能恢复原文与索引标签，不能找回已在两个正文副本中丢失的译文或注释。更复杂的跨版本及真实文件损坏仍需要持续验收。
+
+## 第八十阶段：长段分块与公开版 AMD 新推理（2026-11-07 UTC，开发分支）
+
+对照最新 Mac `TextProcessing.chunkParagraph`，复现 Windows 在合法 500 字符设置下将公式保护标记切成两半，导致模型原样返回也被误报“模型改坏公式”；旧正则还会丢失连续标点，UTF-16 硬切会拆开 emoji。现按句、分号/冒号、逗号、整词分块，长词只在完整字素之间切开，公式/图片/链接/代码占位符始终完整。字符数按字素计算；只有单个完整标记自身超过限制时允许超限，通常 UI 500–6000 设置不涉及此例外。边界空白按 Mac 归一化，使用 Unicode White_Space 保留 FEFF、处理 NEL，保存的原文不改写。
+
+新增 7 项单元，覆盖跨 500 边界公式、图片/链接/代码、连续标点、CJK、组合字符/ZWJ/surrogate、句/词边界、标记邻接及 FEFF/NEL。原 Reader actions 桌面回归新增长 Markdown 的真实应用到受控模型流程：修复前稳定失败（`phase80-chunk-before.log`），修复后恰好两次请求、每次不超过 500 字素，公式/链接/标点完整、语言元数据保存、重启不重新生成。最终报告 `test-artifacts/reader-actions-HiB2Eg/result.json`。本机最终 **266 项单元**、生产构建、Reader actions、主工作流和打包启动通过；本提交 CI 另验全部桌面与发行构建。该分块修复尚未进入公开 0.2.19，下述公开包不是此新代码的模型验收。
+
+公开 0.2.19 Portable 再核验既定 SHA-256 后，在独立工作区翻译真实 15 页 Attention Is All You Need 原本 pending 的第 22 段（755 字符），经记录代理请求已有 Ollama 0.40.15 / TranslateGemma 4B，每轮恰好一次生成。首次冷运行 6.125 秒，当次新增日志明确记录 RX 7800 XT / ROCm gfx1101、35/35 层 GPU；模型与 VRAM 均为 2,881,948,220 字节。首次生成成功后，脚本把旧数据缺失的空 viewNotes/viewHighlights 与语言切换生成的 [] 误判不同，失败报告 `portable-0219-amd-YztbEf/result.json` 原样保留。只修正这两个空容器比较，非空批注或原文变化仍会失败。
+
+独立重跑 `test-artifacts/portable-0219-amd-4uExfj/result.json` **passed=true**：热模型 1.094 秒、约 127.6 输出 token/秒，模型仍全部驻留显存。热运行没有新的后端加载行，ROCm 归因来自前次冷运行的当次增量日志。新译文保存 English→Simplified Chinese；旧第 17 段 410 字符译文及 null 语言保留于 Chinese 历史缓存，真实 UI 往返两种语言后都恢复且不额外生成。关闭刷盘、完整重启后 blocks、variants、新译文/元数据、原文及 PDF 哈希不变，renderer errors 为 0，无清理错误。两轮共两次真实请求，未安装环境或停止用户 Ollama。译文保留 [21]/[32]、ht/ht−1 和顺序计算限制，个别措辞如“至关重要”仍需审校；一个段落不能代表整篇或专业翻译质量。
+
+## 第七十九阶段：Windows 0.2.19 公开发布与升级验收（2026-11-07 UTC）
+
+[Windows 0.2.19](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.19) 已发布，标签源码为 `fad671750ad0773981e23f2cd6e7fedaa25f537b`，包含第 76–78 阶段的独立段落选择、输出语言归属/导出命名、批注列表与删除/结构 Undo 改进。[标签发布 CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42354219845) 和 [同提交 PR CI](https://github.com/haoyunLi/PaperBridge/actions/runs/42354223334) 均通过 259 项单元、36 套桌面、Setup/Portable 构建和打包启动。版本更新后的本机单元、更新提示重启和打包启动也通过。
+
+两份公开文件已下载，分别核对 `.sha256`、GitHub asset digest、字节数和 ProductVersion；Authenticode 均为 `NotSigned`，不是签名版。不能用构建日志中的 signtool 阶段代替签名验证。
+
+| 公开文件 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132783144 | `0683caaf7aa46d1bac982c52dc2938573bd5dcbe32d35fd5a910326cae4b78cc` |
+| Portable | 132572102 | `fcb0c96a297c6f756991bf1ba2b1a602a919e8d7642d6d90f6f55e7a06e1cf2e` |
+
+公开下载清单为 `test-artifacts/release-0.2.19-verified/verification.json`。本地同名候选包先备份，再暂存真正的公开文件；此后没有重新 dist 覆盖它们。旧升级输入来自已核验的公开 0.2.18 Setup（SHA-256 `24edf0f8a5620e6e9d55ba05b54611ff79ddf335a1c98f35543d2a5d621c70fb`）。
+
+**真实 0.2.18 → 0.2.19 NSIS 升级通过。** 旧安装程序先创建练习论文、笔记和高亮，并显示来自实际 GitHub 的 0.2.19 更新提示；升级后应用确认当前已是最新 Windows 版本，保留原论文、注释及字号 16、行高 24.2、宽度 920。卸载后测试数据与设置保留。报告为 `test-artifacts/i-mw64r5po-354/report.json`，`passed=true`，无渲染/清理错误；事后只读复查没有 PaperBridge 进程、安装注册表、快捷方式或 updater 缓存残留。
+
+新字段验收使用五类单独标识的合成夹具，严格在旧应用关闭后加入，不声称这些字段由 0.2.18 生成。公开已安装程序验证选中段落 2 与可见段落 12 独立恢复；已知、明确未知、缺失未知、可按历史配置推导和矛盾语言分别保留。切到无缓存语言时译文/摘要清空，切回恢复原正文、批次和语言/冲突元数据。Reader 中同锚点高亮/笔记合并，单删笔记保留高亮并同步编辑框，整条删除一次 Undo 全恢复。完整重启后重复检查，模型生成请求数为 0。
+
+**公开 Portable 验收通过。** `test-artifacts/portable-0219-TdKMsM/result.json` 记录真实 15 页、266 段论文及第 17 段原有 410 字符 AMD 中文译文。先将源夹具与首次落盘状态逐项比较，再在粘贴/切文及完整重启后复查全部原文、译文、批注容器、Markdown、解释及输出缓存；仅允许已定义的未知语言元数据新增和初载配置归一化。PDF 字节与旧译文哈希均保持，另用同一组明确合成夹具验证新状态和批注流程。原真实论文没有笔记/高亮，因此批注保全证据来自单独的合成记录；不混淆二者。
+
+四张公开 Portable 截图已检查：原生窗口为 1306×758 CSS、DPR 1.25；标题、Reader、模式/搜索、修复对话框、侧栏和底部检查器正常。490×310 的短视口截图使用 CDP CSS 模拟，横向页面溢出为 0，检查器关闭后仍可滚动阅读；不能称为公开包原生 200% 测试。原生 200% 由源代码桌面回归覆盖。Portable 的 `rendererErrors=[]`，两轮合成检查模型生成请求均为 0；本轮没有重新评测 AMD 模型质量或 NVIDIA 实机。
+
+main 首页的 Windows 直达下载、版本、指南与校验入口已由 README-only 提交 `36ae4e4` 更新至 0.2.19，并同步到 Windows 分支；macOS `/releases/latest` 仍为 `v1.10.0`。本次包验收未覆盖实际导出对话框文件名、PDF/MinerU 切源、所有批注视图的删除及真实模型 resume/regenerate，这些具体场景保留各自源代码回归证据，不扩张成公开包全覆盖或完整 Mac 1:1 结论。更多复杂 PDF、硬件及真实论文并排验收仍在功能映射中。
+
+## 第七十八阶段：批注列表、完整预览和删除撤销（2026-11-07 UTC，开发分支）
+
+对照 Mac 1.10.0 的 SelectionInspectorView 和 PaperAnnotation，补齐批注列表的来源、原译文侧别、创建时间倒序及两行预览。上一阶段 `4bf73c6` 已由 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42351271120)验证 235 项单元、35 套桌面和打包启动。本阶段仍在 Windows 开发分支，公开 0.2.18 尚不包含第 76–78 阶段。
+
+同一精确锚点的笔记和高亮合并为一条列表项并只计数一次，显示全部历史笔记正文；各条原记录的 ID、锚点和存储数组保持独立。不同原译文、视图、来源/显示模式、文本偏移、Markdown 渲染范围、完整 PDF 跨页锚点和复核状态分别保留。无可核对范围的旧记录不能仅凭相同引文或 ID 合并。新投影不改变导出格式和顺序。
+
+Reader / Paper 显示段号和 Original / Translation；摘要及全文使用 Source Summary、Target Summary、Full Translation，旧 blue / teal 显示 Cobalt；原始 PDF 和 Paper 精确 PDF 保留具体页码及跨页范围。按组内所有已知记录的最早创建时间倒序排列；任一记录日期未知时，该组保持未知并排在有效日期之后，旧记录保持稳定相对顺序，不伪造时间。正文与引文完整保存在 DOM 和悬停提示中，视觉各限制两行，中文、换行、emoji 和长链接可换行，窄面板操作按钮保持可见。
+
+删除当前笔记会同步对应编辑框；同锚点若还有历史笔记则显示剩余正文，否则清空，防止继续输入时携带已删除正文；删除别处笔记保留当前未完成输入。Delete note 与 Remove highlight 继续各自只删除一种记录；组合项提供明确的 Delete annotation，一次删除关联原记录并形成一个 Undo。输入自动保存的撤销组先结束，删除单独记录，保留 350 ms 保存、失焦/退出 flush 和失败重试。失效锚点仍拒绝错误定位并保留正文。
+
+新创建的笔记或高亮若属于已有同锚点批注，会继承它最早的创建时间；匹配旧项的日期未知时继承 null。随后只清除其中一部分，剩余记录保持原年龄与排序。已有历史记录的不同日期不批量改写，因此删除旧组最早的记录仍可能按剩余真实日期重新排序，这一有限差异保留。
+
+撤销改为按具体记录逐条匹配，避免重复 ID 覆盖多个历史正文。普通删除恢复原数量与次序；有后来编辑时只还原可可靠对应的字段。实际拆分/合并后的结构 Undo 保留不同正文和同值多份，保留后来正文/颜色修改、新记录及可确定的后续删除；无法可靠对应多个旧锚点的变更另行保留并标记复核，不猜测覆盖历史正文。重复 ID 的删除按钮追加组内序号并提供完整正文提示。
+
+259 项单元测试通过，包含精确分组、稳定日期、原始数据不变及重复记录的普通/结构 Undo。专项 `test-artifacts/saved-annotations-MjcWbz/results.json` 通过：Reader、Source Summary、Original PDF 删除当前笔记后编辑框同步；单独删除与整组删除、一次 Undo、删除其他记录时保留当前输入、同 ID 多正文、真实双创建顺序、准确原译文/跨视图跳转、失效锚点保护和重启无旧正文复活。模型请求数 0，renderer errors 为空。
+
+已检查同目录 `saved-preview-1500.png` 和 `saved-preview-980.png` 的完整窗口截图，确认宽屏侧栏、窄屏双列抽屉的两行预览与操作按钮布局；这是实际 Electron 窗口改变尺寸，并非模拟的 Mac 像素对齐。原长列表布局测试改用 18 个不同真实锚点，继续验证全部条目和最后一行可达，而非因同位置合并而降低行数断言。既有自动保存、Markdown、阅读历史、布局和综合 e2e 专项也已通过。
+
+最终完整 36 套桌面回归全部通过，逐套退出码与日志记录于 `test-artifacts/phase78-full-desktop/results.json`。打包程序的首次引导、自动设置和 Reader 启动通过，日志 `test-artifacts/phase78-packaged.log`。本次提交的 GitHub 完整检查另行跟进。本地 Setup/Portable 开发包已成功构建，日志 `test-artifacts/phase78-dist-final.log`；文件名仍为开发版本 0.2.18，不能当成已发布同版本的原始下载文件。下一版公开包需独立下载、哈希核对及安装/Portable 验收。
+
+## 第七十七阶段：导出语言归属、文件命名与旧译文兼容（2026-11-07 UTC，开发分支）
+
+再次查询 GitHub main 为 `4a0b301`，Mac 功能源码仍为 1.10.0 / `16e01ac`。上一阶段 `900b57c` 已由 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42349220785)验证 217 项单元、34 套桌面和打包启动。本阶段针对 Mac 的导出语言标题、`paper_*.md` 文件名及 `_PaperBridge` 目录补齐，而非只在旧译文前拼接当前设置中的语言。
+
+Reader 每段译文、普通全文的每个批次及保存的完整译稿分别记录源语言和目标语言。缓存归档/恢复、PDF/MinerU 切源、续译和结构 Undo 同时保留文字与语言记录。编辑原文清除失效译文时也清除其语言；未知旧成功批次与新批次混合时，整篇语言仍未知，全部重新生成后才能使用统一语言。失败重译保留的旧译文继续保留其原有语言；结构化全文只按实际采用的成功段落聚合。
+
+加载旧文时先读取原始保存的任务配置，再合并当前设置。明确完整的历史语言对可作为迁移依据；缺失、不完整、明确 null、混合方向和未记录语言的旧缓存保持未知，不能从当前全局设置或缓存键推测。旧 `Chinese` 值保留，不推断简繁体，也不修改缓存键。摘要始终使用自身已保存的语言。导出纯函数不重新生成译文、不修改原文或批注。
+
+已知摘要采用 Mac 的 `Whole-paper summary (语言)` 标题，全文标题采用该译稿自身的目标语言；段落内补充 Original / Translation 标题。未知时使用通用标题，正文仍完整导出。结构化 bundle 的 Full Translation 重建自当前 Reader，直接导出旧独立全文则保留旧稿及其自身语言，两者按各自实际内容命名。
+
+| 输出 | 已知语言的 bundle 文件名 |
+| --- | --- |
+| 原文 | `paper_original.md` |
+| 逐段译文 | `paper_translation_<target>.md` |
+| 双语正文 | `paper_bilingual_<source>_<target>.md` |
+| 分析、摘要和批注 | `paper_analysis_notes.md` |
+| 全文译稿 | `paper_full_translation_<target>.md` |
+
+语言代码与 Mac 的 11 项映射一致，简体/繁体为 `zh-Hans` / `zh-Hant`。未知语言省去对应后缀。默认单文件分析使用 `<论文名>_bilingual.md`；便携目录使用 `<论文名>_PaperBridge`，重复从 `-2` 开始，保留既有目录。Windows 额外单文件格式继续提供，按实际内容使用明确后缀。设备保留名、非法字符、末尾点/空格和大小写重名在 Windows 写盘端处理。
+
+已确认的语言矛盾与单纯缺失记录分别保存。矛盾的全文保留原始内容及未知语言，不再按矛盾的批次元数据注入失败提示；普通未知语言下的真实失败仍保留原有错误和原文。Resume 若复用了有矛盾的旧成功批次，矛盾状态继续保留；完整 Regenerate 后才建立新方向。PDF 双语导出中失败段落仅保留原文及通用 Translation 提示，不再借用未输出的旧译文语言。
+
+本机 235 项单元和 35 套桌面回归已通过。旧语言专项 `test-artifacts/legacy-output-language-uVObLG/results.json` 验证缺失设置的中文译文在 German 全局设置下仍使用通用名称；French 摘要保持自己的标题，批注/书签/译文经过设置往返与重启保持，模型请求数为 0。另一明确记录夹具同时输出 French Reader、中文全文和 German 摘要，三种语言各自正确。Connected 专项验证普通失败提示、未知旧成功批次继续保持未知、完整重译确立方向、French/Chinese 缓存恢复，以及矛盾稿 Resume/重启保留、Regenerate 清除的真实 UI 流程；使用隔离的模拟模型服务，没有新增实际模型质量测试。
+
+完整桌面运行与每套退出码记录于 `test-artifacts/phase77-full-desktop/results.json`。两处旧断言因新增语言字段而失败：库标题保存的旧文预期补充明确 null；编辑器夹具补充其原本已知的任务方向，保留全部正文/译文/批注的精确比较，旧未知迁移另有专门覆盖。没有移除内容断言。最终 Setup / Portable 构建与打包程序的首次引导、自动设置和 Reader 启动也通过，日志为 `phase77-dist-final.log` / `phase77-packaged.log`；本次提交的 GitHub 完整检查另行跟进。
+
+资源仍使用 Windows 已有的包内哈希路径；原 PDF、PNG 页面及相对资源链接保留，后续 facsimile 写入使用实际生成的文件名，不重新猜路径。Windows 使用 PDF.js，在文字层导入时归档页面，导出时复用或补缺；另保留 Original Pages 索引、额外单文件入口及自身 Analysis 目录层级。此处补齐功能与命名，不宣称导出文件逐字或内部资源目录与 Mac 完全相同。公开下载仍为 0.2.18，尚不包含第 76–77 阶段。
+
+## 第七十六阶段：独立段落选中、阅读位置和结构撤销（2026-11-07 UTC，开发分支）
+
+GitHub main 已核对至 `4a0b301`；其新增内容为 Windows 下载入口，Mac 功能源码仍为 1.10.0 / `16e01ac`。本阶段对照 Mac 的 selectedParagraphID、readingPositions、结构修改及 Undo 行为，分开保存“正在查看哪个段落”和“选择哪个段落供检查器操作”。此前 Windows 被动滚动会改选中目标，修改结构后也会强制跳到编辑位置。
+
+现在普通滚动只更新视口；单击段落、Reader 文本选择和 Explain 更新独立的选中目标。Current section 使用当前可见位置。Paper、原始 PDF、摘要及全文翻译中的选区不会替换 Reader 的选择。论文切换、重启、搜索清除及 Back/Forward 分别恢复两项状态；切换 PDF/MinerU 来源使用目标正文校验选择，返回历史可恢复原来源的选择与位置。旧工作区仅在缺少新字段时从旧位置推导选择，显式 null 保持未选中，既有正文、译文、解释与批注不作批量重写。
+
+拆分、合并和修复选择编辑后的结果，并单独映射原阅读位置。结构 Undo 恢复编辑前的选择、视口和偏移，保留当前显示模式、PDF 缩放及之后的无关笔记/译文。在 PDF 视图撤销时同步恢复显示页码与保存页码，避免当前页面与重启后位置不同。编辑前同步捕获视口，避免 350ms 保存延迟造成错误快照。结构变更或 MinerU 自动采用新正文时清理旧搜索位置；跨标签页、切源或用户滚动后，迟到的恢复回调不能再移动当前页面。
+
+新增 paragraph-selection 桌面专项覆盖独立选择/视口、Inspector、当前章节、重启、搜索、前进后退、键盘和跨视图选区，以及拆分/合并 Undo。原有阅读历史专项补充来源往返和被暂停的恢复回调；MinerU 专项补充无用户编辑时自动采用新结构、保留旧 PDF 段落和重启。原来的工具栏测试改为验证 Mac 的保留视口行为，仍检查实际位置和精确偏移，没有删去滚动断言。
+
+完整回归发现术语测试偶发失败：本地服务被分配到 10080 端口，fetch 在发出请求前按端口规则拒绝连接。保留原失败日志并通过真实本地服务重现；测试夹具现在先验证分配的端口，仅遇 bad port 时有界重试，其他错误仍失败。普通运行及强制 10080 故障注入均通过，所有术语保存/失败重试/翻译/重启断言保留。应用的网络策略未修改。
+
+本机 217 项单元测试、34 套桌面回归、Setup / Portable 构建及打包程序启动通过。新增专项报告 `test-artifacts/paragraph-selection-vd6lnw/results.json` 验证双页 PDF：Reader 修复后切到 Original 第 2 页并调为 125%，Undo 立即让存储页码、工具栏及实际绘制页一致回到第 1 页；当前 Original 标签、Translation 模式和 125% 缩放保持，完整重启后仍一致。报告的模型生成请求为 0。其余桌面日志在 `test-artifacts/phase76-desktop/`，打包日志为 `phase76-dist.log` / `phase76-packaged.log`；GitHub 对本次提交的完整检查另行跟进。
+
+当前公开下载仍为 0.2.18，本阶段改动尚未发布。自动检测新版与 View release 手动安装流程保持原有行为。未运行新的实际模型推理；导出语言/文件名、批注预览及更多实机比较仍待补齐，不声称全软件已经一比一。
+
+## 第七十五阶段：Windows 0.2.18 公开下载、更新提示与升级验收（2026-11-07 UTC）
+
+[Windows 0.2.18](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.18) 已发布，精确源码为 `5c6e71f`。[标签发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346834301)及同提交的 [PR 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346836339)均通过；发布日志确认 203 项单元、33 套桌面回归和打包启动成功。前一版 0.2.17 的失败没有上传资产，更新检测不会把单独的标签当作可安装新版。
+
+重新从公开下载地址取得 Setup / Portable，核对版本、字节数、各自 `.sha256` 和 GitHub asset digest，全部一致。两份程序均为 NotSigned，仍为未签名预览。报告：`test-artifacts/release-0.2.18-verified/verification.json`。
+
+| 公开文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132778681 | `24edf0f8a5620e6e9d55ba05b54611ff79ddf335a1c98f35543d2a5d621c70fb` |
+| Portable | 132567648 | `39871cd4a7ec5c54a4f1bd4b316695c70db2f292b912a1cc84584f66c0b9c509` |
+
+使用公开安装包完成真实、隔离的 0.2.16→0.2.18 安装升级。旧版显示 0.2.18 提示；升级后确认当前公开版本，论文、高亮、笔记、字号 16、行高 24.2px、宽度 920 保留。测试卸载后工作区和设置仍在，测试创建的安装器缓存清理成功，没有 cleanupError。报告：`test-artifacts/i-mw60xqjm-nqo/report.json`。
+
+公开便携版打开真实 Attention Is All You Need 论文，恢复已存的 AMD 中文译文，验证完整内容/批注/PDF 字节保留、默认外观、语言标签、搜索、阅读模式、Repair 取消、侧栏关闭与焦点、内嵌粘贴的 Overview 和草稿保留。报告：`test-artifacts/portable-0218-Fcn6Mi/result.json`，其中 releaseDownload 为 true，记录的二进制哈希与上表相同。这次没有新模型推理；最近真实 AMD 生成测试仍为第 64 阶段。
+
+完整原生主视口 1306×758 CSS / 1633×948 PNG，以及 490×310 CSS 模拟短视口的两张 613×388 PNG 已目视检查。截图记录前后尺寸，未裁去右侧或补出虚拟空白。短视口正文保留约 142.9px，检查器可滚动和关闭。这里的 CDP CSS 模拟与桌面专项的真实 200% 缩放验收分别记录。
+
+main 首页的 Windows 下载和指南链接已更新（`4a0b301`），macOS Latest 仍为 v1.10.0。自动检测更新默认开启，成功检查后缓存 24 小时，Settings / Help 可立即检查；当前打开官方 Release 供手动下载安装。后续继续补齐独立的段落选择/阅读位置、导出语言/文件名、批注列表预览以及更多实机环境，不声称全软件已完成一比一。
+
+## 第七十四阶段：发布检查发现的折叠状态竞态（2026-11-07 UTC）
+
+第 73 阶段的精确提交 `47787dc` 在 [PR 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42345610544)通过 203 项单元、33 套桌面与打包启动。但同一提交的 [0.2.17 标签构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42346065913)在 PDF-only 导入回归发现 MinerU 状态请求从 14 次增至 17 次，发布步骤被阻止，没有生成公开 Release 或下载包。保留失败标签作为历史记录，下一候选版本使用 0.2.18。
+
+确定性复现证明是产品折叠状态竞态：暂扣浏览器排队的 `toggle` 事件，真实点击关闭 Document & Import 后，DOM 已关闭但 React 状态仍展开；导入卸载该元素，取消后再次挂载时重新展开，状态检测从 14 次变为 15 次。证据为 `test-artifacts/document-disclosure-before.json`。PDF-only 解析分支本身没有选择 MinerU。
+
+Document & Import 现在在 summary 的点击/键盘激活时直接更新受控展开状态，不再等待可能晚于导入卸载的原生 toggle。回归继续暂扣同一事件，检查取消后的关闭状态、检测按钮是否禁用以及原有严格请求计数，保留所有导入、取消、资源隔离和存档断言。发布和公开升级验证以之后的实际结果为准。
+
+修复后同一故障注入保持关闭，检测计数 16→16；预备阶段另验证 Enter、空格键的双向展开/关闭。报告 `test-artifacts/document-disclosure-after.json`。本机通过 203 项单元、生产构建、0.2.18 Setup / Portable 构建及打包启动，以及 Import Progress、Sidebar Settings、Sidebar Layout、Paste Text 四套相关桌面回归；后两套报告分别为 `sidebar-layout-ado32m/results.json` 和 `paste-text-6N4xQb/result.json`。
+
+## 第七十三阶段：窄窗关闭入口与 0.2.17 发布准备（2026-11-07 UTC）
+
+重新确认 GitHub main 为 `04d38b2`，Mac 源码基线仍为 1.10.0。第 72 阶段的 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42344797466)通过 203 项单元与安装包生成，但逐论文设置回归未通过。定位为测试的全页文字查找命中了保留的 Paste Text 草稿，过早检查了旧论文的检查器。新增持有 `paper:load` 返回的确定性检查，直接证明旧定位器匹配的是 textarea；现在等待目标论文 ID、布局就绪与主阅读区正文，再检查原有设置和检查器断言。没有据此放宽产品行为要求。
+
+CSS 宽度 ≤800px 的文档侧栏增加固定 Close 控制，滚到目录或页尾后仍可鼠标关闭。关闭后焦点回到主界面的 Show Document Sidebar；导入期间允许关闭，焦点回到 Cancel Import，任务继续运行且旧论文、段落和书签不变。宽窗继续使用顶部开关，标题栏开关补充 aria-controls / aria-expanded。高缩放时两个面板同时打开，文档侧栏保持在检查器之上，模态对话框仍可覆盖并使其不可操作。
+
+报告 `test-artifacts/sidebar-layout-8BnihP/results.json` 验证真实 980×620 窗口的 100%/200% 缩放、空工作区和已载入论文、鼠标命中目标、关闭/重开、Focus Reading，以及草稿和两处滚动位置保留。原有 240px 品牌、28 章大纲、语言、导入、三个底部对话框与搜索断言保留，横向溢出为 0；完整原生截图已检查。导入专项另验证 780×620 窄窗的继续/取消流程。
+
+本机通过 203 项单元、8 套相关桌面回归、0.2.17 Setup / Portable 构建及打包启动。0.2.17 汇集第 71–73 阶段；公开发布仍由 GitHub 的完整 33 套桌面与打包启动检查控制，公开下载校验、真实 0.2.16→0.2.17 升级和公开便携版验收将在发布后记录。
+
+## 第七十二阶段：内嵌粘贴、保存边界与短视口（2026-11-07 UTC，开发分支）
+
+继续使用 macOS 1.10.0 / `16e01ac` 的功能基线。上一阶段 `d53c29d` 已在 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42343260564)通过 201 项单元、31 套桌面与打包启动；本阶段另行验证，不把旧 CI 当作新修改的证据。
+
+Paste Text 现在位于侧栏 Source 的折叠区，有 Load Text、Clear 和可调整高度的输入框。加载成功、失败、取消及切换论文均保留会话草稿；任务中输入框仍可编辑，加载与清空按钮禁用。空白不能加载，但可清空。Welcome 入口展开侧栏并聚焦输入。已有论文时 Source 保留在 Document & Import 内，新文进入 Overview，同一文本恢复已有标签、人工修正文和批注。新练习论文也进入 Overview，并说明文档虚构、尚未调用模型。草稿与 Mac 一样不跨应用重启持久化。
+
+导入先保存旧论文再查找同文，替换前再次等待保存。保存队列会继续处理等待期间新增的笔记，直到最新内容写完；同文重载采用最新内存快照。旧文保存失败时阻止切换并保留重试入口，取消后迟到的结果不替换论文，也不清掉期间新输入的草稿。新增两项确定性单元测试覆盖慢写期间的延迟/即时新写入及失败重试，全部 203 项单元通过。
+
+实测真实 980×620 窗口在 200% 页面缩放后为约 490×311 CSS 视口，旧布局正文高度为 0。现在 CSS 高度 ≤480px 时压缩标题/工具栏，检查器使用可关闭的覆盖面板；正文恢复到 148.1px，搜索、显示模式、笔记保存和撤销均可操作。1600×440 的宽而矮窗口也可滚动到底部批注并编辑，Focus Reading 和关闭仍隐藏检查器；恢复 500/620px 高度时回到原有底部双列抽屉。完整标题提示与元数据保留，这些尺寸是 Windows 适配选择。
+
+短视口报告 `test-artifacts/short-workspace-k0cXmk/results.json` 和整窗口截图已检查。最初 Playwright 的高缩放截图被裁剪，因此改用 Electron 原生整帧截图并记录像素尺寸；几何断言保留。两个新专项使用独立 Chromium 配置，避免缩放设置污染其他测试。
+
+本机通过全部 203 项单元、原有 31 套桌面、新增粘贴/短视口 2 套专项，以及生产构建和打包启动。粘贴报告 `test-artifacts/paste-text-ocoPMU/result.json` 覆盖旧笔记待保存、同文手工修正、保存失败重试、取消迟到回包、慢写期间继续输入；另验证清除数据失败保留论文/草稿，重试成功才清空和折叠输入，Practice 默认 Overview、保留无关草稿且不调用 AI。测试调用的是实际控件与生产 IPC，仅对磁盘故障和延迟进行隔离注入。新 33 套命令已接入 GitHub 工作流，远端结果另行记录。
+
+自动更新仍默认启用：启动检查，成功后 24 小时内不重复联网，Settings / Help 可手动检查；仅识别带安装包的 Windows 正式 Release。新版提示及重启恢复回归通过。当前点击 View release 打开 GitHub，尚不自动下载安装。公开下载仍为 0.2.16，本阶段和第 71 阶段修改尚未发布；没有新增真实模型推理，AMD 最近证据仍是第 64 阶段。
+
+后续继续处理独立段落选中状态、导出语言与文件名、批注列表预览，以及更多平台实机对照。另发现 ≤800px 侧栏覆盖顶部收起按钮，键盘可收起但缺少栏内鼠标关闭入口，留作下一阶段的明确改进项；不声称全软件已完成一比一。
+
+## 第七十一阶段：Windows 标题区与长内容布局（2026-11-07 UTC，开发分支）
+
+重新查询 GitHub main，仍为 `04d38b2`，Mac 源码基线仍为 1.10.0 / `16e01ac`。用户进一步明确：**一比一指功能和操作能力；排版应适应 Windows 环境**。本阶段的尺寸是当前 Windows 设计选择，不再把与 SwiftUI 像素相同作为验收目标。
+
+针对文章题目区域偏矮的反馈，标题行增加最小高度与上下留白；长标题最多显示两行，并保留完整 DOM 文本与悬停标题。较矮窗口使用更紧凑的间距，以保留可滚动正文。翻译按钮尺寸保持原有设置。
+
+| 调整 | 实际行为 |
+| --- | --- |
+| Reader 宽度与留白 | 阅读宽度包含容器两侧各 22px 的留白，避免主滚动区再次叠加 padding。移除重复的 Reader 大标题，原有翻译计数仍可在 Document 和 Overview 查看。旧阅读宽度、字号和比例行距不迁移。 |
+| Overview 与摘要 | 设置一致的外层卡片与留白，双语摘要按可用宽度并排或堆叠；标签、正文及 Markdown 列表间距统一。350px 换栏阈值仍是 Windows 的适配选择。 |
+| 工作区提示 | 普通状态与阅读内容同宽，圆点和长文本靠左排列。任务中提示转到固定进度区，章节插队、停止导出和标注反馈继续可见；新任务清除上一任务提示。 |
+| Research Inspector | 原文与译文选区保留全文及换行，只按八行显示预览。宽窗整列滚动包含标题，长解释和已存批注不再分别限制在小滚动框中；底部抽屉保留两列独立滚动。快捷选区浮层自己的结果限高保留。 |
+| 文档侧栏 | 品牌、文档工具、目录和底部入口共用侧栏滚动，小窗口可完整访问 Local AI setup、Settings、Saved Terminology。搜索框具有明确边框、圆角和键盘焦点样式。 |
+
+新增布局与侧栏 Electron 专项，覆盖实际几何、完整长内容、窗口缩放、设置重启保留、目录及工具入口。现有标题/连贯翻译测试把计数断言移到保留的 Document 统计，并没有删去验证；阅读设置测试同时验证外容器与卡片宽度。
+
+本机通过 201 项单元测试、原有 29 套桌面回归、新增 2 套布局专项、生产构建及打包程序启动。布局报告 `test-artifacts/layout-parity-B8iMbX/result.json` 验证默认/宽窗/980×620 CSS 视口、200% 页面缩放、980×500 CSS 矮窗、800px Focus/隐藏检查器，以及旧宽度 560、字号 25、比例行距 1.9 重启保留。长选区、32 段缓存解释、18 条批注和双语摘要未丢失，没有模型请求。截图已目视检查。
+
+侧栏报告 `test-artifacts/sidebar-layout-Sns4EU/results.json` 验证 28 章导航、三个底部对话框和搜索，在真实 980×620 窗口的 100%/200% 页面缩放下横向溢出均为 0。最窄 240px 侧栏曾复现品牌文字右边缘 238.23 超出可视边界 225；现在通过侧栏容器查询缩小标志、间距和字号，文字右边缘为 208.76，全部可见。测试检查实际文字范围，而非仅检查元素盒子。此项侧栏缩放检查不等于全部面板组合在 490×310 CSS 视口均已验收。
+
+新增专项均保留有界截图/关闭与失败诊断，只有清理完成后才写通过结果。初次单元运行被沙箱的临时文件原子替换权限拒绝；正常 Windows 权限下 201 项通过，没有通过修改测试绕过文件操作。新 31 套桌面命令已接入 GitHub Actions，远端检查以实际运行结果为准。
+
+这些修改尚未包含在公开 0.2.16 下载包中。后续功能差距仍包括独立的选中段落与视口位置、内嵌 Paste Text、导出自身语言和文件名，以及更多实机环境验收；不据此声称全软件已完成一比一。
+
+## 第七十阶段：Windows 0.2.16 公开下载与真实升级验收（2026-11-07 UTC）
+
+[Windows 0.2.16](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.16) 已发布，源码为 `53c27dc`。[发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42340952336)通过 201 项单元测试、29 套桌面回归及打包启动；这次下载包汇集第 63–69 阶段的导入修复、段落/标题动作、修复弹窗、完整大纲、侧栏语言与 AI、批注/失败译稿导出、标题外观及滚动恢复修正。
+
+重新从公开 Release 下载 Setup 和 Portable，文件大小、版本 0.2.16、各自 `.sha256` 和 GitHub asset digest 全部一致。两份程序均为 **NotSigned**，仍为未签名预览。
+
+| 公开文件 | 字节 | SHA-256 |
+| --- | ---: | --- |
+| Setup | 132776652 | `3e0bed17df2f66c69a2fea116e40496859a7cfea89e989ea8614ae4477d6fd8b` |
+| Portable | 132565513 | `36cfec39926c1a4df2001a56dd4d6ea69cdfbc8d479ee86d28a9e584cc160bfb` |
+
+使用公开安装包在隔离目录完成真实 0.2.15→0.2.16 升级：旧版显示新版本提示，新版报告已是当前公开版本；论文、高亮、笔记及字号 16/行高 24.2px/宽度 920 保留。卸载测试实例后，工作区和设置仍在，测试创建的安装器缓存已清理，无 cleanupError。报告：`test-artifacts/i-mw5y0nva-d7g/report.json`。
+
+公开便携版直接打开真实 Attention Is All You Need 论文，恢复已保存的 AMD 中文译文，并验证阅读模式、搜索、Repair Paragraph 取消、折叠导入区和语言/Ollama/MinerU 控件。旧 Chinese 语言值准确显示，默认阅读外观保持。报告：`test-artifacts/portable-0216-ggksrb/result.json`。这次验证保存结果与交互，没有再次调用模型；最近真实模型推理证据仍是第 64 阶段。
+
+main 仅更新 Windows 首页下载/指南链接（`04d38b2`）；Windows 源码仍维护在独立分支和 PR。仓库 Latest 仍为 macOS v1.10.0。后续继续处理 Reader 宽度与留白、摘要和检查器排版、选中段落与滚动位置分离、导出语言/文件名及内嵌 Paste Text；不据本轮发布声称全软件已 1:1。
+
+## 第六十九阶段：延迟阅读位置恢复尊重用户滚动（2026-11-07 UTC）
+
+包含标题外观修正的 `6ed8ffb` 已在 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42338976541)通过 201 项单元、29 套桌面回归和打包启动。随后加入大纲诊断的 `756cdd5` 在 [下一次构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42339221043)捕获切换论文后位置被恢复回顶部的问题；截图和日志显示窗口始终可见、无截图挂起。通过持有布局恢复回调，再执行真实滚轮，旧构建从 1163.2 回到 0，确认这条竞态可能影响实际操作。
+
+被动位置恢复现在分别持有任务标记，结束或取消只释放自身，旧回调不能提前清除新任务的 busy 状态。新论文的布局恢复在绘制前登记，阅读区提供对应论文的 aria-busy 状态；大纲专项等待该状态就绪后仅执行一次程序滚动，保留原来的位置与历史断言。
+
+用户在非 PDF 主阅读区使用纵向滚轮、滚动键或原生滚动条时，会取消仍未完成的旧位置恢复，并保存实际位置；即使已在顶部而没有 scroll 事件，也保存当前可见位置。未过滤 Reader 的旧搜索恢复点随接管清除，正在过滤时保留返回原文的搜索起点。PDF 视图、独立嵌套滚动、编辑控件、组合输入、缩放组合键和横向滚轮不进入这条取消路径。显式段落/批注定位维持原有行为，独立段落选中状态仍是后续项目。
+
+新的确定性专项通过：持有恢复回调期间执行真实滚轮、PageDown 和原生滚动条拖动，等待 scrollend 后释放旧回调，滚动位置及磁盘保存保持一致；重启后不回到已取消的搜索起点。Ctrl+滚轮、textarea End 和独立滚动容器不误取消；顶端滚轮仍持久化 0。所有原有 65 节大纲、两种缩放、历史、论文隔离断言保持，无 AI 请求。构建及 Outline、Reading History、Reader Toolbar、Reader Actions、Reader Review 和完整主流程六套桌面回归均通过，包含原有 PDF、注释、来源切换和搜索恢复检查。新的 GitHub 构建继续验证，0.2.16 尚未公开发布。
+
+## 第六十八阶段：发布前标题外观复核与 CI 挂起诊断（2026-11-07 UTC）
+
+沿完整 SwiftUI→AppKit 调用链重新核对，修正第 64 阶段对标题字号的判断：compactHeading 虽传入 21/19，但 ContentView 全局注入 readingAppearance，SelectableAcademicText.updateNSView 会以当前阅读字号和额外行距覆盖它们。Windows 标题现在使用同一阅读外观变量，保留原文粗体、译文常规字重、颜色和紧凑布局；不修改用户保存的外观配置。旧报告中“固定 21/19 对齐 Mac”的表述不再作为验收结论。
+
+公开便携版验证夹具中的旧论文保存了 Chinese，而标准选项列表为 Simplified Chinese。侧栏现在补充并保留遇到的旧语言选项，防止浏览器把未匹配的值显示成首项 English。展示、交换方向、切到标准语言再切回、重启均不改写旧语言名称或旧译文，也不请求 AI。
+
+旧提交 bdff82f 的 GitHub 检查在 Reader 操作专项开始后没有后续日志，因已被后续提交替代而取消。独立 Electron 复现证明隐藏窗口会让原测试的双 requestAnimationFrame 无限等待；这证明存在测试挂点，但尚不能据此认定远端也卡在同一位置。专项保留双帧等待及所有功能断言，补充阶段日志、有界界面求值/截图/退出、失败时窗口和渲染状态，并先输出原始错误再清理。退出超时只终止该测试启动的 Electron 进程树，并仍判失败。CI 桌面步骤增加 20 分钟上限，失败时保留诊断与截图。
+
+构建、标题、Reader 操作和侧栏三个专项通过。标题验证默认 16px、最大常规字号 24px、额外行距滑块，以及旧 25px×1.9 比例行距在重启后保留。Reader 继续验证 980px CSS 宽度及 200% 缩放下正文与菜单不重叠、不溢出。侧栏测试先在旧构建复现 Chinese 显示错误，修复后验证缓存与重启；额外隐藏窗口故障注入按时报告点击超时与窗口状态并退出，未把异常运行计作通过。
+
+被新提交替代的 `702487d` 检查取消后，完整日志确认 Reader 操作、段落编辑器和标题均通过，最后停在 Outline 专项，尚无具体失败栈。因此大纲专项也补入阶段与截图前后日志、各异步等待的上限和失败前诊断；全部布局、65 节完整性、导航历史、论文切换和重启断言保留。本机大纲专项约 5.5 秒通过、无 AI 请求，没有把本机通过当作已定位远端原因。
+
+0.2.16 的版本号、下载文档和发布说明已准备。本地候选安装包构建、启动及隔离升级前置检查通过；公开下载仍为 0.2.15，只有新提交的完整 CI 通过后才发布下一版本。公开包下载校验、实际 0.2.15→0.2.16 升级和首页链接更新仍待完成。
+
+## 第六十七阶段：侧栏语言与 AI、批注导出及结构化质量提示（2026-11-07 UTC）
+
+重新查询 GitHub main，仍为 `d0889e2`，Mac 基线未变。Document & Import 补入 From / To / Swap 和 AI 状态卡：语言设置复用逐论文任务设置及译文变体缓存，交换一次提交两侧语言，任务或模型下载时禁用。Ollama 可检查状态和刷新模型；OpenAI 显示当前会话是否允许在线分析及已选模型，Open AI Settings 直接进入 Models，不读取或展示 key。MinerU 在展开后检查兼容状态，显示版本或原因并支持刷新；旧路径/旧请求结果不能覆盖新状态。Parser, Models & Settings 进入 Parsing；安装完成后刷新状态。空工作区显示 Source 与 AI 卡，已加载论文保持默认折叠。
+
+Analysis 导出将书签和有效 Reader 高亮/笔记放在对应段落内，同一范围的高亮与笔记合并，正文仅输出一次。不同原译侧、视图、位置、渲染上下文和不同笔记正文保持独立。其它视图、需复核或失效的范围，以及未输出的资源/参考文献段落上的批注和书签保留在附录。标题层级跟随段落嵌套，Bilingual 保留 Windows 原有全局分类入口。新高亮和笔记记录创建时间，修改/换色保留原时间；无日期的旧记录保留稳定次序，不补造历史时间。
+
+MinerU 新解析块保留 markdownKind。质量检查对完整且与已存文字一致的列表、引文等结构块采用 Mac 的保护规则；旧记录通过完整 sourceMarkdown 安全识别，不改写原文、编号或标注。混合“列表+正文”、失配的旧 Markdown、错误类型以及普通 PDF 正文仍保留提示。已被旧分段器拆成普通段落的缩进续行仍可能告警，本阶段不重新分段或迁移编号。
+
+第 66 阶段的 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42336418770)在 Reader 重试按钮断言处失败。下载截图确认按钮正常出现，原因是测试把磁盘状态保存完成当作 React 界面提交完成。现在先等待精确 Retry 按钮可见，再保留可见性断言与真实点击恢复检查；未修改产品重试条件，也未缩减窗口边界等断言。
+
+201 项单元测试通过。新侧栏专项覆盖逐论文语言、双向 Swap 和缓存恢复、任务/下载禁用、Ollama 失败重试、MinerU 缺失与异常/迟到结果、OpenAI key 已保存但会话未授权仍暂停、重启撤销授权。980×620 CSS 视口与 200% 缩放都可滚动访问所有控制，全页横向溢出为 0。批注导出单元覆盖有效/失效、重复/不同范围、PDF 跨页、Markdown 渲染锚点、同范围合并和旧数据兼容。
+
+全套 29 套桌面回归及本地打包启动通过。真实导出流程验证 Reader 段落内的书签/高亮、Paper 跨段笔记、Original/Paper 精确 PDF 的同词不同页和跨页标注：合并后颜色、完整引文和笔记都在，正文不重复，重启后仍可定位。本阶段未重跑真实模型，最近 AMD 模型证据仍为第 64 阶段。下一步先通过 GitHub 验证并发布第 63–67 阶段的 Windows 下载包，再处理独立段落选择状态、语言标题/文件名、Paste Text 内嵌形式、剩余 PDF 后处理和跨平台字体度量。公开下载当前仍为 0.2.15。
+
+## 第六十六阶段：大纲导航、侧栏层级与失败导出（2026-11-07 UTC）
+
+按 Mac documentSections 独立构建大纲，不再把紧凑标题卡的 `block.heading` 当作唯一判断。支持正文行首的章节标签、首个非空行、Unicode 字素上限及 MinerU 显式标题优先；不修改原文或原段落分类。保留全部章节，取消 60 项截断；无标题时提供 Beginning，资源与参考文献不成为阅读段落入口。
+
+大纲保留完整标题，界面按两行收束；行距、左右间距、2×18 标记、右侧等宽段落编号按 Mac 对应布局。编号始终使用实际段落 ID，不再混用 PDF 页码。书签区仅在有书签时显示，位于大纲前，提供两行预览和 Paragraph 编号。Paper Library 保持顶部入口，Windows 的最近论文列表放到阅读导航之后。已载入论文的 Source 与 Document 进入默认收起的 Document & Import；段落统计排除资源与参考文献，后者单独列出。侧栏滚动条采用深色背景。
+
+Overview 阅读地图调用原文揭示导航；从 Translation 模式进入时切换双语，Back / Forward 仍恢复出发视图、模式和滚动位置。大纲仍保留当前显示模式。大纲标记暂时复用 Windows 的 activeBlock，手动滚动会改变它；Mac 独立 selectedParagraphID 不随普通滚动改变，这项状态拆分仍待后续处理。
+
+Analysis 和 Full Translation 导出增加失败数量及原位错误提示，保留失败时回退的完整原文。只使用与当前稿件、来源、批次版本和文本装配完全吻合的失败状态；成功文本、重复原文、资源、参考文献以及未开始的批次不会被误标失败。旧格式或不匹配的元数据不插入失败标签，过期全文保留文本并注明来源已变化。摘要引用附带 Mac 的解释限制：匹配引文只确认所在位置，不证明它支持该主张。
+
+已通过 190 项单元测试。新大纲桌面专项覆盖 65 个章节、同页多个标题、完整文本、Beginning、导入区展开/折叠、阅读历史、阅读地图、论文切换和重启；不请求 AI。980×620 首屏由 3 条提升为 6 条完整大纲；200% 缩放仍可访问末项，未出现横向溢出。全文翻译桌面专项经真实保存对话框写盘，验证失败稿的原位提示及原文保留，并在重启续译成功后确认导出与成功全文完全一致、没有残留失败标签。
+
+全套 28 套桌面回归与打包启动检查通过。导入测试按真实点击展开 Document & Import 后继续原动作；Markdown 桌面回归确认 9 个块中的 2 个资源和 2 个参考文献不计入 5 个可读段落。测试同步采用 Paper Library 的新按钮名称，保存、取消、书签及导出断言保持。没有重跑真实模型；最近一次 AMD 模型证据仍为第 64 阶段。
+
+公开下载仍为 0.2.15，本阶段与第 63–65 阶段尚未纳入下载包；GitHub 验证通过后再发布下一版。其余明确差距包括侧栏内的语言/AI 状态控件、独立选择状态、按段落组织导出笔记与语言文件名、MinerU 列表/引文质量误报、复杂 PDF 后处理及 Mac/Windows 字体度量。
+
+## 第六十五阶段：段落修复弹窗与重开保存状态（2026-11-07 UTC）
+
+按 Mac ParagraphEditorSheet 改为独立模态编辑器：Repair Paragraph 标题、空行拆段说明、15px 衬线编辑区和额外 5px 行距、Unicode 字素数量、受影响译文提示、Cancel / Save。空白草稿不能保存，Enter 插入换行，Ctrl+Enter 保存，Escape 取消；输入法组合输入不会误触保存或关闭。700×500 CSS 像素布局在小视口内收缩，长文本单独滚动，底部按钮保持可见。
+
+去掉旧编辑器里直接操作已保存原文的拆分/合并/重排按钮，避免输入草稿后执行这些动作而丢失草稿。合并和重排仍在段落菜单；修复弹窗按用户插入的空行拆段。背景保持原文但不可操作，自定义原生菜单、快捷键、迟到的文件选择/论文加载被隔离，保存验证论文 ID 和段落 ID。迟到的图书馆标签保存、MinerU 检测和清除数据回调不能把草稿写进另一篇论文或留下隐藏编辑状态。
+
+干净重开已有论文时，空闲保存队列直接显示 Saved on this PC；不会通过虚构一次保存来触发提示。最后打开论文测试确认状态行可见且论文原修改时间不变，现有保存失败/重试回归保持通过。
+
+上一提交 `63b8745` 的 [GitHub 回归](https://github.com/haoyunLi/PaperBridge/actions/runs/42333837041)发现菜单首次可见时沿用旧窗口坐标的问题。现每次打开前同步隐藏弹出菜单，按当前视口完成定位后才显示；焦点回调检查打开代次与菜单实例。严格窗口边界断言保留，测试等待可见状态。工作流在失败时上传截图供复核。
+
+本轮 176 项单元、27 套桌面回归和打包启动检查通过。新增编辑器专项覆盖取消/保存/输入法、模态和原生菜单、异步回调、空行拆段后的高亮/笔记迁移、撤销保留其他段落后生成的译文、重启，以及 980×620 CSS 像素和 200% 缩放截图。MinerU 预检的兼容/不兼容迟到返回都不会关闭编辑器或在草稿下启动解析。
+
+本轮没有重跑真实模型或重新安装环境；第 64 阶段 AMD 实测仍是最近的模型证据。这些改动尚未进入公开 0.2.15 安装包。下一步应完成新的 GitHub 构建验证，并将第 63–65 阶段整理为下一 Windows 下载版本；其余复杂 PDF 后处理、字体度量和 Mac 并排差异仍需继续审计。
+
+## 第六十四阶段：Reader 菜单、解释入口与标题排版（2026-11-07 UTC）
+
+Mac 基线仍为 1.10.0，GitHub main `d0889e2` 未变化。第 63 阶段提交 `7788981` 的 [GitHub 构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42332809169)通过 176 项单元测试、25 套桌面回归和打包检查。
+
+本轮按 ContentView 的 paragraphCard / compactHeading 改为对应操作：普通段落显示失败重试、书签、灯泡解释和省略号菜单；菜单包含单段翻译、编辑/拆分、前后合并、完整句重排。标题显示条件翻译/重试按钮、书签和标题菜单。任务进行时关闭并禁用菜单，MinerU 禁用结构修改，第一/末段分别禁用越界合并。菜单支持方向键、Home/End、首字母定位、Escape 返回焦点和点击外部关闭，并在视口内定位。
+
+显式单段重译可以处理已有译文的段落；普通“未完成”队列仍跳过成功段落。成功只替换目标段落，取消保留原译文和状态，失败保留旧文字并标为失败。解释入口先清除选区、选择该段并打开检查器，不立即请求模型；只取消旧选词任务，已运行的段落翻译继续。检查器内的解释按钮负责实际生成。
+
+标题原文/译文分别固定为 21/19px，与 Mac 字号一致；移除绝对定位及右侧 142px 占位，使用正常布局让标题与操作按钮并排、译文和错误跨整行。支持长标题换行、仅译文和编辑状态。Windows 使用 Georgia，字体度量仍不等于 Mac NewYork/AppKit，不声称像素完全一致。
+
+176 项单元测试、现有 25 套桌面回归、新增 Reader 操作专项及打包启动检查通过。专项覆盖完成段落重译、取消/失败、旧选词迟到响应、任务隔离、直接编辑/合并/重排与撤销、MinerU 权限和重启；980 CSS 像素及 200% 缩放检查标题与菜单几何并留图。GitHub 工作流现为 26 套桌面回归。
+
+本机真实 `translategemma:4b` 测试通过新菜单翻译、选词、解释、摘要和重启；`/api/ps` 报告模型与显存分配均为 2,881,948,220 字节。四个真实模型样例还覆盖统计数字、术语、反向翻译和 Markdown 公式/图片。详细结果记录在 AMD 真机报告，样例通过不代表所有论文译文等价。
+
+这些改动在开发分支，公开安装包仍为 0.2.15。继续待验收：段落编辑器的呈现方式、重新打开文档时的保存状态行、复杂 PDF 后处理、更多实际 DPI 和 Mac 并排视觉比较。
+
+## 第六十三阶段：同行断词与导入后的标题分类（2026-11-07 UTC）
+
+重新核对 GitHub main `d0889e2` 和最新 macOS 1.10.0；主分支本次变化只有 Windows 下载链接，Mac 文本规则未变化。参照 TextProcessing 的 repairSpacedHyphenation，Windows 新导入的 PDF 和粘贴文本修复 `re- sults`、`natu- ral`，保留 `model-based`、`T-cell` 和既有复合词。标题分类使用修复后的单行文本，因此 `Re- sults` 可显示为 Results 标题；同段包含正文时仍保留普通段落。
+
+匹配保留 Mac 的 ASCII 词长限制、Unicode 词边界和空白规则。PDF 物理行路径按实际调用链执行四次非重叠修复；单行粘贴一次，包含换行的粘贴两次。并非一直重试到无变化。软连字符在对应阶段移除，FEFF 等格式字符不会被误当成可修复空格。这是文本启发式，不是公式解析：Mac 本身会把 `x- axis` 变成 `xaxis`，而 `x - axis`、`x− axis` 和单字母右侧保持原样。
+
+176 项单元测试通过。新增真实 PDF Electron 回归验证不同字体拆出的同一行文字项和显式空格、四阶段修复、Reader 与 PDF 来源副本、原 PDF 字节和原页文字层、旧笔记/高亮定位、保存来源 ID、两种粘贴路径及重启。导入进度、标题、Reader、阅读历史、逐论文设置和 Markdown 六套现有桌面回归也通过；打包程序启动检查通过。新测试已加入 GitHub Windows 工作流，桌面套件增加至 25 套。
+
+只处理新导入/重新提取的文本，不在载入旧文档时修改原文、译文或注释坐标；MinerU 和手动编辑不走此流程。这些改动位于开发分支，公开安装包仍为 0.2.15。跨页断句、复杂公式及 Mac 的其余段落后处理仍需继续对照，不能据此将 A16 标为全部对齐。
+
+本轮另查出下一阶段的 Reader 操作差距：Mac 使用省略号菜单组织编辑、合并和重排；Windows 当前四图标布局不同。已完成段落的翻译按钮会被未完成队列过滤；解释按钮目前直接请求模型，Mac 则先清除选区并打开检查器；任务进行时 Windows 仍可进入编辑器。标题字体尺寸与窄窗按钮占位也需一并复查。这些发现尚未修复。
+
+## 第六十二阶段：发布 Windows 0.2.15 并验证升级（2026-11-07 UTC）
+
+[0.2.15 安装版与便携版](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.15)已公开，包含第 58–61 阶段的 1800 像素原页预览、可调侧栏、固定 Reader 工具栏、搜索位置修复、段落卡片和阅读外观兼容。[发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42331297845)通过 169 项单元测试、24 套桌面回归和打包启动检查。
+
+下载后的两个 EXE 均与 GitHub 及附带 SHA-256 文件一致，Authenticode 状态仍为 NotSigned。公开便携版打开保存的真实 Attention Is All You Need 论文和既有 AMD 译文，验证语言标签、默认外观、模式切换与搜索恢复。本轮没有重新评测模型翻译质量。
+
+实际安装 0.2.14 后显示 0.2.15 更新提示；用公开安装包升级后，论文、笔记和高亮恢复，旧字号 17、行高 28.9px、宽度 860 保持一致。测试卸载后隔离工作区的数据和设置仍在。安装回归已增加跨版本阅读外观保留断言。GitHub 首页的安装版、便携版与设置指南链接均更新到 0.2.15。
+
+## 第六十一阶段：段落卡片与阅读外观（2026-11-07 UTC）
+
+普通 Reader 段落按 Mac 当前源码增加 ORIGINAL/TRANSLATION 及语言标签、双语分隔线、零补齐编号、等待/失败状态，使用 18px 内边距、14px 圆角、完整选中描边及 14px/10px 译文内框。待翻译段落可以直接 Translate Paragraph 或 Set Up Translation。紧凑标题保留现有布局，标签位于正文选区外，已有笔记/高亮锚点继续作用于原文字。
+
+新工作区和 Reset Appearance 使用字号 16、额外行距 5、内容宽度 920；控件范围为 13–24、2–12、640–1200。旧工作区的字号、宽度和比例行距在普通保存和重启后保留。Use extra spacing 主动切换行距语义。兼容范围保持可往返调整，重置后使用新范围。CSS 使用 1.2em 基线加额外像素，字体继续保留 Windows 现有选择；未声称与 AppKit 的 NewYork-Regular/系统字体回退逐像素相同。
+
+同时复现并修复了清除搜索后、布局恢复完成前切换显示模式的竞态。恢复会在新模式下重新安排，校验当前论文、来源、Reader 实例和待恢复标记。
+
+新增兼容单元和桌面回归覆盖旧字号 25、宽度 560、1.9 倍行距，普通设置保存、重启、主动转换、重置及已存译文保留。段落翻译、源文选区、标题、富文本标注和搜索模式切换纳入回归。
+
+## 第六十阶段：Reader 固定工具栏与搜索位置（2026-11-07 UTC）
+
+参照 Mac `ContentView.swift` 的 `readerWorkspace`、`displayModePicker` 和 `searchField`。Reader 的双语/原文/译文切换、搜索和撤销移到正文滚动区上方。分段单选器支持原生键盘方向键。Ctrl+F 不再先把长文滚回顶部，清除按钮保留搜索焦点，Escape 清空并退出搜索焦点。
+
+搜索前记录可见段落、段落相对位置和像素偏移。窗口宽度或显示模式变化后仍返回原段落。过滤期间的滚动与点击不覆盖磁盘上的未过滤阅读位置，历史记录仍保留过滤状态；搜索中关闭重开会恢复原段落。原有数字位置兼容保留。
+
+新增桌面回归覆盖 980×620、1320×820、1500×900 的长文滚动、控件可见性、两种语言搜索、清除/Escape、方向键切换、顶部撤销、搜索中重开、跨标签 Find，以及 150% 缩放和高对比度键盘焦点。实际截图已检查。另验证延迟清除后切标签不会串写位置、跨标签历史保留过滤位置，以及筛选中编辑/结构撤销清除过期锚点。这些改动仍在开发分支，公开安装包保持 0.2.14。
+
+继续待补齐的 Reader 排版包括每侧语言标签、双语分隔线、选中段落完整描边，以及字号/行距/内容宽度默认值。Mac 字体使用 NewYork-Regular 并允许系统字体回退；需要结合当前源码和真机效果选择 Windows 对应字体，不能只依赖旧截图推断。
+
+## 第五十九阶段：侧栏调宽与保存状态排版（2026-11-07 UTC）
+
+参照 Mac 的 HSplitView、宽屏 Inspector 和正常保存状态行。文档侧栏默认 264px，可调 240–300px。宽窗检查器默认 330px，可调 280–420px。支持鼠标拖动、方向键及 Home / End。宽度保留在当前会话，隐藏面板和退出专注阅读不会重置。小于 1400px 时保留底部检查器。
+
+正常保存提示用靠右的图标和文字，独立于正文滚动。失败时保留错误信息和重试按钮。980×620 和 1500×900 桌面测试及截图覆盖侧栏上下限、宽窗检查器、窄窗阅读区和专注模式。笔记自动保存回归覆盖写入失败与重试。
+
+## 第五十八阶段：对齐便携 PDF 预览尺寸（2026-11-07 UTC）
+
+PDF 页面预览按裁剪框和旋转计算 1800 像素长边，短边四舍五入且至少 1 像素。Windows 用 PDF.js 渲染，仍可能与 PDFKit 有像素差异。按需生成新的缓存格式，保留旧文件及完整原 PDF。
+
+162 项单元测试、桌面和打包启动检查通过。桌面验证标准页 1391×1800、旋转裁剪页 1800×1230、极窄页 1×1800。真机旧工作区的 15 页 Attention Is All You Need 和两页 ResNet 分别从 918×1188 与 919×1188 升到 1391×1800。首次导出重建 17 页，重启后复用相同字节，ROCm 译文成功恢复。121 页样本只写前 120 张，原件逐字节一致。
+
+## 第五十七阶段：导出完成后定位便携包（2026-11-07 UTC）
+
+对照 macOS 1.10.0 导出后的 Finder 定位行为。Windows 在便携包写完后由主进程请求文件资源管理器选中该目录。PDF 等到页面索引完成才定位。缺少个别可选附件仍能定位已完成的包，取消或写入失败时保留当前窗口和已有文件。单文件导出继续用保存对话框及状态提示。
+
+162 项单元测试和桌面回归通过。测试从主进程检查定位发生时索引已含两页，覆盖取消选择目录、停止渲染、页面写入失败、索引写入失败、缺失附件及资源管理器不可用。Windows 真机用两页 ResNet 和测试补充附件，通过系统 Shell 接口确认文件资源管理器选中实际完成的包。Windows 0.2.14 汇集第五十六和第五十七阶段。
+
+GitHub 发布通过 162 项单元测试、23 套桌面回归及打包启动检查。公开安装版和便携版的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开便携版恢复保存的 MinerU 解析和 35 条页码提示。0.2.13 安装版提示更新，升级到 0.2.14 后恢复论文、高亮和笔记，卸载测试副本后隔离工作区保留。GitHub 首页的两个直链均已更新。 [Windows 0.2.14](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.14) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42326506084)
+
+## 第五十六阶段：保留 MinerU 4.x ZIP 引用的附件（2026-11-07 UTC）
+
+从 MinerU 4.x ZIP 读取主 Markdown 后，保留正文引用的本地文件、标准图像和页码伴随文件。补充 Markdown 不会被选成正文。解包排除越界路径、重复路径、设备名、符号链接和内部清单。取消时清理未写完的文件。附加资源每个文件上限 256 MiB，总计 1 GiB。已导入的旧工作区可用独立新副本重新提取缺少的附件。
+
+162 项单元测试通过，覆盖带空格与中文的附件名、查询与片段、补充 Markdown、超限文件、歧义路径和取消。用实际两页 ResNet 的 MinerU ZIP 加入一份测试 CSV 和补充 Markdown，再通过 Windows 界面导出。原文、译文、双语三份文件中的两个附件内容一致，引用指向包内文件，原 PDF 完整保留。RX 7800 XT 复测 DirectML、CPU 和重启恢复各解析的 3 张图与 35 条页码提示。公开安装包仍为 0.2.13。
+
+## 第五十五阶段：MinerU 导出与解析结果绑定（2026-11-07 UTC）
+
+每次成功解析将 Markdown、图像和页码伴随文件写入独立目录。论文保存资源标识，导出和页码恢复都核对该标识与存档原稿。旧目录必须唯一匹配已保存的 Markdown。解析失败或迟到的取消结果不会成为论文的附件来源，旧版已保存结果可继续读取。Windows 0.2.13 汇集第五十四和第五十五阶段。
+
+159 项单元测试通过，覆盖相同原稿与不同的同名 CSV、两套页码元数据、原稿损坏、资源丢失和旧路径歧义。RX 7800 XT 真机用 MinerU 4.1.7 对同一份两页 ResNet 扫描件分别执行 DirectML 和 CPU 兼容解析。两个结果各有 3 张引用图和 35 条页码提示，均与各自导出或恢复结果逐项相符。取消再次解析后仍使用最近接受的结果，重启后再导出一致。
+
+GitHub 发布通过 159 项单元测试、23 套桌面回归与打包启动检查。公开安装版和便携版的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开便携版从保存的解析结果恢复 35 条页码提示。0.2.12 安装版显示更新，升到 0.2.13 后恢复论文、高亮和笔记。测试卸载后保留隔离工作区，GitHub 首页下载入口已更新。 [Windows 0.2.13](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.13) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42324167113)
+
+## 第五十四阶段：默认 Markdown 导出与结构化译稿（2026-11-07 UTC）
+
+对照 macOS 1.10.0 的 File 命令、快捷键和 More 入口。Windows 的 File、Ctrl+Shift+E、More 与检查器现在根据文档直接打开对应保存对话框。PDF 与结构化 MinerU 保存便携包，纯文本保存包含段落原译文、全文译稿、摘要、证据与标注的分析文件。More > Export Options 提供单文件及便携包选项。
+
+结构化 Original 保留存档原稿。译文和双语版在未完成或失败的位置保留原段，标题保留 Markdown 层级，正文译文用带语言标记的引用块。便携包里的结构化全文稿采用当前段落结果，显式单文件选项仍可导出已保存的全文稿。PDF 文字层的便携译稿在无译文的位置回退到原文。文件命名及包内相对链接沿用 Windows 约定。
+
+157 项单元测试、生产构建和导出相关的桌面套件通过。RX 7800 XT 上使用真实 15 页《Attention Is All You Need》的 MinerU 结构与本机 TranslateGemma 4B 完成英译中并中止余下队列。通过快捷键导出的原文、译文、双语与全文四份文件逐份核对了 MinerU Markdown 引用的 5 张图和一个测试 CSV，图片及 CSV 字节一致，链接保留片段，原 PDF 完整保留。HTML 表格图及缺失附件提示有桌面夹具验证。公开安装包仍为 0.2.12。
+
+## 第五十三阶段：在 PDF 导入时准备原页图（2026-11-07 UTC）
+
+PDF 文字层导入和 MinerU 降级现在逐页准备前 120 页的 PNG，导入界面显示页数，取消后回到原论文。图片按原 PDF 字节及 PDF.js 渲染版本复用，成功使用 MinerU 时保留其结构化资源。旧工作区和缺失页仍可在导出时生成。Mac 和 Windows 各用 PDFKit 与 PDF.js 渲染。
+
+155 项单元测试、生产构建、导入和导出桌面回归通过，涵盖迟到的取消结果、两页扫描、损坏页修复与重启。RX 7800 XT 真机导入《Attention Is All You Need》后，首次导出和独立重新提取都渲染 0 页。121 页样本只生成前 120 张 PNG，首次导出全部复用，保留完整 121 页原件。两份导出的 PNG 与本机归档逐字节一致，原 PDF 与输入逐字节一致。TranslateGemma 4B 在独立副本完成第 17 段英译中，显存占用 2,881,948,220 字节。
+
+Windows 0.2.12 汇集两轮原页图归档改动。发布构建通过 155 项单元测试、23 套桌面回归及打包启动测试。公开安装版和便携版的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开便携版导入真实的两页 ResNet 扫描件后，导出前已归档两张 PNG，原 PDF 保持 753,384 字节且内容一致。0.2.11 安装版检测到公开更新，升到 0.2.12 后恢复论文、高亮和笔记，卸载测试副本后保留隔离工作区。GitHub 首页的两条直链均已更新。 [Windows 0.2.12](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.12) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42320872705)
+
+## 第五十二阶段：便携导出的原页归档复用（2026-11-07 UTC）
+
+便携 Markdown 导出按原 PDF 字节与 PDF.js 渲染版本保存前 120 页的 PNG 归档。同一原文件的独立提取副本也可复用。已完成页逐张校验并原子保存，后续导出只重建缺失或损坏的页。取消后的导出索引只引用已写入的页面。清除保存数据同时清除页面归档，仍保留原 PDF 副本。Windows 在首次导出填充归档，Mac PDFKit 在导入阶段填充。
+
+155 项单元测试、生产构建、主流程、Markdown、全文译稿、OpenAI 和导入桌面回归通过。RX 7800 XT 上用真实 15 页《Attention Is All You Need》复测，首次渲染 15 页，重启后渲染 0 页，破坏第 7 页缓存后重建 1 页，再次导出渲染 0 页。所有导出原 PDF 与对应 PNG 的字节一致。测试还用已安装的 TranslateGemma 4B 完成第 17 段英译中并在重启后恢复，显存占用 2,881,948,220 字节。
+
+## 第五十一阶段：原 PDF 独立缩放与 Windows 0.2.11（2026-11-07 UTC）
+
+Paper 的精确 PDF 与 Original 各自支持 50–250% 缩放。工具栏、Ctrl+滚轮、Ctrl+加减键和 Ctrl+0 作用于当前 PDF。阅读外观仍用于重排正文和摘要。缩放时保留页内位置和文字层锚点，点击保存标注时滚动到原文，包含横向定位。每个画布上限 800 万像素与 4096 像素单边，文字和页尺寸按显示比例布局。0.2.11 汇集第五十和第五十一阶段。
+
+154 项单元测试、生产构建、主流程、阅读历史、逐论文设置、Markdown、Reader 与导入回归通过。测试包含旋转页、原页返回、重启和标注复选。RX 7800 XT 在 150% 缩放打开真实 15 页《Attention Is All You Need》。PDF 250% 时画布显示和文字层均为 2125×2750，位图 2486×3217。Ctrl+滚轮缩放、两个视图的独立比例、标注回跳、重启和原 PDF 字节一致性均验证。另用 TranslateGemma 4B 翻译第 17 段，显存占用 2,881,948,220 字节。
+
+GitHub 发布构建通过 154 项单元测试、23 套桌面回归和打包启动检查。两个公开 `.exe` 的 SHA-256 均匹配，Authenticode 状态为 NotSigned。0.2.10 安装版提示更新，升到 0.2.11 后恢复论文、笔记和高亮，测试卸载后隔离工作区仍在。公开便携版在本机 125% 缩放复测 250% PDF、原页标注恢复、专注切换及 AMD 翻译。GitHub 首页提供两个新版直链。 [Windows 0.2.11](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.11) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42317946340)
+
+## 第五十阶段：专注阅读入口与紧凑查词选取（2026-11-07 UTC）
+
+论文工具栏和 View 菜单提供 Focus Reading，Windows 快捷键为 Ctrl+Alt+F。Ctrl+Alt+S 切换左侧栏。退出专注恢复两侧偏好。在专注中手动打开左侧栏或检查器时，只打开所选面板。专注时可以切换阅读视图或从图书馆打开另一论文，退出后按当前论文已保存的检查器状态显示。进入专注会保存正在编辑的笔记并隐藏查词卡。紧凑查词的两个结果在同一个可滚动区域内，可拖选，关闭卡片仍保留原文选区。
+
+154 项单元测试、生产构建、菜单状态、主流程、逐论文设置、笔记、阅读历史、Reader 和导入回归通过。RX 7800 XT 在 150% 缩放打开真实 15 页《Attention Is All You Need》，专注中切到 Original 后回 Reader，TranslateGemma 4B 英译中第 17 段，显存占用 2,881,948,220 字节。拖选查词结果“循环神经网络”并关闭卡片后，检查器仍对应原文，键盘进入专注时保存了笔记。退出及重启后均验证对应面板和保存内容。
+
+## 第四十九阶段：阅读外观工具栏与 Windows 0.2.10（2026-11-06 UTC）
+
+从论文工具栏的 Reading Appearance 直接调整字号、行距和阅读宽度。设置页共用三个控件和 Reset Appearance。两处修改均即时应用，并作为全局偏好跨论文及重启保存。双语摘要正文跟随字号和行距，原 PDF 页继续使用独立的几何和缩放。重置使用已有的 Windows 默认值。0.2.10 汇集第四十八和第四十九阶段。
+
+154 项单元测试、生产构建及桌面回归覆盖窄窗口弹层、键盘操作、焦点返回、全局保存、双语摘要、Markdown 和精确 PDF。RX 7800 XT 在 150% 缩放窗口打开真实 15 页《Attention Is All You Need》，预览改为 25px 字号和 560px 宽度。TranslateGemma 4B 英译中第 17 段，显存占用 2,881,948,220 字节。重置前后原 PDF 的 929×1202 位图及 619×801 显示尺寸一致，重启后恢复译文和默认外观。
+
+GitHub 发布构建通过 154 项单元测试、23 套桌面回归和打包启动检查。两个公开 `.exe` 的 SHA-256 均匹配，Authenticode 状态为 NotSigned。0.2.9 安装版提示更新到 0.2.10，升级后恢复测试论文、笔记和高亮，卸载后隔离工作区保留。公开便携版在本机 125% 缩放重做真实论文翻译、外观重置和原 PDF 尺寸检查，另用 Qwen3 4B Instruct 验证选区回显没有额外请求。GitHub 首页直链已更新。 [Windows 0.2.10](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.10) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42314146554)
+
+## 第四十八阶段：重选原文恢复选区查词（2026-11-06 UTC）
+
+重新选中同一选区时，紧凑查词卡与完整检查器立即显示本次会话已有的译文和解释。查词和回显共用论文、视图、选区、上下文、语言、模型、提供方与术语的缓存键。切回有缓存的解释语言时恢复对应结果。重启与清除已保存数据会清空选区缓存。
+
+154 项单元测试、生产构建和选区、Reader、术语、OpenAI、逐论文设置、Markdown 及阅读历史桌面回归通过。受控 OpenAI 测试在撤回许可后重选已查过的句子，显示缓存译文且没有新的在线请求。RX 7800 XT 用已安装的 Qwen3 4B Instruct 翻译和解释练习文档选区，ROCm 将 37/37 层加载到 GPU。另核对同文不同视图隔离、切换解释语言、关闭重开和清空后重新打开同一论文。实机共三次明确发起的生成，重选和切换均未触发额外生成。
+
+## 第四十七阶段：从 AI 任务直接进入所需设置（2026-11-06 UTC）
+
+段落与全文翻译、摘要、段落解释及选区查词共用任务前置检查。Ollama 本地运行时或模型缺失时打开任务专属检测与安装，默认仅选择运行时和所需模型。双语摘要检查摘要和翻译模型。自定义本地地址不可达时进入 Models 检查地址。OpenAI 缺少密钥、所选任务模型或当前会话权限时进入 Models，等用户明确授权并再次运行任务。
+
+154 项单元测试及 Windows 桌面回归覆盖组件计划、缺模型、端点切换、OpenAI 暂停及设置入口。RX 7800 XT 上故意配置一个未安装模型，Windows 实际检测后只列出该模型。经 Choose task models 改选本机 TranslateGemma 4B，再手动翻译练习段落，Ollama 报告 2,881,948,220 字节显存占用，译文重启后恢复。实机复测使用已有模型，安装流程由受控桌面回归验证。0.2.9 汇集第四十六和第四十七阶段。
+
+GitHub 发布构建通过 154 项单元测试、23 套桌面回归和打包启动检查。公开 Setup 与 Portable 的 SHA-256 均匹配，Authenticode 状态为 NotSigned。公开 0.2.8 安装版显示更新提示，用公开 0.2.9 升级后恢复论文、笔记和高亮，卸载测试实例后工作区保留。公开 0.2.9 便携版也完成上述缺模型、选择替代模型、ROCm 翻译与重启恢复流程。GitHub 首页直链已更新，仓库 Latest 仍指向 macOS。 [Windows 0.2.9](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.9) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42310176938)
+
+## 第四十六阶段：章节优先与真实翻译队列续译（2026-11-06 UTC）
+
+打开 Translation Range 时直接读取当前可见段落。插队按钮显示当前章节实际还在等待的段数，只重排这些段落。进行中的段落继续处理，已处理段落保持结果。停止会立即关闭本轮队列，进度单独统计本轮失败，侧栏继续显示整篇论文的失败总数。
+
+153 项单元测试、生产构建及 Reader、标题、OpenAI 和主桌面回归通过。Reader 回归覆盖滚动后立即打开范围、范围外章节、历史失败、本轮失败、取消和重启续译。
+
+RX 7800 XT 上用本机 Ollama 的 TranslateGemma 4B 英译中，实际处理 15 页《Attention Is All You Need》的结构化稿。通过本地代理记录请求顺序并控制首个结果交付，先请求第 1 段，再执行优先的引言第 16、17 段。第 1 段因模型重复 token 失败，两段引言译文保存。第 18 段仍在生成时停止，Ollama 取消且段落保持待译。重启从第 1 段重试并跳过已完成引言；日志确认 ROCm，模型和显存大小均为 2,881,948,220 字节。
+
+## 第四十五阶段：从原 PDF 进入同页 OCR 与 Windows 0.2.8（2026-11-06 UTC）
+
+从 Paper 或 Original 的扫描页点 Open OCR Reader，定位到在该页开始的第一段已匹配文字。进入时清除 Reader 旧筛选，若处于仅译文模式则显示双语。PDF 文字层与 MinerU 的来源切换和跳转只记录一次。Back 恢复原 PDF 页与页内位置，Forward 回到 OCR Reader。旧记录没有对应页码时仍可打开已保存的 Reader。
+
+153 项单元测试、生产构建、主桌面和阅读历史回归通过。RX 7800 XT 机器复用真实两页 ResNet 扫描与此前的 ROCm 译文。Paper 第 2 页进入第 19 段，Back 恢复约 85 像素页内偏移。Original 第 1 页进入第 1 段，关闭重开后保持该位置，原第 23 段译文恢复。另验证旧版无页码扫描工作区可打开且保存内容保留。0.2.8 汇集第四十四和第四十五阶段。
+
+GitHub 发布构建通过 153 项单元、23 套桌面回归与打包启动检查。重新下载的 Setup 和 Portable 均通过 SHA-256，Authenticode 均为 NotSigned。0.2.7 检测到新版，运行公开安装包升级后恢复论文、笔记和高亮，卸载测试实例后工作区保留。公开便携版也完成真实扫描及旧记录测试，GitHub 首页指向 0.2.8。 [Windows 0.2.8](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.8) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42305773969)
+
+## 第四十四阶段：MinerU 原页定位（2026-11-06 UTC）
+
+MinerU 4.x 在同一次本地解析中输出 Markdown、图像及结构化页码。Windows 从 ZIP 读取这些文件，保持已有段落 ID 和内容。识别 4.x 的正文续接标记，跨页段落定位到起始页。旧论文若保留匹配的 3.x 或 4.x 结构文件，重开时可恢复页码。缺少结构文件时，在已保存 PDF 文字层中确认长段落的唯一页码。原页仍不确定时，Compare Original 沿用当前页。
+
+153 项单元测试、生产构建、导入进度、任务隔离、阅读历史、Markdown 和主桌面流程通过。RX 7800 XT 使用 DirectML 实际重新解析两页 ResNet 扫描，29 块中 26 个文字块全部带原页，另 3 块图像正常内嵌。跨页第 16 段指向第 1 页，第 29 段警告打开原 PDF 第 2 页。模拟旧记录后重开，从同次解析文件恢复页码并保留译文和书签。《Attention Is All You Need》旧存档另从保存的 PDF 文字层找回 88 个 MinerU 段落页码。 [MinerU 输出格式](https://opendatalab.github.io/MinerU/reference/output_files/)
+
+同一份扫描的第 23 段通过本机 Ollama 实际英译中，译文保留 CIFAR-10 和引文编号。服务日志显示 ROCm，`translategemma:4b` 的 `size_vram` 与模型大小同为 2,881,948,220 字节。重开后第 2 页页码和译文一起恢复。另核对已有 MinerU 3.x 工作区的伴随列表与保存的 Markdown 完全对应，仅用列表即可匹配 143 个段落。
+
+## 第四十三阶段：提取问题复核与 Windows 0.2.7（2026-11-06 UTC）
+
+Overview 可展开查看前 40 条提取建议、段号及最后 160 个字符。Review 打开双语 Reader，原段显示警告和编辑、原文比对操作。已知 PDF 页码时直接打开对应原页。MinerU 结构仍受保护，原段无页码时沿用当前 PDF 页。
+
+151 项单元测试、生产构建、阅读历史、摘要、Reader 复核和主桌面流程通过。RX 7800 XT 机器上复用真实《Attention Is All You Need》的两种保存来源，PDF 文字层有 26 条提示，MinerU 有 10 条。第 38 段打开原 PDF 第 3 页，修改末尾后该条提示消失，撤销后恢复。确认 MinerU 禁用编辑并可比对 PDF。0.2.7 汇集第四十一至第四十三阶段。
+
+GitHub 发布构建通过 151 项单元、23 套桌面回归与打包启动检查。公开 Setup 和 Portable 重新下载后 SHA-256 均匹配，Authenticode 状态均为 NotSigned。0.2.6 显示 0.2.7 更新提示，运行公开安装包后恢复论文、高亮和笔记，卸载测试实例后工作区保留。公开便携版也完成真实摘要与提取复核，GitHub 首页指向 0.2.7。 [Windows 0.2.7](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.7) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42301057153)
+
+## 第四十二阶段：摘要证据展开与双语布局（2026-11-06 UTC）
+
+macOS 1.10.0 的摘要按可用空间切换双语布局，并可逐条展开证据。Windows 使用并排或纵排的双语卡片，默认折叠各条证据，支持鼠标与键盘独立操作。摘要说明标注 AI 生成内容，并说明引文只用于确认原句位置。阅读历史会保留同一论文当前会话的展开状态，PDF 文字层与 MinerU 各自独立。
+
+151 项单元测试、生产构建，以及摘要、阅读历史、Markdown 和主桌面流程通过。在 RX 7800 XT 机器上复用此前保存的《Attention Is All You Need》双语摘要。按 1000 与 1800 CSS 像素宽度验证纵排及并排，核对 6 条结论中的 4 条已验证引文，测试键盘展开、选中原文、返回原展开位置及旧版无引文摘要读取。
+
+## 第四十一阶段：摘要引文跟随段落编辑（2026-11-06 UTC）
+
+按 macOS 1.10.0 核对摘要引文的原文校验和阅读跳转。Windows 点击引文会打开 Reader，在能唯一定位时滚到原句并选中。拆分、合并、重排或手改段落后，引文跟随原段的新编号。修改过的原段只在其替换范围内核验引文，失效或跨段归属不明确时撤下链接。Mac 的源文本变更会使当前摘要失效，Windows 将旧摘要标为过期并保留供核对。撤销时恢复原摘要与引文，若期间已生成新摘要则保留内容、重新核验引文并标记过期。
+
+151 项单元测试、生产构建，以及摘要、Markdown、阅读历史和主桌面流程通过。在 RX 7800 XT 的 Windows 机器上复用此前保存的《Attention Is All You Need》双语摘要。在 214 段原稿前部插入一段后，4 条引文全部跟随新编号。验证原句选中、撤销、重启和实际写入的 Markdown 文件。
+
+## 第四十阶段：恢复被强制中断的 MinerU 修复（2026-11-06 UTC）
+
+自动检测会避开其他实例正在更换的私有 MinerU 环境。修复进程退出后，仍有待验证的切换会恢复上一环境，首次安装未验证的环境则清除。运行时验证通过后，先用原子重命名提交切换，再清理备份。Windows 短暂拒绝重命名暂存目录时可重试，等待期间仍可取消。
+
+149 项单元测试和安装组件桌面回归通过。RX 7800 XT 上两个隔离的 Electron 实例共用一份私有工具副本。实际使用缓存离线修复，在验证前强制结束主进程后由另一实例自动恢复旧环境；验证提交后强制结束时保留新版。随后复用模型通过 DirectML 解析双页扫描，识别 29 个块。Windows 0.2.6 汇集第三十七至第四十阶段的改进。
+
+0.2.6 发布工作流通过 149 项单元、23 套桌面回归和打包启动检查。重新下载公开安装版和便携版后，两份 SHA-256 均一致，程序均未签名。0.2.5 检测到更新，使用公开安装包升级后恢复论文、笔记和高亮，卸载测试实例后工作区保留。公开便携版验证从原扫描第 2 页进入 OCR Reader、前进后退以及恢复已有 AMD 译文。GitHub 首页更新了 Windows 下载入口。 [Windows 0.2.6](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.6) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42296107622)
+
+## 第三十九阶段：MinerU 修复、退出回滚与预下载取消（2026-11-06 UTC）
+
+MinerU 修复保留旧版备份，直到新环境通过实际运行时及图形后端探测。验证失败或取消时恢复旧版。应用正常退出会等待进行中的安装完成取消处理。解析器激活后，取消可选模型预下载会保留已验证的安装并提示解析时继续。安装 MinerU 与同一应用中的 PDF 提取互斥。
+
+145 项单元测试，以及安装组件、引导、退出保存和任务隔离的桌面回归通过。在 RX 7800 XT 的隔离工具副本上，使用已缓存的 Python 和包真实执行两次 MinerU 4.1.7 修复。首次在运行时探测阶段正常退出，重开后旧版标记和 DirectML 探测恢复。第二次在激活后取消预下载，界面报告解析器已安装。随后复用现有模型解析 ResNet 两页图像扫描，得到 29 个块。 [AMD 真机记录](AMD_DEVICE_TEST.md)
+
+## 第三十八阶段：便携包中的 HTML 图表与附件（2026-11-06 UTC）
+
+新导入的 MinerU HTML 图像可在阅读中预览，独立图像与表格均按资源块处理。便携包把 Markdown 和 HTML 中的图像及可找到的本地附件保存为相对路径，去重同一份嵌入图像，保留链接片段和原 PDF。原解析目录仍在时，旧工作区的相对引用也可以随包导出。未找到的引用保留并显示数量。代码示例、网页链接和原文锚点保留原样。
+
+141 项单元测试、Markdown 和主桌面回归通过。RX 7800 XT 上用 MinerU DirectML 重新解析 ResNet 两页扫描，并在输出中加入一张引用同一真实图像的 HTML 表格、一个 CSV 和一个故意缺失的附件。重启后表格图正常显示。导出包含 3 个图像文件及 CSV，原 PDF 逐字节一致，界面提示一个缺失资源。复制整包到另一目录后，离线预览可解码表格图，尺寸为 331 × 225 像素。
+
+## 第三十七阶段：多页扫描、OCR 阅读跳转和 MinerU 主稿选择（2026-11-06 UTC）
+
+MinerU 输出多个 Markdown 时按 Mac 的评分规则选择主稿，优先考虑与输入同名及完整稿命名，跳过空文件和隐藏文件。本地图像能解析编码路径和文件名中的百分号，单张资源不可读时仍保留正文和资源链接。Paper 与 Original 的扫描原页均可直接打开已保存的 OCR Reader。当前使用 PDF 文字层时会切到已有 MinerU 结果，并能通过阅读历史回到原 PDF 和原页。
+
+140 项单元测试及 Windows Electron 的主流程、阅读历史、任务隔离和 Markdown 回归通过。使用从 ResNet 前两页生成的 145 DPI 双栏扫描，其中第 2 页旋转 1.2 度。真机自动导入约 16.8 秒，识别 29 块，其中 3 个图像块。核对五处正文顺序、无文字层、从第 2 页进出 OCR Reader、ROCm 英译中和重启后译文及书签恢复。便携导出保留三个图像文件及字节相同的扫描 PDF。 [AMD 真机记录](AMD_DEVICE_TEST.md)
+
+## 第三十六阶段：重排后的高亮保留与 Windows 0.2.5（2026-11-06 UTC）
+
+Reader 按完整句断开长段，识别没有空格的中文句号、句尾引号和常见学术缩写。拆分和重排的各段继承原书签。合并复用 PDF 断词规则。原文和译文高亮如果失去可核对的锚点，仍在标注列表和导出中保留并标记复核。撤销可恢复旧译文和高亮。编辑或撤销会清除旧选区和过时的定位请求。
+
+138 项单元测试和 Windows Electron 的 Reader、设置、阅读历史回归通过。用 15 页 Attention Is All You Need 的 PDF 文字层验证，RX 7800 XT 通过 ROCm 实际译出 452 字符的摘要段译文。重排为两段后，原文高亮仍定位，译文高亮显示需复核。撤销恢复原译文和高亮，再重排并重启仍保留复核记录。Windows 0.2.5 包含第三十四至第三十六阶段的改进。
+
+0.2.5 发布构建通过 138 项单元、23 套桌面测试和打包程序启动验证。重新下载公开 Setup 与 Portable 后核对了 SHA-256，两份程序均未签名。公开便携版使用同一篇论文和 RX 7800 XT 实际翻译摘要段，重排后保留译文高亮，撤销恢复原锚点，再重排并重启仍可查阅。用公开安装包从 0.2.3 升级到 0.2.5，实测旧版更新提示、升级后恢复论文和标注及卸载后保留工作区。GitHub 首页已添加 Windows 下载入口。 [Windows 0.2.5](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.5) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42286060046)
+
+## 第三十五阶段：在编辑器中用空行拆段（2026-11-06 UTC）
+
+Reader 对齐 Mac 的段落编辑操作。保存时空行分隔新段，段内换行折叠为空格。生成的新段继承书签，能逐字定位的笔记和高亮随选区迁移，跨越拆分处的笔记保留供复核。撤销按实际编辑范围处理，即使新段与原段落文字相同，也能恢复原译文。
+
+136 项单元测试及 Windows Electron 的论文设置和阅读历史回归通过。桌面上验证了原段后新增一段、段内换行合并、两个书签写入工作区，以及撤销后恢复原段的译文和书签。
+
+## 第三十四阶段：按阅读来源恢复摘要和全文译稿（2026-11-06 UTC）
+
+PDF 文字层和 MinerU 的双语摘要、全文译稿、未完成批次与标注分别存入对应来源和 AI 设置的缓存。手动切换及前进、后退共用恢复逻辑。原文已改变的归档结果在返回时仍可查阅，并显示需复核的状态。旧版中已经标为过期且缺少来源记录的结果按原保存状态保留供复核。
+
+134 项单元测试及桌面回归覆盖同模型跨来源隔离、不同模型和语言、旧缓存、部分译稿、引文和笔记恢复。使用 15 页 Attention Is All You Need 的真实工作区，在 RX 7800 XT 上通过 ROCm 新译两个 MinerU 块后停止。切回 PDF 文字层时，原 7 批完整译文、6 条双语摘要结论及笔记逐字恢复。重启后两种来源的全文稿仍可各自打开。
+
+## 第三十三阶段：跨来源阅读历史（2026-11-06 UTC）
+
+手动切换 PDF 文字层与 MinerU，以及跳到另一来源的标注，都会记录同论文的来源、视图、阅读模式、搜索、页码和滚动位置。前进、后退恢复这些位置。任务运行时若必须切换来源，保留返回记录供任务结束后重试。包含内嵌插图的预览在排版稳定后恢复滚动，过时的请求无法覆盖新的位置。
+
+132 项单元测试及桌面回归覆盖源切换、过滤与清空搜索、翻译期间暂缓、两套内容保留和旧回调。使用 RX 7800 XT Windows 机器上的 15 页 Attention Is All You Need，验证从 PDF 文字层 Reader 跳到 MinerU 公式笔记，前进后退恢复两处滚动。另从精确 PDF 第 2 页跳到同一笔记，后退恢复第 2 页约 160 像素的页内偏移。
+
+Windows 0.2.3 包含第三十一至第三十三阶段的改进。发布工作流通过单元、桌面和打包启动回归。重新下载两个公开程序后核对了 SHA-256，两份程序均未签名。公开便携版通过真实跨来源回跳和 ROCm 翻译。安装版从 0.2.2 检测到更新，升级后恢复论文及标注，测试卸载后数据保留。 [Windows 0.2.3](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.3) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42279106643)
+
+## 第三十二阶段：引文移动后的标注恢复（2026-11-06 UTC）
+
+Paper、Reader、摘要和全文译稿共用 Markdown 标注定位。原坐标通过校验时直接使用。位置变化后，完整引文在当前阅读区域只出现一次时恢复原标注。重复或消失的引文在回跳时保留记录并提示复核。重新选中后编辑会更新原记录的坐标与正文。写入时仍要求选区与当前文档一致。
+
+131 项单元测试和桌面回归覆盖旧偏移、公式、跨段、摘要与全文译稿移位、重复及源文变化。在 RX 7800 XT Windows 机器上，改写真实 MinerU 论文 Attention Is All You Need 的前一块，令跨段公式引文后移 50 个字符。下划线和高亮自动恢复。用键盘重新选中并编辑后，原笔记 ID 保留，重启可回跳到新坐标。
+
+## 第三十一阶段：键盘选区（2026-11-06 UTC）
+
+Paper、Reader、两侧摘要、全文译稿及两个精确 PDF 视图可通过 Tab 进入阅读区域，也可点击正文定位。Shift 加方向键扩展选区，Ctrl+Shift 加左右方向键按词选取，Shift+Home/End 选择到行首或行尾。检查器和现有选择快捷键使用同一选区。收起选区后检查器清除已选文字，输入框保留自身键盘行为。
+
+130 项单元测试及桌面回归覆盖真实按键、两侧摘要、重复词定位、输入框隔离、快捷翻译与笔记。在 RX 7800 XT 的 Windows 机器上，从 Attention Is All You Need 的第 31 块标题用键盘选到第 32 块 `N=6 identical layers.`，保存高亮与笔记后重启回跳。Original 视图验证了按词选取、用 Shift+Right 跨第 1–2 页、保存和重启复选。跨页选区遵循原 PDF 的文字层顺序。
+
+## 第三十阶段：笔记下划线与 Windows 0.2.2（2026-11-06 UTC）
+
+在 Paper 预览、Reader 原译文、双语摘要、全文译稿和两个精确 PDF 视图中，有内容且锚点有效的笔记会在原选区显示蓝色下划线。下划线可叠加颜色高亮。清空笔记会移除下划线，失效记录留在列表供复核。
+
+桌面回归覆盖旧笔记、重复文字、行内公式、跨块及跨页、重启、撤销和视图隔离。在 RX 7800 XT 的 Windows 机器上，用 15 页 Attention Is All You Need 的真实标题对比截图，原 PDF 与 MinerU 预览均出现蓝色下划线。加入 Amber 高亮后，下划线仍可见。
+
+Windows 0.2.2 包含第二十八至第三十阶段的标注改进。发布工作流通过 130 项单元测试、桌面回归及打包启动检查。重新下载两个公开文件并核对 SHA-256。公开便携版可直接运行并恢复真实论文标题的笔记和高亮。用公开安装包从 0.2.1 升级，核对了更新提示、运行版本、论文和标注，隔离测试卸载后数据保留。两份公开程序均未签名。 [Windows 0.2.2](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.2) · [发布构建](https://github.com/haoyunLi/PaperBridge/actions/runs/42270811870)
+
+## 第二十九阶段：Paper 跨段高亮与笔记（2026-11-06 UTC）
+
+Paper 跨段选区使用整篇预览中的坐标。引文保留换段和公式，排除“译文不可用”界面提示。高亮、笔记和导出各保留一条完整记录。回跳恢复选区的显示模式和 PDF 文字层或 MinerU 来源。切换来源遵循现有的阅读历史重置行为。原范围无法校验时保留记录并提示复核。
+
+Windows 桌面回归覆盖双语跨段保存、导出、重开回跳、同来源的阅读历史、删除撤销及源文变化后的复核。130 项单元测试通过。在 RX 7800 XT Windows 机器上，用实际鼠标拖选此前 DirectML 解析的 15 页 Attention Is All You Need 第 31–32 块，从章节标题选到 `N=6 identical layers.`。切到 PDF 文字层及译文模式、退出并重开后，由笔记恢复了原 MinerU 双语预览、选区和高亮。
+
+## 第二十八阶段：渲染后的 Markdown 标注（2026-11-06 UTC）
+
+Paper、Reader、摘要两侧和全文译稿的公式选区按实际显示文字保存。KaTeX 用于辅助技术的重复文字从选区坐标中排除。已有纯文本偏移仍可定位。在源文本里没有对应偏移时，保存显示偏移和选区附近的文字，回跳时逐字校验。原位置发生变化且无法校验时，保留标注并提示复核。Markdown 导出保留选区引文和已记录的复核状态。
+
+桌面回归覆盖公式标注保存、刷新回跳、失效提示和旧重复词标注。生产构建与 129 项单元测试通过。在 RX 7800 XT 的 Windows 机器上，用此前 DirectML 解析的 15 页 Attention Is All You Need 验证 Reader 第 32 块。选中 `stack of N=6 identical layers`，保存高亮和笔记后退出，重新启动可复选原引文并恢复高亮。Paper 跨块笔记和高亮仍待实现。
+
+## 第二十七阶段：Windows 0.2.1 预览版（2026-11-06 UTC）
+
+0.2.1 纳入连续 PDF 阅读、跨页标注、双栏排版修复、短选区提示、参考文献过滤及 MinerU 降级等变化。Windows 标签构建检查安装包、便携版及 SHA-256，发布说明链接到同一标签的 Windows 文档。
+
+在本机隔离目录用已核对 SHA-256 的公开 0.2.0 安装包升级到本地 0.2.1 构建，核对注册版本、论文数据、高亮和笔记，并验证测试卸载后工作区保留。打包启动测试通过首次引导、自动检测和 Reader。
+
+发布后重新下载并核对两个公开可执行文件的 SHA-256。以公开安装包再跑一次升级，旧版显示 0.2.1 更新提示，升级后报告已是当前版本，并恢复论文与标注。公开便携版通过 Reader 翻译练习论文，Ollama 日志确认 RX 7800 XT 的 ROCm 后端，模型完整驻留显存。两份公开可执行文件均未签名。 [Windows 0.2.1](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.1)
+
+## 第二十六阶段：连续 PDF 与跨页标注（2026-11-06 UTC）
+
+Original 和 Paper 的精确 PDF 模式可连续滚动。附近页面按需渲染，拖选经过的页面保留到选区完成。跨页高亮及笔记作为一条记录保存，内含每页的文字和偏移。回跳先校验所有页内范围，Markdown 显示起止页。
+
+桌面测试用鼠标跨页拖选，检查保存、导出、重启复选、旧单页笔记及阅读历史。真实 12 页 ResNet PDF 上拖选第 1–2 页，滚到第 9 页时渲染了 5 个画布，再由笔记恢复选区。该论文的文字层顺序可能将视觉上位于页尾的文本排在正文之前，跨页拖选范围仍受原 PDF 文字顺序影响。
+
+## 第二十五阶段：短选区翻译的上下文边界（2026-11-06 UTC）
+
+句中片段和短词直接使用严格提示。能在原文中唯一定位、首尾都落在句子边界的选区可使用参考上下文。异常长的本地上下文译文只重试一次，重试结果同样检查。OpenAI 选区翻译每次点击最多请求一次。
+
+真实 ResNet PDF 上重跑上一阶段的跨行片段及同页完整句。TranslateGemma 4B 在 RX 7800 XT 的 ROCm 后端给出范围正确的两段中文，跨行样本从带入后文改为 16 字译文。单元与桌面回归验证英语和中文句边界、上下文请求、错误提示与重试。
+
+## 第二十四阶段：原 PDF 跨行选区（2026-11-06 UTC）
+
+PDF 文字层的换行在检查器、选区翻译与解释、术语和 Markdown 引文中显示为词间空格。高亮及笔记继续用原始页内文本和偏移定位。打开旧标注时，校验原锚点并补齐可读引文。
+
+桌面回归覆盖选区请求、实际导出、保存与重启，并在删掉引文显示字段后验证旧格式恢复。在真实 ResNet PDF 上完成跨行选区的 RX 7800 XT 推理、高亮与笔记复选。该次模型输出包含选区之后的部分上下文，选区精确度仍需复核。
+
+## 第二十三阶段：窄栏间距、跨栏文字与 PDF 空格（2026-11-06 UTC）
+
+PDF 文字层以同页两侧的连续正文判定双栏。跨栏标题和表注按实际高度把页面分段，每段先读左栏、再读右栏。保留 PDF 明确提供的字间空格，页边旋转的 arXiv 标识从抽取正文排除，其他旋转文字单独成段。
+
+桌面回归用窄栏间距与跨栏表注的测试 PDF 核对逐栏顺序。在 Windows 另行导入 12 页 [ResNet 论文](https://arxiv.org/abs/1512.03385)和 15 页 Attention Is All You Need，核对摘要与图注分段、跨栏表注顺序、引用后的图注及原文件字节。旧工作区继续按已保存的块编号和标注打开，需要新排版时可重新提取为独立副本。
+
+## 第二十二阶段：PDF 换行与跨页断词（2026-11-06 UTC）
+
+页内和跨页共用 Mac 的常见复合词后缀规则。排版断词可接成 `methodology`，`attention-based` 与 `state-of-the-art` 保留连字符。跨页拼接记录末页，避免再次合并末页上的下一个独立段。
+
+单元回归覆盖断词、复合词和独立段。桌面测试从实际 PDF 导入并检查 Reader 的复合词。15 页论文的独立重导入保留 214 个块与逐字节一致的 PDF，其中四个块恢复了复合词连字符。
+
+## 第二十一阶段：参考文献范围与后续正文（2026-11-06 UTC）
+
+段落翻译、全文翻译和摘要共用参考文献范围。支持独立标题、标题与第一条引文同块、无标题的尾部引文列表。遇到附录、STAR Methods 等后续章节时恢复处理。Paper 预览与 Markdown 导出原样显示引文，原段编号和已有阅读标注随文档保留。
+
+桌面回归检查摘要与全文请求的引文过滤、后续附录、重启续跑、Paper 预览及实际 Markdown 导出。用 RX 7800 XT 测试期间保存的 15 页论文复核，两种提取结果在有标题和去掉标题后均保留参考文献之后的可视化说明与图注。
+
+## 第二十阶段：PDF 导入模式与失败恢复（2026-11-06 UTC）
+
+MinerU-only 要求有可读结构化正文。MinerU 缺失、探测失败、运行失败或只返回资源时，严格模式保留当前论文并显示原因，优先模式用原 PDF 和可选择文字继续打开并记录原因。PDF-only 跳过 MinerU 检测和解析。普通导入和重新提取副本使用同一个任务身份与进度窗口。
+
+桌面回归覆盖带书签的旧论文、仅图像的 MinerU 输出、探测与进程失败、重新打开时的降级提示，以及旧任务取消后迟到的进度和结果。新导入的进度由自己的请求控制。15 页真机用例还验证了缺失 MinerU 的严格失败、PDF 文字层降级与 DirectML 独立重提取。
+
+## 第十九阶段：术语词典与写入反馈（2026-11-06 UTC）
+
+术语匹配按语言方向和 Unicode 大小写归一化，较长匹配优先，最多 24 条。Reader 段落、结构化 Markdown、全文及选区翻译共用 JSON 词典格式。保存和删除以落盘结果为准，失败会保留草稿或旧词条供重试。原文与译文选区各自使用对应语言方向，已有译文继续可读。
+
+桌面回归通过实际文件写入失败验证保存和删除提示、重试及重启。RX 7800 XT 上的 TranslateGemma 4B 对测试句采用了刚保存的“自注意机制”，模型完整驻留显存。
+
+## 第十八阶段：论文库最近打开与文档标签（2026-11-06 UTC）
+
+论文库按最近打开排序，并显示每篇论文已译段落、打开日期与标签。打开记录独立于论文保存时间，兼容只有最后打开 ID 的旧工作区。读取失败时在库内显示错误并保留条目。库标签和文档名分开保存，按 Mac 规则限制标题长度、标签长度和数量。
+
+Windows 0.2.0 的安装版和便携版已通过公开链接下载并核对 SHA-256。真实 GitHub 更新源在当前版本参数为 0.1.0 时返回 0.2.0，为 0.2.0 时返回当前版本。仓库 Latest 仍指向 macOS v1.10.0。
+
+## 第十七阶段：Windows 下载和跨版本安装（2026-11-06 UTC）
+
+独立 `windows-v0.2.0` 发布提供 x64 Setup、Portable 与两个 SHA-256 校验文件。打包文件名与应用的 Release 检查使用同一版本命名，旧缓存可读。Windows 标签构建只有在单测和桌面回归通过后才上传 Release 资产，仓库 Latest 继续指向 macOS。
+
+在本机隔离安装目录运行真实 NSIS 0.1.0，再升级到 0.2.0。核对了安装注册版本、两次启动的应用版本、论文原记录及高亮笔记。测试卸载清除了安装注册、快捷方式及本次安装缓存，保留测试工作区和设置。另从 Portable 外层 EXE 启动，确认能进入首次引导、打开 Reader 并退出。两份 x64 二进制当前未签名。
+
+## 第十六阶段：长文摘要与来源校验（2026-11-06 UTC）
+
+按 macOS 1.10 的摘要流程处理超过 6,000 字符的长段，段落编号跨批不变。候选超过六条时立即滚动合并，合并最多处理十二条。引文须逐字出现在当批同一编号的正文切片，合并仅能使用输入中已校验的编号与引文组合。最终结论逐条翻译，点击来源时仅译文模式切回双语。
+
+桌面回归覆盖长段末尾、合并时序、来源核验、两种任务模型、重生成停止与输出截断后保留已保存摘要。真实测试中 TranslateGemma 4B 作为摘要模型曾生成到 Ollama 上下文截断；Windows 的本地 JSON 摘要请求现限制生成 2,048 token，并提示更换摘要模型后重试。
+
+## 第十五阶段：PDF 原页与译文组合（2026-11-06 UTC）
+
+对照 macOS 1.10 的 PDFKit facsimile，Windows 在 PDF 文字层的 Paper 双语和译文模式、Full Translation 中显示可翻页的原 PDF 预览。宽窗并排，窄窗堆叠，可折叠预览，也可打开带选择和批注的同一原页。预览按需渲染，便携包才生成 PNG。
+
+便携包把完整原 PDF 链接和已保存的图像放在抽取正文与译稿前。导出最多渲染前 120 页，停止后索引与译稿只引用已保存的 PNG。桌面回归覆盖组合布局、精确原页切换、停止和重启。已由 AMD 翻译的 15 页工作区副本用于核对全文、15 张 PNG 和原 PDF 哈希；121 页测试 PDF 用于验证页数限制、提示和完整原件。
+
+## 第十四阶段：普通全文分批、停止与续跑（2026-11-06 UTC）
+
+普通文本和 PDF 文字层的 Full Translation 改用 macOS 1.10 的相邻段落分批思路。保护公式、链接和嵌入资源后，每批正文最多 4,800 字符，逐批保存译文和处理状态。停止后重新打开，或在失败后点击 Resume unfinished batches，只请求未完成批次。译稿仍显示该批原文，迟到的取消响应不能覆盖存档。已有独立全文稿继续可读和导出，显式 Regenerate 时才改用新批次。
+
+新增桌面回归覆盖三批中的失败与取消、重新启动、Ctrl+Enter 续跑及保存。单元覆盖长段 Unicode、保护标记验证、设置切换和旧版记录识别。MinerU 结构化全文继续与 Reader 共享结果。
+
+## 第十三阶段：Reader 与结构化全文译稿共享（2026-11-06 UTC）
+
+对照 macOS 1.10 的结构化全文路径后，Windows 的 MinerU 全文改为复用 Reader 已完成的段落。新请求只处理未完成正文，失败位置保留原文，Reader 重试同步更新全文和导出。旧独立全文稿继续显示，首次使用新路径时才按当前 Reader 生成；按模型、翻译方向或分块设置切换缓存时保留对应的译文，全文标注沿用现有精确锚点检查。嵌入图片的数据 URL 在截取选区或连续翻译上下文之前去除，在线请求还会再次剔除完整的数据 URL。
+
+Electron 回归核对了四次未完成块请求、原文回退、单块重试及全文导出。AMD 扫描件真机验证了已有译文原样进入全文；另用真实 15 页论文通过界面导出并核对原 PDF、PNG 和外置图像。见 [AMD 真机记录](AMD_DEVICE_TEST.md)。
+
+## 第十二阶段：MinerU 一键安装与 Windows DirectML（2026-11-06 UTC）
+
+Windows 支持同时检测 MinerU 3.x 和 4.1+ 的 4.x 版本。4.x 通过本地 `mineru-kit parse` 解析所有页，Auto 使用 ONNX 设备选择，兼容模式固定 ONNX CPU。x64 无合适 NVIDIA CUDA 时，一键安装固定 MinerU 4.1.7；符合条件的 NVIDIA 新装保留 3.4.5 CUDA 路径。自动检测、版本验证、模型预载和回滚继续使用同一私有工具目录。RX 7800 XT 的独立安装及扫描件验证见 [AMD 真机报告](AMD_DEVICE_TEST.md)。
+
+## 第十一阶段：复查在线授权和旧译文（2026-11-06 UTC）
+
+按 macOS `16e01ac` 再核对选区和旧工作区。OpenAI 扩写选区时显示换模型提示，单次用户操作只提交一次；Ollama 仍会严格重译一次。早于 provider 设置的工作区按本地来源恢复缓存，打开时保留用户当前的 provider。清除工作区会在主进程撤销在线授权，保留独立加密的 key。Electron 验证这三项，1.10 增量映射增加到 21 项。真实 AMD 推理复测见 [设备报告](AMD_DEVICE_TEST.md)。
+
+## 第十阶段：同步 macOS 1.10 provider 与导入反馈（2026-11-05）
+
+重新获取 GitHub 后，macOS 主分支从 1.9.1 `33cfb933` 前进到 1.10.0 `16e01ac`。Windows 分支已合入这两个上游提交，并新增 [20 项 1.10 增量映射](MAC_1_10_GAPS.md)。本阶段首先补齐影响最大的在线/本地 AI 边界：Models 可显式选择 Ollama 或 OpenAI，四种在线任务模型与四种本地模型互不覆盖；模型列表只在用户点击时通过 `GET /v1/models` 获取，也允许手输 ID，不会自动选择付费模型或自动从本地回退云端。
+
+OpenAI key 不进入 settings、paper workspace 或 export，而是由 Electron `safeStorage` 使用当前 Windows 账户 DPAPI 加密。每次 app session 都必须重新允许在线发送；切换 provider、替换/删除 key 或撤销授权会取消在线请求并阻止后续批次。固定官方 Responses API 请求使用 `store:false`、禁用重定向，并拒绝 partial、refusal、非 completed、空输出和畸形 JSON；服务错误不会把 response body、key 或论文文本带回 UI。Settings 明确展示所发送的提取文字范围、PDF/图片不上传、API 与 ChatGPT 分开计费、`store:false` 不等于零保留，并提供经过严格白名单的 key、usage 与 data controls 小入口。
+
+provider、对应任务模型、翻译方向和最多 2,000 字符 style guide 已进入输出 cache namespace；本地/在线切换与重启会恢复各自的段落译文、摘要、全文译稿、解释和对应标注，但不会恢复在线许可。普通、Markdown 与选区提示词同步 1.10：单词、短语、标题、标签或站点名均视为完整翻译单元，不索要额外上下文；system 指令加入最多 300 字符论文标题、匹配术语和可选 style guide。专用 Electron 流程用受控在线响应实际核对 model、title、style，切换到 Ollama 后结果消失，切回 OpenAI 及重启后在线译文恢复且授权保持 Paused。
+
+PDF 导入也同步 1.9.2/1.10：确认文件或拖入后，header、侧栏和正文立即显示新文件名、已耗时秒数、Cancel Import，以及从 MinerU 日志归一的 layout / formula / text 阶段和本阶段计数；旧论文只在导入完整成功后才被替换。延迟 MinerU Electron 回归验证取消后旧 bookmark、正文和 workspace 数量保持不变，随后到达的成功结果也不能写回。开发运行使用独立 `PaperBridge Dev` user-data，避免复用下载版工作区。
+
+本阶段通过 **109/109 单元测试**、生产构建、主 Electron 流程、OpenAI settings/provider/result-variant 专项流程和 import progress/cancel 专项流程。OpenAI 专项还在延迟多批请求中撤销授权，核对仅发送一次、后续批次停止且迟到结果丢弃；额度/权限类全局错误同样只请求首段即终止长队列。因此 1.10 增量映射达到 **20 对齐、0 部分、0 缺失**。没有使用真实 OpenAI key 或付费推理。
+
+## 第九阶段：精确选区翻译保护（2026-11-05）
+
+对照 macOS `PaperReaderViewModel+Selection.swift` 后，Windows 补齐选区翻译的精确边界：翻译上下文围绕选中文字限制为 600 字符，解释上下文限制为 2400 字符；提示词用独立分隔符声明上下文只用于消歧、不可翻译，真正要翻译的选区另行标记。长度不超过 320 字符的选区若首次输出超过 `max(48, 选区长度 × 3)`，应用会显示 “Refining exact selection…” 并自动发送不含上下文的严格重译请求，避免模型把整段正文一起输出。缓存版本同步升级，旧的宽松结果不会被复用；原文与目标语言相同时直接返回选区，不浪费模型调用。
+
+新增单元测试覆盖居中上下文裁剪、提示词分隔、术语、过度延伸阈值与缓存版本；主 Electron 流程模拟首次过长输出，核对两次请求的提示内容、严格重译结果和随后缓存命中。本阶段通过 **98/98 单元测试**、生产构建和主 Electron 端到端流程。
+
+## 第八阶段：选区查询状态与取消（2026-09-21）
+
+对照 macOS `QuickSelectionView` 和 `SelectionInspectorView` 后，Windows 把选区查询状态统一到 Quick Selection 与展开的 Research Inspector。两处现在都会显示翻译/解释进行状态和 Cancel；完成后显示 Selection translated / explained，重复同一查询显示 Using cached quick lookup，失败显示在当前选区内。展开检查器同时补上当前选区的 Original / Translation 侧标识，避免同一段双语内容难以辨认。
+
+主 Electron 流程使用延迟本地服务，在完整检查器内启动翻译、主动取消、等待迟到响应并确认结果没有写回，然后重试成功并再次请求验证缓存命中；Quick Selection 也分别验证首次完成和缓存提示。生产构建及主流程通过，原有全局任务状态和 Stop 继续保留。
+
+## 第七阶段：完整 Overview 阅读地图（2026-09-21）
+
+继续对照 macOS `ReadingGuideBuilder` 和 `ReadingGuideView` 后，Windows 阅读地图不再用包含关系宽松匹配章节标题。它现在使用与 Mac 相同的五类主题、规范化编号/罗马数字标题，并且只接受完整标题、`标题:` 或 `标题 and …` 形式；每个摘录只能来自当前章节，章节内没有足够正文时不再误借下一章节。无可靠标题时仍回退到第一段可读正文，并明确提示先核对来源。
+
+Overview 界面补齐 Mac 的 “Find your way into the paper.” 引导、五类问题、完整来源摘录标签、翻译进度、Start Reading、View Original 和缺失章节免责声明。View Original 会进入 Paper 的 Original 模式；PDF 因而显示精确原页，文本论文显示原文重排预览。主 Electron 流程实际点击阅读地图并核对 Reader 块，验证两个顶部入口和 Original 状态，并保存目视截图。新增单元测试覆盖宽松标题拒绝、编号与罗马数字标题，以及短章节不借用下一节正文。本阶段通过 **96/96 单元测试**、生产构建和主 Electron 流程。
+
+## 第六阶段：响应式 Research Inspector（2026-09-21）
+
+对照 macOS `ContentView` 和 `SelectionInspectorView` 后，Windows 把原先 1190px 以下的固定浮层改为相同的 1400px 响应断点。窗口小于 1400px 时，检查器占据工作区自己的底部网格行，不再遮住正文；高度随窗口取约 30%，并限制为 190–340px。抽屉内容与 Mac 一样分为两个独立滚动列：左列处理当前选区，右列显示当前 Reader 段落解释和已存标注。PDF、Paper、Overview 或 Full Translation 选区不会再混入无关的 Reader 段落解释。窗口达到 1400px 后，检查器恢复为完整高度的右侧栏，并使用对应的侧栏关闭图标和无障碍名称。
+
+主 Electron 流程自动验证了 1320×820 的底部行、两列结构和动态高度，980×620 的 190px 最小高度与两列可用宽度，以及 1500×820 恢复右侧栏；随后再缩回 1320px 验证运行时断点切换。两张抽屉截图经过目视检查。逐论文设置回归也重新选择解释所属段落，确认布局变化后解释缓存、检查器开关、论文切换和重启恢复仍然正确。本阶段继续通过 **95/95 单元测试**、生产构建及主流程、逐论文设置、Markdown、标题、Reader Review、阅读历史和便签自动保存回归。
+
+## 第五阶段：Quick Selection 与高亮语义（2026-09-21）
+
+继续对照 macOS `QuickSelectionView` 和 `SelectionInspectorView` 后，Windows 不再在每次选文时强制打开研究检查器。检查器关闭时，正文右下角显示完整 Quick Selection 卡片，包含选文预览、Translate、Explain、取消任务、Amber / Cobalt / Coral、高亮移除、Save Term 与 Notes & More；检查器已打开时不会重复显示。翻译和解释结果现在可同时保留，快速术语保存可直接使用翻译结果。卡片在滚动导致选区离开时收起，并在 1320×820、最小 980×620 窗口内保持完整可见。
+
+高亮数据也改为 macOS 的单标注语义：同一 scope、页/块、原译文侧、文字和偏移只能有一种颜色，选择新颜色会替换原色；删除改为显式 Remove Highlight，并只移除颜色而保留独立笔记。旧 Windows `blue` 记录继续按 Cobalt 显示，用户下次换色时会写为新 `teal` 值。检查器标题补上与 macOS 相同的标注撤销入口。
+
+本阶段验证为 **95/95 单元测试**、生产构建，以及 `test:e2e`、`test:markdown`、`test:heading-parity-e2e`、`test:reader-review-e2e`、`test:reopen-mineru`、`test:paper-settings-e2e` 和 `test:note-autosave-e2e`。主 Electron 流程实际验证 Quick Selection 保存术语、Notes & More、双结果并存、单色替换、显式删除、笔记保留和逐步撤销。
+
+## 第四阶段：翻译范围与 Paper 标注原位返回（2026-09-21）
+
+继续按 macOS 总映射复查后，修正了两个可直接复现的小功能差距。Translation Range 现在由实际可执行队列统一计算：排除已完成块、资源块和参考文献，包含待译/失败标题；当前章节、Abstract & Conclusion、任意章节与 All unfinished 的数字和禁用状态均与点击后的任务一致。
+
+Paper 预览和 Reader 的块级笔记/高亮现在保存独立 `paper` / `reader` 作用域和原译文侧。同一段同一偏移可在两个视图分别保存；正文只显示本视图对应侧的记录，列表和 Markdown 导出明确标出来源，点击 Paper 记录会回到 Paper 原块、恢复 Bilingual 并精确重选文字，同时接入 Back / Forward。旧版没有 scope 的记录继续按 Reader 处理。Paper 本身也与 macOS 一样提供 Original / Bilingual / Translation 三种完整文档模式：PDF 的 Original 直接显示精确原页，后两者显示完整重排文档；Paper exact PDF 与额外 Original 标签的同页同词标注也以 `paperPdf` / `pdf` 隔离并返回创建视图，旧 PDF 记录默认 Original。非 MinerU 重排预览不再在第 12 块截断，因此长文后半部分及 Paper 译文都可直接选择和标注。第三个工作区按 macOS 命名为 Overview，并把原先散落在 Paper 的阅读地图、提取质量 Review 与 AI 双语摘要合到同一页；内部仍接受旧 `Summary` 状态，已保存位置无需迁移。
+
+本阶段验证为 **95/95 单元测试**、生产构建，以及 `test:markdown`、`test:reader-review-e2e`、`test:note-autosave-e2e`、`test:heading-parity-e2e`、`test:reading-history-e2e` 和 `test:e2e`。`test:markdown` 还验证了 Paper→Reader 视图隔离、Paper 精确回跳及随后 Back / Forward 往返；`test:heading-parity-e2e` 验证非 MinerU Paper 的第 14 块实际渲染。当前剩余边界是复杂 Markdown 跨节点/跨块坐标和更多真实论文并排验收。
+
+## 第三阶段：设置、自动发现、更新恢复与真实安装闭环（2026-09-21）
+
+这一阶段补齐了上一轮明确列出的 Settings 小入口，并把只做静态/模拟验证的交付链路推进到真实安装器。macOS `origin/main` 同时从 1.9 `73951d9` 前进到 1.9.1 `33cfb933`；1.9.1 新增行为见 [12 项增量差距报告](MAC_1_9_1_GAPS.md)，不混入原有 111 项历史统计。
+
+| 本次补齐 | 行为与验证 |
+| --- | --- |
+| 六分页 Settings | Local AI、Parsing、Models、Reading、Updates、Local Data；980×620 与 150% Electron 缩放可用，键盘 Left/Right/Home/End 导航通过。 |
+| Settings 推荐模型 | 与引导共用 3 个翻译模型和 6 个助手模型；支持 RAM 建议、下载/取消/重试、Use、四任务角色、跨分页进度、重启恢复，迟到完成不会写错论文或 Ollama 端点。 |
+| MinerU Auto-Detect | 设置按钮、导入、安装状态共用 resolver：优先兼容的应用私有 MinerU，再检查 PATH；显式路径保持权威。检测中取消、重复任务和原生菜单启动新任务均有 identity guard。 |
+| 更新提示恢复 | 仅缓存校验后的 release tag 与精确 installer 名，启动时按当前版本重新计算；新版提示跨重启保留，过期刷新失败时保留 stale 提示并允许重试，损坏/未来缓存不能抑制检查。 |
+| 安装路径保护 | 真实测试暴露 268 字符自定义路径会让 electron-builder NSIS 旧版原子移除失败；生产 assisted installer 现固定安全默认目录，测试在变更系统前计算最长安装路径并拒绝 ≥260 字符的 fixture。 |
+| 真实 NSIS 生命周期 | 最终安装包完成首装、启动、创建练习论文与高亮/笔记、同版本重装、重新打开并恢复数据、卸载、确认注册/快捷方式/程序已移除且论文设置仍保留。测试前检查 HKCU/HKLM、32/64 位视图、进程、快捷方式和 updater cache；清理只处理本次验证过的安装和匹配 SHA-256 的缓存。 |
+
+最终验证为 **83/83 单元测试**，以及 `test:e2e`、`test:settings-models-e2e`、`test:model-pull-e2e`、`test:paper-settings-e2e`、`test:onboarding-e2e`、`test:mineru-detect-e2e`、`test:update-restart-e2e`、`test:packaged` 和 opt-in `installer-e2e`。最新真实 AMD OCR 使用空 `mineruExecutable`，由应用自动发现私有 MinerU 3.4.5；约 **40.7 秒**得到 `pdfBlocks=0`、`mineruBlocks=5` 并完成中文翻译，Ollama 报告 `modelBytes = modelVramBytes = 2,875,656,764`。
+
+最终 NSIS、portable 和 unpacked 主程序的 Authenticode 状态仍为 **NotSigned**。安装/重装/卸载已经真机验证；代码签名、正式 Windows Release、跨版本更新安装、NVIDIA/纯 CPU/更多 AMD 设备仍是发布前边界。
+
+## 第二阶段：首次使用和系统交互补齐
+
+在下述整软件复查之后，继续实现 Mac 对应的首次引导和安装细节。映射仍为 **43 对齐、68 部分、0 缺失**，保留尚待真机与复杂文档验收的部分状态。
+
+| 本次补齐 | 行为和边界 |
+| --- | --- |
+| 六步 Getting Started | 欢迎、Ollama、翻译模型、可选 MinerU、可选助手、就绪总结；首次启动自动显示，保存页码，支持跳过及从 Settings / Help 重开，结束可打开 PDF 或练习论文。首次显示只检测环境。 |
+| Mac 对应的九个模型 | TranslateGemma 4B / 12B / 27B 和六个助手模型，展示下载量、用途、已装及已选状态；下载成功确认后才应用任务角色，保留已装专用助手，支持取消及重试。内存建议使用系统 RAM，不用 Windows 可能截断的 AdapterRAM 推断显存。 |
+| 安装组件选择 | 可分别选择 Ollama、当前任务模型、MinerU；只选模型时仍会检查必要的 Ollama 依赖，只装 MinerU 不下载 Ollama 模型。未选择 MinerU 时不会改写已有路径或后端。 |
+| MinerU 修复入口 | 显式 Repair / update MinerU 重装应用支持的固定版本；沿用私有环境和激活失败回滚。检测期间取消也不会再发送错误的安装完成状态。 |
+| 原生菜单联动 | 导入、导出、翻译、摘要、选区、撤销等依据论文、选区和运行状态启停；首次引导期间禁用背景命令。原生菜单新增 Getting Started 入口。 |
+| 引导交互边界 | 修复 Tab 可跳入背景 Settings 绕过安装锁的问题；背景区域设为 inert，焦点留在弹窗内，忙时 Esc / 关闭 / 换页无效，拖入 PDF 不能绕过弹窗。结束保存期间阻止重复操作，保存失败在引导内显示。 |
+| 官网链接 | 官方 Ollama 下载和模型详情在外部浏览器打开；仅允许对应官方 HTTPS 路径，拒绝其它新窗口地址。 |
+| 启动配置一致性 | 先恢复最后论文的任务设置，再显示引导；环境诊断按当前端点和 MinerU 路径校验，旧配置的迟到结果不能覆盖当前模型状态。 |
+
+本阶段 **69/69 单元测试、生产前端构建、下列 9 个 Electron 回归套件通过**：
+
+- 新增 `test:onboarding-e2e`、`test:onboarding-startup-e2e`、`test:setup-components-e2e`、`test:menu-state-e2e`、`test:menu-ui-e2e`、`test:official-links-e2e`。
+- 再次通过 `test:e2e`、`test:paper-settings-e2e`、`test:model-pull-e2e`。
+- 引导截图在 1320×820 和 980×620 两种视口下目视检查；小窗口内容可滚动，底部按钮完整可用。下载/安装中连续 Tab 与 Shift+Tab 不会进入背景；延迟保存时双击完成只打开一次 PDF 对话框。
+
+安装与下载交互使用可控本地服务/IPC，本轮没有重新安装本机已有工具或下载九个大模型。真实硬件读取确认 **RX 7800 XT + AMD 集显、系统可识别物理内存约 63.15 GiB、无 NVIDIA CUDA**；这项读取不等同于重新测试推理速度。
+
+本阶段重新运行 `npm run dist` 生成 NSIS 和 portable；`test:packaged` 通过首次引导、自动检测面板和 Reader 启动检查。两个可执行文件均为 **NotSigned**。六个新增桌面回归命令已接入 Windows GitHub Actions，远端结果以实际工作流运行结果为准。
+
+## 第一阶段：整软件复查和数据正确性
+
+本轮以本地 `origin/main` 的 `73951d9`（macOS 1.9）源码为基线，复查 Windows 0.2 的导入、阅读、翻译、摘要、选区、标注、恢复、安装和导出流程。重点检查操作顺序变化后是否仍保存正确的数据，以及小功能是否真正使用对应设置。
+
+[111 项映射](FEATURE_MAPPING.md)仍为 **43 对齐、68 部分、0 缺失**。本轮结合源码比较、单元测试、Electron 流程回归修复了下列问题；未进行同一论文在 Mac 真机上的全流程并排验收，因此不据此提高映射状态或计算完成百分比。
+
+## 本轮修复的 12 类问题
+
+| # | 复查发现的问题 | 已完成修改 | 验证依据 |
+| --- | --- | --- | --- |
+| 1 | 切换语言、模型或 Ollama 地址后，旧译文仍可能被当作当前设置的已完成结果；解释缓存缺少模型和地址区分。 | 段落译文、摘要、全文译稿按相关设置和解析来源分别保存；只有原文仍匹配时才恢复。解释同时校验段落、语言、模型、地址和原文。缺少设置来源的旧解释保留但不冒充新设置结果。 | `output-cache.test.cjs`、`paper-settings-e2e.cjs`。 |
+| 2 | 更换输出设置或 PDF/MinerU 来源时，译文标注可能跟错译稿；已有摘要、全文或便签时，手动解析可能直接替换阅读源。 | 译文侧笔记、高亮跟随对应输出版本恢复；不兼容原文不恢复旧锚点。手动 MinerU 保留已有阅读工作，显式切换来源后保留旧摘要/全文并标明过期。 | `output-cache.test.cjs`、`task-isolation-e2e.cjs`。 |
+| 3 | 导入、重新提取、粘贴和 AI 任务缺少统一的取消边界；取消导入后晚到的 MinerU 成功或错误可能影响后来打开的论文。 | 导入纳入任务状态，运行期间阻止冲突操作；PDF.js 逐页提取进度、任务结果、错误和结束回调校验当前任务，避免写入新工作区。MinerU IPC 进度仍未附带任务 ID。 | `task-isolation-e2e.cjs`覆盖忙时拖入及取消后晚到的成功/失败。 |
+| 4 | 选区 A 的延迟解释可能出现在选区 B 下；选中文字解释忽略独立解释语言，译文侧上下文也可能取原文。 | 结果绑定选区身份；改选、切换解释语言时取消旧请求。选区解释使用所选解释语言，译文侧使用译文上下文；缓存包含地址、语言和匹配术语。 | `reader-review-e2e.cjs`使用延迟本地假服务、French 提示检查和 DOM 变化监测。 |
+| 5 | 撤销书签或高亮会恢复整篇论文快照，连后来生成的译文、摘要和设置一起回滚。 | 注释和书签仅撤销相关字段。结构编辑撤销恢复原结构及受影响段落原译文，保留未改段落新结果、后写便签正文和当前设置；保留后写摘要/全文并标为过期。无法唯一定位的新注释保留并提示复核。 | `paper-undo.test.cjs`及 `reader-review-e2e.cjs`中的“书签→翻译→撤销”。 |
+| 6 | 启动时用最近修改的图书馆条目代替真正最后打开的论文。 | 单独保存最后打开记录；打开旧论文或修改另一篇的标签不会混淆下次启动恢复。 | `last-opened-e2e.cjs`跨启动验证最后打开 B，而图书馆最近修改项仍为 A。 |
+| 7 | Settings 手动模型下载没有可靠取消，也可能与重复下载或一键安装同时运行。 | 模型下载使用流式进度、独立取消和互斥状态；取消后等待请求结束再释放状态，旧进度及成功消息不能污染重试。 | `model-pull.test.cjs`、`model-pull-e2e.cjs`覆盖取消、重复请求、与安装互斥、晚到结果及重试。 |
+| 8 | 保存了最大翻译分块长度，却没有设置入口。 | Settings 增加 500–6000 字符滑块，按论文保存；改变长度只切换相关段落翻译缓存，摘要及全文输出保持对应状态。 | `paper-settings-e2e.cjs`及 `output-cache.test.cjs`。 |
+| 9 | 搜索过滤会让目录、书签或来源跳转找不到目标；“当前章节”取最后点击段落，未随滚动更新。 | 导航前清搜索；Reader 滚动保存当前可见段落，翻译范围据此选择章节。 | `reader-review-e2e.cjs`覆盖搜索后目录跳转、长文不点击正文而滚动切换章节。 |
+| 10 | Analysis、双语和便携导出遗漏书签及没有便签的高亮，部分便签未标明来源侧或失效状态。 | 两种 Markdown 和其 bundle 内容包含书签、各阅读视图的高亮/笔记、原文/译文侧、PDF 页码及需复核提示。 | `annotations-markdown.test.cjs`；`reader-review-e2e.cjs`通过真实导出 UI 检查仅高亮加书签的两份内容。 |
+| 11 | 从译文侧保存术语时方向错误；重复词追加冲突项，超长词或满表会静默截断、挤掉旧项。 | 按选区所在侧决定方向；同词同方向替换；160/300 字和 500 条上限给出明确错误。 | `reader-review-e2e.cjs`验证 Chinese→English 方向和重复替换。 |
+| 12 | 拖入多个文件会被直接拒绝，即使其中包含可用 PDF 也无法导入。 | 在拖入文件中选择第一个 PDF；保留单文件导入和重复恢复行为。 | `test:e2e`混合文件拖入流程。 |
+
+实现入口：[主界面和任务控制](src/main.jsx)、[输出缓存](src/outputCache.mjs)、[撤销](src/paperUndo.mjs)、[阅读记录导出](src/annotationsMarkdown.mjs)、[模型下载](electron/model-pull.cjs)、[本地存储](electron/storage.cjs)。
+
+## 验证范围
+
+本轮 **53/53 单元测试、生产前端构建及以下 8 个 Electron 流程均已通过**。Electron 流程使用各自的测试工作区，其中 AI 交互测试使用本地假 Ollama 服务或受控 IPC，验证状态和数据正确性；它们不构成真实模型质量或安装器兼容性结论。
+
+| 命令 | 本轮验证内容 |
+| --- | --- |
+| `npm run test:e2e` | 主工作流、快捷键、进度、标注、PDF 和混合文件拖入。 |
+| `npm run test:paper-settings-e2e` | 双论文设置切换/重启、分块滑块、解释缓存及检查器恢复。 |
+| `npm run test:last-opened-e2e` | 最后打开论文独立于最近修改顺序。 |
+| `npm run test:model-pull-e2e` | 下载流、进度、取消、互斥与重试。 |
+| `npm run test:reader-review-e2e` | 撤销不丢译文、搜索导航、滚动章节、选区任务、解释语言、术语方向、导出阅读记录。 |
+| `npm run test:task-isolation-e2e` | 导入取消后迟到成功/错误隔离，手动 MinerU 保留已有阅读源及输出。 |
+| `npm run test:markdown` | 结构化资源、公式、表格和选区行为。 |
+| `npm run test:reopen-mineru` | 已解析论文重开后的结构与资源。 |
+
+本轮 `npm run test:live-ocr` 在 RX 7800 XT 上再次通过，耗时约 **50.8 秒**：图像型 PDF 的直接文本块为 **0**，MinerU 得到 **5** 个块并完成真实中文翻译；Ollama 返回 `modelBytes = modelVramBytes = 2,875,656,764`，本次模型全部放入显存。已有[AMD 真机报告](AMD_DEVICE_TEST.md)另记录一键安装、真实本地模型及 15 页双栏论文。
+
+清晰合成图像页的 OCR 通过不能代表低清扫描、倾斜、多栏或复杂公式扫描件全部通过。NVIDIA CUDA、纯 CPU 和其它 AMD 设备仍需要分别验收。
+
+本轮 `npm run dist` 已成功生成 NSIS 安装包和 portable 可执行文件，`npm run test:packaged` 启动检查通过。两个产物的 `Get-AuthenticodeSignature` 结果均为 **NotSigned**，仍属未签名预览；本次构建与启动通过不代表正式签名、安装/卸载及更新升级流程已经验收。
+
+测试产物保存在被 Git 忽略的 `windows/test-artifacts/`。其中 `reader-review-requests.json` 为本地假服务的请求记录，`reader-review-exports.json` 为导出 UI 传出的 Markdown，用于复查本轮回归；它们不是用户论文或真实模型效果样本。
+
+## 仍值得补齐的项目
+
+| 优先级 | 剩余差距 | 完成验收点 |
+| --- | --- | --- |
+| P1 | 新增组件选择与 MinerU 修复还需更多真实安装环境验收。 | 在干净机器、损坏旧环境、激活失败、取消和重启的条件下检查实际安装及回滚；现有新增流程验证使用受控安装响应。 |
+| P1 | Windows 尚未完成正式签名与跨版本更新交付。 | 真实首装/同版本重装/卸载已通过；仍需签名后的 NSIS/portable、正式 Windows Release、下载校验和旧版本→新版本更新安装。当前应用检查新版并打开发布页。 |
+| P1 | macOS 1.9.1 笔记可靠性第一批已补齐。 | 350 ms autosave、离开/退出 flush、原始空白、会话 Undo、paper/selection identity、Saving/Saved/Error/Retry、固定状态栏及 `needsReview` 隔离均有单元和 Electron 回归；继续做真实复杂文档并排验收。 |
+| P2 | macOS 1.9.1 阅读历史与标题体验已补齐。 | 50 条 Back/Forward、全 surface 位置恢复与代次保护，以及独立标题分类、翻译重试、三模式、两侧标注、动作与导出均有专项回归；继续做真实复杂论文并排验收。 |
+| P2 | 高 DPI、最小窗口、复杂结构和真实扫描件覆盖不足。 | 在多种缩放与分辨率下验证面板、选区、滚动位置；同一批普通/双栏/扫描/公式图表论文与 Mac 真机逐项比较。 |
+| P2 | NVIDIA CUDA 与更多设备未实测。 | 在 NVIDIA、纯 CPU 及其它 AMD 实机检查安装、推理后端、VRAM、失败降级、取消和恢复。 |
+
+继续使用同仓库 Windows 分支和[现有 PR](https://github.com/haoyunLi/PaperBridge/pull/1)维护源码与测试；macOS 和 Windows 分别构建、分别发布。当前结论是本轮列出的可复现问题已修复，接近一比一体验仍需完成上述交互和设备验收。

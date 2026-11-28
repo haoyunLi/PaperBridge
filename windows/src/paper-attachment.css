@@ -1,0 +1,16 @@
+.paper-attachment {
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+.paper-attachment img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+.paper-attachment pre {
+  overflow-x: auto;
+  white-space: pre;
+}
+.paper-attachment [role="alert"] {
+  color: #943926;
+}

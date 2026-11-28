@@ -1,0 +1,182 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowRightLeft, BookOpen, Cpu, Download, FileText, HardDrive, RefreshCw, Settings2, Square } from 'lucide-react';
+import SettingsModels from './SettingsModels.jsx';
+import OllamaMemory from './OllamaMemory.jsx';
+import OpenAISettings from './OpenAISettings.jsx';
+import { ReadingAppearanceControls } from './ReadingAppearance.jsx';
+import { describeAdapter } from './hardwareDisplay.mjs';
+import { isMineruReady } from '../electron/mineru-readiness.mjs';
+import { savedStyleGuide } from '../electron/translation-style.mjs';
+import { countCharacters } from './sectionHeadings.mjs';
+import './settings.css';
+
+const api = window.paperBridge;
+const sections = [
+  ['setup', 'Local AI', Download], ['parsing', 'Parsing', FileText], ['models', 'Models', Cpu],
+  ['reading', 'Reading', BookOpen], ['updates', 'Updates', RefreshCw], ['data', 'Local Data', HardDrive]
+];
+
+function mineruDeviceText(runtime) {
+  if (runtime?.description) return 'MinerU: ' + runtime.description + '.';
+  if (runtime?.checked && runtime.torch) {
+    const cuda = runtime.cuda ? 'available (' + (runtime.devices || []).join(', ') + ')' : 'unavailable';
+    return 'MinerU Python: PyTorch ' + runtime.torch + '; CUDA ' + cuda + '.';
+  }
+  return runtime?.reason || '';
+}
+
+function Group({ title, children }) {
+  return <section className="settings-section"><h3>{title}</h3>{children}</section>;
+}
+
+export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, archiveCleanup, onRetryArchiveCleanup, taskSetup, initialSection = 'setup',
+  modelTools, openAITools, hardwareTools, updates }) {
+  const [section, setSection] = useState(taskSetup ? 'models' : initialSection);
+  const [memoryCheck, setMemoryCheck] = useState(0);
+  const [parserCheck, setParserCheck] = useState(0);
+  const [parser, setParser] = useState(null);
+  const [checkingParser, setCheckingParser] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [parserError, setParserError] = useState('');
+  const checkUpdateButton = useRef(null);
+  const mounted = useRef(true);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const { models, ollamaError, pulling, cancelling, progress, message, error, name, onName,
+    onRefresh, onDownload, onCancel, onUse, onRecommendation } = modelTools;
+  const { hardware, mineruRuntime, checking, onCheck, error: hardwareError } = hardwareTools;
+  const locked = Boolean(busy || pulling);
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
+  const pdfOnly = settings.pdfExtractionMode === 'pdfOnly';
+
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (section !== 'parsing') return;
+    let current = true;
+    setCheckingParser(true); setParser(null); setParserError('');
+    api.mineruStatus(settings.mineruExecutable, settings.mineruBackend).then(result => { if (current) setParser(result); })
+      .catch(cause => { if (current) setParserError(cause.message); })
+      .finally(() => { if (current) setCheckingParser(false); });
+    return () => { current = false; };
+  }, [section, settings.mineruExecutable, settings.mineruBackend, parserCheck]);
+
+  async function detectMineru() {
+    if (detecting || locked) return;
+    const previousPath = settingsRef.current.mineruExecutable;
+    setDetecting(true); setParserError('');
+    try {
+      const result = await api.detectMineru(settingsRef.current.mineruBackend);
+      if (!mounted.current || settingsRef.current.mineruExecutable !== previousPath) return;
+      if (lockedRef.current) { setParserError('Another task started during detection. Finish that task, then use Auto-Detect again.'); return; }
+      if (!isMineruReady(result) || !result.executable) throw new Error(result.runtime?.reason || result.reason || 'No compatible MinerU installation was found. Use Local AI setup to install it.');
+      onSettings({ mineruExecutable: result.executable }); setParser(result);
+    } catch (cause) { if (mounted.current) setParserError(cause.message); }
+    finally { if (mounted.current) setDetecting(false); }
+  }
+
+  function chooseSection(value) {
+    setSection(value);
+    document.querySelector('.settings-content')?.scrollTo({ top: 0 });
+  }
+  function navigateTabs(event, index) {
+    let next = index;
+    if (event.key === 'ArrowRight') next = (index + 1) % sections.length;
+    else if (event.key === 'ArrowLeft') next = (index + sections.length - 1) % sections.length;
+    else if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = sections.length - 1;
+    else return;
+    event.preventDefault(); chooseSection(sections[next][0]); document.getElementById(`settings-tab-${sections[next][0]}`)?.focus();
+  }
+
+  return <div className="settings-panel">
+    <nav className="settings-tabs" role="tablist" aria-label="Settings sections">{sections.map(([id, label, Icon], index) => <button
+      key={id} id={`settings-tab-${id}`} role="tab" aria-controls={`settings-section-${id}`} aria-selected={section === id}
+      tabIndex={section === id ? 0 : -1} onClick={() => chooseSection(id)} onKeyDown={event => navigateTabs(event, index)}><Icon size={16} />{label}</button>)}</nav>
+    {(pulling || message || error) && <div className="settings-download-status" role={error ? 'alert' : 'status'}>
+      <div><strong>{pulling ? progress?.status || 'Preparing model download…' : error || message}</strong>
+        {pulling && Number(progress?.total) > 0 && <progress aria-label="Model download progress" value={progress.completed || 0} max={progress.total} />}</div>
+      {pulling && <button className="button outline" disabled={cancelling} onClick={onCancel}><Square size={14} />{cancelling ? 'Cancelling…' : 'Cancel download'}</button>}
+    </div>}
+    <div className="settings-content" role="tabpanel" id={`settings-section-${section}`} aria-labelledby={`settings-tab-${section}`}>
+      {section === 'setup' && <>
+        <Group title="Set up local AI"><p>Detect this PC's local tools, install the components you choose, or follow the Getting Started guide.</p>
+          <div className="row"><button className="button outline" disabled={locked} onClick={onOnboarding}>Getting Started guide</button><button className="button blue" disabled={locked} onClick={onOpenSetup}><Download size={16} />Detect and install local AI</button></div>
+          {ollamaError && <p className="settings-error">{ollamaError} Start Ollama or use local AI setup before downloading.</p>}
+        </Group>
+        <SettingsModels settings={settings} models={models} hardware={hardware} busy={locked || Boolean(ollamaError)} pullProgress={progress} onUse={onUse} onDownload={onRecommendation} />
+      </>}
+      {section === 'parsing' && <>
+        <Group title="PDF parsing"><div className="settings-status-row"><div><strong>{checkingParser ? 'Checking MinerU…' : isMineruReady(parser) ? 'MinerU is ready' : parser?.compatible ? 'MinerU runtime check failed' : 'MinerU is unavailable'}</strong>
+          <p>{isMineruReady(parser) ? `${parser.version} · ${parser.executable}` : parser?.runtime?.reason || parser?.reason || 'Check a local installation or use automatic discovery.'}</p></div>
+          <button className="button outline" disabled={checkingParser || detecting} onClick={() => setParserCheck(value => value + 1)}>Check again</button></div>
+          <fieldset disabled={locked || detecting}>
+            <label>PDF extraction mode<select value={settings.pdfExtractionMode || 'mineruPreferred'} onChange={event => onSettings({ pdfExtractionMode: event.target.value })}><option value="mineruPreferred">MinerU, then selectable PDF text</option><option value="mineruOnly">MinerU only</option><option value="pdfOnly">Selectable PDF text only (no OCR)</option></select></label>
+            <p>{pdfOnly ? 'Uses the existing text layer without installing tools or running OCR.' : settings.pdfExtractionMode === 'mineruOnly' ? 'Requires compatible MinerU. If parsing fails, the original PDF remains available.' : 'Tries structured MinerU extraction first; if it fails, uses the PDF text layer.'}</p>
+            <label>MinerU backend<select aria-label="MinerU backend" disabled={pdfOnly} value={settings.mineruBackend || 'auto'} onChange={event => onSettings({ mineruBackend: event.target.value })}><option value="auto">Auto (MinerU selects available acceleration)</option><option value="pipeline">Compatibility mode (ONNX CPU / legacy pipeline)</option></select></label>
+            {!pdfOnly && isMineruReady(parser) && mineruDeviceText(parser.runtime) && <p role="status">{mineruDeviceText(parser.runtime)}</p>}
+            <label>MinerU executable<input disabled={pdfOnly} value={settings.mineruExecutable} placeholder="mineru.exe or leave blank to auto-detect" onChange={event => onSettings({ mineruExecutable: event.target.value })} /></label>
+            <button className="button outline" disabled={pdfOnly || checkingParser} onClick={detectMineru}>{detecting ? 'Detecting…' : 'Use Auto-Detect'}</button>
+          </fieldset>
+          {parserError && <p className="settings-error" role="alert">{parserError}</p>}
+        </Group>
+        <Group title="Original PDF · no OCR"><p>The original-page viewer keeps the PDF layout, figures and formulas. Existing selectable text can be translated without MinerU. Image-only pages need OCR before translation or summary.</p></Group>
+        <Group title="What MinerU adds"><p>Structured reading order, headings, images, captions, tables and LaTeX formulas. MinerU is optional; its output and the original PDF remain stored locally.</p></Group>
+      </>}
+      {section === 'models' && <>
+        {taskSetup && <p className="settings-download-status" role="status">{taskSetup.message}</p>}
+        <Group title="AI provider"><label>AI provider<select value={settings.aiProvider || 'ollama'} disabled={locked} onChange={event => onSettings({ aiProvider: event.target.value })}><option value="ollama">Ollama (Local)</option><option value="openai">OpenAI (Online)</option></select></label><p>Ollama is the default. OpenAI requires your own API key, explicit task models, and permission for each session. PaperBridge never switches providers automatically.</p></Group>
+        {settings.aiProvider === 'openai' ? <OpenAISettings settings={settings} onSettings={onSettings} locked={locked} tools={openAITools} /> : <>
+        <Group title="Ollama"><fieldset disabled={locked}><label>Ollama URL<input value={settings.ollamaBaseURL} onChange={event => onSettings({ ollamaBaseURL: event.target.value })} /></label><button className="button outline" onClick={onRefresh}><RefreshCw size={15} />Refresh models</button></fieldset>{ollamaError && <p className="settings-error" role="alert">{ollamaError}</p>}</Group>
+        <Group title="Task models"><fieldset disabled={locked}><div className="settings-grid">
+          {[['translationModel', 'Translation model'], ['summaryModel', 'Summary model'], ['explainModel', 'Explanation model'], ['quickLookupModel', 'Quick lookup model']].map(([key, label]) => <label key={key}>{label}
+            <select aria-label={label} value={settings[key] || ''} onChange={event => onSettings({ [key]: event.target.value })}>
+              {!settings[key] && <option value="" disabled>Choose an installed model</option>}
+              {[...new Set([settings[key], ...models].filter(Boolean))].map(value => <option key={value}>{value}</option>)}
+            </select>
+          </label>)}
+        </div></fieldset><p>Quick lookup handles selected-text translation and explanation. A smaller model can respond sooner.</p></Group>
+        <Group title="Download another model"><p>Enter an Ollama model name, or browse the recommendations in Local AI.</p><div className="row"><input aria-label="Model to download" value={name} disabled={locked} placeholder="translategemma:4b" onChange={event => onName(event.target.value)} /><button className="button blue" disabled={locked} onClick={() => onDownload()}>Download model</button></div></Group>
+        <Group title="Graphics acceleration"><div className="settings-status-row"><p>{hardware?.adapters?.length ? hardware.adapters.map(describeAdapter).join(' · ') : 'No graphics adapter reported by Windows.'}</p><button className="button outline" disabled={checking} onClick={() => { setMemoryCheck(value => value + 1); onCheck(); }}><RefreshCw size={14} />{checking ? 'Checking…' : 'Check'}</button></div>
+          <p>{hardware?.cudaDriver?.length ? (hardware.cudaVersion ? `The NVIDIA driver supports CUDA up to ${hardware.cudaVersion}.` : 'NVIDIA driver detected. Its supported CUDA version is unavailable.') : hardware?.adapters?.some(adapter => adapter.vendor === 'AMD') ? 'AMD detected. Ollama may use supported ROCm or Vulkan hardware.' : 'Ollama chooses its available CPU or GPU backend automatically.'}</p>
+          <p>{mineruDeviceText(mineruRuntime) || 'Check the MinerU runtime to see its acceleration status.'}</p>
+          <OllamaMemory key={settings.ollamaBaseURL} baseURL={settings.ollamaBaseURL} revision={memoryCheck} allowUnload disabled={locked} />
+          {hardwareError && <p className="settings-error" role="alert">{hardwareError}</p>}
+        </Group></>}
+      </>}
+      {section === 'reading' && <fieldset disabled={locked}>
+        <Group title="Translation direction"><div className="settings-grid"><label>Source language<select value={settings.sourceLanguage} onChange={event => onSettings({ sourceLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label><label>Target language<select value={settings.targetLanguage} onChange={event => onSettings({ targetLanguage: event.target.value })}>{languages.map(value => <option key={value}>{value}</option>)}</select></label></div><button className="button ghost" onClick={() => onSettings({ sourceLanguage: settings.targetLanguage, targetLanguage: settings.sourceLanguage })}><ArrowRightLeft size={15} />Swap languages</button></Group>
+        <Group title="Translation chunking"><label>Maximum translation chunk<input type="range" min="500" max="6000" step="100" value={settings.maxParagraphChars} onChange={event => onSettings({ maxParagraphChars: Number(event.target.value) })} />{settings.maxParagraphChars} characters</label><p>Sets the maximum size of each translation request. Reader paragraphs remain visually intact.</p></Group>
+        <Group title="Translation style guide"><label>Optional translation instructions<textarea value={settings.translationStyleGuide || ''} placeholder="For example: concise academic Chinese; keep established English acronyms." onChange={event => onSettings({ translationStyleGuide: savedStyleGuide(event.target.value) })} /></label><p>{countCharacters(settings.translationStyleGuide || '')}/2,000 characters. Sent to the selected provider with translation requests. Do not include secrets.</p></Group>
+        <Group title="Reading appearance"><ReadingAppearanceControls settings={settings} onSettings={onSettings} /></Group>
+      </fieldset>}
+      {section === 'updates' && <><Group title={`Windows updates · ${updates.version || 'unknown version'}`}>
+        <label className="settings-checkbox"><input type="checkbox" checked={settings.autoCheckUpdates !== false} onChange={event => onSettings({ autoCheckUpdates: event.target.checked })} />Check official Windows releases at most once per day</label>
+        <label className="settings-checkbox"><input type="checkbox" disabled={settings.autoCheckUpdates === false} checked={settings.autoDownloadUpdates === true} onChange={event => onSettings({ autoDownloadUpdates: event.target.checked })} />Download new Windows releases in the background</label>
+        <div className="row">
+          <button className="button outline" ref={checkUpdateButton} disabled={updates.checking} onClick={updates.onCheck}><RefreshCw size={14} />Check now</button>
+          {updates.onUseUpdate && <button className="button blue" disabled={updates.updateActionBusy} onClick={updates.onUseUpdate}>{updates.updateActionLabel}</button>}
+          {updates.downloadLabel && <button className={updates.onUseUpdate || updates.filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={updates.onDownload}>{updates.downloadLabel}</button>}
+          {updates.availableVersion && <button className="button outline" onClick={updates.onViewRelease}>View Windows {updates.availableVersion} release</button>}
+          {updates.availableVersion && <button className="button ghost" disabled={updates.updateActionBusy} onClick={event => updates.onSkip(event, checkUpdateButton.current)}>Skip this version</button>}
+        </div>
+        {updates.status && <p role="status">{updates.status}</p>}
+        {updates.fileMessage && <p role="status">{updates.fileMessage}</p>}
+        {updates.readySetupTag && <label className="settings-checkbox"><input type="checkbox" checked={updates.setupOnClose === updates.readySetupTag} disabled={updates.updateActionBusy} onChange={event => updates.onScheduleSetup(event.target.checked ? updates.readySetupTag : '')} />Open Windows {updates.availableVersion} Setup when I close PaperBridge</label>}
+        {updates.filePhase === 'ready' && updates.portableHandoff && <p>PaperBridge saves your work and closes. Double-click the selected update in File Explorer.</p>}
+        {updates.filePhase === 'ready' && !updates.onUseUpdate && <p>Show the file in File Explorer, then close PaperBridge before opening the new version.</p>}
+        {updates.downloadLabel && !updates.downloadInApp && <p>The download button opens GitHub in your browser.</p>}
+      </Group><Group title="Update verification">
+        <p>PaperBridge checks each in-app download against its SHA-256 checksum and the signed GitHub build record for the official Windows release. Windows may also ask you to confirm the publisher.</p>
+        <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
+      </Group></>}
+      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data also clears extracted text and figures. You can also remove PaperBridge’s archived PDF copies. PDFs outside the archive stay at their original locations. Manage the separately encrypted OpenAI key under Models.</p><button className="button danger" disabled={locked || archiveCleanup.busy} onClick={onClearData}>Remove all saved PaperBridge data…</button>
+        {archiveCleanup.remaining > 0 && <div>
+          <p>{archiveCleanup.remaining} archived {archiveCleanup.remaining === 1 ? 'file is' : 'files are'} awaiting cleanup from your earlier request. Close any PDF viewer using these files before retrying.</p>
+          <button className="button outline" disabled={locked || archiveCleanup.busy} onClick={onRetryArchiveCleanup}>Retry archived PDF cleanup</button>
+        </div>}
+        {archiveCleanup.message && <p role={archiveCleanup.error ? 'alert' : 'status'}>{archiveCleanup.message}</p>}
+      </Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
+    </div>
+  </div>;
+}

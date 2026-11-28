@@ -1,0 +1,220 @@
+import { structuredBlockSource } from '../electron/markdown-code-context.mjs';
+import { isPdfListing } from './text.mjs';
+import { referenceBlockIds } from './references.mjs';
+import { generatedViewText, renderedMarkdownText } from './markdownRendering.mjs';
+
+const generatedScopes = new Set(['fullTranslation', 'summarySource', 'summaryTarget']);
+const contextSize = 32;
+const markdownViews = new Set(['paperArticle', 'summarySource', 'summaryTarget', 'fullTranslation']);
+const paperDisplayModes = new Set(['source', 'bilingual', 'translation']);
+
+export function isMarkdownView(scope) {
+  return markdownViews.has(scope);
+}
+
+export function paperArticleSource(paper) {
+  return {
+    mode: paper.sourceMode || (paper.type === 'pdf' ? 'pdf' : 'text'),
+    structured: Boolean(paper.sourceMode === 'mineru' && paper.mineruMarkdown),
+    blocks: paper.blocks
+  };
+}
+
+export function paperPassageVisibility(block, displayMode, references) {
+  const sourceOnly = Boolean(block.resource || references.has(block.id));
+  const translated = block.status === 'ok' && Boolean(block.translation || block.translationMarkdown);
+  const unavailable = displayMode === 'translation' && !translated && !sourceOnly;
+  return {
+    source: displayMode !== 'translation' || sourceOnly || unavailable,
+    translation: displayMode !== 'source' && !sourceOnly && translated,
+    showMissing: displayMode === 'bilingual' && !sourceOnly && !translated,
+    unavailable
+  };
+}
+
+export function paperUsesMarkdown(block, sourceMode, structured) {
+  return structured || sourceMode === 'pdf' && isPdfListing(block);
+}
+
+const articleViews = new WeakMap();
+
+function paperArticleText(blocks, sourceMode, structured, displayMode) {
+  const key = displayMode + (structured ? '-markdown' : '-' + sourceMode);
+  const cached = articleViews.get(blocks) || new Map();
+  if (cached.has(key)) return cached.get(key);
+  const references = referenceBlockIds(blocks);
+  const parts = [];
+  for (const block of blocks) {
+    const visible = paperPassageVisibility(block, displayMode, references);
+    for (const kind of ['source', 'translation']) {
+      if (!visible[kind]) continue;
+      const markdown = paperUsesMarkdown(block, sourceMode, structured) && blockMarkdown(block, kind);
+      parts.push(markdown ? renderedBlockText(block, markdown) : (kind === 'translation' ? block.translation : block.text) || '', '\n');
+    }
+  }
+  const text = parts.join('');
+  cached.set(key, text);
+  articleViews.set(blocks, cached);
+  return text;
+}
+
+export function paperArticleAnchorAvailable(paper, item) {
+  if (!paper || !paperDisplayModes.has(item.displayMode) ||
+      (item.displayMode === 'source' && paper.type === 'pdf') || !hasRenderedAnchor(item)) return false;
+  const current = paperArticleSource(paper);
+  let blocks = current.blocks;
+  if (item.sourceMode !== current.mode) {
+    if (paper.type !== 'pdf') return false;
+    if (item.sourceMode === 'mineru') blocks = paper.mineruBlocks;
+    else if (item.sourceMode === 'pdf') blocks = paper.pdfBlocks;
+    else return false;
+  }
+  if (!blocks?.length) return false;
+  const structured = item.sourceMode === 'mineru' && Boolean(paper.mineruMarkdown);
+  return markdownAnnotationOffset(paperArticleText(blocks, item.sourceMode, structured, item.displayMode), item) !== null;
+}
+
+export function validPaperArticleSelection(paper, item) {
+  if (!paperArticleAnchorAvailable(paper, item) || typeof item.renderedText !== 'string' ||
+      renderedAnchorOffset(item.renderedText, item) === null) return false;
+  const source = item.renderedSource;
+  const current = paperArticleSource(paper);
+  if (item.sourceMode !== current.mode || source?.mode !== current.mode ||
+      source.structured !== current.structured || source.blocks?.length !== current.blocks.length) return false;
+  // Notes and highlights can change without changing the rendered article.
+  return source.blocks.every((block, index) => {
+    const other = current.blocks[index];
+    return block === other || ['id', 'heading', 'resource', 'text', 'sourceMarkdown', 'status', 'translation', 'translationMarkdown']
+      .every(key => block[key] === other[key]);
+  });
+}
+
+export function blockMarkdown(block, kind) {
+  return kind === 'translation' ? block?.translationMarkdown : block?.sourceMarkdown && structuredBlockSource(block);
+}
+
+export function selectionOffsets(captured, offset, markdown, anchorSource) {
+  const displayOffset = captured.offset;
+  if (!markdown) return { offset, displayOffset, renderedText: captured.context, anchorSource };
+  const projection = { displayOffset, renderedSource: markdown, renderedText: captured.context, anchorSource };
+  if (Number.isInteger(offset)) return { offset, ...projection };
+  const end = displayOffset + captured.text.length;
+  return {
+    offset: null, ...projection,
+    renderedAnchor: {
+      offset: displayOffset,
+      before: captured.context.slice(Math.max(0, displayOffset - contextSize), displayOffset),
+      after: captured.context.slice(end, end + contextSize)
+    }
+  };
+}
+
+function hasRenderedAnchor(item) {
+  const anchor = item?.renderedAnchor;
+  return Number.isInteger(anchor?.offset) && anchor.offset >= 0 &&
+    typeof anchor.before === 'string' && typeof anchor.after === 'string' && typeof item.text === 'string' && item.text.length > 0;
+}
+
+function matchesTextAt(source, offset, text) {
+  return Number.isInteger(offset) && offset >= 0 && typeof text === 'string' && text.length > 0 &&
+    source?.slice(offset, offset + text.length) === text;
+}
+
+export function matchingTextOffset(from, to, text, offset) {
+  if (!matchesTextAt(from, offset, text)) return null;
+  if (from === to) return offset;
+  let fromAt = from.indexOf(text);
+  let toAt = to.indexOf(text);
+  let match = null;
+  // Formatting can hide raw occurrences or introduce new ones.
+  while (fromAt >= 0 && toAt >= 0) {
+    if (fromAt === offset) match = toAt;
+    fromAt = from.indexOf(text, fromAt + 1);
+    toAt = to.indexOf(text, toAt + 1);
+  }
+  return fromAt < 0 && toAt < 0 ? match : null;
+}
+
+export function renderedAnchorOffset(text, item) {
+  if (!hasRenderedAnchor(item)) return null;
+  const { offset, before, after } = item.renderedAnchor;
+  const end = offset + item.text.length;
+  return text.slice(offset, end) === item.text &&
+    text.slice(Math.max(0, offset - before.length), offset) === before &&
+    text.slice(end, end + after.length) === after ? offset : null;
+}
+
+export function markdownAnnotationOffset(rendered, item, source = rendered) {
+  if (typeof item?.text !== 'string' || !item.text.length || item.needsReview) return null;
+  if (item.renderedAnchor ? !hasRenderedAnchor(item) : !Number.isInteger(item.offset) || item.offset < 0) return null;
+  const stored = item.renderedAnchor ? renderedAnchorOffset(rendered, item)
+    : matchingTextOffset(source, rendered, item.text, item.offset);
+  if (stored !== null) return stored;
+  const first = rendered.indexOf(item.text);
+  if (first < 0) return null;
+  if (first === rendered.lastIndexOf(item.text)) return first;
+  // Rendered tables flatten adjacent cells. Repeated punctuation such as "+"/"−"
+  // needs an exact saved offset to identify the cell that the reader marked.
+  if (!item.renderedAnchor || !/[\p{L}\p{N}]/u.test(item.text)) return null;
+  // Reformatting an earlier equation can shift both occurrences equally. Only
+  // recover a repeated quotation when its complete saved surroundings identify it.
+  const { before, after } = item.renderedAnchor;
+  if (!before && !after) return null;
+  const passage = before + item.text + after;
+  const at = rendered.indexOf(passage);
+  return at >= 0 && at === rendered.lastIndexOf(passage) ? at + before.length : null;
+}
+
+// Use the live range for grouping while keeping the original saved record for edits and undo.
+export function resolvedBlockAnnotation(item, source, markdown) {
+  if (markdown || item.renderedAnchor || item.needsReview) return item;
+  const offset = markdownAnnotationOffset(source, item);
+  return offset !== null && offset !== item.offset ? { ...item, offset } : item;
+}
+
+const blockViews = new WeakMap();
+
+function renderedBlockText(block, markdown) {
+  if (!block) return renderedMarkdownText(markdown);
+  const side = block.translationMarkdown === markdown ? 'translation' : 'source';
+  const cached = blockViews.get(block) || {};
+  if (cached[side]?.markdown !== markdown) {
+    cached[side] = { markdown, text: renderedMarkdownText(markdown) };
+    blockViews.set(block, cached);
+  }
+  return cached[side].text;
+}
+
+export function textAnchorAvailable(item, source, markdown, block) {
+  if (generatedScopes.has(item?.scope)) {
+    return typeof markdown === 'string' && markdown.length > 0 &&
+      markdownAnnotationOffset(generatedViewText(item.scope, markdown), item, source) !== null;
+  }
+  if (!markdown) return !item?.renderedAnchor && markdownAnnotationOffset(source, item) !== null;
+  return markdownAnnotationOffset(renderedBlockText(block, markdown), item, source) !== null;
+}
+
+export function validTextSelection(item, source, markdown) {
+  if (item?.renderedSource && item.renderedSource !== markdown) return false;
+  if (!item?.renderedAnchor) return matchesTextAt(source, item?.offset, item?.text);
+  return Boolean(markdown && item.renderedSource === markdown && typeof item.renderedText === 'string' &&
+    renderedAnchorOffset(item.renderedText, item) !== null);
+}
+
+export function sameTextAnchor(left, right) {
+  if (left.text !== right.text) return false;
+  const captured = typeof right.renderedText === 'string' ? right : left;
+  if (typeof captured.renderedText === 'string') {
+    const saved = captured === right ? left : right;
+    return markdownAnnotationOffset(captured.renderedText, saved, captured.anchorSource) === captured.displayOffset;
+  }
+  if (!left.renderedAnchor && !right.renderedAnchor) return left.offset === right.offset;
+  const a = left.renderedAnchor;
+  const b = right.renderedAnchor;
+  return Boolean(a && b && a.offset === b.offset && a.before === b.before && a.after === b.after);
+}
+
+export function sameViewAnchor(left, right) {
+  return left.scope === right.scope &&
+    (left.scope !== 'paperArticle' || left.displayMode === right.displayMode && left.sourceMode === right.sourceMode) && sameTextAnchor(left, right);
+}

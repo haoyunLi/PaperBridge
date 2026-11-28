@@ -1,0 +1,415 @@
+const { revealSidebarSource, openPasteText, loadPastedText, openWorkspaceView } = require('./sidebar-controls.cjs');
+const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { _electron: electron } = require('playwright-core');
+const { keepMineruResult } = require('../electron/mineru-resources.cjs');
+
+function samplePdf(text = 'Delayed import text.') {
+  const stream = `BT /F1 18 Tf 72 720 Td (Imported Paper) Tj 0 -30 Td /F1 12 Tf (${text}) Tj ET`;
+  const parts = ['%PDF-1.4\n', '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n', '2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n', '3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n', '4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n', `5 0 obj << /Length ${stream.length} >> stream\n${stream}\nendstream endobj\n`];
+  let body = parts[0], offset = body.length; const offsets = [0];
+  for (let index = 1; index < parts.length; index++) { offsets[index] = offset; body += parts[index]; offset = body.length; }
+  const xref = offset;
+  body += `xref\n0 6\n0000000000 65535 f \n${offsets.slice(1).map(value => `${String(value).padStart(10, '0')} 00000 n \n`).join('')}trailer << /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(body);
+}
+
+async function waitFor(predicate, label, timeout = 10000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    try { if (await predicate()) return; } catch { /* asynchronous save/import */ }
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+}
+
+async function run() {
+  const root = path.resolve(__dirname, '..');
+  const artifacts = path.join(root, 'test-artifacts');
+  const workspace = path.join(artifacts, 'import-progress-workspace');
+  if (!workspace.startsWith(artifacts + path.sep)) throw new Error('Unexpected import test workspace');
+  fs.rmSync(workspace, { recursive: true, force: true }); fs.mkdirSync(workspace, { recursive: true });
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: 'mineruOnly' }));
+  const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const page = await app.firstWindow();
+  const drop = async (name, text) => page.evaluate(({ name, bytes }) => {
+    const file = new File([new Uint8Array(bytes)], name, { type: 'application/pdf' });
+    const transfer = new DataTransfer(); transfer.items.add(file);
+    document.querySelector('.app').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  }, { name, bytes: [...samplePdf(text)] });
+  const chooseMode = async mode => {
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await page.getByRole('tab', { name: 'Parsing', exact: true }).click();
+    await page.getByLabel('PDF extraction mode').selectOption(mode);
+    await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  };
+  const fallbackText = 'The selectable text survives a failed MinerU process.';
+  const cancelledArchiveText = 'Cancel while the original page image is being prepared.';
+  const structuredPdfText = 'The source page is the original first page.';
+  const paperId = text => createHash('sha256').update(samplePdf(text)).digest('hex');
+  const archivePage = text => {
+    const cache = path.join(workspace, 'pdf-page-cache');
+    return path.join(cache, fs.readdirSync(cache)[0], paperId(text), 'page-001.png.entry');
+  };
+  try {
+    await page.locator('.welcome').waitFor({ timeout: 20000 });
+    await app.evaluate(({ ipcMain }) => {
+      const read = ipcMain._invokeHandlers.get('pdf:import-bytes');
+      ipcMain.removeHandler('pdf:import-bytes');
+      ipcMain.handle('pdf:import-bytes', (...args) => new Promise(resolve => {
+        global.resumeFirstDrop = () => {
+          ipcMain.removeHandler('pdf:import-bytes');
+          ipcMain.handle('pdf:import-bytes', read);
+          resolve(read(...args));
+        };
+      }));
+    });
+    await drop('first-import.pdf', 'A new reader opens its first PDF.');
+    await page.locator('.import-progress-screen').waitFor();
+    await waitFor(() => app.evaluate(() => typeof global.resumeFirstDrop === 'function'), 'first PDF read queued');
+    assert.equal(await page.locator('.import-progress-card').getByText(/previous paper|cancel to return to/i).count(), 0);
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await app.evaluate(() => global.resumeFirstDrop());
+    await page.locator('.welcome').waitFor();
+    await revealSidebarSource(page);
+    await openPasteText(page);
+    const paragraphs = Array.from({ length: 20 }, (_, index) => `Section ${index + 1}. ` + 'A calibrated reading is recorded for this sample. '.repeat(8));
+    await page.locator('.paste-area').fill(['Abstract', 'The original saved paper must survive a cancelled import.', ...paragraphs].join('\n\n'));
+    await loadPastedText(page, { view: 'Paper' });
+    await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
+    await openWorkspaceView(page, 'Reader');
+    await page.locator('#block-1').getByTitle('Bookmark heading').click();
+    await waitFor(() => fs.readdirSync(path.join(workspace, 'papers')).some(name => name.endsWith('.json')), 'original paper save');
+    const paperFile = path.join(workspace, 'papers', fs.readdirSync(path.join(workspace, 'papers')).find(name => name.endsWith('.json')));
+    await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).blocks[0].bookmark === true, 'bookmark save');
+    await page.locator('#block-8').evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await waitFor(() => JSON.parse(fs.readFileSync(paperFile, 'utf8')).position?.block === 8, 'paper scroll position saved before import');
+    const before = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    await app.evaluate(({ ipcMain, BrowserWindow }) => {
+      globalThis.__mineruImports = [];
+      globalThis.__discardedMineruResults = [];
+      ipcMain.removeHandler('mineru:discard-result');
+      ipcMain.handle('mineru:discard-result', (_event, payload) => { globalThis.__discardedMineruResults.push(payload); });
+      globalThis.__mineruStatusCalls = 0;
+      globalThis.__mineruScenario = 'hold';
+      ipcMain.removeHandler('mineru:status');
+      ipcMain.handle('mineru:status', () => {
+        globalThis.__mineruStatusCalls++;
+        if (globalThis.__mineruScenario === 'missing') return { compatible: false, reason: 'Fixture MinerU executable is missing.' };
+        if (globalThis.__mineruScenario === 'probe-error') throw new Error('Fixture MinerU detection failed.');
+        return { compatible: true, executable: 'fixture-mineru', version: '3.0.0' };
+      });
+      ipcMain.removeHandler('mineru:extract');
+      ipcMain.handle('mineru:extract', (_event, { requestId }) => {
+        if (globalThis.__mineruScenario === 'parser-error') throw new Error('Fixture MinerU process failed.');
+        return new Promise(resolve => {
+          globalThis.__mineruImports.push({ requestId, resolve });
+          BrowserWindow.getAllWindows()[0].webContents.send('paperbridge:progress', { kind: 'mineru', requestId, status: 'formula recognition 2 / 5' });
+        });
+      });
+    });
+    await drop('delayed-import.pdf');
+    await page.locator('.import-progress-screen').waitFor();
+    await page.getByRole('heading', { name: 'delayed-import.pdf', exact: true }).waitFor();
+    await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
+    const card = page.locator('.import-progress-card');
+    await card.getByText('Cancel to return to ' + before.name + ' with your translations, notes, bookmarks, and reading position.', { exact: true }).waitFor();
+    assert.equal(await card.getByRole('status').innerText(), 'Recognizing formulas · 2 of 5');
+    const bar = card.locator('.import-progress-bar span');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await bar.evaluate(node => getComputedStyle(node).animationName), 'none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    assert.equal(await bar.evaluate(node => getComputedStyle(node).animationName), 'paperbridge-import');
+    await page.evaluate(() => {
+      const now = Date.now;
+      Date.now = () => now() + 65000;
+      window.restoreImportClock = () => { Date.now = now; };
+    });
+    try {
+      await card.getByRole('timer').filter({ hasText: /^1m \d+s elapsed$/ }).waitFor();
+      await card.getByText(/translate the paper once it opens/).waitFor();
+    } finally { await page.evaluate(() => window.restoreImportClock()); }
+    assert.equal(await card.getByRole('status').innerText(), 'Recognizing formulas · 2 of 5');
+
+    // A long import must not trap the user behind the narrow-window sidebar.
+    // Resize the actual isolated Electron window, not just screenshot coordinates.
+    const previousWindow = await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      const previous = { contentSize: window.getContentSize(), minimumSize: window.getMinimumSize(), zoom: window.webContents.getZoomFactor() };
+      window.setMinimumSize(0, 0);
+      window.webContents.setZoomFactor(1);
+      window.setContentSize(780, 620);
+      return previous;
+    });
+    await page.waitForFunction(() => Math.abs(innerWidth - 780) <= 2 && Math.abs(innerHeight - 620) <= 2);
+    const sidebar = page.locator('#document-sidebar');
+    const closeSidebar = page.getByRole('button', { name: 'Close Document Sidebar', exact: true });
+    const cancelImport = page.getByRole('button', { name: 'Cancel Import', exact: true });
+    assert.equal(await closeSidebar.isEnabled(), true, 'Importing must still allow closing the overlaid sidebar');
+    await closeSidebar.click();
+    await sidebar.waitFor({ state: 'hidden' });
+    assert.equal(await cancelImport.evaluate(node => document.activeElement === node), true,
+      'Closing the sidebar during import returns keyboard focus to Cancel Import');
+    assert.equal(await page.locator('.app').evaluate(node => node.classList.contains('importing')), true,
+      'Hiding navigation must not cancel the active parsing task');
+    assert.equal(await page.getByRole('heading', { name: 'delayed-import.pdf', exact: true }).isVisible(), true);
+    assert.equal(await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).isVisible(), true);
+    assert.equal(await app.evaluate(() => globalThis.__mineruImports.length), 1, 'The same held MinerU request remains active');
+    const whileSidebarClosed = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    await page.locator('.main-scroll').evaluate(async host => {
+      host.dispatchEvent(new Event('scroll'));
+      await new Promise(resolve => setTimeout(resolve, 500));
+    });
+    assert.deepEqual(JSON.parse(fs.readFileSync(paperFile, 'utf8')).position, before.position,
+      'The import progress surface cannot replace the previous paper’s saved reading position');
+    assert.equal(whileSidebarClosed.id, before.id);
+    assert.deepEqual(whileSidebarClosed.blocks, before.blocks, 'Sidebar dismissal must preserve the old source, translation and bookmark data');
+    assert.equal(whileSidebarClosed.blocks[0].bookmark, true);
+    assert.equal(fs.readdirSync(path.join(workspace, 'papers')).filter(name => name.endsWith('.json')).length, 1);
+
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await page.locator('.import-progress-screen').waitFor({ state: 'detached' });
+    await page.waitForFunction(expected => {
+      const host = document.querySelector('.main-scroll'), block = document.getElementById('block-' + expected.block);
+      return host?.getAttribute('aria-busy') === 'false' && block &&
+        Math.abs(block.getBoundingClientRect().top - host.getBoundingClientRect().top - expected.offset) < 2;
+    }, before.position.readerViewport);
+    await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Show Document Sidebar', exact: true }).click();
+    await sidebar.waitFor({ state: 'visible' });
+    assert.equal(await closeSidebar.isVisible(), true, 'The sidebar can be reopened after cancellation');
+    await app.evaluate(({ BrowserWindow }, previous) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      window.setMinimumSize(...previous.minimumSize);
+      window.webContents.setZoomFactor(previous.zoom);
+      window.setContentSize(...previous.contentSize);
+    }, previousWindow);
+    await drop('strict-empty.pdf', 'A strict import must keep the previous paper.');
+    await page.getByRole('heading', { name: 'strict-empty.pdf', exact: true }).waitFor();
+    await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
+    await app.evaluate(({ BrowserWindow }) => {
+      const [first] = globalThis.__mineruImports;
+      BrowserWindow.getAllWindows()[0].webContents.send('paperbridge:progress', { kind: 'mineru', requestId: first.requestId, status: 'page layout 77 / 99' });
+      first.resolve({ markdown: '# Imported Paper\n\nLate MinerU result must be ignored.', pageHints: [], resourceId: '1111111111111111' });
+    });
+    await new Promise(resolve => setTimeout(resolve, 250));
+    assert.equal(await page.locator('.import-progress-screen').isVisible(), true);
+    assert.equal(await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).isVisible(), true);
+    await app.evaluate(() => globalThis.__mineruImports[1].resolve({
+      markdown: '![Visual asset only](image.png)', pageHints: [], resourceId: '2222222222222222'
+    }));
+    await page.getByText(/Could not import strict-empty\.pdf: MinerU returned no readable blocks/).waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Pasted Text', exact: true }).isVisible(), true);
+    const after = JSON.parse(fs.readFileSync(paperFile, 'utf8'));
+    assert.equal(after.blocks[0].bookmark, true);
+    assert.equal(after.blocks[1].text, before.blocks[1].text);
+    assert.equal(fs.readdirSync(path.join(workspace, 'papers')).filter(name => name.endsWith('.json')).length, 1, 'Cancelled or failed strict imports must not create a workspace paper');
+    assert.deepEqual(await app.evaluate(() => globalThis.__discardedMineruResults), [
+      { id: paperId(), resourceId: '1111111111111111' },
+      { id: paperId('A strict import must keep the previous paper.'), resourceId: '2222222222222222' }
+    ]);
+    await app.evaluate(() => { globalThis.__mineruScenario = 'missing'; });
+    await drop('strict-missing.pdf', 'MinerU must be available in strict mode.');
+    await page.getByText(/Could not import strict-missing\.pdf: Fixture MinerU executable is missing/).waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Pasted Text', exact: true }).isVisible(), true);
+
+    await chooseMode('mineruPreferred');
+    await app.evaluate(() => { globalThis.__mineruScenario = 'parser-error'; });
+    await drop('fallback.pdf', fallbackText);
+    await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
+    assert.ok(fs.existsSync(archivePage(fallbackText)), 'PDF fallback should prepare pages before saving the imported paper');
+    await openWorkspaceView(page, 'Reader');
+    await page.getByText('The selectable text survives a failed MinerU process.', { exact: true }).waitFor();
+    await app.evaluate(() => { globalThis.__mineruScenario = 'probe-error'; });
+    await drop('probe-fallback.pdf', 'The selectable text survives a failed MinerU probe.');
+    await page.getByText(/MinerU failed:.*Fixture MinerU detection failed/).waitFor();
+
+    await app.evaluate(() => { globalThis.__mineruScenario = 'hold'; });
+    const structuredId = paperId(structuredPdfText);
+    const passage = 'A MinerU passage with independent page metadata. [Measurements](data/result.csv#row) and [raw series][calibration].';
+    const markdown = `# A parsed title\n\n${passage}\n\n[calibration]: data/raw.csv#row`;
+    const legacy = path.join(workspace, 'mineru', structuredId, 'pipeline');
+    const prepared = path.join(workspace, 'prepared-mineru');
+    for (const [directory, csv] of [[legacy, 'previous bytes'], [prepared, 'current bytes']]) {
+      fs.mkdirSync(path.join(directory, 'data'), { recursive: true });
+      fs.writeFileSync(path.join(directory, 'paper.md'), markdown);
+      fs.writeFileSync(path.join(directory, 'data', 'result.csv'), csv);
+      fs.writeFileSync(path.join(directory, 'data', 'raw.csv'), csv + ' series');
+    }
+    fs.writeFileSync(path.join(legacy, 'paper_content_list.json'), '[{"page_idx":9,"text":"A parsed title"}]');
+    fs.writeFileSync(path.join(prepared, 'structured_content.json'), '{"pages":[{"page_idx":0,"blocks":[{"content":"A parsed title"}]}]}');
+    const resourceId = keepMineruResult(workspace, structuredId, path.join(prepared, 'paper.md'), markdown);
+    await drop('structured-with-pages.pdf', structuredPdfText);
+    await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
+    await app.evaluate((_electron, result) => globalThis.__mineruImports.at(-1).resolve(result), {
+      markdown, resourceId, pageHints: [{ page: 1, text: 'A parsed title' }, { page: 1, text: passage }]
+    });
+    await page.getByText(/Extracted 3 blocks from 1 pages/).waitFor();
+    await openWorkspaceView(page, 'Reader');
+    await page.locator('#block-2 .block-header').getByLabel('Block 2, page 1', { exact: true }).waitFor();
+    assert.equal(fs.existsSync(archivePage(structuredPdfText)), false, 'Successful MinerU imports keep their structured source');
+    const exports = path.join(workspace, 'exports');
+    fs.mkdirSync(exports);
+    await app.evaluate(({ dialog, shell }, folder) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] });
+      shell.showItemInFolder = () => {};
+    }, exports);
+    await page.keyboard.press('Control+Shift+e');
+    await page.getByText(/Exported 4 Markdown files, 2 asset\(s\), 1 PDF page image/).waitFor();
+    const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), structuredId);
+    assert.equal(saved.mineruResourceId, resourceId);
+    assert.deepEqual(await page.evaluate(id => window.paperBridge.cachedMineruPages(id), structuredId), [{ page: 1, text: 'A parsed title' }]);
+    const bundle = path.join(exports, fs.readdirSync(exports)[0]);
+    const link = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8').match(/\[Measurements\]\((assets\/[^#]+\.csv)#row\)/)?.[1];
+    assert.ok(link, 'The current attachment should be linked with its fragment');
+    assert.equal(fs.readFileSync(path.join(bundle, link), 'utf8'), 'current bytes');
+    const original = fs.readFileSync(path.join(bundle, 'paper_original.md'), 'utf8');
+    const series = original.match(/\[calibration\]: (assets\/[^#]+\.csv)#row/);
+    assert.ok(series, 'The reference definition should resolve inside the exported paper');
+    assert.equal(fs.readFileSync(path.join(bundle, series[1]), 'utf8'), 'current bytes series');
+    assert.equal((await app.evaluate(() => globalThis.__discardedMineruResults)).length, 2);
+
+    await chooseMode('pdfOnly');
+    // A native <details> toggle is queued separately from the summary click.
+    // Delay its delivery deterministically across the import unmount: the click
+    // must commit the user's closed state without relying on that later event.
+    // This also isolates the strict PDF-only counter from sidebar status probes.
+    const documentDetails = page.locator('.document-details');
+    if (await documentDetails.getAttribute('open') === null) await documentDetails.locator(':scope > summary').click();
+    await page.locator('.sidebar-parser-status .sidebar-refresh').waitFor({ state: 'visible' });
+    await page.waitForFunction(() => {
+      const refresh = document.querySelector('.sidebar-parser-status .sidebar-refresh');
+      return refresh && !refresh.disabled && refresh.getAttribute('aria-busy') === 'false';
+    });
+    const keyboardToggles = [];
+    for (const [key, open] of [['Enter', false], ['Space', true], ['Space', false], ['Enter', true]]) {
+      await documentDetails.locator(':scope > summary').press(key);
+      await page.waitForFunction(open => {
+        const details = document.querySelector('.document-details');
+        const refresh = details?.querySelector('.sidebar-parser-status .sidebar-refresh');
+        return details?.open === open && refresh?.disabled === !open && refresh.getAttribute('aria-busy') === 'false';
+      }, open);
+      keyboardToggles.push({ key, open });
+    }
+    await page.evaluate(() => {
+      const hold = event => {
+        if (!event.target.matches?.('.document-details') || event.target.open) return;
+        event.stopImmediatePropagation();
+        window.removeEventListener('toggle', hold, true);
+        window.__heldDocumentToggle = { node: event.target, event };
+      };
+      window.addEventListener('toggle', hold, true);
+    });
+    await documentDetails.locator(':scope > summary').click();
+    await page.waitForFunction(() => Boolean(window.__heldDocumentToggle));
+    assert.equal(await documentDetails.getAttribute('open'), null);
+    const beforeImportDisclosure = await page.evaluate(() => ({
+      closed: !document.querySelector('.document-details').open,
+      sidebarProbeDisabled: document.querySelector('.sidebar-parser-status .sidebar-refresh').disabled,
+      heldToggleConnected: window.__heldDocumentToggle.node.isConnected
+    }));
+    console.log(`PDF-only disclosure before import: ${JSON.stringify(beforeImportDisclosure)}`);
+    const probes = await app.evaluate(() => globalThis.__mineruStatusCalls);
+    await page.evaluate(() => {
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
+        HTMLCanvasElement.prototype.toBlob = toBlob;
+        window.releaseImportPage = () => toBlob.call(this, callback, ...options);
+      };
+    });
+    await drop('cancelled-archive.pdf', cancelledArchiveText);
+    await page.waitForFunction(() => typeof window.releaseImportPage === 'function');
+    await page.getByRole('main').getByText('Preparing original PDF page images · 1 of 1', { exact: true }).waitFor();
+    const staleToggle = await page.evaluate(() => {
+      const { node, event } = window.__heldDocumentToggle;
+      const disconnected = !node.isConnected;
+      node.dispatchEvent(event);
+      delete window.__heldDocumentToggle;
+      return { disconnected };
+    });
+    assert.equal(staleToggle.disconnected, true, 'the delayed native toggle outlives the old sidebar instance');
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await page.getByRole('heading', { name: 'structured-with-pages.pdf', exact: true }).waitFor();
+    const afterCancellationDisclosure = await page.evaluate(() => ({
+      closed: !document.querySelector('.document-details').open,
+      sidebarProbeDisabled: document.querySelector('.sidebar-parser-status .sidebar-refresh').disabled
+    }));
+    const cancellationProbes = await app.evaluate(() => globalThis.__mineruStatusCalls);
+    const disclosureRegression = { keyboardToggles, beforeImportDisclosure, staleToggle, afterCancellationDisclosure,
+      baselineProbes: probes, cancellationProbes };
+    fs.writeFileSync(path.join(workspace, 'document-disclosure-regression.json'), JSON.stringify(disclosureRegression, null, 2));
+    console.log(`PDF-only disclosure after cancellation: ${JSON.stringify(disclosureRegression)}`);
+    assert.equal(afterCancellationDisclosure.closed, true, 'closing Document & Import must survive a delayed toggle and import cancellation');
+    assert.equal(afterCancellationDisclosure.sidebarProbeDisabled, true, 'the remounted sidebar must retain the committed closed state');
+    assert.equal(cancellationProbes, probes, 'PDF-only cancellation must not introduce a sidebar or import MinerU probe');
+    await drop('pdf-only.pdf', 'The PDF only mode reads the selectable text layer.');
+    await page.getByText(/Extracted \d+ blocks from 1 pages/).waitFor();
+    await page.evaluate(() => { window.releaseImportPage(); delete window.releaseImportPage; });
+    assert.equal(await page.evaluate(id => window.paperBridge.loadPaper(id), paperId(cancelledArchiveText)), null);
+    assert.equal(fs.existsSync(archivePage(cancelledArchiveText)), false, 'Cancelled page output must be ignored');
+    await drop('cancelled-archive.pdf', cancelledArchiveText);
+    await page.getByText(/Extracted \d+ blocks from 1 pages/).waitFor();
+    assert.ok(fs.existsSync(archivePage(cancelledArchiveText)), 'Reimport should complete the unfinished archive');
+    assert.equal(await app.evaluate(() => globalThis.__mineruStatusCalls), probes, 'PDF-only imports should not probe MinerU');
+    await page.locator('.library-row').filter({ hasText: /^fallback\.pdf/ }).click();
+    await page.getByText(/MinerU failed:.*Fixture MinerU process failed/).waitFor();
+    await page.locator('.library-row').filter({ hasText: 'Pasted Text' }).click();
+    await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
+    await chooseMode('pdfOnly');
+    const selectedText = 'An independent extraction can begin while reading a pasted paper.';
+    const selectedFile = path.join(workspace, 'selected-original.pdf');
+    fs.writeFileSync(selectedFile, samplePdf(selectedText));
+    await app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+    }, selectedFile);
+    const reextract = async () => {
+      await page.getByRole('button', { name: 'More ···', exact: true }).click();
+      await page.getByRole('dialog', { name: 'More tools' }).getByRole('button', { name: 'Re-extract PDF as New Copy' }).click();
+    };
+    const pdfDir = path.join(workspace, 'pdfs');
+    const archives = () => fs.readdirSync(pdfDir).filter(file => file.endsWith('.pdf')).sort();
+    const previousArchives = archives();
+    await page.evaluate(() => {
+      const toBlob = HTMLCanvasElement.prototype.toBlob;
+      HTMLCanvasElement.prototype.toBlob = function (callback, ...options) {
+        HTMLCanvasElement.prototype.toBlob = toBlob;
+        window.finishIndependentPage = () => toBlob.call(this, callback, ...options);
+      };
+    });
+    await reextract();
+    await page.waitForFunction(() => typeof window.finishIndependentPage === 'function');
+    assert.equal(archives().length, previousArchives.length + 1);
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await page.evaluate(() => window.finishIndependentPage());
+    await page.getByRole('heading', { name: 'Pasted Text', exact: true }).waitFor();
+    await waitFor(() => archives().length === previousArchives.length, 'release the cancelled independent PDF copy');
+    assert.deepEqual(archives(), previousArchives);
+    assert.deepEqual(fs.readFileSync(selectedFile), samplePdf(selectedText));
+    await chooseMode('mineruOnly');
+    await app.evaluate(() => { globalThis.__mineruScenario = 'parser-error'; });
+    await reextract();
+    await page.getByText(/Fixture MinerU process failed/).first().waitFor();
+    await waitFor(() => archives().length === previousArchives.length, 'release the failed independent PDF copy');
+    assert.deepEqual(archives(), previousArchives);
+    await chooseMode('pdfOnly');
+    await reextract();
+    await page.getByRole('heading', { name: 'selected-original.pdf (new extraction)', exact: true }).waitFor();
+    await page.waitForFunction(previous => document.querySelector('.main-scroll')?.dataset.readingPaperId !== previous
+      && !document.querySelector('.import-progress-screen'), before.id);
+    const copyId = await page.locator('.main-scroll').getAttribute('data-reading-paper-id');
+    assert.match(copyId, /^[a-f0-9]{64}$/);
+    assert.notEqual(copyId, paperId(selectedText));
+    await waitFor(() => JSON.parse(fs.readFileSync(path.join(workspace, 'papers', copyId + '.json'), 'utf8'))
+      .blocks.some(block => block.text.includes(selectedText)), 'independent PDF workspace saved with selected text');
+    await page.evaluate(id => window.paperBridge.discardNewPdfCopy(id), copyId);
+    assert.deepEqual(fs.readFileSync(path.join(pdfDir, copyId + '.pdf')), fs.readFileSync(selectedFile));
+    assert.equal(JSON.parse(fs.readFileSync(paperFile, 'utf8')).blocks[0].bookmark, true);
+    console.log('Confirmed cancelling and retrying an independent extraction left exactly one saved copy; the selected PDF and previous bookmark survived.');
+    console.log('Import verified: narrow sidebar dismissal preserves the active parser and old annotations, Cancel Import focus and reopening, strict and fallback modes, PDF-only page preparation, and accepted MinerU resources isolated from rejected or stale output.');
+  } finally { await app.close().catch(() => {}); }
+}
+
+run().catch(error => { console.error(error); process.exitCode = 1; });

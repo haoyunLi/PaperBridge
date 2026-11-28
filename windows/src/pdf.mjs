@@ -1,0 +1,97 @@
+import * as pdfjs from 'pdfjs-dist';
+import { taggedPdfText } from './pdfBidi.mjs';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
+import { omitClippedFigureText } from './pdfFigureText.mjs';
+import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
+import { pageLines, pdfReadingSegments, readingPageCoordinates, recoverCodeAsterisks, recoverInlineSummations, recoverMathScripts } from './pdfLayout.mjs';
+
+pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+
+export async function openPdf(bytes) {
+  // The packaged dependency supplies offline character maps, fonts and image decoders.
+  const resources = new URL('../node_modules/pdfjs-dist/', document.baseURI);
+  const loading = pdfjs.getDocument({
+    data: new Uint8Array(bytes), isEvalSupported: false,
+    cMapUrl: new URL('cmaps/', resources).href,
+    standardFontDataUrl: new URL('standard_fonts/', resources).href,
+    // The offline worker loads the packaged qcms color transform as well as image decoders.
+    // Explicitly enable worker fetch because PDF.js's automatic URL check excludes file URLs.
+    iccUrl: new URL('iccs/', resources).href,
+    wasmUrl: new URL('wasm/', resources).href, useWorkerFetch: true
+  });
+  try { return await loading.promise; }
+  catch (error) {
+    await loading.destroy().catch(() => {});
+    throw error;
+  }
+}
+
+export async function renderPagePng(pdf, pageNumber, token) {
+  let page;
+  let canvas;
+  try {
+    page = await pdf.getPage(pageNumber);
+    if (token.cancelled) return null;
+    const base = page.getViewport({ scale: 1 });
+    const scale = 1800 / Math.max(base.width, base.height);
+    if (!Number.isFinite(scale) || scale <= 0 || base.width <= 0 || base.height <= 0) return null;
+    const viewport = page.getViewport({ scale });
+    if (!Number.isFinite(viewport.width) || !Number.isFinite(viewport.height)) return null;
+    canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(viewport.width));
+    canvas.height = Math.max(1, Math.round(viewport.height));
+    const render = page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport });
+    token.cancelRender = () => render.cancel();
+    await render.promise;
+    if (token.cancelled) return null;
+    const image = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    return image && !token.cancelled ? new Uint8Array(await image.arrayBuffer()) : null;
+  } catch {
+    // A damaged page does not prevent preserving the other pages and exact PDF.
+    return null;
+  } finally {
+    token.cancelRender = null;
+    if (canvas) { canvas.width = 0; canvas.height = 0; }
+    page?.cleanup();
+  }
+}
+
+export async function extractPdf(pdf, onPage, checkActive) {
+  const pages = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+    checkActive?.();
+    const page = await pdf.getPage(pageNumber);
+    const raw = await taggedPdfText(page, await page.getTextContent());
+    const visible = await omitClippedFigureText(page, raw, pdfjs.OPS);
+    const reading = readingPageCoordinates(visible, page.view, page.rotate);
+    const textLayer = await recoverCodeAsterisks(page, reading.content);
+    const sums = await recoverInlineSummations(page, textLayer);
+    const content = await recoverMathScripts(page, sums);
+    checkActive?.();
+    const [, bottom, , top] = reading.view;
+    pages.push({ pageNumber, height: top - bottom, lines: pageLines(content, reading.view) });
+    onPage?.(pageNumber, pdf.numPages);
+  }
+  const cleaned = filterRepeatedPageDecorations(pages);
+  const blocks = [];
+  const floatingIDs = new Set();
+  const columnStarts = new Set();
+  for (const page of cleaned) {
+    const prior = blocks.findLast(block => !block.pdfFootnoteMarker && !floatingIDs.has(block.id));
+    const previousSplitWord = prior?.page === page.pageNumber - 1 && /\p{Ll}[-‐]$/u.test(prior.text);
+    for (const segment of pdfReadingSegments(page.lines, page, previousSplitWord)) {
+      const extracted = blocksFromLines(segment.lines, page.pageNumber, blocks.length + 1, true);
+      if (segment.floating) for (const block of extracted) floatingIDs.add(block.id);
+      if (segment.columnStart && extracted.length) columnStarts.add(extracted[0].id);
+      blocks.push(...extracted);
+    }
+  }
+  // Match the final Mac postProcessParagraphs and buildPaper/cleanExtractedText
+  // passes after page stitching. Each pass is non-overlapping, not a fixed point.
+  // Only newly extracted text is normalized; saved blocks/annotation offsets
+  // and the original PDF bytes are never sent through this import pipeline.
+  return stitchPageBlocks(blocks, { floatingIDs, columnStarts }).map(block => block.sourceMarkdown ? block : {
+    ...block, text: finishExtractedPdfText(block.text)
+  });
+}

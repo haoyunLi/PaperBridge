@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'" />
+  <title>PaperBridge</title>
+  <style>
+    #root:not(:empty) + #startup-help { display: none; }
+    #startup-help { box-sizing: border-box; width: min(36rem, 100%); margin: 12vh auto 0; padding: 1.5rem; color: #293139; font: 1rem/1.5 system-ui, sans-serif; }
+    #startup-help h1 { margin: 0 0 1rem; font-size: 1.5rem; }
+    #startup-help summary, #startup-help a { color: #245789; }
+    #startup-help summary { cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <main id="startup-help" aria-label="PaperBridge startup">
+    <h1>Opening PaperBridge…</h1>
+    <details>
+      <summary>Trouble opening PaperBridge?</summary>
+      <p><a href="./index.html">Try again</a> to reload the reader.</p>
+      <p>If this screen persists, download a fresh copy of the Windows Setup or Portable edition from <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noopener noreferrer">PaperBridge releases on GitHub</a>.</p>
+    </details>
+  </main>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+.sidebar-paste { margin-top: 12px; min-width: 0; }
+.sidebar-paste > summary { display: flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.sidebar-paste > summary::before { content: '▸'; width: 9px; flex: none; }
+.sidebar-paste[open] > summary::before { content: '▾'; }
+.sidebar-paste > summary::-webkit-details-marker { display: none; }
+.sidebar-paste-input { position: relative; margin-top: 10px; }
+.sidebar-paste .paste-area {
+  display: block; width: 100%; height: 120px; min-height: 104px; max-height: min(320px, 50vh);
+  margin: 0; padding: 9px 10px; resize: vertical; border: 1px solid #304966; border-radius: 8px;
+  background: #0e1b2d; color: #eef4fc; font: 13px/1.5 "Segoe UI", sans-serif;
+}
+.sidebar-paste .paste-area::placeholder, .sidebar-paste-placeholder { color: #9bb0c7; }
+.sidebar-paste-placeholder { position: absolute; top: 10px; left: 11px; right: 11px; pointer-events: none; font: 13px/1.5 "Segoe UI", sans-serif; }
+.sidebar-paste-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sidebar-paste-actions button { min-height: 31px; padding: 6px 10px; border: 1px solid #46658a; border-radius: 6px; background: #223b5c; color: #eef4fc; font-size: 12px; }
+.sidebar-paste-actions button:last-child { border-color: transparent; background: transparent; }
+.sidebar-paste .paste-area:focus, .sidebar-paste > summary:focus-visible, .sidebar-paste-actions button:focus-visible { outline: 2px solid #84b4fc; outline-offset: 2px; }
+@media (forced-colors: active) {
+  .sidebar-paste .paste-area:focus, .sidebar-paste > summary:focus-visible, .sidebar-paste-actions button:focus-visible { outline-color: Highlight; }
+}

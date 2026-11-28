@@ -1,0 +1,26 @@
+[
+  {
+    "language": "Simplified Chinese",
+    "font": "STSong-Light",
+    "title": "光谱校准记录",
+    "source": "样品在 532 nm 处出现了一个峰。",
+    "control": "重复三次测量后，峰位没有移动。",
+    "wavelength": 532
+  },
+  {
+    "language": "Japanese",
+    "font": "HeiseiMin-W3",
+    "title": "光学測定の記録",
+    "source": "試料は 633 nm でピークを示した。",
+    "control": "三回の測定でピークの位置は変わらなかった。",
+    "wavelength": 633
+  },
+  {
+    "language": "Korean",
+    "font": "HYSMyeongJo-Medium",
+    "title": "분광 측정 기록",
+    "source": "시료는 785 nm에서 하나의 피크를 보였다.",
+    "control": "세 번의 측정에서 피크 위치는 변하지 않았다.",
+    "wavelength": 785
+  }
+]

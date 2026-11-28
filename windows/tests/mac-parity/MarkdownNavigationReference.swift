@@ -1,0 +1,90 @@
+import AppKit
+import WebKit
+
+@MainActor
+func nativeMarkdownNavigation(fixtures: URL) throws -> (headings: [[String: String]], tableCell: String, resource: [String: Any], deep: [String: Any]) {
+    _ = NSApplication.shared
+    let navigation = try String(contentsOf: fixtures.appendingPathComponent("markdown-navigation.md"), encoding: .utf8)
+    let nested = try String(contentsOf: fixtures.appendingPathComponent("nested-resource.md"), encoding: .utf8)
+    let deep = try String(contentsOf: fixtures.appendingPathComponent("deep-resource.md"), encoding: .utf8)
+    let observeDeep = try String(contentsOf: fixtures.appendingPathComponent("observe-deep-resource.cjs"), encoding: .utf8)
+    let observe = try String(contentsOf: fixtures.appendingPathComponent("observe-resource.cjs"), encoding: .utf8)
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let document = root.appendingPathComponent("preview.html")
+    let images = root.appendingPathComponent("images", isDirectory: true)
+    try FileManager.default.createDirectory(at: images, withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: fixtures.appendingPathComponent("tabbed/images/page_2_chart_5.jpg"), to: images.appendingPathComponent("panel.jpg"))
+    try MarkdownPreviewHTMLRenderer.render(markdown: navigation + "\n\n" + nested + "\n\n" + deep, title: "Workshop notes").write(to: document, atomically: true, encoding: .utf8)
+    let configuration = WKWebViewConfiguration()
+    configuration.userContentController.addUserScript(WKUserScript(source: MarkdownPreviewView.Coordinator.selectionBridgeScript,
+        injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+    let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 600, height: 250), configuration: configuration)
+    let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = view
+    let coordinator = MarkdownPreviewView.Coordinator()
+    coordinator.allowedRoot = root.standardizedFileURL
+    view.navigationDelegate = coordinator
+    view.loadFileURL(document, allowingReadAccessTo: root)
+    let deadline = Date().addingTimeInterval(20)
+    while view.isLoading && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    let script = """
+        const jumps = [];
+        for (const link of document.querySelectorAll('article a[href^="#"]')) {
+            link.click();
+            let target;
+            const end = performance.now() + 3000;
+            do {
+                await new Promise(resolve => setTimeout(resolve, 30));
+                target = document.querySelector(':target');
+            } while ((!target || target.id !== decodeURIComponent(link.hash.slice(1))) && performance.now() < end);
+            if (!target || target.id !== decodeURIComponent(link.hash.slice(1)) || window.scrollY <= 0) throw Error('Heading jump failed');
+            jumps.push({ label: link.textContent, id: target.id, heading: target.textContent });
+        }
+        const heading = document.getElementById(jumps[0].id);
+        heading.scrollIntoView();
+        const before = window.paperBridge.snapshot();
+        document.querySelector('article').style.width = '230px';
+        document.body.style.fontSize = '25px';
+        window.scrollTo(0, 0);
+        window.paperBridge.restore(before);
+        const after = window.paperBridge.snapshot();
+        if (before.blockText !== heading.textContent || after.blockIndex !== before.blockIndex ||
+            after.blockText !== before.blockText || Math.abs(after.offset - before.offset) > 3 || Math.abs(after.y - before.y) < 10)
+            throw Error('The Mac preview did not restore the same passage after reflow');
+        jumps[0].restoredAfterReflow = after.blockText;
+        const article = document.querySelector('article');
+        article.style.width = '';
+        document.body.style.fontSize = '';
+        const cell = [...article.querySelectorAll('td')].find(node => node.textContent === 'Cooling trace');
+        cell.scrollIntoView();
+        window.scrollBy(0, 4);
+        const originalCell = window.paperBridge.snapshot();
+        article.style.width = '210px';
+        document.body.style.fontSize = '25px';
+        window.scrollTo(0, 0);
+        window.paperBridge.restore(originalCell);
+        const restoredCell = window.paperBridge.snapshot();
+        if (originalCell.blockText !== cell.textContent || restoredCell.blockIndex !== originalCell.blockIndex ||
+            restoredCell.blockText !== originalCell.blockText || Math.abs(restoredCell.offset - originalCell.offset) > 3 ||
+            Math.abs(restoredCell.y - originalCell.y) < 10) throw Error('The Mac preview did not restore the table cell');
+        \(observe)
+        const resource = await observeResource(article);
+        if (!resource.sameFigure || !resource.tableCaption || !resource.figureCaption || resource.columns !== 3 || !resource.collapsed)
+            throw Error('The native preview did not preserve the nested calibration panel');
+        \(observeDeep)
+        return { jumps, tableCell: restoredCell.blockText, resource, deep: observeDeepResource(article) };
+        """
+    var result: Result<Any, Error>?
+    view.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { result = $0 }
+    while result == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    guard let result, let data = try result.get() as? [String: Any],
+          let jumps = data["jumps"] as? [[String: String]], jumps.count == 3,
+          let cell = data["tableCell"] as? String, let resource = data["resource"] as? [String: Any],
+          let deepObservation = data["deep"] as? [String: Any] else {
+        throw NSError(domain: "MarkdownNavigationReference", code: 1,
+                      userInfo: [NSLocalizedDescriptionKey: "The Mac preview did not complete the three document links."])
+    }
+    return (jumps, cell, resource, deepObservation)
+}
