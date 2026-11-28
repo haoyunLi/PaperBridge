@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## PDF 里的希伯来语、阿拉伯语和波长单位
+
+同一页六行仪器读数中，0.2.118 把希伯来语的单词和阿拉伯语的字形按从左到右的绘制顺序拼接。0.2.119 读取 PDF 标记给出的逻辑顺序，在同一段落内重排字词，并把阿拉伯语位置字形还原为可搜索的文字。Mac PDFKit 的六行正文与 Windows 对应，Mac 将两组拉丁数字与单位提取为「nm 532」和「K 298」；Windows 保留源文件中的「532 nm」和「298 K」。只有带有可验证顺序的标记文本使用这条路径。[Mac PDFKit 结果](https://github.com/haoyunLi/PaperBridge/actions/runs/46111448462) · [Windows 打包版验收](tests/bidi-pdf-e2e.cjs)
+
+旧包用鼠标选不中「לא השתנה」（没有变化）。新包可以向左拖选这两个词、保存 PDF 笔记并在重启后跳回相同字词，导出的原文 Markdown 也保留六行读数的顺序。另从旧包留下的笔记定位到「532 nm」，恢复独立副本后，旧版笔记和书签均保留。RX 7800 XT 上的 TranslateGemma 4B 把末行译为「标签“设备校准”记录在 532 纳米处。」
+
 ## 仪器补充材料的编码和返回位置
 
 Mac 原生阅读器实际打开了六个文件，包含 UTF‑16 两种字节序的温度记录、仪器文本、制表符表格、Markdown 协议，以及 UTF‑8 CSV 和 JSON。Windows 0.2.117 在第一份记录中显示了 11 个替代字符。0.2.118 按字节序标记读取，在协议内继续打开标定 JSON，重启后仍可打开。导出并移动整个文件夹后，六个文件均与源文件字节一致。Mac WebKit 在该无字节序标记的 JSON 上显示了乱码，Windows 按 UTF‑8 保留了样本名和单位。[Mac 原生结果](https://github.com/haoyunLi/PaperBridge/actions/runs/46110437295) · [Windows 打包版验收](tests/supplement-text-e2e.cjs)

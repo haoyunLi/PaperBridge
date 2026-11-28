@@ -1,4 +1,5 @@
 import * as pdfjs from 'pdfjs-dist';
+import { taggedPdfText } from './pdfBidi.mjs';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
@@ -61,7 +62,8 @@ export async function extractPdf(pdf, onPage, checkActive) {
   for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
     checkActive?.();
     const page = await pdf.getPage(pageNumber);
-    const visible = await omitClippedFigureText(page, await page.getTextContent(), pdfjs.OPS);
+    const raw = await taggedPdfText(page, await page.getTextContent());
+    const visible = await omitClippedFigureText(page, raw, pdfjs.OPS);
     const reading = readingPageCoordinates(visible, page.view, page.rotate);
     const textLayer = await recoverCodeAsterisks(page, reading.content);
     const sums = await recoverInlineSummations(page, textLayer);

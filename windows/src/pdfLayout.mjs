@@ -1,4 +1,5 @@
 import { joinPdfText, normalizeExtractedLine } from './text.mjs';
+import { logicalTaggedLine, unfoldArabicForms } from './pdfBidi.mjs';
 
 // Some journals draw the ASCII asterisk in code using a raised TeX math
 // glyph with no Unicode mapping. Use its font and neighboring code baseline
@@ -249,6 +250,7 @@ function textRows(items, left, bottom, width, pageHeight, styles) {
     const spaceBefore = axisLabels.has(item) || previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
     const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore,
       monospace: styles?.[item.fontName]?.fontFamily === 'monospace' };
+    if (item.pdfTag) { placed.pdfTag = item.pdfTag; placed.direction = item.dir; }
     if (item.selectionIndex !== undefined) placed.selectionIndex = item.selectionIndex;
     row.items.push(placed);
     previousText = { ...placed, vertical, row, raisedSuffix };
@@ -270,6 +272,17 @@ function lineFromItems(items, y, vertical, pageHeight) {
     end = Math.max(end, item.end);
   }
   const line = { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  const logical = !vertical && logicalTaggedLine(items);
+  if (logical) {
+    const fragments = logical.map(({ index, gap }, position) => {
+      const space = position && gap && (items[gap].spaceBefore || items[gap].x - items[gap - 1].end > Math.max(2, items[gap].height * 0.25));
+      return (space ? ' ' : '') + unfoldArabicForms(items[index].text);
+    });
+    line.text = normalizeExtractedLine(fragments.join(''));
+    if (items[0].selectionIndex !== undefined) {
+      line.taggedSequence = logical.map(({ index, gap }) => ({ ink: items[index].selectionIndex, gap: items[gap].selectionIndex }));
+    }
+  }
   if (items[0].selectionIndex !== undefined) line.selectionIndices = items.map(item => item.selectionIndex);
   if (vertical && items.length >= 3) line.figureAxis = true;
   const fixed = items.filter(item => item.monospace);
@@ -476,10 +489,10 @@ export function verticalSelectionContent(content, view) {
   return { ...content, items };
 }
 
-export function rotatedSelectionContent(content, view, rotation) {
+export function rotatedSelectionContent(content, view, rotation, tagged = false) {
   if (content.items.some(item => typeof item.str !== 'string')) return content;
   const reading = readingPageCoordinates(content, view, rotation);
-  if (reading.content === content) return content;
+  if (reading.content === content && !tagged) return content;
   // Use the Reader's physical line and column order, but pass the original glyph matrices to PDF.js.
   // Explicit spaces stay with their run. PDF.js line breaks must follow the new printed line order.
   const runs = new Map();
@@ -492,18 +505,24 @@ export function rotatedSelectionContent(content, view, rotation) {
     return { ...item, selectionIndex: index };
   });
   const lines = pageLines({ ...reading.content, items }, reading.view);
-  const lineIndices = pdfReadingGroups(lines, { height: reading.view[3] }).flat().map(line =>
-    line.selectionIndices || line.items?.map(item => item.selectionIndex) || []);
+  const orderedLines = pdfReadingGroups(lines, { height: reading.view[3] - reading.view[1] }).flat();
+  if (reading.content === content && !orderedLines.some(line => line.taggedSequence)) return content;
+  const lineIndices = orderedLines.map(line => line.selectionIndices || line.items?.map(item => item.selectionIndex) || []);
   const order = lineIndices.flat();
   // Reader cleanup may omit a printed page decoration. The selectable original must keep every glyph.
   if (order.length !== runs.size || new Set(order).size !== runs.size || !order.every(index => runs.has(index))) return content;
   const ordered = lineIndices.flatMap((indices, row) => {
-    // Within a bidirectional line, PDF.js already resolved the logical order of its text runs.
+    const logical = tagged && orderedLines[row].taggedSequence;
+    // Keep an untagged bidi line's existing PDF.js sequence when no logical order is available.
     const sequence = indices.some(index => content.items[index].dir === 'rtl') ? [...indices].sort((a, b) => a - b) : indices;
-    const items = sequence.flatMap(index => runs.get(index));
+    const items = logical ? logical.flatMap(({ ink, gap }) => {
+      const item = content.items[ink];
+      const str = unfoldArabicForms(item.str);
+      return [...runs.get(gap).slice(0, -1), str === item.str ? item : { ...item, str, sourceItem: item }];
+    }) : sequence.flatMap(index => runs.get(index));
     return items.map((item, i) => {
       const hasEOL = row < lineIndices.length - 1 && i === items.length - 1;
-      return hasEOL === item.hasEOL ? item : { ...item, hasEOL, sourceItem: item };
+      return hasEOL === item.hasEOL ? item : { ...item, hasEOL, sourceItem: item.sourceItem || item };
     });
   });
   return { ...content, items: ordered.concat(gap) };
