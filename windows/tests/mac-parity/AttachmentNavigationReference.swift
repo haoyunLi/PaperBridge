@@ -55,7 +55,18 @@ func nativeAttachmentLinks(fixtures: URL) throws -> [[String: String]] {
         while view.isLoading && Date() < loadDeadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
         for label in labels {
             observer.decision = nil
-            let script = "const link = [...document.links].find(a => a.textContent === name); if (!link) throw Error(name); link.click(); return true;"
+            let script = """
+            if (name === 'Measurements CSV') {
+              const figure = document.querySelector('figure');
+              const caption = figure?.querySelector('figcaption');
+              if (caption?.innerText !== 'Reference response' || caption.offsetHeight === 0 ||
+                  figure.querySelector('img')?.alt !== caption.innerText) throw Error('Missing visible figure caption');
+            }
+            const link = [...document.links].find(a => a.textContent === name);
+            if (!link) throw Error(name);
+            link.click();
+            return true;
+            """
             var outcome: Result<Any, Error>?
             view.callAsyncJavaScript(script, arguments: ["name": label], in: nil, in: .page) { outcome = $0 }
             let deadline = Date().addingTimeInterval(8)

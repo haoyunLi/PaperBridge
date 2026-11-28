@@ -29,7 +29,7 @@ import { annotationLabel, savedAnnotations, removeSavedAnnotationRecords, markSa
 import { annotationCreationTime } from './annotationCreationTime.mjs';
 import { createPaperSaveQueue } from './paperSaveQueue.mjs';
 import { createReadingHistory, normalizeSearchOrigin, persistedReadingPosition } from './readingHistory.mjs';
-import { firstSelectableParagraphID, isSelectableParagraphID, paragraphPreview, resolveSelectedParagraphID } from './paragraphSelection.mjs';
+import { firstSelectableParagraphID, isSelectableParagraphID, ocrCoverageForPage, paragraphOnPdfPage, paragraphPreview, resolveSelectedParagraphID } from './paragraphSelection.mjs';
 import SetupPanel from './SetupPanel.jsx';
 import Onboarding from './Onboarding.jsx';
 import SettingsPanel from './SettingsPanel.jsx';
@@ -739,11 +739,11 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
   const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
-  const ocrReady = Boolean(paper.mineruBlocks?.length || paper.sourceMode === 'mineru' && paper.blocks.length);
+  const coverage = pageStatus === false ? ocrCoverageForPage(paper, currentPage) : null;
   return <div className="pdf-panel" onKeyDown={zoomOnKey}>
     <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} zoom={zoom} onZoom={changeZoom} />
-    {pageStatus === false && <ScanNotice page ocrReady={ocrReady} onParse={onOcr} onSetup={onSetup}
-      onReader={ocrReady || paper.blocks.length ? () => onReader(currentPage) : null} />}
+    {pageStatus === false && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
+      onReader={coverage || paper.blocks.length ? () => onReader(currentPage) : null} />}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
     {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} data-pdf-zoom={zoom} tabIndex={0} aria-label="Continuous original PDF"
       onScroll={handleScroll} onMouseDown={event => {
@@ -839,8 +839,22 @@ function TaskProgress({ busy, progress, status }) {
 function ImportProgress({ item, elapsed, onCancel }) {
   return <div className="import-progress-screen" role="status"><div className="import-progress-card"><FileText size={42} /><small>IMPORTING PDF</small><strong className="import-filename">{item.name}</strong><p>{item.stage}</p><strong>{elapsed}s elapsed</strong><div className="import-progress-bar"><span /></div><button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button><p className="import-preserve-note">Your previous paper, translations, notes, bookmarks, and reading position remain unchanged until this import succeeds.</p></div></div>;
 }
-function ScanNotice({ page = false, ocrReady = false, onParse, onSetup, onReader }) {
-  return <div className="scan-notice" role="status"><AlertCircle size={20} /><div><strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{ocrReady ? 'MinerU OCR text is ready in Reader. The original PDF remains unchanged.' : 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.'}</p><div className="row">{ocrReady ? <button className="button blue" onClick={onReader}>Open OCR Reader</button> : <><button className="button blue" onClick={onParse}>Parse with MinerU</button><button className="button outline" onClick={onSetup}>Set up local AI</button>{onReader && <button className="button ghost" onClick={onReader}>Open Reader</button>}</>}</div></div></div>;
+function ScanNotice({ page = false, coverage, onParse, onSetup, onReader }) {
+  const message = {
+    matched: 'MinerU OCR text is ready in Reader for this page.',
+    unknown: 'Saved MinerU text is available in Reader. Its page could not be identified.',
+    absent: 'MinerU found no readable text on this page.'
+  }[coverage] || 'The original page remains available. Use MinerU OCR to recover text before translating or summarizing it.';
+  return <div className="scan-notice" role="status"><AlertCircle size={20} /><div>
+    <strong>{page ? 'No selectable text on this PDF page' : 'No selectable text in this PDF'}</strong><p>{message}</p>
+    <div className="row">
+      {!coverage && <><button className="button blue" onClick={onParse}>Parse with MinerU</button>
+        <button className="button outline" onClick={onSetup}>Set up local AI</button></>}
+      {onReader && <button className={coverage ? 'button blue' : 'button ghost'} onClick={onReader}>
+        {coverage === 'matched' ? 'Open OCR Reader' : 'Open Reader'}
+      </button>}
+    </div>
+  </div></div>;
 }
 
 function SummaryView({ paper, busy, canSummarize, summarize, navigate, onSelect, expandedEvidence, setupSummary }) {
@@ -1793,7 +1807,16 @@ function App() {
   const saveMainScroll = () => {
     if (restoringScroll.current || !paperRef.current) return;
     const generation = readingRestoration.current;
-    setSelection(current => current?.rect ? { ...current, rect: null } : current);
+    if (selectionRef.current?.rect) {
+      const host = mainScrollRef.current;
+      const selected = window.getSelection();
+      const range = selected?.rangeCount ? selected.getRangeAt(0) : null;
+      const bounds = range && host?.contains(range.commonAncestorContainer) && range.getBoundingClientRect();
+      const viewport = host?.getBoundingClientRect();
+      // Task progress and restored scroll positions can move a still-visible passage.
+      // Keep its fixed lookup card available until the passage scrolls out of view.
+      if (!bounds || !viewport || bounds.bottom <= viewport.top || bounds.top >= viewport.bottom) hideQuickSelection();
+    }
     clearTimeout(scrollSaveTimer.current);
     if (tab === 'Reader' && search) { searchScroll.current = mainScrollRef.current?.scrollTop || 0; return; }
     const id = paperRef.current.id;
@@ -2140,7 +2163,12 @@ function App() {
   }, [viewNavigation?.requestId, tab, displayMode, paper?.id]);
   const command = name => {
     if (editRef.current) { if (name === 'dismiss') cancelParagraphEdit(); return; }
-    if (name === 'dismiss') { dismissModal(); setSelection(null); return; }
+    if (name === 'dismiss') {
+      if (modal) dismissModal();
+      else if (selection?.rect && !inspector && !focus) dismissQuickSelection();
+      else setSelection(null);
+      return;
+    }
     if (modal === 'onboarding' && name !== 'onboarding') return;
     const now = performance.now();
     if (lastCommand.current.name === name && now - lastCommand.current.at < 150) return;
@@ -3007,8 +3035,7 @@ function App() {
     if (sourceChanged && !canSwitchReadingSource(current, 'mineru')) return;
 
     const blocks = sourceChanged ? current.mineruBlocks : current.blocks;
-    const target = blocks.find(block => block.page === page && !block.resource && block.text?.trim()) ||
-      blocks.find(block => block.page > 0 && block.page < page && block.endPage >= page && !block.resource && block.text?.trim());
+    const target = paragraphOnPdfPage(blocks, page);
     const scrollByTab = { ...origin.scrollByTab };
     if (target || sourceChanged) delete scrollByTab.Reader;
     const block = target?.id ?? (sourceChanged ? blocks[0]?.id : origin.block);

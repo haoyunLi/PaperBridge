@@ -2,6 +2,19 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const selectionModule = import('../src/paragraphSelection.mjs');
 
+test('scan guidance and navigation agree about exact pages, continuations and unlocated OCR', async () => {
+  const { paragraphOnPdfPage, ocrCoverageForPage } = await selectionModule;
+  const across = { id: 1, page: 1, endPage: 2, text: 'A continued paragraph' };
+  const next = { id: 2, page: 2, text: 'A new paragraph' };
+  const blocks = [across, next, { id: 3, page: 3, text: '![figure](image.jpg)', resource: true }];
+  assert.equal(paragraphOnPdfPage(blocks, 2), next);
+  assert.equal(paragraphOnPdfPage([across], 2), across);
+  assert.equal(ocrCoverageForPage({ sourceMode: 'pdf', mineruBlocks: blocks }, 2), 'matched');
+  assert.equal(ocrCoverageForPage({ sourceMode: 'mineru', blocks }, 3), 'absent');
+  assert.equal(ocrCoverageForPage({ mineruBlocks: [...blocks, { id: 4, text: 'Unlocated legacy text' }] }, 3), 'unknown');
+  assert.equal(ocrCoverageForPage({ sourceMode: 'pdf', blocks }, 1), null);
+});
+
 test('explanation preview flattens source lines and counts complete characters', async () => {
   const { paragraphPreview } = await selectionModule;
   const scientist = '👩‍🔬';

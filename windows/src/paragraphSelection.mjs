@@ -9,6 +9,20 @@ export function paragraphPreview(text) {
 const validParagraphID = value => Number.isSafeInteger(value) && value > 0;
 const selectable = block => block && validParagraphID(block.id) && !block.resource;
 
+const readable = block => !block.resource && Boolean(block.text?.trim());
+
+export function paragraphOnPdfPage(blocks, page) {
+  return blocks.find(block => readable(block) && block.page === page) ||
+    blocks.find(block => readable(block) && block.page > 0 && block.page < page && block.endPage >= page);
+}
+
+export function ocrCoverageForPage(paper, page) {
+  const blocks = paper.sourceMode === 'mineru' ? paper.blocks : paper.mineruBlocks;
+  if (!blocks?.length) return null;
+  if (paragraphOnPdfPage(blocks, page)) return 'matched';
+  return blocks.some(block => readable(block) && !(block.page > 0)) ? 'unknown' : 'absent';
+}
+
 export function firstSelectableParagraphID(blocks) {
   return Array.isArray(blocks) ? blocks.find(selectable)?.id ?? null : null;
 }

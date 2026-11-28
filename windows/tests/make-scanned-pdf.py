@@ -1,4 +1,4 @@
-"""Create a one-page image PDF with no selectable text for the opt-in OCR test."""
+"""Create an image-only page, optionally between a selectable page and a blank page."""
 
 import sys
 from pathlib import Path
@@ -30,7 +30,21 @@ def main() -> None:
             y += 45
         draw.text((115, y), line, fill="black", font=font)
         y += 70
-    page.save(destination, "PDF", resolution=150.0)
+    if len(sys.argv) == 2:
+        page.save(destination, "PDF", resolution=150.0)
+        return
+
+    from io import BytesIO
+    import pypdfium2 as pdfium
+
+    with BytesIO() as buffer:
+        page.save(buffer, "PDF", resolution=150.0)
+        with pdfium.PdfDocument(sys.argv[2]) as first, pdfium.PdfDocument(buffer.getvalue()) as scan:
+            with pdfium.PdfDocument.new() as mixed:
+                mixed.import_pages(first, pages=[0])
+                mixed.import_pages(scan)
+                mixed.new_page(624, 864).close()
+                mixed.save(destination)
 
 
 if __name__ == "__main__":

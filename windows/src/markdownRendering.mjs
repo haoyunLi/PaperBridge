@@ -9,7 +9,20 @@ import rehypeKatex from 'rehype-katex';
 import { remarkTeXDelimiters } from './texDelimiters.mjs';
 import { rehypeHTMLEquations } from './htmlEquations.mjs';
 
-export const markdownPlugins = [remarkGfm, remarkMath, remarkTeXDelimiters];
+function remarkFigureCaptions() {
+  function visit(node) {
+    const image = node.type === 'paragraph' && node.children.length === 1 && node.children[0];
+    if (image && (image.type === 'image' || image.type === 'imageReference') && image.alt) {
+      node.data = { ...node.data, hName: 'figure' };
+      node.children.push({ type: 'paragraph', data: { hName: 'figcaption' }, children: [{ type: 'text', value: image.alt }] });
+      return;
+    }
+    node.children?.forEach(visit);
+  }
+  return visit;
+}
+
+export const markdownPlugins = [remarkGfm, remarkMath, remarkTeXDelimiters, remarkFigureCaptions];
 const markdownSchema = {
   ...defaultSchema,
   tagNames: [...defaultSchema.tagNames, 'caption', 'colgroup', 'col', 'figure', 'figcaption'],

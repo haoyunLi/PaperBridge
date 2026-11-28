@@ -240,6 +240,18 @@ async function run() {
     await selectPaperSentence();
     await quickSelection.getByText('精确选区译文', { exact: true }).waitFor();
     assert.equal(generateRequests.length - selectionRequestStart, 2, 'Reselecting the Paper sentence should restore the cached result without requesting a model');
+    await page.keyboard.press('Escape');
+    await quickSelection.waitFor({ state: 'detached' });
+    await page.getByRole('button', { name: 'Show Research Inspector', exact: true }).click();
+    assert.equal(await page.locator('.inspector blockquote').textContent(), sourceSelection);
+    await page.getByRole('button', { name: 'Saved Terminology', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Saved Terminology' }).waitFor();
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog', { name: 'Saved Terminology' }).waitFor({ state: 'hidden' });
+    assert.equal(await page.locator('.inspector blockquote').textContent(), sourceSelection);
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
+    await selectPaperSentence();
+    await quickSelection.getByText('精确选区译文', { exact: true }).waitFor();
     await quickSelection.getByRole('button', { name: 'Cobalt highlight', exact: true }).click();
     assert.equal(await page.locator('.document-preview mark.mark-teal').count(), 1, 'Quick Selection should apply the selected highlight color');
     await quickSelection.getByRole('button', { name: 'Remove Highlight', exact: true }).click();

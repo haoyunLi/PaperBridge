@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.104",
+  "version": "0.2.105",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -69,6 +69,7 @@
     "test:live-summary": "node tests/live-summary.cjs",
     "test:live-mineru": "node tests/live-mineru.cjs",
     "test:live-ocr": "node tests/live-ocr.cjs",
+    "test:live-mixed-ocr": "node tests/live-mixed-ocr.cjs",
     "test:packaged": "node tests/packaged.cjs",
     "pack": "npm run build && electron-builder --win dir",
     "dist": "npm run build && electron-builder --win nsis portable",

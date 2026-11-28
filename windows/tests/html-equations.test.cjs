@@ -19,6 +19,17 @@ async function rendered(source) {
   return { formulas, text: plain.join('') };
 }
 
+test('standalone Markdown images expose one caption while inline graphics and explicit captions keep their layout', async () => {
+  const { renderedMarkdownText } = await import('../src/markdownRendering.mjs');
+  const text = source => renderedMarkdownText(source).trim();
+  assert.equal(text('![Reference response](panel.png)'), 'Reference response');
+  assert.equal(text('![Calibration][fig]\n\n[fig]: panel.png'), 'Calibration');
+  assert.equal(text('![](decorative.png)'), '');
+  assert.equal(text('Observed ![marker](marker.png) below.'), 'Observed  below.');
+  assert.equal(text('<figure><img src="panel.png" alt="Diagram"><figcaption>Measured gain</figcaption></figure>'), 'Measured gain');
+  assert.equal(text('`![Unrendered](panel.png)`'), '![Unrendered](panel.png)');
+});
+
 test('printed prices and escaped dollars leave subsequent HTML caption math available', async () => {
   const result = await rendered('<figure><figcaption>Price \\$4, range $5–$10. Estimate \\(n+1\\), gain $g^2$.</figcaption></figure>');
   assert.deepEqual(result.formulas, ['n+1', 'g^2']);
