@@ -12,7 +12,8 @@ async function run() {
   const workspace = fs.mkdtempSync(path.join(artifacts, 'file-drag-'));
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ...defaults, autoCheckUpdates: false,
     onboardingCompletedVersion: 1, pdfExtractionMode: 'pdfOnly', ollamaBaseURL: 'http://127.0.0.1:9' }));
-  const pdf = path.join(__dirname, 'mac-parity', 'emcee-v3.pdf');
+  const pdf = path.join(workspace, 'emcee-v3.pdf');
+  fs.copyFileSync(path.join(__dirname, 'mac-parity', 'emcee-v3.pdf'), pdf);
   const other = path.join(workspace, 'readme.txt');
   fs.writeFileSync(other, 'Not a PDF');
   const id = crypto.createHash('sha256').update(fs.readFileSync(pdf)).digest('hex');
@@ -63,7 +64,38 @@ async function run() {
     await hint.waitFor({ state: 'hidden' });
     await page.waitForFunction(id => document.querySelector('.main-scroll')?.dataset.readingPaperId === id, id);
     const original = await page.evaluate(async id => Array.from(await window.paperBridge.readPdf(id)), id);
-    assert.deepEqual(Buffer.from(original), fs.readFileSync(pdf));
+    const source = fs.readFileSync(pdf);
+    const archive = path.join(workspace, 'pdfs', id + '.pdf');
+    assert.deepEqual(Buffer.from(original), source);
+    await page.waitForFunction(() => !document.querySelector('.task-progress'));
+    const settings = page.getByRole('button', { name: 'Settings', exact: true }).first();
+    const localData = page.getByRole('tab', { name: 'Local Data', exact: true });
+    const openConfirmation = page.getByRole('button', { name: 'Remove all saved PaperBridge data…', exact: true });
+    const confirm = page.getByRole('dialog', { name: 'Remove Saved Data', exact: true });
+    const option = confirm.getByRole('checkbox', { name: 'Also remove archived PDF copies from PaperBridge' });
+    await settings.click();
+    await localData.click();
+    await openConfirmation.click();
+    assert.equal(await option.isChecked(), false);
+    await option.check();
+    await confirm.getByRole('button', { name: 'Cancel', exact: true }).click();
+    assert.equal(await localData.getAttribute('aria-selected'), 'true');
+    assert.deepEqual(fs.readFileSync(archive), source);
+    await openConfirmation.click();
+    assert.equal(await option.isChecked(), false);
+    await confirm.getByRole('button', { name: 'Remove saved data', exact: true }).click();
+    await page.locator('.welcome').waitFor();
+    assert.deepEqual(fs.readFileSync(archive), source);
+    await settings.click();
+    await localData.click();
+    await openConfirmation.click();
+    await option.check();
+    await confirm.getByRole('button', { name: 'Remove saved data', exact: true }).click();
+    await confirm.waitFor({ state: 'hidden' });
+    await page.getByText('Removed saved workspaces and 1 archived PDF copy.', { exact: true }).waitFor();
+    assert.equal(fs.existsSync(archive), false);
+    assert.deepEqual(fs.readFileSync(pdf), source);
+    console.log('Confirmed cancellation, keep/remove archive choices, and preservation of the source PDF.');
     console.log('Verified file drag feedback, cancellation, dialog exclusion, rejection and a real mixed-file drop of a journal PDF.');
   } finally { await app.close(); }
 }

@@ -1,10 +1,14 @@
 # Windows 全软件功能复查
 
+## 清除本地工作区和归档副本
+
+Mac 的「清除所有保存数据」会移除应用归档的 PDF。Windows 的确认框增加了对应选项。取消后返回设置的 Local Data 页；保留或移除副本后，空白工作区会显示处理结果。用期刊论文在临时工作区验证了两个选项，外部源文件的字节一致。Windows 文件共享锁阻止删除归档时，工作区仍会重置，并提示可以重试。释放共享锁后能够删除剩余副本。[桌面操作](tests/pdf-drop-e2e.cjs) · [Windows 文件共享锁](tests/storage.test.cjs)
+
 ## 混合 PDF 与补充材料的图注
 
 用同一份三页 PDF 检查文字层、扫描文字和空白页。DirectML 在 RX 7800 XT 上取得第 2 页文字，Reader 可以跳到对应段落并翻译。第 3 页原本沿用整篇文档的“已识别”提示，现在显示本页没有可读内容；旧工作区若缺少页码，会明确提示页码未知。按 Esc 关闭查词浮窗或术语表后，原选区与结果继续保留。任务状态使阅读区略微移动时，只要选区还可见，仍能读完浮窗中的结果。[混合扫描实测](tests/live-mixed-ocr.cjs)
 
-补充材料中的独立 Markdown 图片现在像 Mac 一样将图注显示在图下。从 Paper、Reader、Full Translation 三个入口打开校准手册，均能看到 530 × 418 像素的图与图注。Mac 1.10.0 的预览会拦截上一级目录的图片，0.2.105 的 Mac 测试因此未通过。本次用同目录的 “Local calibration panel” 核对两端行为；Windows 另覆盖归档内共享图片的 “Reference response” 图注。正文行内图标、无标题图片以及已有图注的 HTML 图表也有回归覆盖。[补充材料操作](tests/paper-attachments-e2e.cjs)
+补充材料中的独立 Markdown 图片现在像 Mac 一样将图注显示在图下。从 Paper、Reader、Full Translation 三个入口打开校准手册，均能看到 530 × 418 像素的图与图注。Mac 1.10.0 的预览会拦截上一级目录的图片，0.2.105 的 Mac 测试因此未通过。改用同目录的 “Local calibration panel” 后，Mac WKWebView 已验证可见图注。[Mac 实机测试](https://github.com/haoyunLi/PaperBridge/actions/runs/46097130053)。Windows 另覆盖归档内共享图片的 “Reference response” 图注。正文行内图标、无标题图片以及已有图注的 HTML 图表也有回归覆盖。[补充材料操作](tests/paper-attachments-e2e.cjs)
 
 ## 0.2.104 的 OpenAI 设置与 Mac 参考测试
 

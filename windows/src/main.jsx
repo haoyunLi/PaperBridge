@@ -988,6 +988,24 @@ function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, setL
   </>;
 }
 
+function ClearDataConfirmation({ onRemove, onCancel }) {
+  const [includeArchivedPdfs, setIncludeArchivedPdfs] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  async function confirm() {
+    setRemoving(true);
+    try { await onRemove(includeArchivedPdfs); }
+    finally { setRemoving(false); }
+  }
+  return <>
+    <p>This removes saved papers, extracted text and figures, translations, bookmarks, notes, terminology, and settings.</p>
+    <label className="settings-checkbox"><input type="checkbox" disabled={removing} checked={includeArchivedPdfs}
+      onChange={event => setIncludeArchivedPdfs(event.target.checked)} /> Also remove archived PDF copies from PaperBridge</label>
+    <p>PDFs outside the PaperBridge archive stay at their original locations. The OpenAI API key can be removed under Models. Text already sent online cannot be recalled.</p>
+    <div className="row"><button className="button danger" disabled={removing} onClick={confirm}>{removing ? 'Removing…' : 'Remove saved data'}</button>
+      <button className="button outline" onClick={onCancel}>Cancel</button></div>
+  </>;
+}
+
 function SavedTerminology({ glossary, saving, error, onRemove }) {
   const [query, setQuery] = useState('');
   const rows = [...glossary.entries()].filter(([, term]) => glossaryTermMatchesQuery(term, query));
@@ -1243,7 +1261,7 @@ function App() {
   const openAIStateRef = useRef(openAIState);
   openAIStateRef.current = openAIState;
   const openAIRefreshId = useRef(null);
-  const [status, setStatus] = useState('Open a PDF or try the practice paper.');
+  const [status, setStatus] = useState('');
   const [error, setError] = useState('');
   const attachment = usePaperAttachment(paperRef, modal, setModal, setError);
   const [workspaceSave, setWorkspaceSave] = useState({ status: 'idle', error: null });
@@ -3127,7 +3145,7 @@ function App() {
     } catch (cause) { setError(`Bundle export incomplete: ${cause.message}`); }
     finally { endTask(token); }
   }
-  async function clearSavedData() {
+  async function clearSavedData(includeArchivedPdfs) {
     if (taskRef.current) return;
     try {
       if (!await finishNoteEditing()) throw new Error('Retry the failed paper save before removing local data.');
@@ -3137,7 +3155,7 @@ function App() {
       libraryMetadataRequest.current++;
       openAIRefreshId.current = null;
       setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
-      await api.clearData();
+      const result = await api.clearData(includeArchivedPdfs);
       setLookupCache(new Map());
       const data = await api.bootstrap();
       resetReadingHistory();
@@ -3148,7 +3166,11 @@ function App() {
       void refreshModels(data.settings);
       setFocus(false); setSelection(null); setSearch(''); setUndo([]); setTab('Paper'); setPageNumber(1); setDisplayMode('bilingual'); setExplanationLanguage('English');
       setPaste(''); setPasteExpanded(false); setPasteFocusRequest(0);
-      setModal(''); setStatus('Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
+      setModal('');
+      setStatus(includeArchivedPdfs
+        ? `Removed saved workspaces and ${result.archivedPdfsRemoved} archived PDF ${result.archivedPdfsRemoved === 1 ? 'copy' : 'copies'}.`
+        : 'Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
+      setError(result?.pdfCleanupError ? `Workspace data was cleared. Retry removing the remaining archived PDFs in Local Data. ${result.pdfCleanupError}` : '');
     } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
   }
   async function saveLibraryLabel(id, title, tags) {
@@ -3864,7 +3886,7 @@ function App() {
         onWheelCapture={handleMainScrollIntent} onPointerDownCapture={handleMainScrollIntent}
         onScroll={saveMainScroll} onKeyDown={event => { handleReadingKey(event); handleMainScrollIntent(event); }}>
         {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
-        {paper && tab !== 'Reader' && tab !== 'Summary' && !busy && status && <Notice className="workspace-status">{status}</Notice>}
+        {(!paper || tab !== 'Reader' && tab !== 'Summary') && !busy && status && <Notice className="workspace-status">{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={openPasteText}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className={pdfFacsimile && displayMode !== 'source' ? 'content-column pdf-comparison-column' : 'content-column'}>
           <div className="section-heading"><div><h2>Full document preview</h2><p>{paper.type === 'pdf' && displayMode === 'source' ? 'Exact native PDF rendering with selectable text and original page layout' : paper.sourceMode === 'mineru' && paper.mineruMarkdown ? 'MinerU Markdown with structure and formulas' : paper.type === 'pdf' ? 'Reflowed selectable PDF text · exact pages remain available in Original mode' : 'Selectable source text in a reflowable reading view'}</p></div><div className="row"><select aria-label="Paper display mode" value={displayMode} onChange={event => changeDisplayMode(event.target.value)}><option value="bilingual">Bilingual</option><option value="source">Original</option><option value="translation">Translation</option></select><button className="button outline" onClick={() => navigateToTab('Reader')}>Open Reader</button>{paper.type === 'pdf' && <button className="button outline" onClick={() => navigateToTab('Original')}>Original PDF</button>}</div></div>
@@ -3997,7 +4019,7 @@ function App() {
       </div>}
 
       {modal === 'attachment' && <PaperAttachment attachment={attachment} Markdown={Markdown} />}
-      {modal === 'clearData' && <><p>This removes saved papers, extracted text and figures, translations, bookmarks, notes, terminology, and settings. Original PDF copies and the separately encrypted OpenAI API key remain; remove the key under Models. Text already sent online cannot be recalled.</p><div className="row"><button className="button danger" onClick={clearSavedData}>Remove saved data</button><button className="button outline" onClick={() => openSettings()}>Cancel</button></div></>}
+      {modal === 'clearData' && <ClearDataConfirmation onRemove={clearSavedData} onCancel={() => openSettings(null, 'data')} />}
       {modal === 'export' && <div className="menu-list"><button onClick={exportBundle}><Download size={17} /> Export portable Markdown bundle</button>{[['original', 'Original Markdown'], ['translated', 'Translated Markdown'], ['bilingual', 'Bilingual Markdown'], ['analysis', 'Summary, sources and notes'], ...(paper.connectedTranslation ? [['full', 'Full Translation Markdown']] : [])].map(([kind, label]) => <button key={kind} onClick={() => exportMarkdown(kind)}><Download size={17} /> {label}</button>)}</div>}
     </div></div></div>}
   </div>;

@@ -9,48 +9,58 @@ const { createInterface } = require('node:readline');
 const { createStore, safeId, bootstrapSnapshot } = require('../electron/storage.cjs');
 const { vendorOf } = require('../electron/hardware.cjs');
 
-test('a Windows sharing violation preserves the paper and a brief lock clears within one save', { skip: process.platform !== 'win32', timeout: 20000 }, async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-save-lock-'));
+function temporaryWorkspace(t, prefix) {
+  const parent = path.resolve(os.tmpdir());
+  const root = fs.mkdtempSync(path.join(parent, prefix));
+  t.after(() => {
+    if (path.dirname(path.resolve(root)) !== parent || !path.basename(root).startsWith(prefix)) throw Error('Unexpected fixture path');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  return root;
+}
+
+async function withWindowsReadLock(filename, operation) {
+  const script = [
+    '$ErrorActionPreference = "Stop"',
+    '$handle = [IO.File]::Open($env:PAPERBRIDGE_TEST_LOCK_FILE, "Open", "Read", "Read")',
+    'try { [Console]::WriteLine("locked"); [Console]::Out.Flush(); [void][Console]::ReadLine(); [Console]::WriteLine("releasing"); [Console]::Out.Flush(); [Threading.Thread]::Sleep(80) } finally { $handle.Dispose() }'
+  ].join('\n');
+  const locker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+    { windowsHide: true, env: { ...process.env, PAPERBRIDGE_TEST_LOCK_FILE: filename }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const closed = once(locker, 'close');
+  const output = createInterface({ input: locker.stdout });
+  try {
+    const [line] = await Promise.race([once(output, 'line'), closed.then(([code]) => { throw Error('Lock helper exited: ' + code); })]);
+    assert.equal(line, 'locked');
+    await operation(async () => {
+      const releasing = once(output, 'line');
+      locker.stdin.end('\n');
+      assert.deepEqual(await releasing, ['releasing']);
+    });
+  } finally {
+    if (!locker.stdin.writableEnded) locker.stdin.end('\n');
+    assert.equal((await closed)[0], 0);
+  }
+}
+
+test('a Windows sharing violation preserves the paper and a brief lock clears within one save', { skip: process.platform !== 'win32', timeout: 20000 }, async t => {
+  const root = temporaryWorkspace(t, 'paperbridge-save-lock-');
   const store = createStore(root);
   const id = 'e'.repeat(64);
   const original = { id, name: 'Field notes', blocks: [], position: { paragraph: 3 }, notes: ['original'] };
   const edited = { ...original, position: { paragraph: 8 }, notes: ['edited'] };
   const primary = path.join(root, 'papers', id + '.json');
-  let locker;
-  try {
-    store.savePaper(original);
-    // FileShare.Read permits reads but prevents Windows from replacing this file.
-    const script = [
-      '$ErrorActionPreference = "Stop"',
-      '$handle = [IO.File]::Open($env:PAPERBRIDGE_TEST_LOCK_FILE, "Open", "Read", "Read")',
-      'try { [Console]::WriteLine("locked"); [Console]::Out.Flush(); [void][Console]::ReadLine(); [Console]::WriteLine("releasing"); [Console]::Out.Flush(); [Threading.Thread]::Sleep(80) } finally { $handle.Dispose() }'
-    ].join('\n');
-    locker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-      { windowsHide: true, env: { ...process.env, PAPERBRIDGE_TEST_LOCK_FILE: primary }, stdio: ['pipe', 'pipe', 'pipe'] });
-    const closed = once(locker, 'close');
-    const output = createInterface({ input: locker.stdout });
-    const [line] = await Promise.race([once(output, 'line'), closed.then(([code]) => { throw Error('Lock helper exited: ' + code); })]);
-    assert.equal(line, 'locked');
-    const before = fs.readFileSync(primary, 'utf8');
+  store.savePaper(original);
+  const before = fs.readFileSync(primary, 'utf8');
+  await withWindowsReadLock(primary, async releaseSoon => {
     assert.throws(() => store.savePaper(edited), error => ['EPERM', 'EBUSY', 'EACCES'].includes(error.code));
     assert.equal(fs.readFileSync(primary, 'utf8'), before);
-    const releasing = once(output, 'line');
-    locker.stdin.end('\n');
-    assert.deepEqual(await releasing, ['releasing']);
+    await releaseSoon();
     store.savePaper(edited);
-    assert.equal((await closed)[0], 0);
-    assert.deepEqual(createStore(root).paper(id).position, edited.position);
-    assert.deepEqual(createStore(root).paper(id).notes, edited.notes);
-    assert.equal(fs.readFileSync(primary + '.backup', 'utf8'), before);
-  } finally {
-    if (locker?.pid && locker.exitCode === null && locker.signalCode === null) {
-      const stopped = once(locker, 'close');
-      locker.kill();
-      await stopped;
-    }
-    if (path.dirname(root) !== path.resolve(os.tmpdir()) || !path.basename(root).startsWith('paperbridge-save-lock-')) throw Error('Unexpected fixture path');
-    fs.rmSync(root, { recursive: true, force: true });
-  }
+  });
+  assert.deepEqual(createStore(root).paper(id).position, edited.position);
+  assert.deepEqual(createStore(root).paper(id).notes, edited.notes);
+  assert.equal(fs.readFileSync(primary + '.backup', 'utf8'), before);
 });
 
 test('workspace saves papers and can recover a damaged primary file', () => {
@@ -120,6 +130,48 @@ test('clearing saved work keeps original PDF copies', () => {
     if (!path.resolve(root).startsWith(path.resolve(os.tmpdir()) + path.sep)) throw new Error('Unexpected temporary path');
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('clearing archived PDFs removes only managed copies and interrupted imports when explicitly requested', t => {
+  const base = temporaryWorkspace(t, 'paperbridge-archived-copies-');
+  const store = createStore(path.join(base, 'workspace'));
+  const id = 'c'.repeat(64);
+  const archived = store.pdfPath(id);
+  const directory = path.dirname(archived);
+  fs.mkdirSync(directory, { recursive: true });
+  const source = path.join(base, 'Original research.pdf');
+  fs.writeFileSync(source, '%PDF-1.4\nSource bytes');
+  fs.copyFileSync(source, archived);
+  const interrupted = archived + '.123.3c7532e2-e7d5-4d67-a2d1-4e75554a1088.tmp';
+  const unrelated = path.join(directory, 'My PDF.pdf');
+  const backup = archived + '.personal-backup';
+  const nested = path.join(directory, 'shared');
+  fs.mkdirSync(nested);
+  for (const file of [interrupted, unrelated, backup, path.join(nested, id + '.pdf')]) fs.writeFileSync(file, 'retained');
+  assert.equal(store.clearData('true').archivedPdfsRemoved, 0);
+  assert.ok(fs.existsSync(archived));
+  assert.deepEqual(store.clearData(true), { archivedPdfsRemoved: 1 });
+  assert.ok(!fs.existsSync(archived) && !fs.existsSync(interrupted));
+  assert.equal(fs.readFileSync(source, 'utf8'), '%PDF-1.4\nSource bytes');
+  for (const file of [unrelated, backup, path.join(nested, id + '.pdf')]) assert.equal(fs.readFileSync(file, 'utf8'), 'retained');
+  assert.deepEqual(store.clearData(true), { archivedPdfsRemoved: 0 });
+});
+
+test('a locked archived PDF leaves the reset workspace usable and can be removed on retry', { skip: process.platform !== 'win32', timeout: 20000 }, async t => {
+  const root = temporaryWorkspace(t, 'paperbridge-clear-locked-pdf-');
+  const store = createStore(root), id = 'd'.repeat(64), archived = store.pdfPath(id);
+  store.savePaper({ id, name: 'Notebook', blocks: [] });
+  fs.mkdirSync(path.dirname(archived), { recursive: true });
+  fs.writeFileSync(archived, '%PDF-1.4');
+  await withWindowsReadLock(archived, () => {
+    const result = store.clearData(true);
+    assert.equal(result.archivedPdfsRemoved, 0);
+    assert.ok(result.pdfCleanupError);
+    assert.deepEqual(createStore(root).list(), []);
+    assert.equal(fs.readFileSync(archived, 'utf8'), '%PDF-1.4');
+  });
+  assert.deepEqual(store.clearData(true), { archivedPdfsRemoved: 1 });
+  assert.equal(fs.existsSync(archived), false);
 });
 
 test('library orders opens independently of edits and retains paper metadata across restart', async () => {

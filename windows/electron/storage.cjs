@@ -162,6 +162,27 @@ function libraryEntryFromPaper(paper, existing, revision) {
   };
 }
 
+function removeArchivedPdfs(directory) {
+  let archivedPdfsRemoved = 0;
+  try {
+    const location = fs.lstatSync(directory, { throwIfNoEntry: false });
+    if (!location) return { archivedPdfsRemoved };
+    if (!location.isDirectory()) throw new Error('The PDF archive is not a local directory.');
+    for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (!item.isFile()) continue;
+      const archived = /^[a-f0-9]{64}\.pdf$/.test(item.name);
+      const interrupted = /^[a-f0-9]{64}\.pdf\.\d+\.[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.tmp$/.test(item.name);
+      if (!archived && !interrupted) continue;
+      fs.unlinkSync(path.join(directory, item.name));
+      if (archived) archivedPdfsRemoved++;
+    }
+    return { archivedPdfsRemoved };
+  } catch (cause) {
+    // Workspace removal has committed. Allow a later clear to retry the remaining files.
+    return { archivedPdfsRemoved, pdfCleanupError: cause.message };
+  }
+}
+
 function createStore(root) {
   const papersDir = path.join(root, 'papers');
   const pdfDir = path.join(root, 'pdfs');
@@ -280,7 +301,7 @@ function createStore(root) {
       writeIndex(index);
       return librarySnapshot().library;
     },
-    clearData() {
+    clearData(includeArchivedPdfs = false) {
       clearPageArchives(root);
       clearSavedMineruResults(root);
       const savedFiles = [
@@ -293,6 +314,7 @@ function createStore(root) {
           if (!item.isDirectory() && pattern.test(item.name)) fs.unlinkSync(path.join(dir, item.name));
         }
       }
+      return includeArchivedPdfs === true ? removeArchivedPdfs(pdfDir) : { archivedPdfsRemoved: 0 };
     },
     libraryPersistenceWarning() { return libraryPersistenceWarning; },
     librarySnapshot,

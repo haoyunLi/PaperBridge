@@ -266,7 +266,7 @@ function registerHandlers() {
     });
     return store.list();
   });
-  ipcMain.handle('paper:clear-data', () => {
+  ipcMain.handle('paper:clear-data', (_event, includeArchivedPdfs) => {
     activeImportArchive = null;
     revokeOpenAIConsent();
     updateFiles.cancel();
@@ -275,7 +275,7 @@ function registerHandlers() {
     refreshedLegacyTag = null;
     mineruJobs.cancel();
     pendingMineruResults.clear();
-    store.clearData();
+    return store.clearData(includeArchivedPdfs === true);
   });
   ipcMain.handle('pdf:import', async () => {
     const result = await dialog.showOpenDialog(window, { title: 'Open paper', properties: ['openFile'], filters: [{ name: 'PDF documents', extensions: ['pdf'] }] });
