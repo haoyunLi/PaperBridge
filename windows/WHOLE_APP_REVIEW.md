@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 在解析设置中确认实际设备
+
+切换 MinerU backend 后，Parsing 在同一处显示本次检测到的设备。在本机用同一份传真实测 Auto 选择 RX 7800 XT 的 DirectML；兼容模式使用 CPU。两种选择都能重启恢复并得到一致的文字。[真机对照](tests/live-ocr-device-switch.cjs)
+
+Windows 开发分支首页曾指向 0.2.74，而主仓库首页和 Windows 指南已经指向 0.2.126。发布流程现在按同一份已验证更新清单同步三个入口。[下载入口更新逻辑](scripts/publish-download-page.cjs)
+
 ## 停止 Windows 解析与阅读位置验收
 
 旧版取消解析或 MinerU 安装步骤时只终止启动器。在有独立子进程的回归用例中，两个后台任务仍在运行。0.2.132 一起终止当前作业的进程树。用本机实际的 MinerU 导入 20 页论文后点「Cancel Import」，确认该任务的解析器、控制台和 Python 进程都已退出，上一本打开的论文、书签和外部 PDF 都保留。[进程树回归](tests/worker-cancel.test.cjs) · [本机真实解析器](tests/live-ocr-cancel.cjs)

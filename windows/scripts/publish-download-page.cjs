@@ -30,10 +30,10 @@ function updateDownloadPage(markdown, version, windowsGuide = false) {
   return updated.replace(heading, heading.replace(previous, version)) + markdown.slice(sectionEnd);
 }
 
-async function publishDownloadPage({ repos, repo, feed, ref, windowsGuide = false }) {
+async function publishDownloadPage({ repos, repo, feed, ref, windowsGuide = false, windowsHomepage = false }) {
   const verified = releaseFromFeed(feed, feed.version);
   if (ref !== 'refs/tags/' + verified.tag) throw new Error('The homepage version must match the verified release tag.');
-  const branch = windowsGuide ? 'windows/desktop-app' : 'main';
+  const branch = windowsGuide || windowsHomepage ? 'windows/desktop-app' : 'main';
   const location = { ...repo, path: windowsGuide ? 'windows/README.md' : 'README.md' };
   for (let attempt = 1; attempt <= 3; attempt++) {
     const { data: file } = await repos.getContent({ ...location, ref: branch });

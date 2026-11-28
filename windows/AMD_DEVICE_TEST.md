@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 同一张 Group 4 传真在 DirectML 和 CPU 上的结果
+
+0.2.133 在 Parsing 设置显示与当前选项对应的实际解析设备。RX 7800 XT 上，Auto 显示 DirectML，切换兼容模式后显示 CPU。每次重启再打开同一张碳膜校准传真，都得到四个相同的内容块，记录 532 nm 峰值、三次重复后的峰位和图像。两次导入分别是 13.3 秒和 12.6 秒，属于这一张扫描件的单次测量。[实机设备切换](tests/live-ocr-device-switch.cjs)
+
 ## 实际停止 20 页论文解析
 
 在读着另一篇带书签的论文时，拖入 20 页 PDF，用本机安装的 MinerU 开始解析并点击取消。0.2.132 中，这次作业的 mineru-kit.exe、conhost.exe 和 python.exe 均已退出。之前打开的论文继续显示，书签和输入 PDF 字节保留。[设备测试](tests/live-ocr-cancel.cjs)

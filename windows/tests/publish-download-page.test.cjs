@@ -27,20 +27,20 @@ test('updates both direct links and the checksum label in the Windows guide with
   assert.equal(updateDownloadPage(guide('0.2.76'), '0.2.75', true), guide('0.2.76'));
 });
 
-test('preserves simultaneous changes to main, checks both asset hashes, and never rolls the page back', async () => {
+async function checkHomepageUpdates(homepageBranch) {
   const version = '0.2.70';
   const feed = { version, files: { Setup: { sha256: 'a'.repeat(64), size: 123 }, Portable: { sha256: 'b'.repeat(64), size: 100 } } };
   let published = feed, page = homepage('0.2.69'), writes = 0;
   const branch = 'windows/desktop-app';
   const repos = {
     async getContent({ ref, path }) {
-      assert.equal(path, ref === 'main' ? 'README.md' : 'windows/latest-release.json');
-      assert.ok([branch, 'main'].includes(ref));
-      return { data: { sha: String(writes), content: Buffer.from(ref === 'main' ? page : JSON.stringify(published)).toString('base64') } };
+      assert.ok(['README.md', 'windows/latest-release.json'].includes(path));
+      assert.equal(ref, path === 'README.md' ? homepageBranch : branch);
+      return { data: { sha: String(writes), content: Buffer.from(path === 'README.md' ? page : JSON.stringify(published)).toString('base64') } };
     },
     async createOrUpdateFileContents({ path, branch, sha, content }) {
       assert.equal(path, 'README.md');
-      assert.equal(branch, 'main');
+      assert.equal(branch, homepageBranch);
       assert.equal(sha, String(writes++));
       if (writes === 1) {
         page += '\nA concurrent Mac edit.';
@@ -49,7 +49,7 @@ test('preserves simultaneous changes to main, checks both asset hashes, and neve
       page = Buffer.from(content, 'base64').toString('utf8');
     }
   };
-  const run = () => publishDownloadPage({ repos, repo: { owner: 'haoyunLi', repo: 'PaperBridge' }, ref: 'refs/tags/windows-v' + version, feed });
+  const run = () => publishDownloadPage({ repos, repo: { owner: 'haoyunLi', repo: 'PaperBridge' }, ref: 'refs/tags/windows-v' + version, feed, windowsHomepage: homepageBranch === branch });
   await run(); await run();
   assert.equal(page, homepage(version) + '\nA concurrent Mac edit.');
   assert.equal(writes, 2);
@@ -58,4 +58,8 @@ test('preserves simultaneous changes to main, checks both asset hashes, and neve
   published = { ...feed, version: '0.2.71' };
   await run();
   assert.equal(writes, 2);
-});
+}
+
+for (const branch of ['main', 'windows/desktop-app']) {
+  test('preserves edits, verifies hashes and prevents rollback on ' + branch, () => checkHomepageUpdates(branch));
+}

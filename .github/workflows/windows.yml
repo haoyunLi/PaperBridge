@@ -406,3 +406,4 @@ jobs:
             core.info(await publishReleaseFeed({ ...verified, promotePrerelease: true }));
             core.info(await publishDownloadPage(verified));
             core.info(await publishDownloadPage({ ...verified, windowsGuide: true }));
+            core.info(await publishDownloadPage({ ...verified, windowsHomepage: true }));

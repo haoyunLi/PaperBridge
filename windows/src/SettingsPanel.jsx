@@ -16,6 +16,15 @@ const sections = [
   ['reading', 'Reading', BookOpen], ['updates', 'Updates', RefreshCw], ['data', 'Local Data', HardDrive]
 ];
 
+function mineruDeviceText(runtime) {
+  if (runtime?.description) return 'MinerU: ' + runtime.description + '.';
+  if (runtime?.checked && runtime.torch) {
+    const cuda = runtime.cuda ? 'available (' + (runtime.devices || []).join(', ') + ')' : 'unavailable';
+    return 'MinerU Python: PyTorch ' + runtime.torch + '; CUDA ' + cuda + '.';
+  }
+  return runtime?.reason || '';
+}
+
 function Group({ title, children }) {
   return <section className="settings-section"><h3>{title}</h3>{children}</section>;
 }
@@ -104,7 +113,8 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
           <fieldset disabled={locked || detecting}>
             <label>PDF extraction mode<select value={settings.pdfExtractionMode || 'mineruPreferred'} onChange={event => onSettings({ pdfExtractionMode: event.target.value })}><option value="mineruPreferred">MinerU, then selectable PDF text</option><option value="mineruOnly">MinerU only</option><option value="pdfOnly">Selectable PDF text only (no OCR)</option></select></label>
             <p>{pdfOnly ? 'Uses the existing text layer without installing tools or running OCR.' : settings.pdfExtractionMode === 'mineruOnly' ? 'Requires compatible MinerU. If parsing fails, the original PDF remains available.' : 'Tries structured MinerU extraction first; if it fails, uses the PDF text layer.'}</p>
-            <label>MinerU backend<select disabled={pdfOnly} value={settings.mineruBackend || 'auto'} onChange={event => onSettings({ mineruBackend: event.target.value })}><option value="auto">Auto (MinerU selects available acceleration)</option><option value="pipeline">Compatibility mode (ONNX CPU / legacy pipeline)</option></select></label>
+            <label>MinerU backend<select aria-label="MinerU backend" disabled={pdfOnly} value={settings.mineruBackend || 'auto'} onChange={event => onSettings({ mineruBackend: event.target.value })}><option value="auto">Auto (MinerU selects available acceleration)</option><option value="pipeline">Compatibility mode (ONNX CPU / legacy pipeline)</option></select></label>
+            {!pdfOnly && isMineruReady(parser) && mineruDeviceText(parser.runtime) && <p role="status">{mineruDeviceText(parser.runtime)}</p>}
             <label>MinerU executable<input disabled={pdfOnly} value={settings.mineruExecutable} placeholder="mineru.exe or leave blank to auto-detect" onChange={event => onSettings({ mineruExecutable: event.target.value })} /></label>
             <button className="button outline" disabled={pdfOnly || checkingParser} onClick={detectMineru}>{detecting ? 'Detecting…' : 'Use Auto-Detect'}</button>
           </fieldset>
@@ -129,7 +139,7 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <Group title="Download another model"><p>Enter an Ollama model name, or browse the recommendations in Local AI.</p><div className="row"><input aria-label="Model to download" value={name} disabled={locked} placeholder="translategemma:4b" onChange={event => onName(event.target.value)} /><button className="button blue" disabled={locked} onClick={() => onDownload()}>Download model</button></div></Group>
         <Group title="Graphics acceleration"><div className="settings-status-row"><p>{hardware?.adapters?.length ? hardware.adapters.map(describeAdapter).join(' · ') : 'No graphics adapter reported by Windows.'}</p><button className="button outline" disabled={checking} onClick={() => { setMemoryCheck(value => value + 1); onCheck(); }}><RefreshCw size={14} />{checking ? 'Checking…' : 'Check'}</button></div>
           <p>{hardware?.cudaDriver?.length ? (hardware.cudaVersion ? `The NVIDIA driver supports CUDA up to ${hardware.cudaVersion}.` : 'NVIDIA driver detected. Its supported CUDA version is unavailable.') : hardware?.adapters?.some(adapter => adapter.vendor === 'AMD') ? 'AMD detected. Ollama may use supported ROCm or Vulkan hardware.' : 'Ollama chooses its available CPU or GPU backend automatically.'}</p>
-          <p>{mineruRuntime?.description ? `MinerU: ${mineruRuntime.description}.` : mineruRuntime?.checked ? `MinerU Python: PyTorch ${mineruRuntime.torch}; CUDA ${mineruRuntime.cuda ? `available (${mineruRuntime.devices.join(', ')})` : 'unavailable'}.` : mineruRuntime?.reason || 'Check the MinerU runtime to see its acceleration status.'}</p>
+          <p>{mineruDeviceText(mineruRuntime) || 'Check the MinerU runtime to see its acceleration status.'}</p>
           <OllamaMemory key={settings.ollamaBaseURL} baseURL={settings.ollamaBaseURL} revision={memoryCheck} allowUnload disabled={locked} />
           {hardwareError && <p className="settings-error" role="alert">{hardwareError}</p>}
         </Group></>}

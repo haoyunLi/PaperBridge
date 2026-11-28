@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+切换 MinerU 后端时，Parsing 直接显示检测到的设备。RX 7800 XT 的 DirectML 和同机 CPU 均已实际完成同一张黑白扫描件的解析。[同一份 PDF 的设备对照](tests/live-ocr-device-switch.cjs)
+
 Windows 的取消导入和 MinerU 安装取消会停止该任务启动的子进程。用实际解析器验证过取消后的书签和原件。[本机解析取消](tests/live-ocr-cancel.cjs)
 
 原文笔记可以跨过没有文字的扫描页和空白页。旧版因此提示复核的笔记，可以按原偏移重新核对引文并恢复定位。[打包版回归](tests/pdf-select-all-e2e.cjs)
