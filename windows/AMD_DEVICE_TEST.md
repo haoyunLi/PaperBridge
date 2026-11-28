@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 实验记录的提取质量检查及 PDF 副本取消
+
+RX 7800 XT 机器上的 0.2.112 打包版对 46 段实验记录给出 43 处提示。列表前 40 条、双语跳转、列表外段落的对照、修正及重启后的书签均经过桌面操作。重新提取时取消可以释放尚未保存的归档，重试成功后可正常读取该副本。另用公开 0.2.107 创建含既有笔记的三页论文，从新副本恢复第 2 页后，本机 4B 将原文译成 “After three repeated measurements, the peak position remained unchanged.”，旧论文的译文和批注仍可从资料库读取。[质量检查](tests/quality-review-e2e.cjs) · [既有论文恢复与翻译](tests/mixed-cid-recovery-e2e.cjs)
+
 ## ResNet 原论文配色和跨栏译文
 
 在 RX 7800 XT 电脑的 0.2.111 打包版中打开原始十二页 ResNet 论文，核对第 4 页图 3 的六处填色，Windows 与 PDFKit 的 sRGB 通道差均为 1。再用 TranslateGemma 4B 翻译第 12 页表 14 两侧的跨栏段落，译文保留了 VGG、33.1%、13.3%、11.7% 和 14.4%，重开后逐字一致。Ollama 报告显存占用 2,881,948,220 字节。[图 3 和表 14 测量](tests/resnet-table-e2e.cjs)

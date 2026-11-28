@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   importPdf: () => ipcRenderer.invoke('pdf:import'),
   importPdfBytes: payload => ipcRenderer.invoke('pdf:import-bytes', payload),
   copyPdfAsNew: id => ipcRenderer.invoke('pdf:copy-as-new', id),
+  discardNewPdfCopy: id => ipcRenderer.invoke('pdf:discard-new-copy', id),
   readPdf: id => ipcRenderer.invoke('pdf:read', id),
   preparePageArchive: payload => ipcRenderer.invoke('pdf:prepare-page-archive', payload),
   archivePdfPage: payload => ipcRenderer.invoke('pdf:archive-page', payload),

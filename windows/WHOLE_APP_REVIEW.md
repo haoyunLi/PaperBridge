@@ -1,5 +1,11 @@
 # Windows 全软件功能复查
 
+## 提取质量提示与重新提取的取消操作
+
+0.2.112 在 46 段实验记录里识别出 43 处疑似提取问题。旧版漏报 3 段、误报 2 段，均涉及从论文复制的不可见字符。新版对齐 Mac 对断词、未完成短语、数字碎片与句末标点的判断。展开 Overview 的第 40 条提示可跳到双语 Reader，后续段落也可单独对照原文并修正。重启后修正和书签均保留。[Mac 原生评估](https://github.com/haoyunLi/PaperBridge/actions/runs/46104750742) · [打包版操作](tests/quality-review-e2e.cjs)
+
+选择「Re-extract PDF as New Copy」后，在准备页面图像时取消，应用会释放尚未保存的新副本。再次提取成功后只保留一次新归档。实测选中的磁盘文件逐字节一致，先前论文的书签保留。设置中的清除数据操作仍默认保留已保存的归档，单独勾选后才删除归档。[取消、重试与保留已保存副本](tests/import-progress-e2e.cjs) · [清除设置](tests/pdf-drop-e2e.cjs)
+
 ## 原页和导出图中的 ICC 色彩配置
 
 两份 PDF 各画了相同的三阶灰度，一份用线性 RGB 编码，另一份用常规 sRGB 编码，并都嵌入了相应配置。Mac PDFKit 在明确的 sRGB 画布上读出 120、177、225。Windows 0.2.110 直接显示了线性文件的原始数值 48、112、192。0.2.111 使用安装包内的 PDF.js 色彩转换模块，断网后原页显示 119、177、225，导出的页面 PNG 取样相同，原始 PDF 保持逐字节一致。曾由 0.2.110 缓存的旧页面图也重新渲染。[Mac 原生取样](https://github.com/haoyunLi/PaperBridge/actions/runs/46103656002) · [Windows 原页和导出](tests/scanned-original-e2e.cjs)

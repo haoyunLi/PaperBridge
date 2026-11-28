@@ -2858,6 +2858,7 @@ function App() {
     if (busy || taskRef.current || editRef.current) return;
     setModal('');
     let token = savedPaperId ? startTask('Reading the archived PDF…') : null;
+    let uncommittedId;
     try {
       if (token) {
         if (!await finishNoteEditing()) throw new Error('Save the current paper changes before recovering the PDF.');
@@ -2865,12 +2866,17 @@ function App() {
       }
       const imported = await api.copyPdfAsNew(savedPaperId);
       if (!imported) return;
+      uncommittedId = imported.id;
       if (token) requireActiveTask(token);
       else if (taskRef.current || editRef.current) return;
       token = startPdfImport(imported.name, 'Preparing an independent PDF copy', token || undefined);
       await ingestPdf(imported, token, recoverPage);
+      uncommittedId = null;
     } catch (cause) { if (!token?.cancelled) setError(cause.message); }
-    finally { if (token) endTask(token); }
+    finally {
+      if (uncommittedId) await api.discardNewPdfCopy(uncommittedId).catch(cause => setError(cause.message));
+      if (token) endTask(token);
+    }
   }
   function selectParagraphForExplanation(id) {
     const current = paperRef.current;

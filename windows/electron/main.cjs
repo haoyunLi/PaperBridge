@@ -35,6 +35,7 @@ let store;
 let updateFiles;
 const mineruJobs = createMineruJobGuard();
 const pendingMineruResults = new Map();
+const pendingPdfCopies = new Map();
 let setupManager = null;
 let setupOperation = null;
 let setupChangesMineru = false;
@@ -104,6 +105,12 @@ function progress(data) {
 function importPdfBytes(bytes, name) {
   const imported = importPdfAsset(bytes, name, store.pdfPath);
   return { ...imported, existing: store.paper(imported.id) };
+}
+
+function discardPendingPdf(id, sender) {
+  if (!pendingPdfCopies.has(id) || pendingPdfCopies.get(id) !== sender) return;
+  if (!store.paper(id)) fs.rmSync(store.pdfPath(id), { force: true });
+  pendingPdfCopies.delete(id);
 }
 
 function registerHandlers() {
@@ -260,7 +267,8 @@ function registerHandlers() {
   ipcMain.handle('paper:update-library-metadata', (_event, payload) => store.updateLibraryMetadata(payload));
   ipcMain.handle('paper:save', (event, paper) => {
     store.savePaper(paper, () => {
-      // The saved document owns its OCR files even if updating the library index fails.
+      // A written document owns its source and OCR files even if updating the library index fails.
+      pendingPdfCopies.delete(paper.id);
       const pending = pendingMineruResults.get(paper.mineruResourceId);
       if (pending && pending.sender === event.sender && pending.id === paper.id) pendingMineruResults.delete(paper.mineruResourceId);
     });
@@ -275,6 +283,7 @@ function registerHandlers() {
     refreshedLegacyTag = null;
     mineruJobs.cancel();
     pendingMineruResults.clear();
+    for (const [id, sender] of pendingPdfCopies) discardPendingPdf(id, sender);
     return store.clearData(includeArchivedPdfs === true);
   });
   ipcMain.handle('pdf:import', async () => {
@@ -284,16 +293,25 @@ function registerHandlers() {
     return importPdfBytes(fs.readFileSync(source), path.basename(source));
   });
   ipcMain.handle('pdf:import-bytes', (_event, { bytes, name }) => importPdfBytes(bytes, name));
-  ipcMain.handle('pdf:copy-as-new', (_event, id) => {
-    if (id === undefined) return selectIndependentPdfAsset({
-      showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options), owner: window, pdfPath: store.pdfPath
-    });
-    const paper = store.paper(safeId(id));
-    if (paper?.type !== 'pdf') throw new Error('The saved PDF workspace is unavailable.');
-    const source = store.pdfPath(id);
-    if (!fs.existsSync(source)) throw new Error('The archived PDF is missing. Choose the original with Re-extract PDF as New Copy.');
-    return independentPdfAsset(fs.readFileSync(source), paper.name, store.pdfPath);
+  ipcMain.handle('pdf:copy-as-new', async ({ sender }, id) => {
+    let imported;
+    if (id === undefined) {
+      imported = await selectIndependentPdfAsset({
+        showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options), owner: window, pdfPath: store.pdfPath
+      });
+    } else {
+      const paper = store.paper(safeId(id));
+      if (paper?.type !== 'pdf') throw new Error('The saved PDF workspace is unavailable.');
+      const source = store.pdfPath(id);
+      if (!fs.existsSync(source)) throw new Error('The archived PDF is missing. Choose the original with Re-extract PDF as New Copy.');
+      imported = independentPdfAsset(fs.readFileSync(source), paper.name, store.pdfPath);
+    }
+    if (!imported) return null;
+    pendingPdfCopies.set(imported.id, sender);
+    if (sender.isDestroyed() || sender.isCrashed()) { discardPendingPdf(imported.id, sender); return null; }
+    return imported;
   });
+  ipcMain.handle('pdf:discard-new-copy', ({ sender }, id) => discardPendingPdf(id, sender));
   ipcMain.handle('pdf:read', (_event, id) => new Uint8Array(fs.readFileSync(store.pdfPath(safeId(id)))));
   ipcMain.handle('pdf:prepare-page-archive', async (event, { id, fingerprint, pageCount, requestId }) => {
     const pdfFile = store.pdfPath(safeId(id));
@@ -564,6 +582,10 @@ function createWindow() {
     });
   }
   function discardPendingResults() {
+    for (const [id, sender] of pendingPdfCopies) {
+      if (sender !== contents) continue;
+      try { discardPendingPdf(id, sender); } catch (error) { console.error('Could not remove unfinished PDF copy:', error.message); }
+    }
     for (const [resourceId, pending] of pendingMineruResults) {
       if (pending.sender !== contents) continue;
       pendingMineruResults.delete(resourceId);
