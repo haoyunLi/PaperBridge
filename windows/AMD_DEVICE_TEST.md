@@ -1,5 +1,11 @@
 # Windows AMD 真机回归
 
+## 已有译文的英中混排论文
+
+用 GitHub 的 0.2.107 便携版程序导入三页英文和中文记录，Reader 只读到第 1、3 页共四段。在最后一段用本机 4B 翻译、添加书签并写入笔记，再用 0.2.109 打包版打开同一个工作区。在 Original 和 Paper 原页查看第 2 页时，都能从归档创建新副本并直接读到该页。七段文字逐行对应 Mac PDFKit 的三页原文。
+
+从恢复页翻译「重复三次测量后，峰位没有移动」，4B 返回 “After three repeated measurements, the peak position remained unchanged.”。退出重开后这个译文仍在；回到图书馆中的旧论文，第 3 页的「参考信号保持不变。」、书签、原笔记均可读。另在测试工作区暂时移开归档 PDF，按钮会报告文件缺失，归档放回后可在同一页重试。[旧版和新版的桌面对照](tests/mixed-cid-recovery-e2e.cjs) · [Mac 原生对照](https://github.com/haoyunLi/PaperBridge/actions/runs/46101516820)
+
 ## 东亚字体和黑白扫描件
 
 0.2.107 打包版打开中、日、韩三页校准记录时，读到 0 段正文。0.2.108 在这台 RX 7800 XT 上直接读取了标题和观测记录共 9 段，逐行与 Mac PDFKit 原文相同。对 0.2.107 保存的空白论文，点击「Check saved PDF text」或再次打开原件都能恢复正文。保留了已有笔记，关闭重开后仍可切回三组语言设置阅读原译文，导出的三张页面图都含有标题及两条记录。4B 分别译出了 “A peak was observed at 532 nm.”、“The sample exhibited a peak at 633 nm.” 和 “The sample exhibited a single peak at 785 nm.”。[打包版重开与导出测试](tests/cjk-pdf-e2e.cjs)

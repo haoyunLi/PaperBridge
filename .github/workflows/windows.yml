@@ -132,6 +132,8 @@ jobs:
           node tests/cjk-pdf-e2e.cjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node tests/cjk-pdf-e2e.cjs --legacy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tests/mixed-cid-recovery-e2e.cjs
       - name: Keep equation-adjacent prose readable in the packaged app
         shell: pwsh
         run: |

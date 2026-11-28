@@ -399,6 +399,8 @@ function usePdfDocument(paper) {
   return loaded?.id === id ? loaded : { pdf: null, error: '' };
 }
 
+const eastAsianLetter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
 function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady }) {
   const canvas = useRef(null);
   const layer = useRef(null);
@@ -440,7 +442,7 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
       await task.promise;
       if (cancelled) return;
       if (!root) { onReady?.(number, null); return; }
-      if (reusable) { onReady?.(number, Boolean(root.textContent.trim())); return; }
+      if (reusable) { onReady?.(number, previous.status); return; }
       const pdfjs = await import('pdfjs-dist');
       const textContentSource = await page.getTextContent();
       const visible = await omitClippedFigureText(page, textContentSource, pdfjs.OPS);
@@ -461,9 +463,11 @@ function PdfSheet({ pdf, number, width, facsimile, annotations, onSize, onReady 
         }
       }
       root.dataset.page = String(number);
-      finishedLayer.current = { pdf, number, textLayer };
+      const text = visible.items.map(item => item.str || '').join('');
+      const status = { selectable: Boolean(text.trim()), eastAsian: eastAsianLetter.test(text) };
+      finishedLayer.current = { pdf, number, textLayer, status };
       setRendered(true);
-      onReady?.(number, Boolean(root.textContent.trim()));
+      onReady?.(number, status);
     })().catch(cause => { if (!cancelled) onReady?.(number, cause.message); });
     return () => { cancelled = true; task?.cancel(); if (finishedLayer.current?.textLayer !== textLayer) textLayer?.cancel(); };
   }, [pdf, number, width, facsimile, onSize, onReady]);
@@ -536,7 +540,7 @@ function capturePdfRange(host, range) {
     anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
 }
 
-function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader }) {
+function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
   const { pdf, error } = usePdfDocument(paper);
   const scroller = useRef(null);
   const activePage = useRef(0);
@@ -748,10 +752,19 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const dragStart = dragPage == null ? Infinity : Math.min(dragPage, start);
   const dragEnd = dragPage == null ? 0 : Math.max(dragPage, end);
   if (paper?.type !== 'pdf') return <Empty title="No original PDF" body="This document was created from pasted text." />;
-  const coverage = pageStatus === false ? ocrCoverageForPage(paper, currentPage) : null;
+  const needsOCR = pageStatus?.selectable === false;
+  const coverage = needsOCR ? ocrCoverageForPage(paper, currentPage) : null;
+  const missingText = pageStatus?.eastAsian && paper.blocks.length > 0 && paper.sourceMode !== 'mineru' &&
+    (paper.pdfTextVersion || 0) < pdfTextVersion && !paper.blocks.some(block => block.page > 0 &&
+      block.page <= currentPage && (block.endPage || block.page) >= currentPage && eastAsianLetter.test(block.text));
   return <div className="pdf-panel" onKeyDown={handlePdfShortcut}>
     <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} zoom={zoom} onZoom={changeZoom} />
-    {pageStatus === false && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
+    {missingText && <div className="scan-notice" role="status"><FileText size={20} /><div>
+      <b>East Asian text is missing from this page in the saved Reader</b>
+      <p>Read and translate the text in a new library copy. Your notes and translations stay with this paper.</p>
+      <button className="button outline" disabled={busy} onClick={onRecoverText}>Recover PDF text in new copy</button>
+    </div></div>}
+    {needsOCR && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
       onReader={coverage || paper.blocks.length ? () => onReader(currentPage) : null} />}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
     {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} data-pdf-zoom={zoom} tabIndex={0} aria-label="Continuous original PDF"
@@ -2398,8 +2411,7 @@ function App() {
       await ingestPdf(imported, token);
     } catch (err) { if (!token.cancelled) setError(`Could not import ${file.name}: ${err.message}`); } finally { endTask(token); }
   }
-  function startPdfImport(name, stage) {
-    const token = startTask(`Opening ${name}…`);
+  function startPdfImport(name, stage, token = startTask(`Opening ${name}…`)) {
     token.kind = 'pdfImport';
     setPendingImport({ name, startedAt: Date.now(), stage });
     return token;
@@ -2485,7 +2497,7 @@ function App() {
     catch (cause) { if (!token.cancelled) setError(`Could not read the saved PDF: ${cause.message}`); }
     finally { endTask(token); }
   }
-  async function ingestPdf(imported, token) {
+  async function ingestPdf(imported, token, recoverPage) {
     requireActiveTask(token);
     // The import response may precede the current paper's final note save.
     // Reload only after loadPaper flushes it, retaining the latest open copy.
@@ -2494,7 +2506,7 @@ function App() {
       return;
     }
     const config = settingsRef.current;
-    const mode = config.pdfExtractionMode || 'mineruPreferred';
+    const mode = recoverPage ? 'pdfOnly' : config.pdfExtractionMode || 'mineruPreferred';
     let mineruMarkdown = '';
     let mineruBlocks = null;
     let mineruResourceId = null;
@@ -2543,6 +2555,10 @@ function App() {
     } finally { await pdf?.loadingTask.destroy().catch(() => {}); }
     mineruBlocks = locateMineruPages(mineruBlocks, pageHints, pdfBlocks, pageCount);
     const blocks = mineruBlocks || pdfBlocks;
+    const recovered = recoverPage && (blocks.find(block => block.page === recoverPage && eastAsianLetter.test(block.text)) || paragraphOnPdfPage(blocks, recoverPage));
+    const startTab = recovered ? 'Reader' : 'Paper';
+    const startPage = recovered ? recoverPage : 1;
+    const startBlock = recovered?.id ?? firstSelectableParagraphID(blocks);
     const extractionWarning = warnings.join(' ');
     if (!await finishNoteEditing()) throw new Error('Retry the current paper save before opening another paper.');
     requireActiveTask(token);
@@ -2552,10 +2568,10 @@ function App() {
       ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
       extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning, pageCount, ...(textChecked && { pdfTextVersion }),
       tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English',
-      paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: firstSelectableParagraphID(blocks), position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' }
+      paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: startBlock, position: { block: startBlock || 1, page: startPage, tab: startTab, displayMode: 'bilingual' }
     };
     resetReadingHistory();
-    cancelParagraphEdit(); setUndo([]); commitPaper(document); setTab('Paper'); setDisplayMode('bilingual'); setExplanationLanguage('English'); setPageNumber(1); setSearch('');
+    cancelParagraphEdit(); setUndo([]); commitPaper(document); setTab(startTab); setDisplayMode('bilingual'); setExplanationLanguage('English'); setPageNumber(startPage); setSearch('');
     token.mineruResource = null;
     setStatus(extractionWarning || `Extracted ${blocks.length} blocks${pageCount ? ` from ${pageCount} pages` : ''}. Compare uncertain passages with Original PDF.`);
   }
@@ -2821,17 +2837,23 @@ function App() {
       }
     } catch (err) { if (!token.cancelled) { setSelectionLookup({ key, status: '', error: err.message }); setError(err.message); } } finally { endTask(token); }
   }
-  async function reextractAsNew() {
+  async function reextractAsNew(savedPaperId, recoverPage) {
     if (busy || taskRef.current || editRef.current) return;
     setModal('');
-    let imported;
-    try { imported = await api.copyPdfAsNew(); }
-    catch (cause) { setError(cause.message); return; }
-    if (!imported || taskRef.current || editRef.current) return;
-    const token = startPdfImport(imported.name, 'Preparing an independent PDF copy');
-    try { requireActiveTask(token); await ingestPdf(imported, token); }
-    catch (cause) { if (!token.cancelled) setError(`Could not import ${imported.name}: ${cause.message}`); }
-    finally { endTask(token); }
+    let token = savedPaperId ? startTask('Reading the archived PDF…') : null;
+    try {
+      if (token) {
+        if (!await finishNoteEditing()) throw new Error('Save the current paper changes before recovering the PDF.');
+        requireActiveTask(token);
+      }
+      const imported = await api.copyPdfAsNew(savedPaperId);
+      if (!imported) return;
+      if (token) requireActiveTask(token);
+      else if (taskRef.current || editRef.current) return;
+      token = startPdfImport(imported.name, 'Preparing an independent PDF copy', token || undefined);
+      await ingestPdf(imported, token, recoverPage);
+    } catch (cause) { if (!token?.cancelled) setError(cause.message); }
+    finally { if (token) endTask(token); }
   }
   function selectParagraphForExplanation(id) {
     const current = paperRef.current;
@@ -3969,6 +3991,7 @@ function App() {
             onOcr={runMineru}
             onSetup={() => openSetup()}
             onReader={openPdfReader}
+            onRecoverText={() => reextractAsNew(paper.id, pageNumber)} busy={Boolean(busy)}
           /> : <>
             {paper.type === 'pdf' && !paper.blocks.length && <ScanNotice onParse={runMineru} onSetup={() => openSetup()} />}
             <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
@@ -3989,7 +4012,7 @@ function App() {
                 ? <span className="failure"><AlertCircle size={15} /> {block.error || 'Translation failed for this paragraph.'} <button disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>Retry</button></span>
                 : <div className="pending"><button className="button outline" disabled={!!busy} onClick={event => { event.stopPropagation(); retryBlock(block.id); }}>{translationSetup && !verbatimTranslationIDs.has(block.id) ? 'Set Up Translation' : 'Translate Paragraph'}</button></div>}</div>);
           return <article id={`block-${block.id}`} key={block.id} className={`block ${block.heading ? 'heading-block' : ''} ${activeBlock === block.id ? 'current' : ''}`} data-block-status={block.status} data-heading-status={block.heading ? block.status : undefined} onClick={() => selectParagraph(block.id)}><div className="block-header"><span><span className="reader-block-number" aria-label={`Block ${block.id}${pageLabel ? `, ${pageLabel}` : ''}`}>{String(block.id).padStart(2, '0')}</span><ReaderSourcePages block={block} onOpen={paper.type === 'pdf' ? openReaderSourcePage : null} />{!block.resource && !referenceIDs.has(block.id) && block.status !== 'ok' && <span className="reader-block-status">{block.status === 'failed' ? 'FAILED' : 'AWAITING TRANSLATION'}</span>}</span><ReaderBlockActions block={block} busy={!!busy} structured={paper.sourceMode === 'mineru'} canMergePrevious={canMergeAt(index - 1)} canMergeNext={canMergeAt(index)} canTranslate={!block.resource && !referenceIDs.has(block.id)} displayMode={displayMode} onBookmark={() => bookmark(block.id)} onExplain={() => selectParagraphForExplanation(block.id)} onTranslate={() => retryBlock(block.id)} onEdit={() => beginEditingBlock(block.id)} onMergePrevious={() => mergeAdjacent(index - 1)} onMergeNext={() => mergeAdjacent(index)} onReflow={() => reflowParagraph(block.id)} /></div>
-          {issue && <ReaderQualityWarning issue={issue} onReextract={reextractAsNew} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
+          {issue && <ReaderQualityWarning issue={issue} onReextract={() => reextractAsNew()} structured={paper.sourceMode === 'mineru'} busy={busy} onEdit={() => beginEditingBlock(block.id)} onCompare={() => compareOriginal(block.page)} />}
           {block.heading ? <>{original}{translation}</> : <ReaderParagraph sourceLanguage={settings.sourceLanguage} targetLanguage={settings.targetLanguage} status={block.status} original={original} translation={translation} />}{blockAnnotationsFor(block.notes, 'reader').length > 0 && <div className="block-notes">{blockAnnotationsFor(block.notes, 'reader').map(note => <p key={note.id}><MessageSquareText size={14} /> <b>{short(note.text, 70)}</b> {note.body}</p>)}</div>}</article>;
         })}{!visibleBlocks.length && (paper.type === 'pdf' && !paper.blocks.length ? <ScanNotice onParse={runMineru} onSetup={() => openSetup()} /> : <Empty title="No matching blocks" body="Try another search term." />)}</div></div>}
         {paper && tab === 'Original' && <PdfView
@@ -4010,6 +4033,7 @@ function App() {
           onOcr={runMineru}
           onSetup={() => openSetup()}
           onReader={openPdfReader}
+          onRecoverText={() => reextractAsNew(paper.id, pageNumber)} busy={Boolean(busy)}
         />}
         {paper && tab === 'Summary' && <OverviewView paper={paper} sections={sections} busy={busy} status={status} canSummarize={canSummarize} summarize={summarize} navigate={navigate} onSelect={captureViewSelection} expandedOverview={expandedOverview} issues={extractionIssues} onOriginal={() => compareOriginal()} onReader={() => navigateToTab('Reader')} translatedCount={translatedCount} paragraphCount={translatableCount} setupSummary={summarySetup ? () => openTaskSetup(summarySetup) : null} />}
         {paper && tab === 'Full Translation' && <div className={pdfFacsimile ? 'content-column pdf-comparison-column' : 'content-column'}>
@@ -4060,7 +4084,7 @@ function App() {
       {modal === 'more' && <div className="menu-list">
         <button disabled={!paper} onClick={openTranslationRange}><Languages size={17} /> Translation Range</button>
         <button onClick={() => setModal('library')}><Library size={17} /> Paper Library</button>
-        <button onClick={reextractAsNew} disabled={!!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button>
+        <button onClick={() => reextractAsNew()} disabled={!!busy}><FilePlus2 size={17} /> Re-extract PDF as New Copy</button>
         <button onClick={() => setModal('glossary')}><Languages size={17} /> Saved Terminology</button>
         <button disabled={!canSummarize || !!busy} onClick={startSummaryFromMenu}><Sparkles size={17} /> Generate Summary</button>
         <button disabled={!fullHasSource || !!busy} onClick={startFullTranslationFromMenu}><Languages size={17} /> Generate Full Translation</button>

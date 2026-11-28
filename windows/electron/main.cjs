@@ -19,7 +19,7 @@ const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = requir
 const { createMineruJobGuard } = require('./mineru-job.cjs');
 const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
-const { importPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
+const { importPdfAsset, independentPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
 const { createUpdateChecker, releaseUrl, updateDownload } = require('./updates.cjs');
 const { UpdateDownload, chromiumTransfer } = require('./update-download.cjs');
 const { createModelPullManager, pullOllamaModel } = require('./model-pull.cjs');
@@ -284,9 +284,16 @@ function registerHandlers() {
     return importPdfBytes(fs.readFileSync(source), path.basename(source));
   });
   ipcMain.handle('pdf:import-bytes', (_event, { bytes, name }) => importPdfBytes(bytes, name));
-  ipcMain.handle('pdf:copy-as-new', () => selectIndependentPdfAsset({
-    showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options), owner: window, pdfPath: store.pdfPath
-  }));
+  ipcMain.handle('pdf:copy-as-new', (_event, id) => {
+    if (id === undefined) return selectIndependentPdfAsset({
+      showOpenDialog: (owner, options) => dialog.showOpenDialog(owner, options), owner: window, pdfPath: store.pdfPath
+    });
+    const paper = store.paper(safeId(id));
+    if (paper?.type !== 'pdf') throw new Error('The saved PDF workspace is unavailable.');
+    const source = store.pdfPath(id);
+    if (!fs.existsSync(source)) throw new Error('The archived PDF is missing. Choose the original with Re-extract PDF as New Copy.');
+    return independentPdfAsset(fs.readFileSync(source), paper.name, store.pdfPath);
+  });
   ipcMain.handle('pdf:read', (_event, id) => new Uint8Array(fs.readFileSync(store.pdfPath(safeId(id)))));
   ipcMain.handle('pdf:prepare-page-archive', async (event, { id, fingerprint, pageCount, requestId }) => {
     const pdfFile = store.pdfPath(safeId(id));
