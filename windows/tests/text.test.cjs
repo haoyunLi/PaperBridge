@@ -153,6 +153,22 @@ test('PDF lines and manual paragraph merges retain punctuation spacing and annot
   assert.equal(merged.highlights[0].needsReview, false);
 });
 
+test('page rotation normalizes upright text in a cropped sheet and preserves an ordinary page with a rotated figure label', async () => {
+  const { readingPageCoordinates, rotatedSelectionContent } = await import('../src/pdfLayout.mjs');
+  const view = [20, 30, 580, 480];
+  const red = { str: 'Red laser measurement', dir: 'ltr', width: 130, height: 12, hasEOL: false, transform: [0, 12, -12, 0, 140, 82] };
+  const content = { items: [red], styles: {} };
+  const reading = readingPageCoordinates(content, view, 90);
+  assert.deepEqual(reading.view, [0, 0, 450, 560]);
+  assert.deepEqual(reading.content.items[0].transform.map(n => n || 0), [12, 0, 0, 12, 52, 440]);
+  assert.deepEqual(red.transform, [0, 12, -12, 0, 140, 82]);
+  const normal = { items: [red, { ...red, str: 'A longer horizontal calibration record with a sideways axis label.', transform: [12, 0, 0, 12, 82, 140] }], styles: {} };
+  assert.equal(readingPageCoordinates(normal, view, 90).content, normal);
+  assert.equal(rotatedSelectionContent(normal, view, 90), normal);
+  const tagged = { ...content, items: [{ type: 'beginMarkedContent', tag: 'P' }, red, { type: 'endMarkedContent' }] };
+  assert.equal(rotatedSelectionContent(tagged, view, 90), tagged);
+});
+
 test('vertical columns read right to left within each band, keeping horizontal text and Latin spacing', async () => {
   const { pageLines } = await import('../src/pdfLayout.mjs');
   const vertical = (str, x, y, height) => ({ str, dir: 'ttb', transform: [12, 0, 0, 12, x, y], width: 12, height });

@@ -249,6 +249,7 @@ function textRows(items, left, bottom, width, pageHeight, styles) {
     const spaceBefore = axisLabels.has(item) || previous?.str === ' ' && Math.abs(previous.transform[5] - item.transform[5]) < 1;
     const placed = { text: item.str, x, y, end: x + (vertical ? height : item.width), height, spaceBefore,
       monospace: styles?.[item.fontName]?.fontFamily === 'monospace' };
+    if (item.selectionIndex !== undefined) placed.selectionIndex = item.selectionIndex;
     row.items.push(placed);
     previousText = { ...placed, vertical, row, raisedSuffix };
   }
@@ -269,6 +270,7 @@ function lineFromItems(items, y, vertical, pageHeight) {
     end = Math.max(end, item.end);
   }
   const line = { text: normalizeExtractedLine(text), y, x, width: end - x, height: Math.max(...items.map(item => item.height)), independent: vertical };
+  if (items[0].selectionIndex !== undefined) line.selectionIndices = items.map(item => item.selectionIndex);
   if (vertical && items.length >= 3) line.figureAxis = true;
   const fixed = items.filter(item => item.monospace);
   if (!vertical && fixed.length && items.every(item => item.monospace || !/[\p{L}\p{N}]/u.test(item.text))) {
@@ -422,6 +424,39 @@ function insertVerticalColumns(horizontal, columns, yOf, entriesFor) {
   return result.concat(horizontal.slice(horizontalAt));
 }
 
+// Some PDF producers store an upright sheet sideways and rely on the page's /Rotate entry.
+// A reader can also rotate an otherwise ordinary page to inspect a figure. Only undo storage
+// rotation when this makes more of the printed text upright than its original coordinates did.
+export function usesPageRotation(items, rotation) {
+  if (![90, 180, 270].includes(rotation)) return false;
+  let rotated = 0, upright = 0;
+  for (const item of items) {
+    if (!item.transform || !item.str?.trim()) continue;
+    const [a, b] = item.transform;
+    const advance = rotation === 180 ? -a : rotation === 90 ? b : -b;
+    const cross = rotation === 180 ? b : a;
+    if (advance > Math.abs(cross)) rotated += item.str.length;
+    if (a > Math.abs(b)) upright += item.str.length;
+  }
+  return rotated > upright;
+}
+
+export function readingPageCoordinates(content, view, rotation) {
+  if (!usesPageRotation(content.items, rotation)) return { content, view };
+  const [left, bottom, right, top] = view;
+  const quarter = rotation !== 180;
+  const items = content.items.map(item => {
+    if (!item.transform) return item;
+    const [a, b, c, d, x, y] = item.transform;
+    const transform = rotation === 90 ? [b, -a, d, -c, y - bottom, right - x]
+      : rotation === 180 ? [-a, -b, -c, -d, right - x, top - y]
+      : [-b, a, -d, c, top - y, x - left];
+    return { ...item, transform };
+  });
+  const width = right - left, height = top - bottom;
+  return { content: { ...content, items }, view: [0, 0, quarter ? height : width, quarter ? width : height] };
+}
+
 function hasVerticalText(item) { return item.dir === 'ttb' && item.str?.trim(); }
 
 export function pageLines(content, view) {
@@ -439,6 +474,39 @@ export function verticalSelectionContent(content, view) {
   const items = insertVerticalColumns(horizontal, verticalColumns(vertical, view[0], view[1]),
     item => item.transform[5] - view[1], column => column.items);
   return { ...content, items };
+}
+
+export function rotatedSelectionContent(content, view, rotation) {
+  if (content.items.some(item => typeof item.str !== 'string')) return content;
+  const reading = readingPageCoordinates(content, view, rotation);
+  if (reading.content === content) return content;
+  // Use the Reader's physical line and column order, but pass the original glyph matrices to PDF.js.
+  // Explicit spaces stay with their run. PDF.js line breaks must follow the new printed line order.
+  const runs = new Map();
+  let gap = [];
+  const items = reading.content.items.map((item, index) => {
+    if (item.str.trim()) {
+      runs.set(index, [...gap, content.items[index]]);
+      gap = [];
+    } else if (item.str) gap.push(content.items[index]);
+    return { ...item, selectionIndex: index };
+  });
+  const lines = pageLines({ ...reading.content, items }, reading.view);
+  const lineIndices = pdfReadingGroups(lines, { height: reading.view[3] }).flat().map(line =>
+    line.selectionIndices || line.items?.map(item => item.selectionIndex) || []);
+  const order = lineIndices.flat();
+  // Reader cleanup may omit a printed page decoration. The selectable original must keep every glyph.
+  if (order.length !== runs.size || new Set(order).size !== runs.size || !order.every(index => runs.has(index))) return content;
+  const ordered = lineIndices.flatMap((indices, row) => {
+    // Within a bidirectional line, PDF.js already resolved the logical order of its text runs.
+    const sequence = indices.some(index => content.items[index].dir === 'rtl') ? [...indices].sort((a, b) => a - b) : indices;
+    const items = sequence.flatMap(index => runs.get(index));
+    return items.map((item, i) => {
+      const hasEOL = row < lineIndices.length - 1 && i === items.length - 1;
+      return hasEOL === item.hasEOL ? item : { ...item, hasEOL, sourceItem: item };
+    });
+  });
+  return { ...content, items: ordered.concat(gap) };
 }
 
 function horizontalPageLines(content, [left, bottom, right, top]) {

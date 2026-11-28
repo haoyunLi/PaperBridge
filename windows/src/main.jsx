@@ -11,7 +11,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
-import { verticalSelectionContent } from './pdfLayout.mjs';
+import { rotatedSelectionContent, usesPageRotation, verticalSelectionContent } from './pdfLayout.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
 import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
@@ -402,7 +402,7 @@ function usePdfDocument(paper) {
 
 const eastAsianLetter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
-function PdfSheet({ pdf, number, width, facsimile, verticalSelection, annotations, onSize, onReady }) {
+function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, onSize, onReady }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const finishedLayer = useRef(null);
@@ -416,7 +416,7 @@ function PdfSheet({ pdf, number, width, facsimile, verticalSelection, annotation
     const surface = canvas.current;
     const root = layer.current;
     const previous = finishedLayer.current;
-    const reusable = root && previous?.pdf === pdf && previous.number === number && previous.verticalSelection === verticalSelection;
+    const reusable = root && previous?.pdf === pdf && previous.number === number && previous.selectionOrder === selectionOrder;
     if (!reusable) {
       setRendered(false);
       finishedLayer.current = null;
@@ -448,7 +448,9 @@ function PdfSheet({ pdf, number, width, facsimile, verticalSelection, annotation
       const raw = await page.getTextContent();
       const visible = await omitClippedFigureText(page, raw, pdfjs.OPS);
       // Existing PDF note offsets belong to the text order used when that paper was imported.
-      const textContentSource = verticalSelection ? verticalSelectionContent(raw, page.view) : raw;
+      const rotatedReading = usesPageRotation(visible.items, page.rotate);
+      const textContentSource = rotatedReading && selectionOrder === 'page' ? rotatedSelectionContent(raw, page.view, page.rotate)
+        : selectionOrder ? verticalSelectionContent(raw, page.view) : raw;
       if (cancelled) return;
       textLayer = new pdfjs.TextLayer({ textContentSource, container: root, viewport });
       await textLayer.render();
@@ -460,21 +462,21 @@ function PdfSheet({ pdf, number, width, facsimile, verticalSelection, annotation
         const items = textContentSource.items.filter(item => typeof item.str === 'string');
         for (const [i, item] of items.entries()) {
           const span = textLayer.textDivs[i];
-          if (shown.has(item) || !span || span.textContent !== item.str) continue;
+          if (shown.has(item.sourceItem || item) || !span || span.textContent !== item.str) continue;
           span.setAttribute('data-pdf-clipped', '');
           span.hidden = true;
         }
       }
       root.dataset.page = String(number);
       const text = visible.items.map(item => item.str || '').join('');
-      const status = { selectable: Boolean(text.trim()), eastAsian: eastAsianLetter.test(text),
+      const status = { selectable: Boolean(text.trim()), eastAsian: eastAsianLetter.test(text), rotatedReading,
         verticalCjk: visible.items.some(item => item.dir === 'ttb' && eastAsianLetter.test(item.str)) };
-      finishedLayer.current = { pdf, number, verticalSelection, textLayer, status };
+      finishedLayer.current = { pdf, number, selectionOrder, textLayer, status };
       setRendered(true);
       onReady?.(number, status);
     })().catch(cause => { if (!cancelled) onReady?.(number, cause.message); });
     return () => { cancelled = true; task?.cancel(); if (finishedLayer.current?.textLayer !== textLayer) textLayer?.cancel(); };
-  }, [pdf, number, width, facsimile, verticalSelection, onSize, onReady]);
+  }, [pdf, number, width, facsimile, selectionOrder, onSize, onReady]);
   useEffect(() => {
     const root = layer.current;
     if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights || !annotations?.length) return;
@@ -761,12 +763,14 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const missingText = pageStatus?.eastAsian && paper.blocks.length > 0 && paper.sourceMode !== 'mineru' &&
     (paper.pdfTextVersion || 0) < eastAsianPdfTextVersion && !paper.blocks.some(block => block.page > 0 &&
       block.page <= currentPage && (block.endPage || block.page) >= currentPage && eastAsianLetter.test(block.text));
-  const verticalOrder = pageStatus?.verticalCjk && paper.blocks.length > 0 && paper.sourceMode !== 'mineru' &&
-    (paper.pdfTextVersion || 0) < pdfTextVersion;
+  const oldPdfReader = paper.blocks.length > 0 && paper.sourceMode !== 'mineru';
+  const savedVersion = paper.pdfTextVersion || 0;
+  const verticalOrder = oldPdfReader && pageStatus?.verticalCjk && savedVersion < verticalPdfTextVersion;
+  const rotatedOrder = oldPdfReader && pageStatus?.rotatedReading && savedVersion < pdfTextVersion;
   return <div className="pdf-panel" onKeyDown={handlePdfShortcut}>
     <PdfToolbar page={currentPage} count={pdf?.numPages} onPage={jump} zoom={zoom} onZoom={changeZoom} />
-    {(missingText || verticalOrder) && <div className="scan-notice" role="status"><FileText size={20} /><div>
-      <b>{missingText ? 'East Asian text is missing from this page in the saved Reader' : 'The saved Reader may show these vertical columns out of order'}</b>
+    {(missingText || verticalOrder || rotatedOrder) && <div className="scan-notice" role="status"><FileText size={20} /><div>
+      <b>{missingText ? 'East Asian text is missing from this page in the saved Reader' : verticalOrder ? 'The saved Reader may show these vertical columns out of order' : 'The saved Reader may show this rotated page out of order'}</b>
       <p>Read and translate the text in a new library copy. Your notes and translations stay with this paper.</p>
       <button className="button outline" disabled={busy} onClick={onRecoverText}>Recover PDF text in new copy</button>
     </div></div>}
@@ -783,7 +787,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
         const mounted = number === currentPage || number >= start - 1 && number <= end + 1 ||
           number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
         return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
-          {mounted && <PdfSheet pdf={pdf} number={number} width={width} verticalSelection={paper.pdfVerticalReadingOrder === true} annotations={annotations} onSize={onSize} onReady={onReady} />}
+          {mounted && <PdfSheet pdf={pdf} number={number} width={width} selectionOrder={paper.pdfRotatedReadingOrder ? 'page' : paper.pdfVerticalReadingOrder ? 'vertical' : null} annotations={annotations} onSize={onSize} onReady={onReady} />}
         </div>;
       })}
     </div>}
@@ -868,7 +872,8 @@ function ImportProgress({ item, elapsed, onCancel }) {
   return <div className="import-progress-screen" role="status"><div className="import-progress-card"><FileText size={42} /><small>IMPORTING PDF</small><strong className="import-filename">{item.name}</strong><p>{item.stage}</p><strong>{elapsed}s elapsed</strong><div className="import-progress-bar"><span /></div><button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button><p className="import-preserve-note">Your previous paper, translations, notes, bookmarks, and reading position remain unchanged until this import succeeds.</p></div></div>;
 }
 const eastAsianPdfTextVersion = 2;
-const pdfTextVersion = 3;
+const verticalPdfTextVersion = 3;
+const pdfTextVersion = 4;
 const noPdfTextWarning = 'No selectable text found. The exact original PDF is available. Use MinerU for OCR.';
 
 function canRestorePdfText(paper) {
@@ -2513,6 +2518,7 @@ function App() {
       commitPaper(current => ({
         ...current, pdfBlocks: blocks, blocks, pageCount: pdf.numPages, pdfTextVersion,
         pdfVerticalReadingOrder: current.pdfVerticalReadingOrder || !(current.pdfNotes?.length || current.pdfHighlights?.length),
+        pdfRotatedReadingOrder: current.pdfRotatedReadingOrder || !(current.pdfNotes?.length || current.pdfHighlights?.length),
         selectedParagraphID: firstSelectableParagraphID(blocks),
         extractionWarning: blocks.length ? (current.extractionWarning || '').replace(noPdfTextWarning, '')
           .replace(/The selectable PDF text could not be read: [\s\S]*? The original file is preserved\./, '').trim() : current.extractionWarning
@@ -2596,7 +2602,7 @@ function App() {
       id: imported.id, name: imported.name, type: 'pdf', createdAt: new Date().toISOString(),
       blocks, pdfBlocks, mineruBlocks, mineruMarkdown: mineruBlocks ? mineruMarkdown : '', sourceMode: mineruBlocks ? 'mineru' : 'pdf',
       ...(mineruBlocks && { mineruPageMapVersion, mineruResourceId }),
-      extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning, pageCount, pdfVerticalReadingOrder: true, ...(textChecked && { pdfTextVersion }),
+      extraction: mineruBlocks ? 'MinerU' : 'PDF.js', extractionWarning, pageCount, pdfVerticalReadingOrder: true, pdfRotatedReadingOrder: true, ...(textChecked && { pdfTextVersion }),
       tags: [], summary: null, connectedTranslation: '', taskSettings: snapshotPaperSettings(settingsRef.current), explanationLanguage: 'English',
       paragraphExplanations: {}, inspectorOpen: inspector, selectedParagraphID: startBlock, position: { block: startBlock || 1, page: startPage, tab: startTab, displayMode: 'bilingual' }
     };

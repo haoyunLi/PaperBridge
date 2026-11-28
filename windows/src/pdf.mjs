@@ -3,7 +3,7 @@ import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { blocksFromLines, finishExtractedPdfText } from './text.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
 import { filterRepeatedPageDecorations, stitchPageBlocks } from './pdfDecorations.mjs';
-import { pageLines, pdfReadingSegments, recoverCodeAsterisks, recoverInlineSummations, recoverMathScripts } from './pdfLayout.mjs';
+import { pageLines, pdfReadingSegments, readingPageCoordinates, recoverCodeAsterisks, recoverInlineSummations, recoverMathScripts } from './pdfLayout.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -62,12 +62,13 @@ export async function extractPdf(pdf, onPage, checkActive) {
     checkActive?.();
     const page = await pdf.getPage(pageNumber);
     const visible = await omitClippedFigureText(page, await page.getTextContent(), pdfjs.OPS);
-    const textLayer = await recoverCodeAsterisks(page, visible);
+    const reading = readingPageCoordinates(visible, page.view, page.rotate);
+    const textLayer = await recoverCodeAsterisks(page, reading.content);
     const sums = await recoverInlineSummations(page, textLayer);
     const content = await recoverMathScripts(page, sums);
     checkActive?.();
-    const [, bottom, , top] = page.view;
-    pages.push({ pageNumber, height: top - bottom, lines: pageLines(content, page.view) });
+    const [, bottom, , top] = reading.view;
+    pages.push({ pageNumber, height: top - bottom, lines: pageLines(content, reading.view) });
     onPage?.(pageNumber, pdf.numPages);
   }
   const cleaned = filterRepeatedPageDecorations(pages);

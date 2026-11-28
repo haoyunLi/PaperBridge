@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 旋转页上的红色谱线
+
+0.2.116 在本机从旧版有波长笔记的光谱仪记录恢复出新副本。4B 将 “At 298 K the red line appeared at 633 nm.” 译成「在 298 K 下，红色线出现在 633 nm。」。重启后核对了温度、波长、译文与书签，并通过新旧笔记分别定位原 PDF 第二页的选区。[旋转页真机回归](tests/rotated-pdf-e2e.cjs)
+
 ## 双向文字与波长单位
 
 0.2.115 在 RX 7800 XT 机器上读取包含希伯来语、阿拉伯语、英文与中文的四段记录，4B 将「参考信号在 532 nm 处保持不变。」译成 “The reference signal remained constant at 532 nm.”，重开后数值、单位和译文均保留。Paper 和 Reader 中的引文编号、数值、单位及标点的视觉顺序均与原生 Mac 读数一致。[读者操作回归](tests/writing-direction-e2e.cjs)
