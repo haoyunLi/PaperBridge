@@ -4,6 +4,18 @@ import PDFKit
 import SwiftUI
 
 @MainActor
+func nativeJPXPanel(pdf: URL) throws -> [[Int]] {
+    guard let page = PDFDocument(url: pdf)?.page(at: 0),
+          let tiff = page.thumbnail(of: NSSize(width: 192, height: 96), for: .mediaBox).tiffRepresentation,
+          let bitmap = NSBitmapImageRep(data: tiff) else { throw CocoaError(.fileReadCorruptFile) }
+    return try [36, 96, 156].map { x in
+        guard let color = bitmap.colorAt(x: x * bitmap.pixelsWide / 192, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB)
+            else { throw CocoaError(.fileReadCorruptFile) }
+        return [color.redComponent, color.greenComponent, color.blueComponent].map { Int(($0 * 255).rounded()) }
+    }
+}
+
+@MainActor
 func nativeLongFacsimile(pdf: URL) throws -> [String: Any] {
     let bytes = try Data(contentsOf: pdf)
     let checksum = SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined()
