@@ -37,6 +37,42 @@ async function run() {
     const option = confirm.getByRole('checkbox', { name: 'Also remove archived PDF copies from PaperBridge' });
     assert.equal(await option.isChecked(), false);
     await option.check();
+    if (process.argv.includes('--interrupted')) {
+      await app.evaluate((_, archiveDir) => {
+        const fs = process.getBuiltinModule('node:fs'), path = process.getBuiltinModule('node:path');
+        const unlink = fs.unlinkSync;
+        fs.unlinkSync = function(file) {
+          const result = unlink.apply(this, arguments);
+          if (typeof file === 'string' && path.dirname(file) === archiveDir && file.endsWith('.pdf')) process.kill(process.pid, 'SIGKILL');
+          return result;
+        };
+      }, path.dirname(first.archive));
+      const exited = app.waitForEvent('close', { timeout: 20000 });
+      await confirm.getByRole('button', { name: 'Remove saved data', exact: true }).click().catch(error => {
+        if (!/closed/i.test(error.message)) throw error;
+      });
+      await exited;
+      assert.deepEqual(store.list(), []);
+      assert.equal(archived.filter(item => fs.existsSync(item.archive)).length, 2);
+      const newArchive = store.pdfPath('f'.repeat(64));
+      fs.writeFileSync(newArchive, 'Imported after the interruption.');
+      app = await launch(); page = await app.firstWindow();
+      await page.locator('.app').waitFor();
+      const skip = page.getByRole('button', { name: 'Skip setup', exact: true });
+      if (await skip.isVisible()) await skip.click();
+      await localData();
+      const retry = page.getByRole('button', { name: 'Retry archived PDF cleanup', exact: true });
+      if (process.argv.includes('--observe')) {
+        console.log(JSON.stringify({ copiesStillOnDisk: 2, retry: Boolean(await retry.count()) })); return;
+      }
+      await retry.click({ timeout: 6000 });
+      await page.getByText('Removed 2 archived PDF copies.', { exact: true }).waitFor();
+      assert.equal(archived.filter(item => fs.existsSync(item.archive)).length, 0);
+      assert.equal(fs.readFileSync(newArchive, 'utf8'), 'Imported after the interruption.');
+      for (const item of archived) assert.deepEqual(fs.readFileSync(item.source), item.bytes);
+      console.log('Recovered the remaining two opted-in copies after process exit. Retained the later file and all three external originals.');
+      return;
+    }
     await withWindowsReadLock(first.archive, () => withWindowsReadLock(second.archive, async () => {
       await confirm.getByRole('button', { name: 'Remove saved data', exact: true }).click();
       await page.locator('.welcome').waitFor();

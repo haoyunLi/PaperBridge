@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
+const path = require('node:path');
 const { once } = require('node:events');
 const { createInterface } = require('node:readline');
 
@@ -10,7 +11,7 @@ async function withWindowsReadLock(filename, operation) {
     'try { [Console]::WriteLine("locked"); [Console]::Out.Flush(); [void][Console]::ReadLine(); [Console]::WriteLine("releasing"); [Console]::Out.Flush(); [Threading.Thread]::Sleep(80) } finally { $handle.Dispose() }'
   ].join('\n');
   const locker = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
-    { windowsHide: true, env: { ...process.env, PAPERBRIDGE_TEST_LOCK_FILE: filename }, stdio: ['pipe', 'pipe', 'pipe'] });
+    { windowsHide: true, env: { ...process.env, PAPERBRIDGE_TEST_LOCK_FILE: path.toNamespacedPath(path.resolve(filename)) }, stdio: ['pipe', 'pipe', 'pipe'] });
   const closed = once(locker, 'close');
   const output = createInterface({ input: locker.stdout });
   try {

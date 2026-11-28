@@ -1,10 +1,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { writeFileAtomically } = require('./atomic-file.cjs');
+const { archiveRecord } = require('./archive-cleanup.cjs');
 
 // Only these records belong to Clear Saved Data. Keep user files, model installations,
 // the separately managed encrypted key, and archived PDFs outside this transaction.
 const managed = [
+  ['', /^pending-archived-pdfs\.json$/, 'file'],
   ['papers', /^[a-f0-9]{64}\.json(?:\.backup)?(?:\.\d+\.tmp)?$/, 'file'],
   ['', /^(?:settings|glossary|updates|last-paper|library-index)\.json(?:\.backup)?(?:\.\d+\.tmp)?$/, 'file'],
   ['mineru-results', /^[a-f0-9]{16}$/, 'directory'],
@@ -35,6 +37,16 @@ function validEntry(entry) {
 }
 
 function settle(root, transaction, entries, committed) {
+  const plan = path.join(transaction, 'archive-plan.json');
+  const planned = stat(plan);
+  if (planned) {
+    if (!planned.isFile()) throw Error('The archived PDF cleanup plan changed.');
+    if (committed) {
+      const pending = path.join(root, archiveRecord);
+      if (stat(pending)) throw Error('A newer archived PDF cleanup already exists.');
+      fs.renameSync(plan, pending);
+    } else fs.unlinkSync(plan);
+  }
   let problem;
   for (let i = entries.length - 1; i >= 0; i--) {
     const staged = path.join(transaction, String(i));
@@ -71,23 +83,25 @@ function recoverWorkspaceFiles(root) {
       if (!Array.isArray(entries) || !entries.every(validEntry) || new Set(entries).size !== entries.length) throw Error('Invalid recovery record.');
       settle(root, transaction, entries, committed);
     } catch {
-      if (committed) result.cleanupWarning = 'Some removed workspace files are still in use. Close the app using them and reopen PaperBridge to finish cleanup.';
+      if (committed && stat(path.join(transaction, 'archive-plan.json'))) result.restoreWarning = 'PaperBridge could not finish recording the archived PDFs selected for removal. Close apps using the workspace and reopen PaperBridge.';
+      else if (committed) result.cleanupWarning = 'Some removed workspace files are still in use. Close the app using them and reopen PaperBridge to finish cleanup.';
       else result.restoreWarning = 'PaperBridge kept files from an interrupted data removal in ' + transaction + '. Close apps using the workspace and reopen PaperBridge to restore them.';
     }
   }
   return result;
 }
 
-function clearWorkspaceFiles(root) {
+function clearWorkspaceFiles(root, archiveCopies = []) {
   const previous = recoverWorkspaceFiles(root);
   if (previous.restoreWarning) throw Error(previous.restoreWarning);
   const entries = savedPaths(root);
-  if (!entries.length) return previous.cleanupWarning;
+  if (!entries.length && !archiveCopies.length) return previous.cleanupWarning;
   const transaction = fs.mkdtempSync(path.join(root, '.paperbridge-clear-'));
   const journal = path.join(transaction, 'records.json');
   try { writeFileAtomically(journal, JSON.stringify(entries)); }
   catch (error) { try { fs.rmdirSync(transaction); } catch {} throw error; }
   try {
+    if (archiveCopies.length) writeFileAtomically(path.join(transaction, 'archive-plan.json'), JSON.stringify(archiveCopies));
     for (const [i, relative] of entries.entries()) {
       const original = path.join(root, relative);
       if (!stat(path.dirname(original))?.isDirectory()) throw Error('The workspace folder changed during removal.');

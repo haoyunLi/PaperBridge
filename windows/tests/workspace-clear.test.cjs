@@ -19,7 +19,7 @@ function fixture(t) {
   return { root, id, pdf, image };
 }
 
-function interrupt(root, when) {
+function interrupt(root, when, removeCopies = false) {
   const child = spawnSync(process.execPath, ['-e', `
     const fs = require('node:fs'), path = require('node:path');
     const [root, when, moduleName] = process.argv.slice(1);
@@ -35,8 +35,8 @@ function interrupt(root, when) {
       if (when === 'commit' && typeof file === 'string' && path.basename(file) === 'committed') process.exit(71);
       return result;
     };
-    store.clearData();
-  `, root, when, require.resolve('../electron/storage.cjs')], { windowsHide: true, encoding: 'utf8' });
+    store.clearData(process.argv[4] === 'true');
+  `, root, when, require.resolve('../electron/storage.cjs'), String(removeCopies)], { windowsHide: true, encoding: 'utf8' });
   assert.equal(child.status, 71, child.stderr);
 }
 
@@ -65,6 +65,32 @@ test('restarting after the commit purges only staged records and keeps newly cre
   assert.equal(fs.readFileSync(image, 'utf8'), 'new panel');
   assert.equal(fs.readFileSync(pdf, 'utf8'), 'archived original');
   assert.equal(fs.readdirSync(root).some(name => name.startsWith('.paperbridge-clear-')), false);
+});
+
+test('the archived copy choice takes effect only at the workspace commit and survives interruption', t => {
+  for (const when of ['stage', 'commit']) {
+    const { root, id, pdf } = fixture(t);
+    interrupt(root, when, true);
+    const store = createStore(root);
+    assert.equal(Boolean(store.paper(id)), when === 'stage');
+    assert.ok(fs.existsSync(pdf));
+    assert.equal(store.pendingArchivedPdfs(), when === 'commit' ? 1 : 0);
+    assert.equal(store.retryArchiveCleanup().archivedPdfsRemoved, when === 'commit' ? 1 : 0);
+    assert.equal(fs.existsSync(pdf), when === 'stage');
+  }
+});
+
+test('the default keep choice cancels an earlier cleanup even if the process exits at commit', t => {
+  const { root, id, pdf } = fixture(t);
+  interrupt(root, 'commit', true);
+  const store = createStore(root);
+  assert.equal(store.pendingArchivedPdfs(), 1);
+  store.savePaper({ id, name: 'Reopened source', blocks: [] });
+  interrupt(root, 'commit');
+  const reopened = createStore(root);
+  assert.equal(reopened.pendingArchivedPdfs(), 0);
+  assert.equal(reopened.retryArchiveCleanup().archivedPdfsRemoved, 0);
+  assert.equal(fs.readFileSync(pdf, 'utf8'), 'archived original');
 });
 
 test('staged originals never replace documents created after an interruption', t => {

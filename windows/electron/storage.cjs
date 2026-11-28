@@ -284,13 +284,14 @@ function createStore(root) {
       return librarySnapshot().library;
     },
     clearData(includeArchivedPdfs = false) {
-      const workspaceCleanupWarning = clearWorkspaceFiles(root);
+      const removeCopies = includeArchivedPdfs === true;
+      const workspaceCleanupWarning = clearWorkspaceFiles(root, removeCopies ? archiveCleanup.snapshot() : []);
       recovery = { restoreWarning: '', cleanupWarning: workspaceCleanupWarning };
-      const result = includeArchivedPdfs === true ? archiveCleanup.remove() : archiveCleanup.keepAll();
+      const result = removeCopies ? archiveCleanup.remove() : { archivedPdfsRemoved: 0 };
       return workspaceCleanupWarning ? { ...result, workspaceCleanupWarning } : result;
     },
-    pendingArchivedPdfs: () => archiveCleanup.pending().length,
-    retryArchiveCleanup: () => archiveCleanup.remove({ retry: true }),
+    pendingArchivedPdfs: () => archiveCleanup.pendingCount(),
+    retryArchiveCleanup: () => archiveCleanup.remove(),
     libraryPersistenceWarning() { return [recovery.restoreWarning, recovery.cleanupWarning, libraryPersistenceWarning].filter(Boolean).join(' '); },
     librarySnapshot,
     list: () => librarySnapshot().library

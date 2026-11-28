@@ -4,20 +4,41 @@ const { writeFileAtomically } = require('./atomic-file.cjs');
 
 const managedName = /^[a-f0-9]{64}\.pdf(?:\.\d+\.[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.tmp)?$/;
 
+const archiveRecord = 'pending-archived-pdfs.json';
+
+function revisionOf(stat) {
+  return [stat.dev, stat.ino, stat.birthtimeNs, stat.size, stat.mtimeNs].join(':');
+}
+
 class ArchiveCleanup {
   constructor(root, directory, papers) {
     this.directory = directory;
     this.papers = papers;
-    this.record = path.join(root, 'pending-archived-pdfs.json');
+    this.record = path.join(root, archiveRecord);
   }
 
-  pending() {
+  pending(strict = false) {
     try {
       if (!fs.lstatSync(this.record, { throwIfNoEntry: false })?.isFile()) return [];
       const saved = JSON.parse(fs.readFileSync(this.record, 'utf8'));
-      return Array.isArray(saved) ? saved.filter(item => typeof item?.name === 'string' &&
-        managedName.test(item.name) && typeof item.revision === 'string') : [];
-    } catch { return []; }
+      if (!Array.isArray(saved)) throw Error('The archived PDF cleanup record is unreadable.');
+      return saved.filter(item => typeof item?.name === 'string' &&
+        managedName.test(item.name) && typeof item.revision === 'string');
+    } catch (error) {
+      if (strict) throw error;
+      return [];
+    }
+  }
+
+  pendingCount() {
+    const records = this.pending();
+    if (!records.length) return 0;
+    try {
+      const folder = fs.lstatSync(this.directory, { throwIfNoEntry: false });
+      if (!folder) return 0;
+      if (!folder.isDirectory()) return records.length;
+      return records.filter(item => fs.lstatSync(path.join(this.directory, item.name), { throwIfNoEntry: false })?.isFile()).length;
+    } catch { return records.length; }
   }
 
   savePending(records) {
@@ -25,39 +46,39 @@ class ArchiveCleanup {
     else fs.rmSync(this.record, { force: true });
   }
 
-  keepAll() {
-    // A subsequent reset with the default choice also cancels earlier cleanup requests.
-    try { this.savePending([]); return { archivedPdfsRemoved: 0 }; }
-    catch (error) { return { archivedPdfsRemoved: 0, pdfCleanupError: error.message }; }
+  snapshot() {
+    const location = fs.lstatSync(this.directory, { throwIfNoEntry: false });
+    if (!location) return [];
+    if (!location.isDirectory()) throw new Error('The PDF archive is not a local directory.');
+    const records = [];
+    for (const entry of fs.readdirSync(this.directory, { withFileTypes: true })) {
+      if (!entry.isFile() || !managedName.test(entry.name)) continue;
+      const stat = fs.lstatSync(path.join(this.directory, entry.name), { bigint: true, throwIfNoEntry: false });
+      if (stat?.isFile()) records.push({ name: entry.name, revision: revisionOf(stat) });
+    }
+    return records;
   }
 
-  remove({ retry = false } = {}) {
+  remove() {
     const result = { archivedPdfsRemoved: 0 };
     const remaining = [];
     let kept = 0;
     try {
       const location = fs.lstatSync(this.directory, { throwIfNoEntry: false });
       if (location && !location.isDirectory()) throw new Error('The PDF archive is not a local directory.');
-      const candidates = !location ? [] : retry ? this.pending() : fs.readdirSync(this.directory, { withFileTypes: true })
-        .filter(item => item.isFile() && managedName.test(item.name));
-      for (const item of candidates) {
+      for (const item of location ? this.pending(true) : []) {
         const file = path.join(this.directory, item.name);
-        let revision = item.revision;
         try {
           const stat = fs.lstatSync(file, { bigint: true, throwIfNoEntry: false });
           if (!stat?.isFile()) continue;
-          const current = [stat.dev, stat.ino, stat.birthtimeNs, stat.size, stat.mtimeNs].join(':');
-          if (retry) {
-            const paper = path.join(this.papers, item.name.slice(0, 64) + '.json');
-            if (current !== revision || fs.existsSync(paper) || fs.existsSync(paper + '.backup')) { kept++; continue; }
-          }
-          revision = current;
+          const paper = path.join(this.papers, item.name.slice(0, 64) + '.json');
+          if (revisionOf(stat) !== item.revision || fs.existsSync(paper) || fs.existsSync(paper + '.backup')) { kept++; continue; }
           fs.unlinkSync(file);
           if (item.name.endsWith('.pdf')) result.archivedPdfsRemoved++;
         } catch (error) {
           if (error.code === 'ENOENT') continue;
           result.pdfCleanupError ||= error.message;
-          if (revision) remaining.push({ name: item.name, revision });
+          remaining.push(item);
         }
       }
       this.savePending(remaining);
@@ -66,10 +87,10 @@ class ArchiveCleanup {
       result.pdfCleanupError = error.message;
     }
     if (kept) result.archivedPdfsKept = kept;
-    if (result.pdfCleanupError) result.pendingArchivedPdfs = this.pending().length;
+    if (result.pdfCleanupError) result.pendingArchivedPdfs = this.pendingCount();
     return result;
   }
 }
 
-module.exports = { ArchiveCleanup };
+module.exports = { ArchiveCleanup, archiveRecord };
 

@@ -1,5 +1,9 @@
 # Windows 全软件功能复查
 
+## 清除已勾选的归档副本时意外退出
+
+默认保留归档 PDF。勾选一起删除时，在旧版实际删完三份中的第一份后强制结束进程，重启能看见另外两份文件，但找不到重试入口。0.2.125 将勾选时的文件清单和工作区移除一起提交。以相同方式中断并重启后，Settings 的 Local Data 可以只清除剩余两份，另行加入的归档和三份外部原件全部保留。提交前中断会恢复旧资料，也不会发起新的副本清理。[打包版终止与重开](tests/archive-cleanup-e2e.cjs) · [提交前后恢复](tests/workspace-clear.test.cjs)
+
 ## 原 PDF 中的审阅留言
 
 在同一份双页校准记录上，PDFKit 命中三处批注并读出三位作者和对应原文。Windows 0.2.123 点击便笺和高亮没有打开留言。0.2.124 的 Original 和 Paper 原页模式支持鼠标和键盘打开，关闭后焦点返回刚读过的批注。另在高亮内拖选「77 K」写下自己的笔记，重启后能从笔记定位到原句，三条审阅留言也可继续打开，归档 PDF 与输入文件逐字节相同。[Mac 原生记录](https://github.com/haoyunLi/PaperBridge/actions/runs/46114251452) · [Windows 打包版测试](tests/pdf-comments-e2e.cjs)

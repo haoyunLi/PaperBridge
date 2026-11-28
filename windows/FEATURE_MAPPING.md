@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+清理资料时，若勾选删除归档 PDF，应用意外退出后可在 Settings → Local Data 重试尚未清完的副本。重试保护中断后新导入的文件。[中断与恢复](tests/archive-cleanup-e2e.cjs)
+
 论文自带的便笺、带留言的高亮和下划线可在两个原 PDF 视图中打开。作者和留言来自文件，Research Inspector 仅保存自己的笔记。[原生和 Windows 对照](tests/pdf-comments-e2e.cjs)
 
 原 PDF 的命令链接已用同一份维修记录在 PDFKit 和 Windows 打包版核对。首页、末页、前后翻页和前后阅读位置均到达同一页。跨两行且中间隔有正文的 DOI 只响应两个引用片段。[实机对照](tests/pdf-named-actions-e2e.cjs)
