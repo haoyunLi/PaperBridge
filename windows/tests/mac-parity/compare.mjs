@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { verifyTerminology } from './terminology.mjs';
 import { verifyJournalAnalysis } from './journal-analysis.mjs';
 import { verifyPDFJournal } from './pdf-journal.mjs';
 import { verifyJournalDraft } from './journal-draft.mjs';
@@ -34,6 +35,7 @@ for (const { source, target, prompt } of reference.translationPrompts) {
 const bundleFixture = JSON.parse(readFileSync(new URL('./bundle-fixture.json', import.meta.url), 'utf8'));
 const work = mkdtempSync(path.join(os.tmpdir(), 'paperbridge-native-bundle-'));
 try {
+  verifyTerminology(reference.terminology, path.join(work, 'terminology'));
   verifyJournalDraft(reference.journalDraft, work);
   verifyPDFJournal(reference.pdfJournal, work);
   verifyJournalAnalysis(reference.journalAnalysis);

@@ -223,6 +223,7 @@ struct Reference {
             return TextProcessing.postProcessParagraphs([text])
         }
         let bundle = try nativeBundleReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
+        let terminology = try nativeTerminologyReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
         let library = try nativeLibraryReference(fixturesDirectory: fixtureURL.deletingLastPathComponent())
         let resourceBoundaries = fixtures.resourceBoundaries.map { source in
             AcademicMarkdownProcessor.parse(source).filter { $0.kind != .separator }.map { segment in
@@ -257,7 +258,7 @@ struct Reference {
                                      "pdfJournal": try nativePDFJournal(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "journalAnalysis": try nativeJournalAnalysis(fixtures: fixtureURL.deletingLastPathComponent()),
                                      "longPDFSelections": try nativeLongPDFSelections(fixtures: fixtureURL.deletingLastPathComponent()),
-                                     "pdfNotes": try nativePDFNoteRecovery(pdf: publishedPDF, fixtures: fixtureURL.deletingLastPathComponent()), "journalDraft": journalDraft, "translationRangeActions": ranges.actions, "savedPreviewHeadings": ranges.previewHeadings, "scannedNotebook": scan, "importModes": importModes, "tableSelectionQuote": try nativeTableSelectionQuote(), "journalPreviewQuotes": try nativeJournalPreviewSelections(fixtures: fixtureURL.deletingLastPathComponent()), "library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
+                                     "pdfNotes": try nativePDFNoteRecovery(pdf: publishedPDF, fixtures: fixtureURL.deletingLastPathComponent()), "journalDraft": journalDraft, "translationRangeActions": ranges.actions, "savedPreviewHeadings": ranges.previewHeadings, "scannedNotebook": scan, "importModes": importModes, "tableSelectionQuote": try nativeTableSelectionQuote(), "journalPreviewQuotes": try nativeJournalPreviewSelections(fixtures: fixtureURL.deletingLastPathComponent()), "terminology": terminology, "library": library, "pastedFrontMatter": pastedFrontMatter, "bundle": bundle, "readerSearch": readerSearch, "publishedPaper": published, "structuredJournal": structuredJournal,
                                     "resourceBoundaries": resourceBoundaries, "scientificNotation": fixtures.scientificNotation.compactMap { AcademicMarkdownProcessor.parse($0).first?.analysisText },
                                     "connectedBatches": connectedBatches, "columnPDF": columnPDF, "columnPDFSHA256": pdfHash, "summaryStages": summaryStages, "summaryEvidence": evidence, "summaryBatches": summaryBatches, "papers": papers, "bibliographies": bibliographies, "markdown": markdown, "practice": ReadingGuideBuilder.sampleParagraphs,
                                      "merges": merges, "reflows": reflows, "annotations": annotations, "pageBoundaries": pageBoundaries]

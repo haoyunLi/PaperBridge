@@ -1,0 +1,146 @@
+{
+  "saves": [
+    {
+      "source": "field",
+      "target": "场",
+      "reverse": false
+    },
+    {
+      "source": "  Magnetic field​",
+      "target": "磁场",
+      "reverse": false
+    },
+    {
+      "source": "MAGNETIC FIELD",
+      "target": "外加磁场",
+      "reverse": false
+    },
+    {
+      "source": "磁场",
+      "target": "magnetic field",
+      "reverse": true
+    },
+    {
+      "source": "field",
+      "target": "反向词",
+      "reverse": true
+    },
+    {
+      "source": "Straße",
+      "target": "街道",
+      "reverse": false
+    },
+    {
+      "source": "STRASSE",
+      "target": "道路",
+      "reverse": false
+    },
+    {
+      "source": "résumé",
+      "target": "摘要",
+      "reverse": false
+    },
+    {
+      "source": "résumé",
+      "target": "文摘",
+      "reverse": false
+    },
+    {
+      "source": "resume",
+      "target": "继续",
+      "reverse": false
+    },
+    {
+      "source": "β₂",
+      "target": "系数",
+      "reverse": false
+    },
+    {
+      "source": "µm",
+      "target": "微米",
+      "reverse": false
+    },
+    {
+      "source": "μm",
+      "target": "微米单位",
+      "reverse": false
+    },
+    {
+      "source": "x̄",
+      "target": "均值",
+      "reverse": false
+    },
+    {
+      "source": "x",
+      "target": "变量",
+      "reverse": false
+    },
+    {
+      "source": "ﬃ",
+      "target": "连字",
+      "reverse": false
+    },
+    {
+      "source": "f",
+      "target": "字母",
+      "reverse": false
+    },
+    {
+      "source": "signal",
+      "target": "信号",
+      "reverse": false
+    },
+    {
+      "source": " ",
+      "target": "空白",
+      "reverse": false
+    },
+    {
+      "source": "signal",
+      "target": "\n\t",
+      "reverse": false
+    }
+  ],
+  "queries": [
+    {
+      "text": "The MAGNETIC FIELD affects the calibration field.",
+      "reverse": false
+    },
+    {
+      "text": "Die Straße / STRASSE.",
+      "reverse": false
+    },
+    {
+      "text": "The résumé, résumé and resume.",
+      "reverse": false
+    },
+    {
+      "text": "The RESUME alone.",
+      "reverse": false
+    },
+    {
+      "text": "A 2 µm film at β₂ and x̄.",
+      "reverse": false
+    },
+    {
+      "text": "ligature ﬃ",
+      "reverse": false
+    },
+    {
+      "text": "磁场和 field",
+      "reverse": true
+    },
+    {
+      "text": "磁场和 field",
+      "reverse": false
+    },
+    {
+      "text": "independent case",
+      "reverse": true
+    },
+    {
+      "text": "SIGNAL🧑‍🔬",
+      "reverse": false
+    }
+  ]
+}
