@@ -3,7 +3,7 @@ import { countCharacters, detectedSectionTitle } from './documentOutline.mjs';
 import { referenceBlockIds } from './references.mjs';
 import { analysisSourceText, markdownBlockKind, savedResourceLayoutIssue } from './academicMarkdown.mjs';
 
-import { characterPrefix } from '../electron/library-metadata.mjs';
+import { characterPrefix, trimLibraryText } from '../electron/library-metadata.mjs';
 
 export { libraryLabel } from '../electron/library-metadata.mjs';
 export { referenceBlockIds };
@@ -34,7 +34,7 @@ function qualityExcerpt(text) {
 export function qualityIssues(blocks, excluded = new Set()) {
   return blocks.flatMap(block => {
     const original = String(block.text || '');
-    const value = original.trim();
+    const value = trimLibraryText(original);
     if (block.heading || excluded.has(block.id)) return [];
     const layoutIssue = savedResourceLayoutIssue(block);
     if (layoutIssue) return [{ id: block.id, reason: layoutIssue, excerpt: qualityExcerpt(original), reextract: true }];
@@ -42,10 +42,10 @@ export function qualityIssues(blocks, excluded = new Set()) {
     const markdownKind = markdownBlockKind(block);
     if (markdownKind && markdownKind !== 'paragraph') return [];
     let reason = '';
-    if (/[A-Za-z]{2,}[-‐]\s*$/.test(value)) reason = 'Possible cut-off word at the end. Compare with the next block and original page.';
-    else if (/(?<![\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\u200C\u200D])(?:in case of|where we|such as|given by|defined as)\s*$/iu.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';
+    if (/[A-Za-z]{2,}[-‐]$/.test(value)) reason = 'Possible cut-off word at the end. Compare with the next block and original page.';
+    else if (/(?<![\p{Alphabetic}\p{M}\p{Nd}\p{Pc}\u200C\u200D])(?:in case of|where we|such as|given by|defined as)$/iu.test(value)) reason = 'This phrase appears unfinished. The continuation may be in the next block.';
     else if (/^[\p{Nd}\p{White_Space}.,()[\]+=×÷−*/^_]+$/u.test(value)) reason = 'Possible detached number, equation fragment, or plot label. Check the original before merging.';
-    else if (value.length > 100 && !/[.!?。！？:：;；]["'”’）)\]]*\s*$/.test(value) && countCharacters(value, 101) > 100) reason = 'No sentence-ending punctuation was found. This can be valid near a formula; check the source.';
+    else if (value.length > 100 && !/[.!?。！？:：;；]["'”’）)\]]*$/.test(value) && countCharacters(value, 101) > 100) reason = 'No sentence-ending punctuation was found. This can be valid near a formula; check the source.';
     return reason && !detectedSectionTitle(value) ? [{ id: block.id, reason, excerpt: qualityExcerpt(original) }] : [];
   });
 }

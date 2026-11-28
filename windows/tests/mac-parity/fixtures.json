@@ -422,6 +422,32 @@
   ],
   "papers": [
     {
+      "name": "Extraction review of copied lab notes",
+      "blocks": [
+        {
+          "text": "We measured the reference intensity against standards such as\u200b"
+        },
+        {
+          "text": "The observer left the interval partly trans‐\u0085"
+        },
+        {
+          "text": "\u200b 1.25 × 10\u200b"
+        },
+        {
+          "text": "The baseline for the second exposure is defined as\ufeff"
+        },
+        {
+          "text": "We compared the time evolution of the reference spectrum to the independent lamp exposure obtained at the same temperature.\ufeff"
+        },
+        {
+          "text": "We compared the time evolution of the reference spectrum to the independent lamp exposure obtained at the same temperature.\u200b"
+        },
+        {
+          "text": "The same sample was reread using the original detector."
+        }
+      ]
+    },
+    {
       "name": "distinct scientific section identifiers",
       "blocks": [
         { "text": "Calibration for model_A in C#", "sourceMarkdown": "## Calibration for `model_A` in C#" },
