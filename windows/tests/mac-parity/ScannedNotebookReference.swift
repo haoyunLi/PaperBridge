@@ -4,7 +4,7 @@ import PDFKit
 import SwiftUI
 
 @MainActor
-func nativeJPXPanel(pdf: URL) throws -> [[Int]] {
+func nativeRasterSwatches(pdf: URL) throws -> [[Int]] {
     guard let page = PDFDocument(url: pdf)?.page(at: 0),
           let tiff = page.thumbnail(of: NSSize(width: 192, height: 96), for: .mediaBox).tiffRepresentation,
           let bitmap = NSBitmapImageRep(data: tiff) else { throw CocoaError(.fileReadCorruptFile) }
