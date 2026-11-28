@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   onPrepareClose: callback => {
     const listener = () => callback();
     ipcRenderer.on('paperbridge:prepare-close', listener);
+    ipcRenderer.send('app:close-listening');
     return () => ipcRenderer.removeListener('paperbridge:prepare-close', listener);
   }
 });

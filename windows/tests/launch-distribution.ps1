@@ -1,6 +1,6 @@
 # Test the actual GUI executable from an unrelated working directory, without
 # a debugging port, Electron CLI, development server, or launch arguments.
-param([Parameter(Mandatory)][string] $Executable, [switch] $CheckRelaunch, [switch] $CheckExtractionWindow)
+param([Parameter(Mandatory)][string] $Executable, [switch] $CheckRelaunch, [switch] $CheckExtractionWindow, [switch] $CheckEarlyClose)
 $ErrorActionPreference = 'Stop'
 $binary = (Resolve-Path -LiteralPath $Executable).Path
 $root = Join-Path ([IO.Path]::GetTempPath()) ('PaperBridge smoke ' + [guid]::NewGuid().ToString('N'))
@@ -30,6 +30,7 @@ $testEnvironment = @{
 $launcher = $null
 $windowProcess = $null
 $secondLauncher = $null
+$earlyReader = $null
 try {
     foreach ($name in $testEnvironment.Keys) {
         $original[$name] = [Environment]::GetEnvironmentVariable($name)
@@ -142,7 +143,21 @@ public static extern bool IsIconic(System.IntPtr hwnd);
     if (!$windowProcess.CloseMainWindow() -or !$launcher.WaitForExit(20000)) { throw 'The application did not close normally' }
     if ($launcher.ExitCode -ne 0) { throw "Unexpected exit code $($launcher.ExitCode)" }
     Write-Output "Verified visible first-launch guide and graceful exit: $([IO.Path]::GetFileName($binary))"
+    if ($CheckEarlyClose) {
+        $earlyReader = Start-Process -FilePath $binary -WorkingDirectory $launchDirectory -PassThru
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            $earlyReader.Refresh()
+            if ($earlyReader.HasExited) { throw 'Reader exited before showing its first native window' }
+            if ($earlyReader.MainWindowHandle -ne 0 -and $earlyReader.MainWindowTitle -match 'PaperBridge') { break }
+            Start-Sleep -Milliseconds 5
+        } while ($timer.ElapsedMilliseconds -lt 15000)
+        if ($earlyReader.MainWindowHandle -eq 0 -or $earlyReader.MainWindowTitle -notmatch 'PaperBridge' -or !$earlyReader.CloseMainWindow()) { throw 'Could not close the first visible reader window' }
+        if (!$earlyReader.WaitForExit(15000) -or $earlyReader.ExitCode -ne 0) { throw 'Close before reader startup finished was lost' }
+        Write-Output 'Verified that the first visible native reader window accepts Close during startup'
+    }
 } finally {
+    if ($earlyReader -and !$earlyReader.HasExited) { & taskkill.exe /PID $earlyReader.Id /T /F | Out-Null }
     if ($secondLauncher -and !$secondLauncher.HasExited) { & taskkill.exe /PID $secondLauncher.Id /T /F | Out-Null }
     if ($launcher -and !$launcher.HasExited) {
         & taskkill.exe /PID $launcher.Id /T /F | Out-Null

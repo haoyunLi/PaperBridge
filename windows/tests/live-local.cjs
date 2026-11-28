@@ -3,10 +3,10 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 const root = path.resolve(__dirname, '..');
-const artifacts = path.join(root, 'test-artifacts');
+const artifacts = process.env.PAPERBRIDGE_LIVE_ARTIFACTS || path.join(root, 'test-artifacts');
 const model = process.env.PAPERBRIDGE_LIVE_MODEL || 'translategemma:4b';
 const baseURL = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
 
@@ -83,15 +83,14 @@ async function run() {
   console.log(`Loaded model VRAM: ${(gpu.vramBytes / 1024 ** 3).toFixed(2)} GiB / ${(gpu.sizeBytes / 1024 ** 3).toFixed(2)} GiB`);
 
   fs.mkdirSync(artifacts, { recursive: true });
-  const workspace = path.join(artifacts, 'live-workspace');
-  assert.ok(path.resolve(workspace).startsWith(path.resolve(artifacts) + path.sep));
-  fs.rmSync(workspace, { recursive: true, force: true });
-  fs.mkdirSync(workspace);
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'live-workspace-'));
+  const generalModel = process.env.PAPERBRIDGE_LIVE_SUMMARY_MODEL || model;
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({
-    ollamaBaseURL: baseURL, translationModel: model, summaryModel: model,
-    explainModel: model, quickLookupModel: model, autoCheckUpdates: false, onboardingCompletedVersion: 1
+    ollamaBaseURL: baseURL, translationModel: model, summaryModel: generalModel,
+    explainModel: generalModel, quickLookupModel: model, autoCheckUpdates: false, onboardingCompletedVersion: 1
   }));
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const launch = () => launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const app = await launch();
   let uiTranslation = '';
   let uiSelection = '';
   let uiExplanation = '';
@@ -162,7 +161,7 @@ async function run() {
   const verifiedSources = paper?.summary?.claims?.flatMap(claim => claim.sources || []) || [];
   assert.ok(verifiedSources.length > 0, 'The real model summary has no validated source quotations');
   for (const source of verifiedSources) assert.ok(paper.blocks.find(block => block.id === source.paragraphID)?.text.includes(source.quote), 'Summary quote is not in the source paragraph');
-  const restarted = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const restarted = await launch();
   try {
     const page = await restarted.firstWindow();
     await page.locator('.content-column .document-preview').waitFor({ timeout: 20000 });
@@ -172,7 +171,7 @@ async function run() {
     await page.getByRole('button', { name: 'Reader', exact: true }).click();
     assert.equal(await page.locator('.block').nth(1).locator('.translation-text.done').innerText(), uiTranslation);
   } finally { await restarted.close(); }
-  const report = { at: new Date().toISOString(), gpu, samples: results, uiTranslation, uiSelection, uiExplanation, uiSummary, uiFullTranslation, verifiedSourceCount: verifiedSources.length };
+  const report = { at: new Date().toISOString(), workspace, model, generalModel, gpu, samples: results, uiTranslation, uiSelection, uiExplanation, uiSummary, uiFullTranslation, verifiedSourceCount: verifiedSources.length };
   fs.writeFileSync(path.join(artifacts, 'live-local-report.json'), JSON.stringify(report, null, 2));
   console.log(`Live test report: ${path.join(artifacts, 'live-local-report.json')}`);
 }

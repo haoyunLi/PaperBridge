@@ -1,4 +1,4 @@
-import { trimLibraryText } from '../electron/library-metadata.mjs';
+import { characterPrefix, trimLibraryText } from '../electron/library-metadata.mjs';
 import { taggedPdfText } from './pdfBidi.mjs';
 import { useWholePdfSelection } from './useWholePdfSelection.mjs';
 import { PdfPageLinks } from './PdfPageLinks.jsx';
@@ -227,7 +227,11 @@ function Markdown({ children, annotations, annotationSource = children }) {
   useRichAnnotations(host, children, annotations, annotationSource);
   return <div ref={host} data-markdown-host onClick={openPaperLink} onAuxClick={openPaperLink}><ReactMarkdown remarkPlugins={markdownPlugins} rehypePlugins={rehypePlugins} urlTransform={safeMarkdownUrl}>{children || ''}</ReactMarkdown></div>;
 }
-function short(text, count = 92) { return text?.length > count ? `${text.slice(0, count)}…` : text; }
+function short(text, count = 92) {
+  if (!text || text.length <= count) return text;
+  const prefix = characterPrefix(text, count);
+  return prefix === text ? text : prefix + '…';
+}
 function afterReadingLayout(host, restore) {
   requestAnimationFrame(() => {
     const pendingFigures = [...(host?.querySelectorAll('img[src^="data:image/"]') || [])].filter(image => !image.complete);
@@ -246,8 +250,7 @@ function domRangeIn(root, range, { visibleOnly = false, trimEdges = false } = {}
   before.selectNodeContents(root);
   before.setEnd(range.startContainer, range.startOffset);
   const offset = domText(before.cloneContents(), visibleOnly).length + (trimEdges ? raw.length - raw.trimStart().length : 0);
-  const rect = range.getBoundingClientRect();
-  return { text, offset, quote: visibleOnly ? renderedSelectionQuote(range, text) : undefined, rect: { x: rect.left, y: rect.top }, context: domText(root, visibleOnly) };
+  return { text, offset, quote: visibleOnly ? renderedSelectionQuote(range, text) : undefined, context: domText(root, visibleOnly) };
 }
 // The visible selection carries paragraph breaks, code lines and table separators.
 // Keep textContent-based offsets for exact annotation navigation.
@@ -552,12 +555,10 @@ function capturePdfRange(host, range) {
     if (part.quote !== '') parts.push({ ...part, page });
   }
   if (!parts.length) return null;
-  const rect = range.getBoundingClientRect();
-  const position = { x: rect.left, y: rect.top };
-  if (parts.length === 1) return { ...parts[0], anchors: parts, rect: position };
+  if (parts.length === 1) return { ...parts[0], anchors: parts };
   const quote = parts.map(part => part.quote ?? part.text).join(' ');
   return { page: parts[0].page, offset: parts[0].offset, text: parts.map(part => part.text).join('\n'), quote, context: quote,
-    anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
+    anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })) };
 }
 
 function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onComment, onBack, onForward, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
@@ -1339,7 +1340,7 @@ function QuickSelection({ selection, results, busy, lookupBusy, lookup, activeCo
   const quote = selection.quote ?? selection.text;
   return <div className="selection-toolbar" role="dialog" aria-label="Quick selection"
     onMouseDown={event => { if (!event.target.closest('input, .quick-selection-results')) event.preventDefault(); }}>
-    <div className="quick-selection-head"><strong>{short(quote, 150)}</strong><button aria-label="Close quick lookup" onClick={onClose}><X size={14} /></button></div>
+    <div className="quick-selection-head"><strong>{quote}</strong><button aria-label="Close quick lookup" onClick={onClose}><X size={14} /></button></div>
     <div className="quick-selection-actions"><button disabled={!!busy} onClick={onTranslate}><Languages size={14} /> Translate</button><button disabled={!!busy} onClick={onExplain}><Sparkles size={14} /> Explain</button></div>
     {lookupBusy && <div className="quick-selection-busy"><span>{busy.label}</span><button onClick={onCancelTask}>Cancel</button></div>}
     {(results.translate || results.explain) && <div className="quick-selection-results"><SelectionResults results={results} /></div>}
@@ -1756,13 +1757,13 @@ function App() {
   }
   function selectPdf(anchor, scope) {
     if (!anchor) { setSelection(null); return; }
-    return applyReadingSelection({ ...anchor, id: null, kind: 'source', scope });
+    return applyReadingSelection({ ...anchor, id: null, kind: 'source', scope, showQuickLookup: true });
   }
   function hideQuickSelection() {
-    setSelection(current => current?.rect ? { ...current, rect: null } : current);
+    setSelection(current => current?.showQuickLookup ? { ...current, showQuickLookup: false } : current);
   }
   function hideOffscreenLookup(host) {
-    if (!selectionRef.current?.rect) return;
+    if (!selectionRef.current?.showQuickLookup) return;
     const selected = window.getSelection();
     if (host && selected?.rangeCount) {
       const range = selected.getRangeAt(0);
@@ -1773,6 +1774,13 @@ function App() {
       }
     }
     hideQuickSelection();
+  }
+  function openSelectionInspector() {
+    dismissQuickSelection();
+    setFocus(false);
+    if (window.matchMedia('(max-width: 800px)').matches) setSidebar(false);
+    setInspector(true);
+    setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0);
   }
   function dismissQuickSelection() {
     hideQuickSelection();
@@ -2470,7 +2478,7 @@ function App() {
       ...selectionOffsets(captured, null, paperArticleSource(paper)), displayMode: viewNavigation.displayMode, sourceMode: viewNavigation.sourceMode
     } : textSelectionOffsets(captured, source, source);
     applyReadingSelection({ id: null, kind: article ? viewNavigation.kind || 'source' : scope === 'summarySource' ? 'source' : 'translation',
-      text, scope, quote, ...position, rect: null, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
+      text, scope, quote, ...position, context: rendered.slice(Math.max(0, offset - 300), offset + text.length + 300) });
     setInspector(true); setViewNavigation(null);
   }, [viewNavigation?.requestId, tab, displayMode, paper?.id]);
   const command = name => {
@@ -2478,7 +2486,7 @@ function App() {
     if (name === 'dismiss') {
       if (modal) dismissModal();
       else if (sidebar && !focus && window.matchMedia('(max-width: 800px)').matches) closeDocumentOverlay();
-      else if (selection?.rect && !inspector && !focus) dismissQuickSelection();
+      else if (selection?.showQuickLookup && (!inspector || focus)) dismissQuickSelection();
       else setSelection(null);
       return;
     }
@@ -2682,7 +2690,7 @@ function App() {
       const quote = restoreRenderedQuote(range, request.text, request.records);
       const captured = { text: request.text, offset: at, context: rendered };
       applyReadingSelection({ id: block.id, kind: request.kind, text: request.text, quote, ...textSelectionOffsets(captured, source, markdown),
-        scope: request.scope, rect: null, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
+        scope: request.scope, context: rendered.slice(Math.max(0, at - 300), at + request.text.length + 300) });
       if (request.recordType !== 'evidence') setInspector(true);
       setBlockNavigation(null);
     });
@@ -3148,6 +3156,9 @@ function App() {
     const config = settingsRef.current;
     const input = selectionLookupInput(currentPaper, selectionRef.current, config, explanationLanguage, glossary);
     if (!input) return;
+    if (!inspector || focus) {
+      setSelection(current => current && !current.showQuickLookup ? { ...current, showQuickLookup: true } : current);
+    }
     const { key, identity, quote, fullContext, from, to, model, terms } = input;
     if (lookupCache.get(key)?.[kind] !== undefined) {
       setSelectionLookup({ key, status: 'Using cached quick lookup.', error: '' });
@@ -3657,8 +3668,8 @@ function App() {
     const block = paperRef.current?.blocks.find(item => item.id === Number(element.dataset.blockId));
     const kind = element.dataset.kind || 'source';
     const source = anchorText(block, kind);
-    const { text, rect } = captured;
-    const nextSelection = { id: block?.id ?? null, kind, text, quote: captured.quote, ...textSelectionOffsets(captured, source, rich && blockMarkdown(block, kind)), scope: 'reader', rect,
+    const { text } = captured;
+    const nextSelection = { id: block?.id ?? null, kind, text, quote: captured.quote, ...textSelectionOffsets(captured, source, rich && blockMarkdown(block, kind)), scope: 'reader', showQuickLookup: true,
       context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     return applyReadingSelection(nextSelection);
   }
@@ -3885,7 +3896,7 @@ function App() {
   }
   function pdfNavigationReady(anchor) {
     const scope = pdfAnnotationScope(pdfNavigation);
-    const next = { ...anchor, id: null, kind: 'source', scope, rect: null };
+    const next = { ...anchor, id: null, kind: 'source', scope };
     const current = paperRef.current;
     const recovered = item => item.anchors == null && item.offset !== next.offset && samePdfSelection(item, pdfNavigation);
     const verified = item => pdfNavigation.recheck && item.needsReview && samePdfSelection(item, next);
@@ -4016,8 +4027,8 @@ function App() {
       if (captured) offsets = textSelectionOffsets(captured, source, source);
     }
     if (!captured) return;
-    const { text, rect } = captured;
-    const nextSelection = { id, kind, text, quote: captured.quote, ...offsets, scope, rect, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
+    const { text } = captured;
+    const nextSelection = { id, kind, text, quote: captured.quote, ...offsets, scope, showQuickLookup: true, context: captured.context.slice(Math.max(0, captured.offset - 300), captured.offset + text.length + 300) };
     return applyReadingSelection(nextSelection);
   }
   function applyReadingSelection(next) {
@@ -4449,7 +4460,7 @@ function App() {
       </div>
     </main>
     <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button id="inspector-undo-annotation" className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" aria-describedby="note-save-hint" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><div className="note-save-actions"><span id="note-save-hint" className={workspaceSave.status === 'error' ? 'error' : undefined}>{workspaceSave.status === 'error' ? 'Not saved to disk' : workspaceSave.status === 'saving' ? 'Saving note…' : 'Notes save automatically'}</span><button className="button blue" onClick={saveNote}>{workspaceSave.status === 'error' ? 'Retry note save' : 'Save note'}</button></div></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !trimLibraryText(termDraft)} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
-    {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
+    {selection?.showQuickLookup && !modal && (!inspector || focus) && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={openSelectionInspector} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
     {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); dismissModal(); } }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {setupWaitMessage && <p role="status">{setupWaitMessage}</p>}

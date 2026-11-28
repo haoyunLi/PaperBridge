@@ -12,10 +12,12 @@ async function run() {
   fs.mkdirSync(artifacts, { recursive: true });
   const dir = fs.mkdtempSync(path.join(artifacts, 'selection-edges-'));
   const id = 'd'.repeat(64);
+  const longQuote = 'A'.repeat(149) + '🧪 followed by a full measurement and its uncertainty.';
   const file = path.join(dir, 'papers', id + '.json');
   fs.mkdirSync(path.dirname(file));
   fs.writeFileSync(file, JSON.stringify({ id, type: 'text', sourceMode: 'text', name: 'Benchmark readings',
-    blocks: [{ id: 1, text: samples[0].context, translation: samples[1].context, status: 'ok', notes: [] }],
+    blocks: [{ id: 1, text: samples[0].context, translation: samples[1].context, status: 'ok', notes: [] },
+      { id: 2, text: longQuote, notes: [] }],
     summary: { source: samples[2].context, target: samples[3].context, sourceLanguage: 'English', targetLanguage: 'Simplified Chinese', claims: [] },
     inspectorOpen: true, position: { tab: 'Reader', displayMode: 'bilingual', block: 1 } }));
   fs.writeFileSync(path.join(dir, 'last-paper.json'), JSON.stringify({ id }));
@@ -32,6 +34,21 @@ async function run() {
   let app = await launch();
   try {
     let page = await app.firstWindow();
+    await openWorkspaceView(page, 'Reader');
+    await page.getByRole('button', { name: /Close inspector drawer|Hide inspector/ }).click();
+    await page.locator('#block-2 .source-text').evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const selected = window.getSelection();
+      selected.removeAllRanges();
+      selected.addRange(range);
+      element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    });
+    const card = page.getByRole('dialog', { name: 'Quick selection' });
+    const heading = card.locator('.quick-selection-head strong');
+    assert.equal(await heading.textContent(), longQuote, 'The complete quote remains readable across a supplementary character');
+    assert.ok(await heading.evaluate(element => element.clientHeight <= 2 * parseFloat(getComputedStyle(element).lineHeight) + 1));
+    await card.getByRole('button', { name: 'Notes & More' }).click();
     for (const [index, sample] of samples.entries()) {
       const reader = sample.scope === 'reader';
       await openWorkspaceView(page, reader ? 'Reader' : 'Overview');

@@ -52,6 +52,7 @@ let activeImportArchive = null;
 let menuState = normalizeMenuState({});
 let closeReady = false;
 let closeRequested = false;
+let closeListenerReady = false;
 let quitAfterClose = false;
 let portableUpdateToReveal = null;
 let pendingLaunchVersion = '';
@@ -123,7 +124,7 @@ function requestRendererClose(quitting = false, { waitForSave = false } = {}) {
   }
   if (window.webContents.isCrashed()) { portableUpdateToReveal = null; finishClose(); return; }
   closeRequested = true;
-  window.webContents.send('paperbridge:prepare-close');
+  if (closeListenerReady) window.webContents.send('paperbridge:prepare-close');
   if (!requireConfirmedClose) closeTimer = setTimeout(askAboutSlowClose, 10_000);
 }
 
@@ -156,6 +157,14 @@ function registerHandlers() {
     if (event.sender !== window?.webContents || event.senderFrame !== window.webContents.mainFrame) throw new Error('Menu state must come from the main app window.');
     menuState = normalizeMenuState(state);
     return applyMenuState(Menu.getApplicationMenu(), menuState);
+  });
+  ipcMain.on('app:close-listening', event => {
+    const owner = window;
+    if (!owner || owner.isDestroyed() || event.sender !== owner.webContents ||
+        event.senderFrame !== owner.webContents.mainFrame || closeListenerReady) return;
+    closeListenerReady = true;
+    // A native Close can arrive as soon as the window appears, before React mounts.
+    if (closeRequested) owner.webContents.send('paperbridge:prepare-close');
   });
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
@@ -645,6 +654,7 @@ function buildMenu() {
 
 function createWindow() {
   closeReady = false;
+  closeListenerReady = false;
   cancelRendererClose();
   window = new BrowserWindow({
     ...initialWindowBounds(screen.getPrimaryDisplay().workArea), title: developmentBuild ? 'PaperBridge Dev' : 'PaperBridge',
@@ -663,6 +673,9 @@ function createWindow() {
     applyMenuState(Menu.getApplicationMenu(), menuState);
   });
   const contents = window.webContents;
+  contents.on('did-start-navigation', event => {
+    if (event.isMainFrame && !event.isSameDocument) closeListenerReady = false;
+  });
   // A browser destination should never replace the reading workspace.
   contents.on('will-navigate', event => {
     if (event.url.split('#')[0] !== readerURL) event.preventDefault();

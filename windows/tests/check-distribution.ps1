@@ -23,7 +23,7 @@ try {
     if ($installedVersion -notin @($Version, "$Version.0")) {
         throw "Installed version $installedVersion does not match release $Version"
     }
-    & "$PSScriptRoot/launch-distribution.ps1" -Executable $exe -CheckRelaunch
+    & "$PSScriptRoot/launch-distribution.ps1" -Executable $exe -CheckRelaunch -CheckEarlyClose
     if ($MacReference) {
         $previousExecutable = $env:PAPERBRIDGE_TEST_EXECUTABLE
         $previousReference = $env:PAPERBRIDGE_MAC_REFERENCE

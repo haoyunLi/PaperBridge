@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 打包版的十五页论文导入
+
+在 RX 7800 XT 上从 Open PDF 导入 15 页《Attention Is All You Need》。MinerU 4.1.7 自动选择 DirectML，56.8 秒后得到 167 个 MinerU 内容块，另保留了 207 个 PDF 文字层内容块。检查了 Reader 中的正文和 Original PDF 中实际绘制的页面。显式设备回归会核对正在运行的 EXE 路径与打包状态。[论文导入实测](tests/live-mineru.cjs)
+
 ## 公式和链接在全文翻译后仍可使用
 
 在 RX 7800 XT 上用打包的 Windows 0.2.146 和 TranslateGemma 4B 翻译含行内与独立公式、代码、图片链接、网址和邮箱的英文 Markdown。导出的译文保留了受保护的原文标记。重开后检查了公式的 TeX 内容与显示方式，以及三个链接的实际目标。Ollama 报告显存占用 2,881,948,220 字节。[实测入口](tests/live-structured-translation.cjs)

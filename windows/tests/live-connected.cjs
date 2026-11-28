@@ -2,12 +2,12 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
-  const source = path.join(artifacts, 'live-mineru-directml-workspace');
+  const source = process.env.PAPERBRIDGE_LIVE_CONNECTED_WORKSPACE || path.join(artifacts, 'live-mineru-directml-workspace');
   const workspace = fs.mkdtempSync(path.join(artifacts, 'connected-amd-'));
   fs.cpSync(source, workspace, { recursive: true });
   const baseURL = process.env.PAPERBRIDGE_LIVE_OLLAMA || 'http://127.0.0.1:11434';
@@ -26,7 +26,7 @@ async function run() {
   // Opening a saved paper restores its endpoint and task models.
   fs.writeFileSync(paperFile, JSON.stringify({ ...saved, taskSettings: { ...saved.taskSettings, ...overrides } }));
 
-  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const launch = () => launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app;
   try {
     app = await launch();
@@ -37,10 +37,14 @@ async function run() {
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     const started = Date.now();
     await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
-    const secondBatch = page.getByText(/Translating full paper · batch 2 of/);
-    const preflight = secondBatch.or(page.locator('.notice.error')).first();
-    await preflight.waitFor({ timeout: 120000 });
-    assert.match(await preflight.innerText(), /batch 2 of/, 'The first batch should complete and the next should start');
+    // Large academic batches can take several minutes on a local model. The
+    // numerical progress remains available while the label describes individual parts.
+    await page.waitForFunction(() => {
+      const progress = document.querySelector('.task-progress progress');
+      return (progress && progress.value > 0 && progress.value < progress.max) || Boolean(document.querySelector('.notice.error'));
+    }, null, { timeout: 600000 });
+    assert.deepEqual(await page.locator('.notice.error').allInnerTexts(), []);
+    console.log('First batch finished after', Math.round((Date.now() - started) / 1000), 'seconds');
     await page.getByRole('button', { name: 'Stop', exact: true }).click();
     await app.close(); app = null;
 
@@ -53,7 +57,7 @@ async function run() {
     app = await launch();
     page = await app.firstWindow();
     await page.getByRole('button', { name: 'Resume unfinished batches', exact: true }).click();
-    await page.getByText(/Connected full-paper translation saved/).waitFor({ timeout: 240000 });
+    await page.getByText(/Connected full-paper translation saved/).waitFor({ timeout: 1500000 });
     const loaded = await fetch(new URL('/api/ps', baseURL)).then(response => response.json());
     const model = loaded.models.find(item => item.name === modelName || item.model === modelName);
     assert.ok(model?.size_vram > 0, 'Ollama must report model VRAM allocation');

@@ -4,12 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { openWorkspaceView } = require('./sidebar-controls.cjs');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
-  const artifacts = path.join(root, 'test-artifacts');
-  const source = path.resolve(process.env.PAPERBRIDGE_LIVE_PDF || path.join(artifacts, 'attention-is-all-you-need.pdf'));
+  const artifacts = process.env.PAPERBRIDGE_LIVE_ARTIFACTS || path.join(root, 'test-artifacts');
+  const source = path.resolve(process.env.PAPERBRIDGE_LIVE_PDF || path.join(root, 'test-artifacts', 'attention-is-all-you-need.pdf'));
   const mineru = process.env.PAPERBRIDGE_LIVE_MINERU || path.join(process.env.LOCALAPPDATA || '', 'PaperBridge', 'tools', 'mineru', 'Scripts', 'mineru.exe');
   const expectDirectML = process.env.PAPERBRIDGE_LIVE_DIRECTML === '1';
   assert.ok(fs.existsSync(source), `PDF not found: ${source}`);
@@ -33,7 +33,7 @@ async function run() {
     env.TMP = temp;
     env.PAPERBRIDGE_TOOLS_ROOT = path.join(temp, 'tools');
   }
-  const app = await electron.launch({ args: ['.'], cwd: root, env, timeout: 30000 });
+  const app = await launchTestReader({ cwd: root, env, timeout: 30000 });
   const started = performance.now();
   try {
     const page = await app.firstWindow();
