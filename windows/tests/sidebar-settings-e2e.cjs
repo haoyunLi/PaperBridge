@@ -56,11 +56,12 @@ async function run() {
     autoCheckUpdates: false, onboardingCompletedVersion: 1 };
   const block = { id: 1, text: 'A controlled study describes reproducible evidence for the sidebar settings regression.',
     heading: false, status: 'pending', translation: '', bookmark: false, highlights: [], translationHighlights: [], notes: [] };
-  const paper = { id, name: 'Sidebar paper A', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
+  const commonTitle = 'Cryogenic detector calibration at 77 K · 探测器 · ';
+  const paper = { id, name: commonTitle + 'Sidebar paper A', type: 'text', sourceMode: 'text', extraction: 'Pasted text',
     blocks: [block], taskSettings: settings, inspectorOpen: false,
     createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     position: { tab: 'Reader', block: 1, displayMode: 'bilingual' } };
-  const second = { ...paper, id: secondId, name: 'Sidebar paper B',
+  const second = { ...paper, id: secondId, name: commonTitle + 'Sidebar paper B',
     blocks: [{ ...block, text: 'Paper B keeps its independent language direction and reviewed translation.', status: 'ok', translation: 'Paper B saved translation.' }],
     taskSettings: { ...settings, sourceLanguage: 'Japanese', targetLanguage: 'English' } };
   const legacy = { ...paper, id: legacyId, name: 'Sidebar legacy language',
@@ -138,6 +139,13 @@ async function run() {
     assert.equal(await app.evaluate(() => globalThis.__sidebarParser.requests.length), 0, 'collapsed loaded-paper controls do not probe an invisible parser');
     await openDetails();
     await direction('English', 'Simplified Chinese');
+    const recent = page.locator('.recent-papers');
+    for (const entry of [paper, second]) {
+      const row = recent.getByRole('button', { name: entry.name + ' 1 block', exact: true });
+      assert.equal(await row.count(), 1, 'Recent papers with the same long prefix must have distinct full names');
+      assert.equal(await row.getAttribute('title'), entry.name);
+    }
+    assert.equal(await recent.locator('[aria-current="page"] span').textContent(), paper.name);
     assert.equal(await from().locator('option').count(), 11, 'standard language choices remain unchanged');
     await ai().getByText('Ollama ready', { exact: true }).waitFor();
     await ai().getByText('MinerU ready', { exact: true }).waitFor();
@@ -149,6 +157,7 @@ async function run() {
     await page.getByRole('button', { name: 'Translate Paper', exact: true }).click();
     await waitFor(() => heldGeneration, 'held translation');
     await assertLocked(true);
+    assert.equal(await recent.locator('button:not(:disabled)').count(), 0, 'Switching papers is unavailable during translation');
     assert.equal(readPaper().taskSettings.targetLanguage, 'French');
     heldGeneration.end(JSON.stringify({ response: 'Sidebar translation 2.', done: true }));
     generationMode = 'success';
@@ -174,6 +183,7 @@ async function run() {
     await waitFor(() => readPaper().blocks[0].translation === 'Sidebar translation 2.', 'Settings and sidebar share the same variant cache');
     await page.locator('.library-row').filter({ hasText: 'Sidebar paper B' }).click();
     await direction('Japanese', 'English', secondId);
+    assert.equal(await recent.locator('[aria-current="page"] span').textContent(), second.name);
     assert.equal(readPaper(secondId).blocks[0].translation, 'Paper B saved translation.');
     await from().selectOption('German');
     await direction('German', 'English', secondId);
@@ -225,10 +235,13 @@ async function run() {
     await refreshOllama().click();
     await waitFor(() => tags.length === beforeTags + 1, 'sidebar model refresh');
     await ai().getByText('Checking Ollama…', { exact: true }).waitFor();
+    assert.match(await page.locator('.title-row .service').innerText(), /Checking Ollama/);
+    assert.doesNotMatch(await page.locator('.title-row .service').getAttribute('title'), /available|ready/i);
     assert.equal(await refreshOllama().isDisabled(), true);
     tags.at(-1).statusCode = 503;
     tags.at(-1).end(JSON.stringify({ error: 'Fixture local service unavailable' }));
     await ai().getByText('Ollama unavailable', { exact: true }).waitFor();
+    assert.match(await page.locator('.title-row .service').innerText(), /Ollama unavailable/);
     await waitFor(() => refreshOllama().isEnabled(), 'failed model refresh can retry');
     tagMode = 'success';
     await refreshOllama().click();
@@ -273,6 +286,11 @@ async function run() {
     await ai().getByText('Online analysis is paused. Enable it in Settings > Models.', { exact: true }).waitFor();
     await ai().getByText('No translation model selected', { exact: true }).waitFor();
     assert.equal(await refreshOllama().count(), 0);
+    await page.setViewportSize({ width: 760, height: 700 });
+    assert.match(await page.locator('.title-wrap p').innerText(), /OpenAI Paused/);
+    assert.equal(await page.locator('.title-row .service').isVisible(), false);
+    await page.setViewportSize({ width: 1500, height: 900 });
+    assert.doesNotMatch(await page.locator('.title-wrap p').innerText(), /OpenAI Paused/);
     await ai().getByRole('button', { name: 'Open AI Settings', exact: true }).click();
     assert.equal(await page.getByRole('tab', { name: 'Models', exact: true }).getAttribute('aria-selected'), 'true');
     const fakeKey = 'sidebar-test-key-placeholder-never-networked';

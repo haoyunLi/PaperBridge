@@ -10,6 +10,18 @@ const roleKeys = Object.freeze({
 });
 const taskName = role => role === 'quickLookup' ? 'quick lookup' : role;
 
+export function aiServiceStatus(provider, consent, ollamaStatus, refreshing, error) {
+  if (provider === 'openai') {
+    return consent
+      ? { label: 'OpenAI Online', tone: 'ready', detail: 'Text analysis uses your OpenAI API account.' }
+      : { label: 'OpenAI Paused', tone: 'offline', detail: 'Online analysis is paused until enabled in Settings.' };
+  }
+  if (refreshing) return { label: 'Checking Ollama…', tone: 'pending', detail: 'Checking the configured Ollama endpoint.' };
+  if (ollamaStatus === 'ready') return { label: 'Ollama ready', tone: 'ready', detail: 'The configured Ollama endpoint is available.' };
+  if (ollamaStatus === 'unavailable') return { label: 'Ollama unavailable', tone: 'offline', detail: error || 'The configured Ollama endpoint could not be reached.' };
+  return { label: 'Check Ollama', tone: 'pending', detail: error || 'Refresh models to check the configured Ollama endpoint.' };
+}
+
 export function activeAIModel(settings, role) {
   const keys = roleKeys[role];
   if (!keys) throw new Error(`Unknown AI role: ${role}`);

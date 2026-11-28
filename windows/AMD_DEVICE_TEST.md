@@ -8,6 +8,8 @@
 
 随后从已恢复的第一批继续，余下十批耗时 14 分 41 秒。重开应用后，全部 11 批均已完成，第一批译文与继续前完全一致。「Full Translation Markdown」导出了 20,540 字符。便携导出包包含相同的译文正文、与原件 SHA-256 相同的 PDF，以及 15 张可由 Markdown 打开的页面图。逐一核对了 39 个直引原文块，包含编号 1–40 的参考文献。抽查训练集大小，4B 将 `4.5 million sentence pairs` 译为「450 万个句子对」，将 `36M sentences` 译为「3600 万个句子」。[全文翻译实测入口](tests/live-connected.cjs)
 
+同一台机器上，使用打包的 0.2.148 打开练习论文。4B 完成了段落、选区和全文翻译，Qwen3 4B Instruct 生成了解释和摘要。摘要包含 6 条可追溯引文，已逐条在所标原文段落中找到。重开应用后核对了全文、摘要卡片和段落译文。[练习论文实测](tests/live-local.cjs)
+
 ## 打包版的十五页论文导入
 
 在 RX 7800 XT 上从 Open PDF 导入 15 页《Attention Is All You Need》。MinerU 4.1.7 自动选择 DirectML，56.8 秒后得到 167 个 MinerU 内容块，另保留了 207 个 PDF 文字层内容块。检查了 Reader 中的正文和 Original PDF 中实际绘制的页面。显式设备回归会核对正在运行的 EXE 路径与打包状态。[论文导入实测](tests/live-mineru.cjs)

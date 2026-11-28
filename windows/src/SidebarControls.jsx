@@ -26,7 +26,7 @@ export function SidebarLanguage({ settings, languages, disabled, onChange }) {
   </section>;
 }
 
-export function SidebarAIStatus({ settings, ollamaStatus, ollamaError, refreshingModels, onRefreshModels, openAIConsent,
+export function SidebarAIStatus({ settings, service, ollamaError, refreshingModels, onRefreshModels, openAIConsent,
   enabled = true, parserRevision = 0, onOpenAISettings, onOpenSettings }) {
   const [check, setCheck] = useState(0);
   const [parser, setParser] = useState({ executable: null, checking: false, value: null, error: '' });
@@ -55,8 +55,8 @@ export function SidebarAIStatus({ settings, ollamaStatus, ollamaError, refreshin
       <p className="sidebar-model-name" title={settings.openAITranslationModel || undefined}>{settings.openAITranslationModel || 'No translation model selected'}</p>
       <button className="side-action" onClick={onOpenAISettings}>Open AI Settings</button>
     </> : <>
-      <div className="sidebar-runtime-row"><span role="status" className="sidebar-runtime-label"><i className={ollamaStatus === 'ready' && !refreshingModels ? 'ready' : ''} />{refreshingModels ? 'Checking Ollama…' : ollamaStatus === 'ready' ? 'Ollama ready' : ollamaStatus === 'unavailable' ? 'Ollama unavailable' : 'Check Ollama'}</span><button className="sidebar-refresh" aria-label="Refresh Ollama models" title="Refresh Ollama models" aria-busy={refreshingModels} disabled={refreshingModels} onClick={onRefreshModels}><RefreshCw size={14} /></button></div>
-      {ollamaError && <p className="sidebar-ai-message" role="status">{ollamaError}</p>}
+      <div className="sidebar-runtime-row"><span role="status" className="sidebar-runtime-label"><i className={service.tone === 'ready' ? 'ready' : ''} />{service.label}</span><button className="sidebar-refresh" aria-label="Refresh Ollama models" title="Refresh Ollama models" aria-busy={refreshingModels} disabled={refreshingModels} onClick={onRefreshModels}><RefreshCw size={14} /></button></div>
+      {!refreshingModels && ollamaError && <p className="sidebar-ai-message" role="status">{ollamaError}</p>}
     </>}
     <div className="sidebar-parser-status">
       <div className="sidebar-runtime-row"><span role="status" className="sidebar-runtime-label"><i className={available && !checkingParser ? 'ready' : ''} />{checkingParser ? 'Checking MinerU…' : available ? 'MinerU ready' : 'MinerU unavailable'}</span><button className="sidebar-refresh" aria-label="Refresh MinerU status" title="Refresh MinerU status" aria-busy={checkingParser} disabled={checkingParser || !enabled} onClick={() => setCheck(value => value + 1)}><RefreshCw size={14} /></button></div>
