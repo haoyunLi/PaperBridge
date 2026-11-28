@@ -69,6 +69,11 @@ async function run() {
         return value;
       });
     }, papers[1].id);
+    const sidebarSearch = page.getByRole('textbox', { name: 'Search papers or tags', exact: true });
+    await sidebarSearch.fill(papers[1].name);
+    const showInspector = page.getByRole('button', { name: 'Show Research Inspector', exact: true });
+    if (await showInspector.isVisible()) await showInspector.click();
+    await page.getByRole('button', { name: 'Hide Research Inspector', exact: true }).waitFor();
     await page.locator('.recent-papers').getByText(papers[1].name, { exact: true }).click();
     await app.evaluate(async () => {
       const deadline = Date.now() + 5000;
@@ -110,6 +115,8 @@ async function run() {
     });
     await page.locator('.welcome').waitFor();
     assert.equal(wroteAfterClear, false, 'A delayed viewport save cannot recreate a cleared paper');
+    assert.equal(await sidebarSearch.inputValue(), '', 'A cleared library should show all future papers');
+    assert.ok(await showInspector.isVisible(), 'Clearing must dismiss the previous paper’s Research Inspector');
     await app.evaluate(() => { globalThis.__releasePaperRead(); });
     await page.waitForTimeout(600);
     assert.equal(await page.locator('.welcome').isVisible(), true, 'A previously requested paper cannot reopen after clearing');

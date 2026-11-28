@@ -3606,6 +3606,7 @@ function App() {
       resetReadingHistory();
       cancelParagraphEdit();
       paperRef.current = null; setPaper(null); setLibrary([]); setLibraryPersistenceWarning(''); setGlossary([]);
+      setLibrarySearch(''); setInspector(false); setNoteDraft('');
       const data = await api.bootstrap();
       settingsRef.current = data.settings; setSettings(data.settings);
       modelRefreshId.current++;

@@ -70,6 +70,10 @@ async function run() {
     const search = () => page.getByRole('textbox', { name: 'Search original or translation', exact: true });
     const mode = label => page.getByRole('radiogroup', { name: 'Reading mode' }).getByRole('radio', { name: label, exact: true });
     const toBlock = async id => {
+      // This exact-offset fixture scrolls programmatically. Let the startup and
+      // resize restoration finish before moving the test's reading position.
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await page.locator('.main-scroll[aria-busy="false"] .reader-list').waitFor();
       await page.evaluate(id => {
         const host = document.querySelector('.main-scroll');
         const block = document.getElementById(`block-${id}`);
