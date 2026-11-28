@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { writeFileAtomically } = require('./atomic-file.cjs');
 
 function validatedPdfBytes(bytes) {
   const source = Buffer.from(bytes);
@@ -12,23 +13,9 @@ function sha256(value) {
   return crypto.createHash('sha256').update(value).digest('hex');
 }
 
-function atomicWrite(file, bytes, { fileSystem = fs, temporaryId = crypto.randomUUID } = {}) {
-  fileSystem.mkdirSync(path.dirname(file), { recursive: true });
-  const temporary = `${file}.${process.pid}.${temporaryId()}.tmp`;
-  let descriptor = null;
-  let ownsTemporary = false;
-  try {
-    descriptor = fileSystem.openSync(temporary, 'wx');
-    ownsTemporary = true;
-    fileSystem.writeFileSync(descriptor, bytes);
-    fileSystem.closeSync(descriptor);
-    descriptor = null;
-    fileSystem.renameSync(temporary, file);
-  } catch (error) {
-    if (descriptor !== null) try { fileSystem.closeSync(descriptor); } catch { /* Preserve the original write error. */ }
-    try { if (ownsTemporary && fileSystem.existsSync(temporary)) fileSystem.unlinkSync(temporary); } catch { /* Preserve the original write error. */ }
-    throw error;
-  }
+function atomicWrite(file, bytes, options = {}) {
+  (options.fileSystem || fs).mkdirSync(path.dirname(file), { recursive: true });
+  writeFileAtomically(file, bytes, { ...options, temporaryBasename: path.basename(file) });
 }
 
 function importPdfAsset(bytes, name, pdfPath, options = {}) {

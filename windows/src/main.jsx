@@ -356,7 +356,7 @@ function PlainText({ as: Element = 'div', children, highlights, notes, ...attrib
   const host = useRef(null);
   const content = withHighlight(children, highlights);
   useRichAnnotations(host, content, notes, children);
-  return <Element ref={host} {...attributes}>{content}</Element>;
+  return <Element ref={host} dir="auto" {...attributes}>{content}</Element>;
 }
 function ReaderSourcePages({ block, onOpen }) {
   const location = sourcePageLabel(block.page, block.endPage);
@@ -1242,12 +1242,12 @@ function App() {
   const [appVersion, setAppVersion] = useState('');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [updateFile, setUpdateFile] = useState(null);
-  const [openingInstaller, setOpeningInstaller] = useState(false);
-  const [openedInstallerTag, setOpenedInstallerTag] = useState('');
+  const [installerAction, setInstallerAction] = useState(null);
+  const openingInstaller = Boolean(installerAction?.pending);
+  const installerMessage = installerAction && installerAction.tag === updateInfo?.tag ? installerAction.message : '';
   const filePhase = updateInfo && updateInfo.tag === updateFile?.tag ? updateFile.phase : 'idle';
   const fileMessage = filePhase === 'downloading' ? `Downloading Windows update · ${updateFile.percent}%`
-    : filePhase === 'ready' && openedInstallerTag === updateInfo?.tag ? 'Follow the Windows setup wizard. If no window appears, choose Show downloaded update to find the installer in File Explorer.'
-    : filePhase === 'ready' ? 'Download complete. SHA-256 and GitHub build proof verified.'
+    : filePhase === 'ready' ? installerMessage || 'Download complete. SHA-256 and GitHub build proof verified.'
     : filePhase === 'cancelled' ? 'Update download cancelled. You can download it again.'
     : filePhase === 'failed' ? updateFile.message
     : filePhase === 'unverified' ? 'GitHub has no verified download details for this release. Use the browser download.' : '';
@@ -1794,18 +1794,23 @@ function App() {
   }
   async function openUpdateInstaller() {
     if (!installAvailable || busy || openingInstaller) return;
-    setOpeningInstaller(true);
-    setOpenedInstallerTag('');
-    setUpdateStatus('Saving the current reading position and notes…');
+    const tag = updateInfo.tag;
+    setError(current => current === installerAction?.message ? '' : current);
+    const showAction = (message, pending = true) => setInstallerAction({ tag, message, pending });
+    let reminder;
+    setUpdateStatus('');
+    showAction('Saving the current reading position and notes…');
     try {
       await Promise.all([settingsSaveChain.current, libraryMetadataSaveChain.current, glossarySave.current]);
       if (!await saveReadingStateBeforeClose()) throw new Error('Save the latest paper changes before opening the installer.');
-      setUpdateStatus('Opening the verified installer. Respond to any Windows confirmation to continue.');
-      await api.openUpdateInstaller(updateInfo.tag);
-      setOpenedInstallerTag(updateInfo.tag);
-      setUpdateStatus('');
-    } catch (cause) { setUpdateStatus(cause.message); setError(cause.message); }
-    finally { setOpeningInstaller(false); }
+      showAction('Checking the installer and asking Windows to open it…');
+      reminder = setTimeout(() => showAction('Still waiting to open Setup. Check the taskbar for a Windows confirmation, or choose Show downloaded update to find the installer in File Explorer.'), 8000);
+      await api.openUpdateInstaller(tag);
+      showAction('Follow the Windows setup wizard. If no window appears, choose Show downloaded update to find the installer in File Explorer.', false);
+    } catch (cause) {
+      showAction(cause.message, false);
+      setError(cause.message);
+    } finally { clearTimeout(reminder); }
   }
   async function openUpdateRelease() {
     if (!updateInfo?.tag) return;
@@ -3972,7 +3977,7 @@ function App() {
         </> : error}</Notice>}
         {libraryPersistenceWarning && modal !== 'library' && <div role="alert"><Notice tone="error" onClose={() => setLibraryPersistenceWarning('')}>{libraryPersistenceWarning}</Notice></div>}
         {showUpdateBanner && <div className="update-banner" role="status">
-          <div><strong>{updateInfo.stale ? `Previously found PaperBridge for Windows ${updateInfo.latestVersion}` : `PaperBridge for Windows ${updateInfo.latestVersion} is available`}</strong>{fileMessage && <div role="status">{openingInstaller ? updateStatus : fileMessage}</div>}</div>
+          <div><strong>{updateInfo.stale ? `Previously found PaperBridge for Windows ${updateInfo.latestVersion}` : `PaperBridge for Windows ${updateInfo.latestVersion} is available`}</strong>{fileMessage && <div role="status">{fileMessage}</div>}</div>
           {installAvailable && <button className="button blue" disabled={Boolean(busy || openingInstaller)} onClick={openUpdateInstaller}>Open installer</button>}
           {updateButtonLabel && <button className={installAvailable || filePhase === 'downloading' ? 'button outline' : 'button blue'} onClick={downloadUpdate}>{updateButtonLabel}</button>}
           <button className="button outline" onClick={openUpdateRelease}>View release</button>

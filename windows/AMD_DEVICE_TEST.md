@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 双向文字与波长单位
+
+0.2.115 在 RX 7800 XT 机器上读取包含希伯来语、阿拉伯语、英文与中文的四段记录，4B 将「参考信号在 532 nm 处保持不变。」译成 “The reference signal remained constant at 532 nm.”，重开后数值、单位和译文均保留。Paper 和 Reader 中的引文编号、数值、单位及标点的视觉顺序均与原生 Mac 读数一致。[读者操作回归](tests/writing-direction-e2e.cjs)
+
 ## 竖排日文校准记录
 
 在 RX 7800 XT 上用 0.2.113 打包版导入两页竖排记录，留下书签和对照笔记。0.2.114 从同一原 PDF 创建的新副本准确分出五列日文和三行横排文字，全部对应 Mac PDFKit。4B 将「三回の測定でピーク位置は変化しなかった。」译成 “The peak positions did not change across the three measurements.”。用鼠标在原页纵向划选「三回の測定」并保存笔记，再从右列拖到中列记录跨列笔记。重开后，译文、原页笔记和 Reader 书签均可读取，旧副本的三段文本和原有批注仍在。[打包版测试](tests/vertical-pdf-e2e.cjs)

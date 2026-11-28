@@ -89,6 +89,53 @@ async function run() {
     await page.waitForFunction(() => !document.querySelector('.task-progress'));
     assert.deepEqual(fs.readFileSync(path.join(out, folder.name, 'original.pdf')), source);
     console.log('Saved each reading edition separately, preserved the bookmark in the notes edition, and exported the original bytes inside the named bundle.');
+    // The user can type a longer name than the suggested one in the native Save dialog.
+    const chosenDirectory = fs.mkdtempSync(path.join(dir, 'save-as-'));
+    const chosenName = '測'.repeat(248) + '🧪.md';
+    const chosen = path.join(chosenDirectory, chosenName);
+    const originalExport = Buffer.from('# Laboratory notebook\r\n\r\n研究員の手書き追記。\r\n', 'utf8');
+    fs.writeFileSync(chosen, originalExport);
+    await app.evaluate(({ dialog }, target) => {
+      const fs = process.getBuiltinModule('fs');
+      const path = process.getBuiltinModule('path');
+      const open = fs.openSync;
+      const write = fs.writeFileSync;
+      let outputDescriptor;
+      fs.openSync = function (file, ...args) {
+        const descriptor = open.call(this, file, ...args);
+        if (typeof file === 'string' && path.dirname(file) === path.dirname(target)) outputDescriptor = descriptor;
+        return descriptor;
+      };
+      fs.writeFileSync = function (file, ...args) {
+        if (file !== target && (outputDescriptor === undefined || file !== outputDescriptor)) return write.call(this, file, ...args);
+        fs.openSync = open;
+        fs.writeFileSync = write;
+        write.call(this, file, Buffer.from('Incomplete Markdown'));
+        throw Object.assign(new Error('Export test volume is full'), { code: 'ENOSPC' });
+      };
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: target });
+    }, chosen);
+    await exportOption('Original Markdown');
+    const observeInterruption = process.argv.includes('--observe-interrupted');
+    await page.getByText(observeInterruption ? /Export test volume is full/ : /There is not enough free space to export the Markdown file/).waitFor();
+    const preserved = fs.readFileSync(chosen).equals(originalExport);
+    console.log(JSON.stringify({ interruptedExportPreserved: preserved, filenameUnits: chosenName.length }));
+    if (observeInterruption) return;
+    assert.ok(preserved, 'An interrupted export preserves the previous file byte for byte');
+    assert.deepEqual(fs.readdirSync(chosenDirectory), [chosenName]);
+    if (process.platform === 'win32') {
+      fs.chmodSync(chosen, 0o444);
+      try {
+        await exportOption('Original Markdown');
+        await page.getByText(/Windows could not save the Markdown file/).waitFor();
+        assert.deepEqual(fs.readFileSync(chosen), originalExport);
+        assert.deepEqual(fs.readdirSync(chosenDirectory), [chosenName]);
+      } finally { fs.chmodSync(chosen, 0o666); }
+    }
+    await exportOption('Original Markdown');
+    await page.waitForFunction(() => !document.querySelector('.task-progress'));
+    assert.deepEqual(fs.readFileSync(chosen), Buffer.from(files[0]));
+    assert.deepEqual(fs.readdirSync(chosenDirectory), [chosenName]);
   } finally { await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

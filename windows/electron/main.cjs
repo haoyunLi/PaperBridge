@@ -5,6 +5,7 @@ const { pathToFileURL } = require('node:url');
 const { externalPaperURL } = require('./paper-link.mjs');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
+const { writeFileAtomically } = require('./atomic-file.cjs');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
 const { SetupManager, mineruStatus } = require('./setup.cjs');
@@ -345,7 +346,13 @@ function registerHandlers() {
     const stem = safeName(String(name || 'PaperBridge').replace(/\.md$/i, ''));
     const result = await dialog.showSaveDialog(window, { title: 'Export Markdown', defaultPath: `${stem}.md`, filters: [{ name: 'Markdown', extensions: ['md'] }] });
     if (result.canceled) return null;
-    fs.writeFileSync(result.filePath, String(content), 'utf8');
+    try {
+      writeFileAtomically(result.filePath, String(content));
+    } catch (error) {
+      if (error.code === 'ENOSPC') throw new Error('There is not enough free space to export the Markdown file. Free some space or choose another folder.');
+      if (['EACCES', 'EPERM', 'EBUSY'].includes(error.code)) throw new Error('Windows could not save the Markdown file. Close any app using the file or choose a writable location.');
+      throw error;
+    }
     return result.filePath;
   });
   ipcMain.handle('markdown:bundle', async (_event, { paper, documents }) => {

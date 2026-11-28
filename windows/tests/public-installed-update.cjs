@@ -112,6 +112,15 @@ async function run() {
       try {
         const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-File', script, '-ObservePublic'], { windowsHide: true, timeout: 210000 });
         console.log(stdout);
+        Object.assign(report, JSON.parse(fs.readFileSync(reportFile, 'utf8').replace(/^\uFEFF/, '')));
+        if (report.wizard?.result === 'requires Windows user confirmation') {
+          const advice = settings.getByText(/Still waiting to open Setup|Follow the Windows setup wizard/);
+          await advice.waitFor();
+          report.readerGuidance = await advice.innerText();
+          assert.match(report.readerGuidance, /Show downloaded update/);
+          assert.ok(await settings.getByRole('button', { name: 'Show downloaded update', exact: true }).isEnabled());
+          checkpoint('showed how to locate Setup while Windows was requesting confirmation');
+        }
       } catch (error) {
         console.error(error.stdout);
         if (!page.isClosed()) console.error('Update panel:', await settings.innerText().catch(() => 'closed'));

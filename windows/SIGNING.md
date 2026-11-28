@@ -20,7 +20,7 @@ foreach ($file in $files) {
 
 ## 允许运行后没有看到窗口
 
-从应用内打开安装包时，留意任务栏中 Windows 的确认窗口。确认后应出现安装向导。在向导最后保留 **Run PaperBridge** 并选 **Finish**，即可打开新版。两台干净的 Windows 机器分别验证了公开下载触发 SmartScreen，以及同一 SHA-256 的安装包完成升级、显示新版窗口并恢复旧论文的笔记和书签。[安装向导与新版启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/46107285516)
+从应用内打开安装包时，留意任务栏中 Windows 的确认窗口。从 0.2.115 起，若交给 Windows 的操作持续等待，设置和更新横幅会提示查看任务栏。此时仍可用 **Show downloaded update** 在文件资源管理器定位已核验的 Setup。确认后应出现安装向导。在向导最后保留 **Run PaperBridge** 并选 **Finish**，即可打开新版。两台干净的 Windows 机器分别验证了公开下载触发 SmartScreen，以及同一 SHA-256 的安装包完成升级、显示新版窗口并恢复旧论文的笔记和书签。[安装向导与新版启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/46107285516)
 
 在旧便携版中，如果临时目录很深，解包程序可能在显示阅读器前停住。0.2.101 修复了在本机复现的这个问题。发布验证会在带有空格与中文的深层临时目录中从公开便携包打开并显示一篇 PDF。[启动复查](WHOLE_APP_REVIEW.md)
 
