@@ -1416,9 +1416,9 @@ function App() {
   const [noteDraft, setNoteDraft] = useState('');
   const [termDraft, setTermDraft] = useState('');
   const [quickTermOpen, setQuickTermOpen] = useState(false);
-  const [inspector, setInspector] = useState(true);
+  const [inspector, setInspector] = useState(() => !window.matchMedia('(max-height: 480px)').matches);
   const [compactInspector, setCompactInspector] = useState(() => window.matchMedia('(max-width: 1399px)').matches);
-  const [sidebar, setSidebar] = useState(true);
+  const [sidebar, setSidebar] = useState(() => !window.matchMedia('(max-height: 480px) and (max-width: 800px)').matches);
   const [documentDetailsExpanded, setDocumentDetailsExpanded] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(workspacePanelWidths.sidebar.initial);
   const [inspectorWidth, setInspectorWidth] = useState(workspacePanelWidths.inspector.initial);

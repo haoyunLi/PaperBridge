@@ -1,7 +1,8 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage, session } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, safeStorage, session, screen } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+const { initialWindowBounds, followDisplay } = require('./window-layout.cjs');
 const { externalPaperURL } = require('./paper-link.mjs');
 const os = require('node:os');
 const { spawn } = require('node:child_process');
@@ -561,10 +562,11 @@ function createWindow() {
   closeReady = false;
   cancelRendererClose();
   window = new BrowserWindow({
-    width: 1320, height: 820, minWidth: 980, minHeight: 620, title: developmentBuild ? 'PaperBridge Dev' : 'PaperBridge',
+    ...initialWindowBounds(screen.getPrimaryDisplay().workArea), title: developmentBuild ? 'PaperBridge Dev' : 'PaperBridge',
     backgroundColor: '#F3EEE4',
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  followDisplay(window, screen);
   window.webContents.setWindowOpenHandler(createOfficialLinkHandler(
     url => shell.openExternal(url),
     error => dialog.showErrorBox('Could not open the official website', error.message)

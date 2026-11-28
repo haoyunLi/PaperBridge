@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+Windows 首次窗口适配显示器实际工作区。在 300% 和 400% 缩放下，长标题、翻页和重启恢复已用打包版验证。[高缩放验收](tests/scaled-startup-e2e.cjs)
+
 在原 PDF 内使用 Ctrl+A 可选中整份文档的文字。四页校准记录的 Ctrl+C 逐字、逐行匹配 Mac，20 页论文可一键复制并保存跨页笔记。[原生对照与桌面测试](tests/pdf-select-all-e2e.cjs)
 
 清理资料时，若勾选删除归档 PDF，应用意外退出后可在 Settings → Local Data 重试尚未清完的副本。重试保护中断后新导入的文件。[中断与恢复](tests/archive-cleanup-e2e.cjs)
