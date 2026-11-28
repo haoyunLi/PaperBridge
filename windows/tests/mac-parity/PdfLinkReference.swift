@@ -4,25 +4,33 @@ import PDFKit
 import SwiftUI
 
 @MainActor
-func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String: Any] {
-    let file = fixtures.appendingPathComponent(namedActions ? "maintenance-navigation.pdf" : "linked-instrument-handbook.pdf")
-    let bytes = try Data(contentsOf: file)
+private func waitForPdf(_ condition: () -> Bool) {
+    let limit = Date().addingTimeInterval(4)
+    while !condition() && Date() < limit { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
+}
+
+@MainActor
+private func showNativePdf(_ file: URL, pages: Int) throws -> (NSWindow, PDFView, PDFDocument) {
     let host = NSHostingView(rootView: PDFDocumentView(pdfURL: file))
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 525, height: 405),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentView = host
     window.orderFront(nil)
-    defer { window.orderOut(nil); window.contentView = nil }
     func reader(in view: NSView) -> PDFView? {
         if let view = view as? PDFView { return view }
         return view.subviews.compactMap { reader(in: $0) }.first
     }
-    func wait(_ condition: () -> Bool) {
-        let limit = Date().addingTimeInterval(4)
-        while !condition() && Date() < limit { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
-    }
-    wait { reader(in: host)?.document?.pageCount == 4 }
+    waitForPdf { reader(in: host)?.document?.pageCount == pages }
     guard let view = reader(in: host), let document = view.document else { throw CocoaError(.fileReadCorruptFile) }
+    return (window, view, document)
+}
+
+@MainActor
+func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String: Any] {
+    let file = fixtures.appendingPathComponent(namedActions ? "maintenance-navigation.pdf" : "linked-instrument-handbook.pdf")
+    let bytes = try Data(contentsOf: file)
+    let (window, view, document) = try showNativePdf(file, pages: 4)
+    defer { window.orderOut(nil); window.contentView = nil }
     if namedActions {
         guard let first = document.page(at: 0) else { throw CocoaError(.fileReadCorruptFile) }
         view.go(to: first)
@@ -35,7 +43,7 @@ func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String
             let from = document.index(for: current) + 1
             if let action = annotation.action {
                 view.perform(action)
-                wait { view.currentPage.map { document.index(for: $0) + 1 } == expected }
+                waitForPdf { view.currentPage.map { document.index(for: $0) + 1 } == expected }
             }
             steps.append(["label": label, "from": from, "page": view.currentPage.map { document.index(for: $0) + 1 } ?? 0,
                           "recognized": annotation.action is PDFActionNamed])
@@ -54,7 +62,7 @@ func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String
                 let number = document.index(for: target)
                 view.go(to: page)
                 view.perform(PDFActionGoTo(destination: destination))
-                wait { view.currentPage.map { document.index(for: $0) } == number }
+                waitForPdf { view.currentPage.map { document.index(for: $0) } == number }
                 item["page"] = number + 1
                 item["opened"] = view.currentPage.map { document.index(for: $0) } == number
             }
@@ -62,4 +70,23 @@ func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String
         }
     }
     return ["sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), "links": links]
+}
+
+@MainActor
+func nativePdfComments(fixtures: URL) throws -> [String: Any] {
+    let file = fixtures.appendingPathComponent("reviewed-calibration.pdf")
+    let bytes = try Data(contentsOf: file)
+    let (window, view, document) = try showNativePdf(file, pages: 2)
+    defer { window.orderOut(nil); window.contentView = nil }
+    guard let first = document.page(at: 0) else { throw CocoaError(.fileReadCorruptFile) }
+    view.go(to: first)
+    var result = [[String: Any]]()
+    for annotation in first.annotations where ["Text", "Highlight", "Underline"].contains(annotation.type ?? "") {
+        let point = CGPoint(x: annotation.bounds.midX, y: annotation.bounds.midY)
+        let area = view.areaOfInterest(for: view.convert(point, from: first))
+        let hit = first.annotation(at: point)
+        result.append(["type": annotation.type ?? "", "author": annotation.userName ?? "", "text": annotation.contents ?? "",
+                       "hit": hit === annotation, "area": area.rawValue, "page": 1])
+    }
+    return ["sha256": SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined(), "comments": result]
 }
