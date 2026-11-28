@@ -56,6 +56,24 @@ async function run() {
   };
   try {
     await page.locator('.welcome').waitFor({ timeout: 20000 });
+    await app.evaluate(({ ipcMain }) => {
+      const read = ipcMain._invokeHandlers.get('pdf:import-bytes');
+      ipcMain.removeHandler('pdf:import-bytes');
+      ipcMain.handle('pdf:import-bytes', (...args) => new Promise(resolve => {
+        global.resumeFirstDrop = () => {
+          ipcMain.removeHandler('pdf:import-bytes');
+          ipcMain.handle('pdf:import-bytes', read);
+          resolve(read(...args));
+        };
+      }));
+    });
+    await drop('first-import.pdf', 'A new reader opens its first PDF.');
+    await page.locator('.import-progress-screen').waitFor();
+    await waitFor(() => app.evaluate(() => typeof global.resumeFirstDrop === 'function'), 'first PDF read queued');
+    assert.equal(await page.locator('.import-progress-card').getByText(/previous paper|cancel to return to/i).count(), 0);
+    await page.getByRole('button', { name: 'Cancel Import', exact: true }).click();
+    await app.evaluate(() => global.resumeFirstDrop());
+    await page.locator('.welcome').waitFor();
     await revealSidebarSource(page);
     await openPasteText(page);
     const paragraphs = Array.from({ length: 20 }, (_, index) => `Section ${index + 1}. ` + 'A calibrated reading is recorded for this sample. '.repeat(8));
@@ -97,7 +115,24 @@ async function run() {
     await page.locator('.import-progress-screen').waitFor();
     await page.getByRole('heading', { name: 'delayed-import.pdf', exact: true }).waitFor();
     await page.getByRole('main').getByText('Recognizing formulas · 2 of 5', { exact: true }).waitFor();
-    assert.equal(await page.locator('.import-progress-card').getByText(/previous paper.*remain unchanged/i).isVisible(), true);
+    const card = page.locator('.import-progress-card');
+    await card.getByText('Cancel to return to ' + before.name + ' with your translations, notes, bookmarks, and reading position.', { exact: true }).waitFor();
+    assert.equal(await card.getByRole('status').innerText(), 'Recognizing formulas · 2 of 5');
+    const bar = card.locator('.import-progress-bar span');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    assert.equal(await bar.evaluate(node => getComputedStyle(node).animationName), 'none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    assert.equal(await bar.evaluate(node => getComputedStyle(node).animationName), 'paperbridge-import');
+    await page.evaluate(() => {
+      const now = Date.now;
+      Date.now = () => now() + 65000;
+      window.restoreImportClock = () => { Date.now = now; };
+    });
+    try {
+      await card.getByRole('timer').filter({ hasText: /^1m \d+s elapsed$/ }).waitFor();
+      await card.getByText(/translate the paper once it opens/).waitFor();
+    } finally { await page.evaluate(() => window.restoreImportClock()); }
+    assert.equal(await card.getByRole('status').innerText(), 'Recognizing formulas · 2 of 5');
 
     // A long import must not trap the user behind the narrow-window sidebar.
     // Resize the actual isolated Electron window, not just screenshot coordinates.

@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   archivePdfPage: payload => ipcRenderer.invoke('pdf:archive-page', payload),
   finishPageArchive: requestId => ipcRenderer.invoke('pdf:finish-page-archive', requestId),
   savePaper: paper => ipcRenderer.invoke('paper:save', paper),
-  closeReady: () => ipcRenderer.send('app:close-ready'),
+  closeReady: () => ipcRenderer.invoke('app:close-ready'),
   closeCancelled: () => ipcRenderer.send('app:close-cancelled'),
   retryArchiveCleanup: () => ipcRenderer.invoke('paper:retry-archive-cleanup'),
   clearData: includeArchivedPdfs => ipcRenderer.invoke('paper:clear-data', includeArchivedPdfs === true),

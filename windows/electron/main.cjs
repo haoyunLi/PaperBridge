@@ -9,7 +9,7 @@ const childProcess = require('node:child_process');
 const { writeFileAtomically } = require('./atomic-file.cjs');
 const { createStore, safeId, bootstrapSnapshot } = require('./storage.cjs');
 const { graphicsStatus } = require('./hardware.cjs');
-const { SetupManager, mineruStatus } = require('./setup.cjs');
+const { SetupManager } = require('./setup.cjs');
 const { generateOllamaText } = require('./ollama-generation.cjs');
 const { ollamaRequest } = require('./ollama-http.cjs');
 const { localOllamaURL } = require('./ollama-installation.cjs');
@@ -157,10 +157,29 @@ function registerHandlers() {
     menuState = normalizeMenuState(state);
     return applyMenuState(Menu.getApplicationMenu(), menuState);
   });
-  ipcMain.on('app:close-ready', event => { if (event.sender === window?.webContents) finishClose(); });
   ipcMain.on('app:close-cancelled', event => { if (event.sender === window?.webContents) cancelRendererClose(); });
   ipcMain.handle('bootstrap', () => bootstrapSnapshot(store, app.getVersion()));
   let availableDownload = null;
+  ipcMain.handle('app:close-ready', async event => {
+    const owner = window;
+    if (!owner || owner.isDestroyed() || event.sender !== owner.webContents ||
+        event.senderFrame !== owner.webContents.mainFrame || !closeRequested) return;
+    const pending = portableUpdateToReveal;
+    if (pending) {
+      // The user may have moved the download since clicking the update button.
+      owner.setEnabled(false);
+      try {
+        await updateFiles.verifiedFile(pending.tag);
+        if (pending !== portableUpdateToReveal || availableDownload?.tag !== pending.tag || !updateFiles.matches(availableDownload)) {
+          throw new Error('The available update changed.');
+        }
+      } catch (error) {
+        cancelRendererClose();
+        return error.message + ' Check for updates and download it again.';
+      } finally { if (!owner.isDestroyed()) owner.setEnabled(true); }
+    }
+    finishClose();
+  });
   let offeredUpdateTag = null;
   const skippedUpdate = result => result.status === 'available' && store.updateCheckState()?.skippedTag === result.tag;
   let refreshedLegacyTag = null;
@@ -216,7 +235,7 @@ function registerHandlers() {
     }
     const filename = await updateFiles.verifiedFile(tag);
     if (availableDownload?.tag !== tag || !updateFiles.matches(availableDownload)) throw new Error('The available update changed.');
-    portableUpdateToReveal = filename;
+    portableUpdateToReveal = { tag, filename };
     requestRendererClose(true, { waitForSave: true });
   });
   ipcMain.handle('updates:cancel-download', (_event, tag) => {
@@ -231,11 +250,11 @@ function registerHandlers() {
   ipcMain.handle('updates:open-release', (_event, tag) => shell.openExternal(releaseUrl(tag)));
   ipcMain.handle('hardware:status', () => graphicsStatus());
   ipcMain.handle('mineru:runtime', async (_event, executable, backend) => {
-    const found = await mineruStatus(executable, setupManager.toolsRoot, backend);
+    const found = await setupManager.parserStatus(executable, backend);
     return found.runtime ?? { checked: false, reason: found.reason };
   });
-  ipcMain.handle('mineru:status', (_event, executable, backend) => mineruStatus(executable, setupManager.toolsRoot, backend));
-  ipcMain.handle('mineru:detect', (_event, backend) => mineruStatus('', setupManager.toolsRoot, backend));
+  ipcMain.handle('mineru:status', (_event, executable, backend) => setupManager.parserStatus(executable, backend));
+  ipcMain.handle('mineru:detect', (_event, backend) => setupManager.parserStatus('', backend));
   ipcMain.handle('setup:status', (_event, config) => { localOllamaURL(config.baseURL, 'api/tags'); return setupManager.status(config); });
   ipcMain.handle('setup:install', (_event, config) => {
     if (modelPullManager.busy) throw new Error('A model download is already running. Cancel it or wait before starting Local AI setup.');
@@ -758,7 +777,7 @@ async function startApp() {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow().catch(showStartupError); });
 }
 function openPortableUpdateFolder() {
-  const filename = portableUpdateToReveal;
+  const { filename } = portableUpdateToReveal;
   portableUpdateToReveal = null;
   window?.hide();
   app.releaseSingleInstanceLock();

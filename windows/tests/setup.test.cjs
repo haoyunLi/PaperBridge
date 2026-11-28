@@ -5,6 +5,48 @@ const os = require('node:os');
 const path = require('node:path');
 const { SetupManager, cudaPlan, setupPlan, managedPythonPath } = require('../electron/setup.cjs');
 
+test('concurrent readers share one parser check per executable and backend, then can refresh or retry', async () => {
+  const requests = [];
+  const manager = new SetupManager({ toolsRoot: 'managed-tools', checkMineru: (executable, root, backend) =>
+    new Promise((resolve, reject) => requests.push({ executable, root, backend, resolve, reject })) });
+  const first = manager.parserStatus('first.exe', 'auto');
+  const same = manager.parserStatus('first.exe', 'auto');
+  const cpu = manager.parserStatus('first.exe', 'pipeline');
+  const other = manager.parserStatus('other.exe', 'auto');
+  assert.deepEqual(requests.map(({ executable, root, backend }) => [executable, root, backend]), [
+    ['first.exe', 'managed-tools', 'auto'], ['first.exe', 'managed-tools', 'pipeline'], ['other.exe', 'managed-tools', 'auto']
+  ]);
+  requests[0].resolve('GPU');
+  requests[1].resolve('CPU');
+  requests[2].reject(new Error('Parser unavailable'));
+  await assert.rejects(other, /Parser unavailable/);
+  assert.deepEqual(await Promise.all([first, same, cpu]), ['GPU', 'GPU', 'CPU']);
+  const refresh = manager.parserStatus('first.exe', 'auto');
+  const retry = manager.parserStatus('other.exe', 'auto');
+  assert.equal(requests.length, 5);
+  requests[3].resolve('Changed device');
+  requests[4].resolve('Repaired parser');
+  assert.deepEqual(await Promise.all([refresh, retry]), ['Changed device', 'Repaired parser']);
+});
+
+test('completing a parser installation detaches any older device checks', async () => {
+  const requests = [];
+  const manager = new SetupManager({ toolsRoot: 'managed-tools', emit() {},
+    checkMineru: () => new Promise(resolve => requests.push(resolve)) });
+  manager.status = async () => ({ mineru: {}, plan: { gpu: {}, mineru: true } });
+  manager.installMineru = async () => ({ executable: 'managed-mineru.exe', runtime: { checked: true }, onnx: true });
+  const before = manager.parserStatus();
+  await manager.install({ components: { mineru: true } });
+  const after = manager.parserStatus();
+  assert.equal(requests.length, 2);
+  requests[0]('old installation');
+  assert.equal(await before, 'old installation');
+  const concurrent = manager.parserStatus();
+  assert.equal(requests.length, 2);
+  requests[1]('new installation');
+  assert.deepEqual(await Promise.all([after, concurrent]), ['new installation', 'new installation']);
+});
+
 test('setup and task checks share Ollama default tags without conflating other versions', async () => {
   const { aiTaskSetupIssue } = await import('../src/aiSettings.mjs');
   const { modelSettingsPatch, TRANSLATION_MODELS } = await import('../src/modelCatalog.mjs');

@@ -962,8 +962,17 @@ function TaskProgress({ busy, progress, status }) {
   return <div className="task-progress" role="status" aria-live="polite"><div className="task-progress-heading"><strong>{busy.label}</strong><span>{total === null ? 'Working…' : `${done} of ${total} processed`}{progress?.failed > 0 ? ` · ${progress.failed} failed` : ''}</span></div><progress aria-label="Task progress" {...(total === null ? {} : { max: total, value: done })} />{status && <p className="task-progress-message">{status}</p>}</div>;
 }
 
-function ImportProgress({ item, elapsed, onCancel }) {
-  return <div className="import-progress-screen" role="status"><div className="import-progress-card"><FileText size={42} /><small>IMPORTING PDF</small><strong className="import-filename">{item.name}</strong><p>{item.stage}</p><strong>{elapsed}s elapsed</strong><div className="import-progress-bar"><span /></div><button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button><p className="import-preserve-note">Your previous paper, translations, notes, bookmarks, and reading position remain unchanged until this import succeeds.</p></div></div>;
+function ImportProgress({ item, elapsed, showTimingHint, previousName, onCancel }) {
+  return <div className="import-progress-screen"><div className="import-progress-card">
+    <FileText size={42} /><small>IMPORTING PDF</small>
+    <strong className="import-filename">{item.name}</strong>
+    <p role="status">{item.stage}</p>
+    <strong role="timer">{elapsed} elapsed</strong>
+    <div className="import-progress-bar" aria-hidden="true"><span /></div>
+    <button className="button danger" onClick={onCancel}><Square size={14} />Cancel Import</button>
+    {showTimingHint && <p className="import-preserve-note">Layout analysis and text recognition can take several minutes on the first import. You can translate the paper once it opens.</p>}
+    {previousName && <p className="import-preserve-note">Cancel to return to {previousName} with your translations, notes, bookmarks, and reading position.</p>}
+  </div></div>;
 }
 const eastAsianPdfTextVersion = 2;
 const verticalPdfTextVersion = 3;
@@ -1420,6 +1429,7 @@ function App() {
   const [progress, setProgress] = useState(null);
   const [pendingImport, setPendingImport] = useState(null);
   const [importElapsed, setImportElapsed] = useState(0);
+  const importElapsedLabel = `${Math.floor(importElapsed / 60)}m ${importElapsed % 60}s`;
   const [search, setSearch] = useState('');
   const [librarySearch, setLibrarySearch] = useState('');
   const [libraryDialogSearch, setLibraryDialogSearch] = useState('');
@@ -2546,8 +2556,13 @@ function App() {
   }
   useEffect(() => api.onPrepareClose(async () => {
     try {
-      if (await saveReadingStateBeforeClose()) { api.closeReady(); return; }
-      setCloseFailure('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
+      if (await saveReadingStateBeforeClose()) {
+        const issue = await api.closeReady();
+        if (!issue) return;
+        setCloseFailure(`PaperBridge kept this window open. ${issue}`);
+      } else {
+        setCloseFailure('PaperBridge kept this window open because the latest paper changes could not be saved. Retry the save, then close again.');
+      }
     } catch (error) {
       setCloseFailure(`PaperBridge kept this window open. ${error.message} Close again to retry.`);
     }
@@ -4258,7 +4273,7 @@ function App() {
       </div>
     </aside>
     <main className="workspace" inert={Boolean(modal)}>
-      <header className="header"><div className="title-row"><button ref={sidebarToggleRef} aria-controls="document-sidebar" aria-expanded={sidebar && !focus} className="icon-button panel-toggle" title="Toggle sidebar" aria-label={sidebar && !focus ? "Hide Document Sidebar" : "Show Document Sidebar"} aria-keyshortcuts="Control+Alt+S" disabled={Boolean(pendingImport)} onClick={toggleDocumentSidebar}>{sidebar && !focus ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1 title={pendingImport?.name || paper?.name || 'PaperBridge'}>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsed}s elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaStatus === 'ready' ? 'Ollama Ready' : ollamaStatus === 'unavailable' ? 'Ollama unavailable' : 'Check Ollama'}</div>
+      <header className="header"><div className="title-row"><button ref={sidebarToggleRef} aria-controls="document-sidebar" aria-expanded={sidebar && !focus} className="icon-button panel-toggle" title="Toggle sidebar" aria-label={sidebar && !focus ? "Hide Document Sidebar" : "Show Document Sidebar"} aria-keyshortcuts="Control+Alt+S" disabled={Boolean(pendingImport)} onClick={toggleDocumentSidebar}>{sidebar && !focus ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}</button><button className="icon-button" aria-label="Back to previous reading location" title="Back · Ctrl+[" disabled={!readingHistoryState.back || pendingImport} onClick={goBackInReading}><ChevronLeft size={18} /></button><button className="icon-button" aria-label="Forward in reading history" title="Forward · Ctrl+]" disabled={!readingHistoryState.forward || pendingImport} onClick={goForwardInReading}><ChevronRight size={18} /></button><div className="title-wrap"><h1 title={pendingImport?.name || paper?.name || 'PaperBridge'}>{pendingImport?.name || paper?.name || 'PaperBridge'}</h1><p>{pendingImport ? `${pendingImport.stage} · ${importElapsedLabel} elapsed` : paper ? `${settings.sourceLanguage} → ${settings.targetLanguage} · ${paper.extraction} · ${paper.blocks.length} blocks` : 'A local space for academic reading'}</p></div><div className={`service ${settings.aiProvider === 'openai' ? !openAIState.consent ? 'offline' : '' : ollamaError ? 'offline' : ''}`} title={settings.aiProvider === 'openai' ? openAIState.consent ? 'Text analysis uses your OpenAI API account.' : 'Online analysis is paused until enabled in Settings.' : ollamaError || 'Local Ollama is available'}>● {settings.aiProvider === 'openai' ? openAIState.consent ? 'OpenAI Online' : 'OpenAI Paused' : ollamaStatus === 'ready' ? 'Ollama Ready' : ollamaStatus === 'unavailable' ? 'Ollama unavailable' : 'Check Ollama'}</div>
         {paper && <button className="icon-button" aria-label={focus ? 'Exit Focus Reading' : 'Focus Reading'} aria-keyshortcuts="Control+Alt+F"
           title={`${focus ? 'Exit Focus Reading' : 'Focus Reading'} · Ctrl+Alt+F`} disabled={Boolean(pendingImport)} onClick={toggleFocus}>
           {focus ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
@@ -4316,7 +4331,7 @@ function App() {
         aria-busy={Boolean(paper && (readingLayoutState.paperId !== paper.id || readingLayoutState.busy))}
         onWheelCapture={handleMainScrollIntent} onPointerDownCapture={handleMainScrollIntent}
         onScroll={saveMainScroll} onKeyDown={event => { handleReadingKey(event); handleMainScrollIntent(event); }}>
-        {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsed} onCancel={cancelTask} /> : <>
+        {pendingImport ? <ImportProgress item={pendingImport} elapsed={importElapsedLabel} showTimingHint={importElapsed >= 10} previousName={paper?.name} onCancel={cancelTask} /> : <>
         {(!paper || tab !== 'Reader' && tab !== 'Summary') && !busy && status && <Notice className="workspace-status">{status}</Notice>}
         {!paper && <div className="welcome"><img src="./brand.png" alt="" /><h1>Read across languages, locally.</h1><p>Keep the original paper nearby while translating, annotating, and exploring with local models.</p><div className="row"><button className="button blue" onClick={openFile}><FolderOpen size={17} /> Open PDF</button><button className="button outline" onClick={openPasteText}>Paste Text</button><button className="button outline" onClick={loadPractice}>Try a Practice Paper</button><button className="button outline" onClick={() => openSetup()}>Set up local AI</button></div><p className="welcome-note">Reading and notes work without AI. One-click setup detects and installs missing local tools.</p></div>}
         {paper && tab === 'Paper' && <div className={pdfFacsimile && displayMode !== 'source' ? 'content-column pdf-comparison-column' : 'content-column'}>

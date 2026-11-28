@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.144",
+  "version": "0.2.145",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -113,6 +113,7 @@
     "yauzl": "3.4.0"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "concurrently": "^9.2.1",
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
@@ -123,6 +124,7 @@
   "build": {
     "appId": "net.paperbridges.windows",
     "productName": "PaperBridge",
+    "afterPack": "./scripts/verify-app-archive.cjs",
     "electronFuses": {
       "runAsNode": false
     },

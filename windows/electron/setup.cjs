@@ -130,8 +130,10 @@ function ownedPath(root, candidate) {
 }
 
 class SetupManager {
-  constructor({ toolsRoot, ollamaRequest, pullModel, emit }) {
+  constructor({ toolsRoot, ollamaRequest, pullModel, emit, checkMineru = mineruStatus }) {
     this.toolsRoot = toolsRoot;
+    this.checkMineru = checkMineru;
+    this.parserChecks = new Map();
     this.ollamaRequest = ollamaRequest;
     this.pullModel = pullModel;
     this.emit = emit;
@@ -144,9 +146,20 @@ class SetupManager {
     this.emit(this.lastProgress);
   }
 
+  parserStatus(executable = '', backend = 'auto') {
+    const checks = this.parserChecks;
+    const key = JSON.stringify([executable, backend]);
+    if (!checks.has(key)) {
+      // Several views can ask at once. An explicit refresh after completion starts a fresh probe.
+      const pending = this.checkMineru(executable, this.toolsRoot, backend).finally(() => checks.delete(key));
+      checks.set(key, pending);
+    }
+    return checks.get(key);
+  }
+
   async status({ baseURL, mineruExecutable, mineruBackend, models = [], components, repairMineru = false }) {
     const [hardware, mineru, appPath, response] = await Promise.all([
-      graphicsStatus(), mineruStatus(mineruExecutable, this.toolsRoot, mineruBackend), ollamaPath(),
+      graphicsStatus(), this.parserStatus(mineruExecutable, mineruBackend), ollamaPath(),
       this.ollamaRequest(baseURL, 'api/tags', { signal: AbortSignal.timeout(3500) }).then(async value => ({ running: true, models: await readOllamaModelList(value) })).catch(error => ({ running: false, models: [], error: error.message }))
     ]);
     const result = { hardware, mineru, ollama: { installed: Boolean(appPath), path: appPath, ...response } };
@@ -423,7 +436,8 @@ class SetupManager {
       let result = { warning: '' };
       if (components.mineru && status.plan.mineru) {
         const useOnnx = process.arch === 'x64' && Boolean(status.mineru.kitExecutable || !status.plan.gpu.index);
-        const installed = await this.installMineru(status.plan.gpu, useOnnx, config.mineruBackend);
+        const installed = await this.installMineru(status.plan.gpu, useOnnx, config.mineruBackend)
+          .finally(() => { this.parserChecks = new Map(); });
         const automatic = config.mineruBackend !== 'pipeline' && (installed.onnx || installed.runtime?.cuda);
         result = { mineruInstalled: true, mineruExecutable: installed.executable,
           mineruBackend: automatic ? 'auto' : 'pipeline', warning: installed.warning || '' };

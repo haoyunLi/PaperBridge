@@ -275,6 +275,8 @@ npm run test:packaged
 node tests/installer-e2e.cjs --preflight
 ```
 
+Packaging verifies every file in `app.asar` against its recorded SHA-256 before building either EXE. A damaged archive or an unexpected application entry point stops the build. The release workflow also opens the actual GUI with only Windows system directories on `PATH`. [Archive check](scripts/verify-app-archive.cjs) · [Normal launch check](tests/launch-distribution.ps1)
+
 The NSIS installer and portable executable appear in `release/` as `PaperBridge-Windows-<version>-x64-Setup.exe` and `PaperBridge-Windows-<version>-x64-Portable.exe`. The installer uses the per-user default directory to stay within the NSIS update path limit. GitHub Actions uploads both executables and their SHA-256 checksums. A `windows-vX.Y.Z` tag that matches the package version publishes the same four files to a dedicated Windows Release. The repository's Latest release remains the macOS download.
 
 Build before running the Electron suites, which load `dist/`. Each regression suite uses an isolated workspace under `test-artifacts/`. The service-based regression tests use a local fake Ollama server or controlled IPC; real model and hardware checks are separate. The opt-in [real NSIS lifecycle test](tests/installer-e2e.md) installs only after a read-only safety preflight, then checks first install, same-version reinstall, saved-paper recovery, uninstall and retained local data.

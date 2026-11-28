@@ -260,6 +260,25 @@ async function run() {
     assert.equal(await page.getByLabel('Note for selected passage').inputValue(), noteText);
     await app.evaluate(() => { global.__canSaveUpdateNote = true; });
     await page.getByRole('button', { name: 'Retry save', exact: true }).click();
+    // The user moves the verified file while the app is finishing its final save.
+    await app.evaluate(({ BrowserWindow }, filename) => {
+      const contents = BrowserWindow.getAllWindows()[0].webContents;
+      const send = contents.send.bind(contents);
+      contents.send = (channel, ...rest) => {
+        if (channel === 'paperbridge:prepare-close') {
+          contents.send = send;
+          process.getBuiltinModule('node:fs').renameSync(filename, filename + '.moved-for-test');
+        }
+        return send(channel, ...rest);
+      };
+    }, savedFile);
+    await portableAction.click();
+    await page.getByText(/PaperBridge kept this window open.*saved update no longer matches/i).waitFor();
+    assert.equal(fs.existsSync(revealReceipt), false);
+    assert.equal(fs.existsSync(savedFile + '.moved-for-test'), true);
+    assert.ok(store.paper(paperId).blocks[1].notes.some(note => note.body === noteText));
+    await restartedDownload.getByRole('button', { name: 'Download portable update', exact: true }).click();
+    await portableAction.waitFor();
     const closed = app.waitForEvent('close', { timeout: 20000 });
     await portableAction.click();
     await closed; app = null;

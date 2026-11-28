@@ -17,6 +17,11 @@ public static extern bool PostMessage(System.IntPtr hwnd, uint message, System.I
 }
 $original = @{}
 $testEnvironment = @{
+    # Launch like a reader without developer tools available on PATH.
+    Path = (@([Environment]::SystemDirectory, $env:SystemRoot,
+        (Join-Path $env:SystemRoot 'System32\Wbem'),
+        (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0')) -join [IO.Path]::PathSeparator)
+    NODE_PATH = $null
     ELECTRON_RUN_AS_NODE = '1'
     VITE_DEV_SERVER_URL = 'http://127.0.0.1:1/'
     PAPERBRIDGE_WORKSPACE = Join-Path $root 'workspace'
