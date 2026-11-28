@@ -59,7 +59,18 @@ while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
     $finished = $action -eq 'Finish'
     Start-Sleep -Milliseconds 400
 }
-if (!$finished) { throw "The verified installer did not reach Finish. Last page action: $lastButton" }
+if (!$finished) {
+    $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)
+    foreach ($candidate in $windows) {
+        $owner = Get-Process -Id $candidate.Current.ProcessId -ErrorAction SilentlyContinue
+        Write-Host "Window: $($owner.ProcessName) | $($candidate.Current.Name)"
+        if ($candidate.Current.Name -match 'Setup|Security|Windows protected|SmartScreen|Open File') {
+            $labels = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
+            Write-Host (($labels | ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -First 25) -join ' | ')
+        }
+    }
+    throw "The verified installer did not reach Finish. Last page action: $lastButton"
+}
 $deadline = [DateTime]::UtcNow.AddSeconds(50)
 do {
     $reader = Get-Process -Name PaperBridge -ErrorAction SilentlyContinue | Where-Object {
@@ -69,7 +80,7 @@ do {
     Start-Sleep -Milliseconds 300
 } while ([DateTime]::UtcNow -lt $deadline)
 if (!$reader) { throw 'Finish did not open a visible reader from the original installation.' }
-$version = [Diagnostics.FileVersionInfo]::GetVersionInfo($installed).ProductVersion
+$version = [Diagnostics.FileVersionInfo]::GetVersionInfo($installed).FileVersion
 if ($version -ne $feed.version) { throw "Expected $($feed.version) after upgrade, found $version." }
 $wizard.readerPid = $reader.Id
 $wizard.readerTitle = $reader.MainWindowTitle

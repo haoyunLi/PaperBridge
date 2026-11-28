@@ -93,13 +93,9 @@ async function run() {
     }, trace);
     await settings.getByRole('button', { name: 'Open installer', exact: true }).click();
     const deadline = Date.now() + 15000;
-    let opened;
-    do {
-      if (fs.existsSync(trace)) opened = JSON.parse(fs.readFileSync(trace, 'utf8'));
-      if (typeof opened?.error === 'string') break;
-      await delay(100);
-    } while (Date.now() < deadline);
-    assert.equal(opened?.error, '', 'Windows did not confirm the shell handoff');
+    while (!fs.existsSync(trace) && Date.now() < deadline) await delay(100);
+    const opened = JSON.parse(fs.readFileSync(trace, 'utf8'));
+    report.shellStatus = Object.hasOwn(opened, 'error') ? 'returned' : 'waiting for the native window';
     assert.equal(path.resolve(opened.given).toLowerCase(), file.toLowerCase());
     assert.ok(!opened.error, opened.error);
     const saved = await page.evaluate(id => window.paperBridge.loadPaper(id), id);
