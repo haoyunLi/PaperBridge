@@ -68,7 +68,7 @@ async function run() {
       'Independent reading positions retain the visible evidence while the inspector explains a separately selected paragraph. '.repeat(number === 12 ? 1 : 7));
     return { id: number, text, heading: Boolean(heading), status: 'ok', page: 1,
       translation: heading ? `章节 ${number}` : `段落 ${number} 的已存译文。` + '阅读位置和选中段落分别保留。'.repeat([12, 13].includes(number) ? 1 : 8),
-      bookmark: false, highlights: [], translationHighlights: [], notes: [] };
+      bookmark: number === 14, highlights: [], translationHighlights: [], notes: [] };
   });
   const firstQuote = '「第一组记录了' + '传感器的温度、湿度和测量时间，'.repeat(42) + '并核对了原始记录。」';
   const secondQuote = '「第二组独立重复了' + '同一条件下的采样及仪器校准，'.repeat(42) + '所得结果一致。」';
@@ -139,7 +139,13 @@ async function run() {
     if (beforeSave) await waitFor(async () => await firstVisible() === number, `wheel reached ${number}`);
     else await position(number);
   };
+  const showSidebar = async () => {
+    const show = page.getByRole('button', { name: 'Show Document Sidebar', exact: true });
+    if (await show.isVisible()) await show.click();
+    await page.locator('.sidebar').waitFor({ state: 'visible' });
+  };
   const openPaper = async (document, number, viewport) => {
+    await showSidebar();
     const row = page.locator('.recent-papers .library-row').filter({ hasText: document.name.slice(0, 24) });
     assert.equal(await row.count(), 1, 'The saved paper must have one unambiguous recent-library entry');
     await row.click();
@@ -162,15 +168,15 @@ async function run() {
       throw error;
     } finally { app = null; }
   };
-  const launch = async (paperId = id, smallDesktop = false) => {
+  const launch = async (paperId = id, restartScale = 0) => {
     const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
-    app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), ...(smallDesktop ? ['--force-device-scale-factor=3'] : []), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), ...(restartScale ? [`--force-device-scale-factor=${restartScale}`] : []), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
     await ready(paperId);
-    if (smallDesktop) {
+    if (restartScale) {
       await position(12); await selected(2);
       console.log(JSON.stringify({ restoredTop: await firstVisible(), startupWidth: await page.evaluate(() => innerWidth), selected: 2 }));
     }
@@ -268,7 +274,11 @@ async function run() {
     await openPaper(other, 3, 1);
     await openPaper(paper, 2, 12);
     assert.ok(Math.abs(await scroll() - offset12) < 2);
-    await close(); await launch(id, process.argv.includes('--resize-reader'));
+    const restartScale = process.argv.includes('--resize-reader') && await app.evaluate(({ screen }) => {
+      const display = screen.getPrimaryDisplay();
+      return Math.max(3, Math.ceil(display.size.width * display.scaleFactor / 640));
+    });
+    await close(); await launch(id, restartScale);
     await selected(2); await position(12); await explainTarget(2);
     const restoredTop = await relativeTop();
     assert.ok(Math.abs(restoredTop - originalTop) < 2, JSON.stringify({ originalTop, restoredTop, scroll: await scroll() }));
@@ -276,6 +286,7 @@ async function run() {
     console.log(JSON.stringify({ originalTop, restoredTop, selected: 2, visible: 12 }));
 
     stage('Explicit outline jump and Back/Forward restore both fields');
+    await showSidebar();
     await page.locator('.document-outline .outline-row[data-paragraph-id="19"]').click();
     await selected(19); await position(19);
     assert.equal(await page.locator('.document-outline [aria-current="location"]').getAttribute('data-paragraph-id'), '19');
@@ -284,6 +295,24 @@ async function run() {
     await back.click(); await selected(2); await position(12);
     await forward.click(); await selected(19); await position(19);
     await back.click(); await selected(2); await position(12);
+
+    if (restartScale) {
+      stage('Compact outline and bookmark jumps reveal the destination and return keyboard focus to the reader');
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(726, 680));
+      await page.waitForFunction(() => matchMedia('(max-width: 800px)').matches);
+      for (const [group, target] of [['.document-outline', 19], ['.document-bookmarks', 14]]) {
+        await showSidebar();
+        const row = page.locator(`${group} .outline-row[data-paragraph-id="${target}"]`);
+        await row.focus();
+        await page.keyboard.press('Enter');
+        await page.locator('.sidebar').waitFor({ state: 'hidden', timeout: 3500 });
+        await selected(target); await position(target);
+        assert.equal(await page.locator('[data-reading-list]').evaluate(el => el === document.activeElement), true);
+        await back.click(); await selected(2); await position(12);
+      }
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1500, 900));
+      await position(12);
+    }
 
     stage('Search selection survives clear while the original viewport returns');
     let search = page.getByRole('textbox', { name: 'Search original or translation', exact: true });

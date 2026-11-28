@@ -2525,6 +2525,7 @@ function App() {
     const target = host?.querySelector(`#block-${blockNavigation.blockId}`);
     if (target && paperRef.current?.id === blockNavigation.paperId) {
       // Settle the viewport before Back, Forward or a paper switch can capture it.
+      if (blockNavigation.focusReader) target.closest('[data-reading-list]')?.focus({ preventScroll: true });
       target.scrollIntoView({ behavior: 'instant', block: 'start' });
       const offset = host.scrollTop;
       commitPaper(current => ({ ...current, position: { ...current.position,
@@ -3672,10 +3673,10 @@ function App() {
     catch (cause) { setGlossaryError(`Could not remove the term: ${cause.message}`); }
   }
   function bookmark(id) { const block = paper.blocks.find(item => item.id === id); rememberUndo(); updateBlock(id, { bookmark: !block.bookmark }); }
-  function navigate(id, { revealSource = false, quote, mode: requestedMode } = {}) {
+  function navigate(id, { revealSource = false, quote, mode: requestedMode, fromSidebar = false } = {}) {
     const block = paperRef.current?.blocks.find(block => block.id === id);
     if (!block) return;
-    if (!quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
+    if (!fromSidebar && !quote && blockNavigation?.recordType === 'evidence' && blockNavigation.blockId === id) return;
     if (quote) {
       const text = analysisSourceText(block);
       if (!summaryQuoteMatch(text, quote)) return;
@@ -3688,7 +3689,9 @@ function App() {
     const mode = requestedMode ?? (revealSource && displayMode === 'translation' ? 'bilingual' : displayMode);
     recordReadingJump(location => location.tab === 'Reader' && !location.search && location.block === id && location.selectedParagraphID === id && location.displayMode === mode);
     invalidateReadingScroll();
-    setBlockNavigation({ recordType: 'paragraph', paperId: paperRef.current.id, blockId: id, requestId: crypto.randomUUID() });
+    const closeOverlay = fromSidebar && window.matchMedia('(max-width: 800px)').matches;
+    if (closeOverlay) setSidebar(false);
+    setBlockNavigation({ recordType: 'paragraph', paperId: paperRef.current.id, blockId: id, requestId: crypto.randomUUID(), focusReader: closeOverlay });
     searchOrigin.current = null; setSearch(''); setDisplayMode(mode); setTab('Reader');
     commitPaper(current => ({ ...current, selectedParagraphID: isSelectableParagraphID(id, current.blocks) ? id : resolveSelectedParagraphID(current),
       position: { ...current.position, tab: 'Reader', block: id, displayMode: mode, readerSearchOrigin: undefined } }));
@@ -4155,11 +4158,11 @@ function App() {
           </details>
           {paper.blocks.some(block => block.bookmark) && <nav className="side-group document-bookmarks" aria-label="Bookmarks">
             <div className="side-label"><span><Bookmark size={14} /> BOOKMARKS</span></div>
-            {paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row bookmark-row" key={block.id} data-paragraph-id={block.id} title={block.text} onClick={() => navigate(block.id)}><span><span className="outline-title">{paragraphPreview(block.text)}</span><small>Paragraph {block.id}</small></span><ChevronRight size={12} /></button>)}
+            {paper.blocks.filter(block => block.bookmark).map(block => <button className="outline-row bookmark-row" key={block.id} data-paragraph-id={block.id} title={block.text} onClick={() => navigate(block.id, { fromSidebar: true })}><span><span className="outline-title">{paragraphPreview(block.text)}</span><small>Paragraph {block.id}</small></span><ChevronRight size={12} /></button>)}
           </nav>}
           <nav className="side-group document-outline" aria-label="Outline">
             <div className="side-label"><span><List size={14} /> OUTLINE</span></div>
-            {outline.map(section => <button className="outline-row" key={section.id} data-paragraph-id={section.id} aria-current={activeBlock === section.id ? 'location' : undefined} title={section.title} onClick={() => navigate(section.id)}><span className="outline-title">{section.title}</span><small aria-label={`Paragraph ${section.id}`}>{section.id}</small></button>)}
+            {outline.map(section => <button className="outline-row" key={section.id} data-paragraph-id={section.id} aria-current={activeBlock === section.id ? 'location' : undefined} title={section.title} onClick={() => navigate(section.id, { fromSidebar: true })}><span className="outline-title">{section.title}</span><small aria-label={`Paragraph ${section.id}`}>{section.id}</small></button>)}
           </nav>
         </>}
         <div className="side-group recent-papers"><div className="side-label">RECENT PAPERS</div><input className="side-search" aria-label="Search papers or tags" value={librarySearch} onChange={event => setLibrarySearch(event.target.value)} placeholder="Search papers or tags" />{filteredLibrary.slice(0, 12).map(item => <button key={item.id} className={`library-row ${paper?.id === item.id ? 'selected' : ''}`} onClick={() => loadPaper(item.id).catch(err => setError(err.message))}><span>{short(item.name, 29)}</span><small>{item.workspaceAvailable === false ? 'Workspace unavailable' : `${item.blockCount} blocks`}</small></button>)}</div>

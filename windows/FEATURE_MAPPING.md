@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+窄窗口从目录或书签打开段落后会收起遮挡正文的侧栏，键盘可直接继续阅读。[章节与书签验收](tests/paragraph-selection-e2e.cjs)
+
 阅读器分别保存浏览位置和解释面板选中的段落。调整窗口或更换显示缩放后重开，可恢复到原段落内的阅读位置。[窗口和重开回归](tests/paragraph-selection-e2e.cjs)
 
 切换 MinerU 后端时，Parsing 直接显示检测到的设备。RX 7800 XT 的 DirectML 和同机 CPU 均已实际完成同一张黑白扫描件的解析。[同一份 PDF 的设备对照](tests/live-ocr-device-switch.cjs)
