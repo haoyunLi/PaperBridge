@@ -238,7 +238,10 @@ struct Reference {
             ["source": ReaderLanguage.english.displayName, "target": language.displayName,
              "prompt": PromptLibrary.translationPrompt(for: "The sensor reading has stabilized.", from: .english, to: language)]
         }
-        let output: [String: Any] = ["translationPrompts": translationPrompts, "markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource, "deepResource": navigation.deep,
+        let previewSources = body + ["First line\nSecond line", String(repeating: "👩‍🔬", count: 96),
+                                     String(repeating: "e\u{301}", count: 92) + "👩‍🔬bcde"]
+        let previews = previewSources.map { ["source": $0, "preview": ParagraphResult(id: 1, original: $0).previewText] }
+        let output: [String: Any] = ["paragraphPreviews": previews, "translationPrompts": translationPrompts, "markdownNavigation": navigation.headings, "markdownTableCell": navigation.tableCell, "nestedResource": navigation.resource, "deepResource": navigation.deep,
                                      "retainedSlice": try nativeRetainedSlice(paragraphs: body, checksum: checksum),
                                      "legacyParagraphAnchors": try nativeLegacyParagraphAnchors(paragraphs: body, checksum: checksum),
                                      "journalReflows": try nativeJournalReflows(fixtures: fixtureURL.deletingLastPathComponent()),

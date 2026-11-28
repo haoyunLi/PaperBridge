@@ -1,4 +1,4 @@
-// Compare an already-installed 4B with 27B downloaded into a disposable Ollama model store.
+// Compare an installed 4B with a 12B or 27B downloaded into a disposable Ollama model store.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -20,8 +20,13 @@ async function loopbackPort() {
 
 async function run() {
   const installed4B = process.argv.includes('--installed-4b');
-  if (!installed4B) assert.equal(process.env.PAPERBRIDGE_TEMPORARY_27B, '1', 'This test downloads about 17.4 GB of temporary model weights.');
-  const model = installed4B ? 'translategemma:4b' : 'translategemma:27b';
+  const variant = installed4B ? '4b' : process.argv.includes('--temporary-12b') ? '12b' : '27b';
+  if (!installed4B) {
+    const permission = 'PAPERBRIDGE_TEMPORARY_' + variant.toUpperCase();
+    assert.equal(process.env[permission], '1', 'Set ' + permission + '=1 to download temporary weights.');
+  }
+  const model = 'translategemma:' + variant;
+  const temporaryPrefix = 'paperbridge-temporary-' + variant + '-';
   const root = path.resolve(__dirname, '..');
   const artifacts = path.join(root, 'test-artifacts');
   fs.mkdirSync(artifacts, { recursive: true });
@@ -37,7 +42,7 @@ async function run() {
 
   const tempRoot = fs.realpathSync(os.tmpdir());
   const port = installed4B ? 11434 : await loopbackPort();
-  const modelStore = installed4B ? null : fs.mkdtempSync(path.join(tempRoot, 'paperbridge-temporary-27b-'));
+  const modelStore = installed4B ? null : fs.mkdtempSync(path.join(tempRoot, temporaryPrefix));
   const baseURL = 'http://127.0.0.1:' + port;
   const log = fs.openSync(path.join(workspace, 'runtime.log'), 'w');
   const server = installed4B ? null : spawn(process.env.PAPERBRIDGE_OLLAMA_EXE || 'ollama.exe', ['serve'], {
@@ -83,7 +88,7 @@ async function run() {
           if (event.kind === 'model') window.largeModelProgress = { status: event.status, completed: event.completed, total: event.total };
         });
       });
-      stage('Downloading 27B in the reader');
+      stage('Downloading ' + variant.toUpperCase() + ' in the reader');
       heartbeat = setInterval(async () => {
         try { report.progress = await page.evaluate(() => window.largeModelProgress); save(); } catch { /* The reader can be restarting. */ }
       }, 10000);
@@ -99,12 +104,13 @@ async function run() {
       await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
     }
     const weights = (await api('tags')).models.find(item => item.name === model);
-    assert.ok(weights?.size > (installed4B ? 2e9 : 16e9));
+    assert.ok(weights?.size > { '4b': 2e9, '12b': 7e9, '27b': 16e9 }[variant]);
     report.weights = { bytes: weights.size, digest: weights.digest, quantization: weights.details?.quantization_level };
     assert.equal(JSON.parse(fs.readFileSync(path.join(workspace, 'settings.json'))).translationModel, model);
     const samples = [
       'The solar panel supplied power to the temperature sensor. The researchers recorded the temperature every hour.',
-      'The efficiency increased from 12.5% to 14.8%. The study did not establish a causal relationship.'
+      'The efficiency increased from 12.5% to 14.8%. The study did not establish a causal relationship.',
+      'At 300 K, the mean voltage was 1.25 V. The difference was not statistically significant (p = 0.08).'
     ];
     await revealSidebarSource(page);
     await openPasteText(page);
@@ -125,8 +131,12 @@ async function run() {
       report.results.push({ source, translation, elapsedMs: Date.now() - start, runtimeBytes: loaded.size, vramBytes: loaded.size_vram });
       save();
       assert.ok(loaded.size_vram > 0, 'Ollama did not report GPU allocation.');
-      const expected = index === 0 ? [/太阳能/, /温度传感器/, /每(?:隔)?(?:一|1)?(?:个)?小时/] : [/12\.5\s*[%％]/, /14\.8\s*[%％]/, /(?:未|不|没有|没能).*因果/];
-      for (const detail of expected) assert.match(translation, detail);
+      const expected = [
+        [/太阳能/, /温度传感器/, /每(?:隔)?(?:一|1)?(?:个)?小时/],
+        [/12\.5\s*[%％]/, /14\.8\s*[%％]/, /(?:未|不|没有|没能).*因果/],
+        [/300\s*(?:K|开尔文|开)/i, /1\.25\s*(?:V|伏特|伏)/i, /0\.08/, /不|无|未|没有/]
+      ];
+      for (const detail of expected[index]) assert.match(translation, detail);
     }
     await app.close(); app = await launch(); page = await app.firstWindow();
     await openWorkspaceView(page, 'Reader');
@@ -135,7 +145,7 @@ async function run() {
     }
     report.paperId = paperId;
     report.reopened = true;
-    stage('Reopened both saved translations');
+    stage('Reopened all saved translations');
   } finally {
     clearInterval(heartbeat);
     try { await app?.close(); } finally {
@@ -151,7 +161,7 @@ async function run() {
       await closed;
       if (modelStore) {
         const existing = fs.realpathSync(modelStore);
-        if (path.dirname(existing) !== tempRoot || existing !== modelStore || !path.basename(existing).startsWith('paperbridge-temporary-27b-')) throw Error('Unexpected model cleanup path.');
+        if (path.dirname(existing) !== tempRoot || existing !== modelStore || !path.basename(existing).startsWith(temporaryPrefix)) throw Error('Unexpected model cleanup path.');
         fs.rmSync(existing, { recursive: true, force: true, maxRetries: 12, retryDelay: 500 });
         report.modelStoreRemoved = !fs.existsSync(modelStore);
       }

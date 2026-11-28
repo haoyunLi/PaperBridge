@@ -247,10 +247,23 @@ async function run() {
     assert.equal(await editor().inputValue(), longBody);
 
     stage('Atomic Undo restores both different historical note bodies even when their saved IDs are identical');
-    await historyRow.getByRole('button', { name: /^Delete annotation / }).click();
+    const navigateHistory = historyRow.locator('.annotation-navigate');
+    await navigateHistory.click({ button: 'right' });
+    const deleteFromMenu = page.getByRole('menuitem', { name: 'Delete Annotation', exact: true });
+    await deleteFromMenu.waitFor();
+    assert.equal(await deleteFromMenu.evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('Escape');
+    await deleteFromMenu.waitFor({ state: 'hidden' });
+    assert.equal(await navigateHistory.evaluate(node => node === document.activeElement), true);
+    await count(10);
+    const adjacentKey = await historyRow.evaluate(row => (row.nextElementSibling?.dataset.annotationKey || row.previousElementSibling.dataset.annotationKey));
+    await page.keyboard.press('Shift+F10');
+    await deleteFromMenu.waitFor();
+    await page.keyboard.press('Enter');
     await waitFor(() => !readPaper().blocks[1].notes.some(note => note.id === historical.id) &&
       !readPaper().blocks[1].highlights.some(mark => mark.id === 'historical-mark'), 'duplicate-ID group deletion saved');
     await count(9); assert.equal(await editor().inputValue(), '');
+    assert.ok(await keyed(adjacentKey).locator('.annotation-navigate').evaluate(button => button === document.activeElement));
     await undo();
     await waitFor(() => readPaper().blocks[1].notes.filter(note => note.id === historical.id).length === 2 &&
       readPaper().blocks[1].highlights.some(mark => mark.id === 'historical-mark'), 'one Undo restores every historical record');

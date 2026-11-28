@@ -1,3 +1,11 @@
+import { characterPrefix } from '../electron/library-metadata.mjs';
+
+export function paragraphPreview(text) {
+  const flattened = (text ?? '').replaceAll('\n', ' ');
+  if (characterPrefix(flattened, 96) === flattened) return flattened;
+  return characterPrefix(flattened, 93) + '...';
+}
+
 const validParagraphID = value => Number.isSafeInteger(value) && value > 0;
 const selectable = block => block && validParagraphID(block.id) && !block.resource;
 

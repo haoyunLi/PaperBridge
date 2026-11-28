@@ -2,6 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const selectionModule = import('../src/paragraphSelection.mjs');
 
+test('explanation preview flattens source lines and counts complete characters', async () => {
+  const { paragraphPreview } = await selectionModule;
+  const scientist = '👩‍🔬';
+  assert.equal(paragraphPreview('First\nSecond'), 'First Second');
+  assert.equal(paragraphPreview(scientist.repeat(96)), scientist.repeat(96));
+  assert.equal(paragraphPreview('A'.repeat(92) + scientist + 'bcde'), 'A'.repeat(92) + scientist + '...');
+});
+
 const blocks = [{ id: 1, resource: { type: 'image' } }, { id: 4, heading: true }, { id: 12, text: 'A readable paragraph.' }];
 
 test('a selected paragraph is independent from its saved viewport and need not have a contiguous ID', async () => {

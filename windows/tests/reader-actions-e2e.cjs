@@ -168,7 +168,8 @@ async function run() {
     } finally { app = null; }
   };
   const launch = async () => {
-    app = await electron.launch({ args: ['.'], cwd: root,
+    const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded(`${phase}: firstWindow`, app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);
@@ -276,6 +277,19 @@ async function run() {
     assert.equal(await block(2).locator('.source-text').isVisible(), false);
     await readingMode('Bilingual').check();
 
+    stage('bookmark preview uses the same excerpt as the inspector');
+    const longBookmark = block(50).getByRole('button', { name: 'Bookmark', exact: true });
+    await longBookmark.click();
+    const bookmarkRow = page.locator('.bookmark-row[data-paragraph-id="50"]');
+    const excerpt = continued.slice(0, 93) + '...';
+    assert.equal(await bookmarkRow.locator('.outline-title').textContent(), excerpt);
+    assert.equal(await bookmarkRow.getAttribute('title'), continued);
+    await bookmarkRow.click();
+    await block(50).getByRole('button', { name: 'Explain full paragraph', exact: true }).click();
+    assert.equal(await page.locator('.explanation-source').textContent(), excerpt);
+    await longBookmark.click();
+    await bookmarkRow.waitFor({ state: 'hidden' });
+
     stage('paragraph explanation without automatic inference');
     const beforeExplain = requests.length;
     await selectText(page, '#block-4 .source-text', 'Unrelated paragraph');
@@ -284,9 +298,11 @@ async function run() {
     assert.equal(await evaluate(() => window.getSelection()?.toString()), '');
     assert.equal(await page.locator('.inspector blockquote').count(), 0);
     await frames();
+    assert.equal(await page.locator('.paragraph-explanation .explanation-source').innerText(), originalBlocks[0].text);
     assert.equal(requests.length, beforeExplain, 'choosing explanation must not start generation');
     await page.locator('.paragraph-explanation').getByRole('button', { name: 'Explain full paragraph', exact: true }).click();
     await page.locator('.paragraph-explanation').getByText('Explanation of the selected full paragraph.', { exact: true }).waitFor();
+    assert.equal(await page.locator('.explanation-result > strong').innerText(), await page.getByLabel('Explanation language').inputValue());
     assert.equal(requests.length, beforeExplain + 1);
     assert.match(requests.at(-1).prompt, /Target paragraph reports/);
 

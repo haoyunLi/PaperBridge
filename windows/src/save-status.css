@@ -1,3 +1,23 @@
+.pdf-drop-target {
+  position: fixed;
+  inset: 4px;
+  z-index: 30;
+  pointer-events: none;
+  border: 2px dashed #1554a1;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 18px;
+}
+.pdf-drop-target span {
+  padding: 7px 14px;
+  border-radius: 6px;
+  background: #174b83;
+  color: white;
+  font-weight: 600;
+}
+
 .workspace-status-rail {
   flex: none;
   max-height: min(42vh, 330px);

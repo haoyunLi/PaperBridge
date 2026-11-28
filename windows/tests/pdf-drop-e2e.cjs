@@ -1,0 +1,70 @@
+const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { _electron: electron } = require('playwright-core');
+const { defaults } = require('../electron/storage.cjs');
+
+async function run() {
+  const root = path.resolve(__dirname, '..');
+  const artifacts = path.join(root, 'test-artifacts');
+  fs.mkdirSync(artifacts, { recursive: true });
+  const workspace = fs.mkdtempSync(path.join(artifacts, 'file-drag-'));
+  fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ...defaults, autoCheckUpdates: false,
+    onboardingCompletedVersion: 1, pdfExtractionMode: 'pdfOnly', ollamaBaseURL: 'http://127.0.0.1:9' }));
+  const pdf = path.join(__dirname, 'mac-parity', 'emcee-v3.pdf');
+  const other = path.join(workspace, 'readme.txt');
+  fs.writeFileSync(other, 'Not a PDF');
+  const id = crypto.createHash('sha256').update(fs.readFileSync(pdf)).digest('hex');
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const app = await electron.launch({ cwd: root, ...(executablePath && { executablePath }),
+    args: [...(executablePath ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
+    env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace } });
+  try {
+    const page = await app.firstWindow();
+    await page.locator('.welcome').waitFor();
+    const session = await page.context().newCDPSession(page);
+    const hint = page.getByText('Drop PDF to open', { exact: true });
+    const title = await page.locator('.title-row h1').boundingBox();
+    const first = { x: Math.round(title.x + title.width / 2), y: Math.round(title.y + title.height / 2) };
+    const pane = await page.locator('.main-scroll').boundingBox();
+    const second = { x: Math.round(pane.x + pane.width / 2), y: Math.round(pane.y + pane.height / 2) };
+    const drag = (type, point, data) => session.send('Input.dispatchDragEvent', { type, ...point, data });
+    const files = { items: [], files: [other, pdf], dragOperationsMask: 1 };
+    const text = { items: [{ mimeType: 'text/plain', data: 'selected text' }], dragOperationsMask: 1 };
+    await drag('dragEnter', first, text);
+    await drag('dragOver', second, text);
+    assert.equal(await hint.count(), 0);
+    await drag('dragCancel', second, text);
+    await drag('dragEnter', first, files);
+    await drag('dragOver', first, files);
+    await hint.waitFor({ timeout: 4000 });
+    await drag('dragOver', second, files);
+    assert.ok(await hint.isVisible());
+    await page.screenshot({ path: path.join(workspace, 'drag-feedback.png') });
+    await drag('dragOver', { x: -5, y: -5 }, files);
+    await drag('dragCancel', second, files);
+    await hint.waitFor({ state: 'hidden', timeout: 4000 });
+    await page.getByRole('button', { name: 'Settings', exact: true }).first().click();
+    await drag('dragEnter', first, files);
+    await drag('dragOver', second, files);
+    assert.equal(await hint.count(), 0);
+    await drag('dragCancel', second, files);
+    await page.keyboard.press('Escape');
+    const nonPDF = { ...files, files: [other] };
+    await drag('dragEnter', first, nonPDF);
+    await drag('dragOver', second, nonPDF);
+    await drag('drop', second, nonPDF);
+    await page.getByText('Drop a PDF file to open it.', { exact: true }).waitFor();
+    await hint.waitFor({ state: 'hidden' });
+    await drag('dragEnter', first, files);
+    await drag('dragOver', second, files);
+    await drag('drop', second, files);
+    await hint.waitFor({ state: 'hidden' });
+    await page.waitForFunction(id => document.querySelector('.main-scroll')?.dataset.readingPaperId === id, id);
+    const original = await page.evaluate(async id => Array.from(await window.paperBridge.readPdf(id)), id);
+    assert.deepEqual(Buffer.from(original), fs.readFileSync(pdf));
+    console.log('Verified file drag feedback, cancellation, dialog exclusion, rejection and a real mixed-file drop of a journal PDF.');
+  } finally { await app.close(); }
+}
+run().catch(error => { console.error(error); process.exitCode = 1; });

@@ -131,7 +131,8 @@ async function run() {
     return host?.dataset.readingPaperId === expected && host.getAttribute('aria-busy') === 'false';
   }, id), 'current paper reading restoration completes');
   const launch = async () => {
-    app = await electron.launch({ args: ['.'], cwd: root,
+    const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded(`${phase}: firstWindow`, app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);

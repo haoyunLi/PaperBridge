@@ -14,6 +14,7 @@ import { blocksFromText, chunkText, isHeading, practiceParagraphs, readingMap } 
 import { stitchPageBlocks } from '../../src/pdfDecorations.mjs';
 import { createHash } from 'node:crypto';
 import { markdownAnnotationOffset } from '../../src/markdownAnchors.mjs';
+import { paragraphPreview } from '../../src/paragraphSelection.mjs';
 import { filteredReaderBlocks } from '../../src/textSearch.mjs';
 import { planConnectedBatches } from '../../src/connectedTranslation.mjs';
 import { protectMarkdown, restoreMarkdown, translationPrompt } from '../../src/prompts.mjs';
@@ -21,6 +22,11 @@ import { parsedMarkdownBlocks } from '../../src/academicMarkdown.mjs';
 
 const fixtures = JSON.parse(readFileSync(new URL('./fixtures.json', import.meta.url), 'utf8'));
 const reference = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+assert.ok(reference.paragraphPreviews.length >= 4);
+for (const { source, preview } of reference.paragraphPreviews) {
+  assert.equal(paragraphPreview(source), preview, 'Inspector and bookmark source previews');
+}
+console.log(`Checked ${reference.paragraphPreviews.length} paragraph previews against native macOS.`);
 assert.equal(reference.translationPrompts.length, 11);
 for (const { source, target, prompt } of reference.translationPrompts) {
   assert.equal(translationPrompt('The sensor reading has stabilized.', source, target), prompt, target + ' paragraph prompt');

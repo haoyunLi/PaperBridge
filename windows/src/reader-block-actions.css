@@ -22,6 +22,7 @@
 }
 .reader-actions-menu[data-positioned="true"] { visibility: visible; }
 .reader-actions-menu::backdrop { background: transparent; }
+.annotation-context-menu { width: max-content; min-width: 148px; max-width: calc(100vw - 8px); }
 .reader-actions-menu > button {
   display: block;
   width: 100%;

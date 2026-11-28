@@ -176,6 +176,16 @@
 .annotation-actions>.icon-button{flex:none;width:28px;height:28px}
 .annotation-navigate:focus-visible,.annotation-actions>.icon-button:focus-visible{outline:2px solid #0a59d6;outline-offset:1px}
 .paragraph-explanation{margin:10px 14px;flex:none}
+.paragraph-explanation .explanation-source {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  color: #56606c;
+  font-size: 13px;
+}
+.explanation-result > strong { font-size: 13px; }
 .paragraph-explanation select{width:100%;border:1px solid #bfc6cd;border-radius:6px;padding:6px;background:#fff}
 .paragraph-explanation p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
 .inspector-section .inspector-selection-quote{padding:12px;border:0;border-radius:9px;background:#dce9ff;font-size:15px}

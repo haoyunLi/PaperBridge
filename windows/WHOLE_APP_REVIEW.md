@@ -1,5 +1,21 @@
 # Windows 全软件功能复查
 
+## 2026-11-27 与 macOS 1.10.0 的本机复查
+
+在 RX 7800 XT 上用固定的 0.2.101 源码运行发布流程列出的 47 组桌面操作。46 组首次通过。模型设置组在切换论文时等待超时，单独原样复跑通过，随后在从 GitHub 下载的 0.2.101 程序里也通过。下面列出本轮实际执行的代表动作，逐项范围见[功能映射](FEATURE_MAPPING.md)。
+
+| 功能 | 本机验证的具体操作与观察 | 可重跑的验证 |
+| --- | --- | --- |
+| 导入与原件 | 在三种解析模式下打开论文，测试失败后重试。用 20 页期刊 PDF 导出并比对原页与图文资源。0.2.102 增加拖入窗口时的落点提示，取消、离开窗口、打开对话框和拖入混合文件均有覆盖。 | [解析模式](tests/import-modes-e2e.cjs) · [原页与导出](tests/pdf-journal-export-e2e.cjs) · [文件拖放](tests/pdf-drop-e2e.cjs) |
+| 阅读与导航 | 核对书签、章节跳转、阅读历史和侧栏收起后的恢复。Mac 与 Windows 对同一组 40 个 Reader 搜索得到相同结果。 | [章节跳转](tests/outline-e2e.cjs) · [阅读历史](tests/reading-history-e2e.cjs) · [原生比较](tests/mac-parity/compare.mjs) |
+| 翻译与术语 | 从段落队列取消并续译，调整章节优先级，重开后恢复。另在公开版上用真实 4B 和 12B 核对数字、单位、因果及否定，六条译文重开后逐字一致。 | [队列操作](tests/reader-review-e2e.cjs) · [术语](tests/terminology-e2e.cjs) · [AMD 逐段结果](AMD_DEVICE_TEST.md) |
+| 解释与摘要 | 从灯泡打开指定段落，选择语言，点击解释才发出请求。0.2.102 的检查器与书签共用 Mac 式原文预览。与原生输出比对 8 个摘要引文和 4 组分批输入。 | [段落解释](tests/reader-actions-e2e.cjs) · [摘要操作](tests/summary-e2e.cjs) |
+| 选区与标注 | 在原 PDF 跨行选择、在不同工作区保存笔记并重开。0.2.102 可用右键或 Shift+F10 删除一组标注，Esc 返回原行，删除后移到相邻行，一次撤销可恢复同 ID 的两份历史笔记及高亮。 | [分组与撤销](tests/saved-annotations-e2e.cjs) · [跨页选区](tests/long-pdf-selection-e2e.cjs) |
+| 修订、资料库与恢复 | 核对拆分、合并、重排、撤销和重启恢复。Mac 与 Windows 逐项比较 23 组合并和 20 组重排。另有 5 处跨行拼接保留 Windows 对科学标点的处理，包括 `GPT-4` 和减号。 | [编辑器](tests/paragraph-editor-e2e.cjs) · [打开上次的论文](tests/last-opened-e2e.cjs) |
+| 导出、设置与更新 | 移动导出文件夹后比对补充材料链接及字节。测试重新打开首次引导、取消模型下载、恢复已选模型、跳过特定更新、手动检查和重启。NVIDIA/CUDA 仍缺本机硬件实测，当前公开包仍无 Windows 发布者签名。 | [原生导出比较](tests/mac-parity/compare.mjs) · [模型设置](tests/settings-models-e2e.cjs) · [更新恢复](tests/update-restart-e2e.cjs) |
+
+原生对照来自 GitHub macOS 运行器执行的 Swift 代码。本机桌面回归中用于控制故障和延迟的模型服务是测试替身。上表指向的 AMD 逐段报告记录了另行执行的真实模型推理。[0.2.101 的 macOS 原生参考](https://github.com/haoyunLi/PaperBridge/actions/runs/46076632056/job/140765761401)
+
 ## 0.2.101 便携版在较深临时目录中启动
 
 在 RX 7800 XT 的 Windows 上，GitHub 的 0.2.98 便携版在普通临时目录能打开论文。使用同一文件和深层临时目录，启动器复制 76 个文件时只复制了 73 个。缺少的三个文件来自 PDF.js 可选的 Node 原生 Canvas 模块，目标路径长 268 到 282 个字符。阅读器使用 Chromium 的 Canvas 显示原页。

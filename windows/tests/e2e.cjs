@@ -73,7 +73,10 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
   const pdfPath = path.join(artifacts, 'practice.pdf');
   fs.writeFileSync(pdfPath, samplePdf());
-  let app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+  const launch = () => electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root,
+    env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  let app = await launch();
   try {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
@@ -195,7 +198,13 @@ async function run() {
     await page.setViewportSize({ width: 1320, height: 820 });
     const selectionRequestStart = generateRequests.length;
     forcedGenerateResponses.push('x'.repeat(300), '精确选区译文');
+    let finishLookup;
+    progressResponseGates.push(new Promise(resolve => { finishLookup = resolve; }));
     await quickSelection.getByRole('button', { name: 'Translate', exact: true }).click();
+    try {
+      await quickSelection.getByRole('button', { name: 'Cancel', exact: true }).waitFor();
+      assert.ok(await quickSelection.getByRole('button', { name: 'Cobalt highlight', exact: true }).isDisabled());
+    } finally { finishLookup(); }
     await quickSelection.locator('.selection-lookup-message').getByText('Selection translated.', { exact: true }).waitFor();
     await quickSelection.getByText('精确选区译文', { exact: true }).waitFor();
     assert.equal(generateRequests.length - selectionRequestStart, 2, 'An overexpanded complete sentence should run one strict retry');
@@ -975,7 +984,7 @@ async function run() {
     delete legacyNote.quote;
     delete legacyHighlight.quote;
     fs.writeFileSync(paperFile, JSON.stringify(legacyPdf));
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launch();
     const reopenedPage = await app.firstWindow();
     await reopenedPage.getByRole('heading', { name: 'practice.pdf' }).waitFor();
     await reopenedPage.waitForFunction(() => document.querySelector('.pdf-continuous')?.dataset.pdfZoom === '125');
