@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 四页光谱仪记录的选区翻译
+
+0.2.126 全选四页原 PDF 后，RX 7800 XT 上的 TranslateGemma 4B 保留了两次读数 12、实验温度 298 K 与 77 K、波长 633 nm 和峰移 2 nm。默认译法把探测器的「12 counts」写成「12 次」。在同一份原文上选中 counts，保存首选译法「计数」，再次全选并翻译，首尾两处都改为「12计数」。Ollama 报告 2,881,948,220 字节模型显存。[真机选区与术语回归](tests/pdf-select-all-e2e.cjs)
+
 ## 20 页全文摘要与六条证据
 
 0.2.123 在 RX 7800 XT 重新导入《Good Enough Practices in Scientific Computing》，用本地 Qwen3 4B 和 TranslateGemma 4B 完成 11 批摘要，耗时 217 秒。六条引文逐字匹配原文，点击各条分别到达第 32、50、57、93、133、183 段，导出后仍保留来源。Ollama 报告两个模型分别在显存中占用 3,180,247,121 和 2,881,948,220 字节。[可重复的设备测试](tests/live-summary.cjs)

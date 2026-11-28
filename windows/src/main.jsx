@@ -1,5 +1,6 @@
 import { trimLibraryText } from '../electron/library-metadata.mjs';
 import { taggedPdfText } from './pdfBidi.mjs';
+import { useWholePdfSelection } from './useWholePdfSelection.mjs';
 import { PdfPageLinks } from './PdfPageLinks.jsx';
 import { pdfLinkDestination } from './pdfLinks.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -14,7 +15,7 @@ import { BookOpen, FilePlus2, FolderOpen, Search, Settings2, Languages, Bookmark
 import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
-import { rotatedSelectionContent, usesPageRotation, verticalSelectionContent } from './pdfLayout.mjs';
+import { rotatedSelectionContent, usesPageRotation, verticalSelectionContent, wholePdfPageText } from './pdfLayout.mjs';
 import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
 import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
@@ -405,7 +406,7 @@ function usePdfDocument(paper) {
 
 const eastAsianLetter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
-function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, onSize, onReady, onFollowLink }) {
+function PdfSheet({ pdf, number, width, facsimile, textOnly = false, selectionOrder, annotations, onSize, onReady, onFollowLink }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const finishedLayer = useRef(null);
@@ -434,16 +435,18 @@ function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, 
       onSize?.(number, base.height / base.width);
       const ratio = Math.min(window.devicePixelRatio || 1, Math.sqrt(maxPdfBitmapPixels / (viewport.width * viewport.height)),
         maxPdfBitmapSide / Math.max(viewport.width, viewport.height));
-      surface.width = Math.max(1, Math.floor(viewport.width * ratio));
-      surface.height = Math.max(1, Math.floor(viewport.height * ratio));
+      surface.width = textOnly ? 1 : Math.max(1, Math.floor(viewport.width * ratio));
+      surface.height = textOnly ? 1 : Math.max(1, Math.floor(viewport.height * ratio));
       surface.style.width = viewport.width + 'px';
       surface.style.height = viewport.height + 'px';
       if (root) {
         root.style.setProperty('--total-scale-factor', viewport.scale * viewport.userUnit);
         if (reusable) previous.textLayer.update({ viewport });
       }
-      task = page.render({ canvasContext: surface.getContext('2d'), canvas: surface, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
-      await task.promise;
+      if (!textOnly) {
+        task = page.render({ canvasContext: surface.getContext('2d'), canvas: surface, viewport, transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0] });
+        await task.promise;
+      }
       if (cancelled) return;
       if (!root) { onReady?.(number, null); return; }
       if (reusable) { onReady?.(number, previous.status); return; }
@@ -479,14 +482,14 @@ function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, 
       }
       root.dataset.page = String(number);
       const text = visible.items.map(item => item.str || '').join('');
-      const status = { selectable: Boolean(text.trim()), eastAsian: eastAsianLetter.test(text), rotatedReading, taggedBidi,
+      const status = { selectable: Boolean(text.trim()), copyText: wholePdfPageText(visible, page.view, page.rotate), eastAsian: eastAsianLetter.test(text), rotatedReading, taggedBidi,
         verticalCjk: visible.items.some(item => item.dir === 'ttb' && eastAsianLetter.test(item.str)) };
       finishedLayer.current = { pdf, number, selectionOrder, textLayer, status };
       setRendered(true);
       onReady?.(number, status);
     })().catch(cause => { if (!cancelled) onReady?.(number, cause.message); });
     return () => { cancelled = true; task?.cancel(); if (finishedLayer.current?.textLayer !== textLayer) textLayer?.cancel(); };
-  }, [pdf, number, width, facsimile, selectionOrder, onSize, onReady]);
+  }, [pdf, number, width, facsimile, textOnly, selectionOrder, onSize, onReady]);
   useEffect(() => {
     const root = layer.current;
     if (!rendered || root?.dataset.page !== String(number) || !CSS.highlights || !annotations?.length) return;
@@ -502,7 +505,7 @@ function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, 
     return () => { richHighlights.delete(key); refreshRichHighlights(); };
   }, [annotations, number, rendered]);
   return <div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? 'Original PDF page ' + number : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}
-    {!facsimile && onFollowLink && <PdfPageLinks pdf={pdf} number={number} onFollow={onFollowLink} />}</div>;
+    {!facsimile && !textOnly && onFollowLink && <PdfPageLinks pdf={pdf} number={number} onFollow={onFollowLink} />}</div>;
 }
 
 function pdfPageElement(host, page) {
@@ -579,6 +582,8 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const [statuses, setStatuses] = useState({});
   const [visible, setVisible] = useState([1, 1]);
   const [dragPage, setDragPage] = useState(null);
+  const wholeSelection = useWholePdfSelection({ pdf, scroller, statuses, layerFor: pdfLayerFor, capture: capturePdfRange, onSelect, onError: setLinkError });
+  const { selectThrough } = wholeSelection;
   const currentPage = Math.max(1, Math.min(pageNumber, pdf?.numPages ?? pageNumber));
   const zoom = pdfZoomPercent(paper?.position?.pdfZoom?.[scope]);
   const width = fitWidth * zoom / pdfFitZoom;
@@ -687,8 +692,10 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       host.scrollLeft += target.left - hostLeft - 18;
     }
     host.scrollTop = page.offsetTop + Math.max(0, withinPage);
-    onNavigate(captured);
+    onNavigate(wholeSelection.remember(range, captured));
   }, [pdf, navigation?.id, statuses]);
+
+
 
   function handleScroll() {
     onScrollSelection(scroller.current);
@@ -797,7 +804,20 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     return () => host.removeEventListener('wheel', onWheel);
   }, [pdf]);
   function handlePdfShortcut(event) {
+    if (event.key === 'Escape' && selectThrough) {
+      event.preventDefault(); event.stopPropagation();
+      wholeSelection.cancel(); return;
+    }
     if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.nativeEvent.isComposing) return;
+    if (!event.shiftKey && selectThrough && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'c') {
+      event.preventDefault(); wholeSelection.queueCopy(); return;
+    }
+    if (!event.shiftKey && pdf && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat) wholeSelection.start();
+      return;
+    }
     if (!event.shiftKey && pdf && scroller.current?.contains(event.target) && (event.key === 'Home' || event.key === 'End')) {
       event.preventDefault();
       event.stopPropagation();
@@ -836,18 +856,20 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     {needsOCR && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
       onReader={coverage || paper.blocks.length ? () => onReader(currentPage) : null} />}
     {linkError && <Notice tone="error">{linkError}</Notice>}
+    {Boolean(selectThrough) && <div role="status" className="notice">Selecting PDF text… Press Esc to cancel.</div>}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
     {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} data-pdf-zoom={zoom} tabIndex={0} aria-label="Continuous original PDF"
-      onScroll={handleScroll} onMouseDown={event => {
+      onScroll={handleScroll} onCopy={wholeSelection.copy} aria-busy={Boolean(selectThrough)} onMouseDown={event => {
+        if (event.button === 0) wholeSelection.cancel();
         const number = pdfRangeEndpoint(event.target);
         if (event.button === 0 && Number.isInteger(number)) setDragPage(number);
       }} onMouseUp={capture}>
       {width > 0 && Array.from({ length: pdf.numPages }, (_, index) => {
         const number = index + 1;
-        const mounted = number === currentPage || number >= start - 1 && number <= end + 1 ||
-          number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
+        const nearby = number === currentPage || number >= start - 1 && number <= end + 1;
+        const mounted = nearby || number <= selectThrough || number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
         return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
-          {mounted && <PdfSheet pdf={pdf} number={number} width={width} selectionOrder={paper.pdfTaggedReadingOrder ? 'tagged' : paper.pdfRotatedReadingOrder ? 'page' : paper.pdfVerticalReadingOrder ? 'vertical' : null} annotations={annotations} onSize={onSize} onReady={onReady} onFollowLink={followLink} />}
+          {mounted && <PdfSheet pdf={pdf} number={number} width={width} textOnly={!nearby} selectionOrder={paper.pdfTaggedReadingOrder ? 'tagged' : paper.pdfRotatedReadingOrder ? 'page' : paper.pdfVerticalReadingOrder ? 'vertical' : null} annotations={annotations} onSize={onSize} onReady={onReady} onFollowLink={followLink} />}
         </div>;
       })}
     </div>}

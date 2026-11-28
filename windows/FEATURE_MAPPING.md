@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+在原 PDF 内使用 Ctrl+A 可选中整份文档的文字。四页校准记录的 Ctrl+C 逐字、逐行匹配 Mac，20 页论文可一键复制并保存跨页笔记。[原生对照与桌面测试](tests/pdf-select-all-e2e.cjs)
+
 清理资料时，若勾选删除归档 PDF，应用意外退出后可在 Settings → Local Data 重试尚未清完的副本。重试保护中断后新导入的文件。[中断与恢复](tests/archive-cleanup-e2e.cjs)
 
 论文自带的便笺、带留言的高亮和下划线可在两个原 PDF 视图中打开。作者和留言来自文件，Research Inspector 仅保存自己的笔记。[原生和 Windows 对照](tests/pdf-comments-e2e.cjs)

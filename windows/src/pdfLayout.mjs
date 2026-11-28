@@ -489,10 +489,10 @@ export function verticalSelectionContent(content, view) {
   return { ...content, items };
 }
 
-export function rotatedSelectionContent(content, view, rotation, tagged = false) {
+export function rotatedSelectionContent(content, view, rotation, tagged = false, allLines = false) {
   if (content.items.some(item => typeof item.str !== 'string')) return content;
   const reading = readingPageCoordinates(content, view, rotation);
-  if (reading.content === content && !tagged) return content;
+  if (reading.content === content && !tagged && !allLines) return content;
   // Use the Reader's physical line and column order, but pass the original glyph matrices to PDF.js.
   // Explicit spaces stay with their run. PDF.js line breaks must follow the new printed line order.
   const runs = new Map();
@@ -506,7 +506,7 @@ export function rotatedSelectionContent(content, view, rotation, tagged = false)
   });
   const lines = pageLines({ ...reading.content, items }, reading.view);
   const orderedLines = pdfReadingGroups(lines, { height: reading.view[3] - reading.view[1] }).flat();
-  if (reading.content === content && !orderedLines.some(line => line.taggedSequence)) return content;
+  if (reading.content === content && !allLines && !orderedLines.some(line => line.taggedSequence)) return content;
   const lineIndices = orderedLines.map(line => line.selectionIndices || line.items?.map(item => item.selectionIndex) || []);
   const order = lineIndices.flat();
   // Reader cleanup may omit a printed page decoration. The selectable original must keep every glyph.
@@ -526,6 +526,11 @@ export function rotatedSelectionContent(content, view, rotation, tagged = false)
     });
   });
   return { ...content, items: ordered.concat(gap) };
+}
+
+export function wholePdfPageText(content, view, rotation) {
+  const ordered = rotatedSelectionContent(content, view, rotation, true, true);
+  return ordered.items.map(item => (item.str || '') + (item.hasEOL ? '\n' : '')).join('').trim();
 }
 
 function horizontalPageLines(content, [left, bottom, right, top]) {

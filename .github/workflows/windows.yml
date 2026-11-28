@@ -311,7 +311,7 @@ jobs:
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
           $dir = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'Public downloads')
           $tag = "windows-v$version"
-          $response = Invoke-WebRequest "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" -SkipHttpErrorCheck
+          $response = Invoke-WebRequest "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" -Headers @{ Authorization = "Bearer $env:GH_TOKEN" } -SkipHttpErrorCheck
           if ($response.StatusCode -ne 200) { throw "Could not read release $tag (HTTP $($response.StatusCode))" }
           $release = $response.Content | ConvertFrom-Json
           if ($release.tag_name -cne $tag -or $release.draft) { throw "Expected publicly downloadable release $tag" }
