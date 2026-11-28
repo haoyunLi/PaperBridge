@@ -127,7 +127,7 @@ async function run() {
     await page.locator('.paragraph-explanation > small').filter({ hasText: `EXPLANATION · BLOCK ${number}` }).waitFor();
     assert.match(await page.locator('.paragraph-explanation > small').textContent(), new RegExp(`BLOCK ${number}$`));
   };
-  const wheelTo = async number => {
+  const wheelTo = async (number, beforeSave = false) => {
     await ready();
     const target = await evaluate(number => {
       const host = document.querySelector('.main-scroll').getBoundingClientRect();
@@ -136,7 +136,8 @@ async function run() {
     }, number);
     await page.mouse.move(target.x, target.y);
     await page.mouse.wheel(0, target.delta);
-    await position(number);
+    if (beforeSave) await waitFor(async () => await firstVisible() === number, `wheel reached ${number}`);
+    else await position(number);
   };
   const openPaper = async (document, number, viewport) => {
     const row = page.locator('.recent-papers .library-row').filter({ hasText: document.name.slice(0, 24) });
@@ -228,7 +229,7 @@ async function run() {
     assert.equal(await page.locator('.document-outline [aria-current="location"]').count(), 0,
       'A selected body paragraph must not mark the containing viewport heading as selected');
     const offset12 = await scroll();
-    const relativeTop = () => page.locator('#block-12').evaluate(el => el.getBoundingClientRect().top - el.closest('.main-scroll').getBoundingClientRect().top);
+    const relativeTop = (block = 12) => page.locator(`#block-${block}`).evaluate(el => el.getBoundingClientRect().top - el.closest('.main-scroll').getBoundingClientRect().top);
     const originalTop = await relativeTop();
     if (process.argv.includes('--resize-reader')) {
       stage('Window reflow keeps the same top paragraph and within-paragraph reading offset');
@@ -241,6 +242,18 @@ async function run() {
         console.log(JSON.stringify({ width, top, selected: 2, visible: 12, offset: await scroll() }));
       }
       assert.ok(Math.abs(await scroll() - offset12) < 2);
+      stage('Resize immediately after a wheel movement keeps the newly reached paragraph');
+      await wheelTo(14, true);
+      const recentTop = await relativeTop(14);
+      const savedBeforeResize = readPaper().position.block;
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1016, 900));
+      await position(14); await selected(2);
+      const resizedTop = await relativeTop(14);
+      assert.ok(Math.abs(resizedTop - recentTop) < 2, JSON.stringify({ recentTop, resizedTop }));
+      console.log(JSON.stringify({ recentTop, resizedTop, savedBeforeResize, visible: 14, selected: 2 }));
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1500, 900));
+      await position(14);
+      await wheelTo(12);
     }
 
     stage('Current section follows viewport without changing the Inspector target');

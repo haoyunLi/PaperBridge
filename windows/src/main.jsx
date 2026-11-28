@@ -1475,6 +1475,7 @@ function App() {
   const fileInputRef = useRef(null);
   const mainScrollRef = useRef(null);
   const scrollSaveTimer = useRef(null);
+  const readerResize = useRef(null);
   const restoringScroll = useRef(false);
   const pendingReadingRestorations = useRef(new Set());
   const [readingLayoutState, setReadingLayoutState] = useState({ paperId: null, busy: false });
@@ -1544,7 +1545,15 @@ function App() {
     const host = mainScrollRef.current;
     if (!host) return 0;
     const top = host.getBoundingClientRect().top;
-    const visible = [...host.querySelectorAll('.reader-list > .block')].find(element => element.getBoundingClientRect().bottom > top + 12);
+    const children = host.querySelector('.reader-list')?.children;
+    let first = 0, end = children?.length || 0;
+    while (first < end) {
+      const middle = Math.floor((first + end) / 2);
+      if (children[middle].getBoundingClientRect().bottom <= top + 12) first = middle + 1;
+      else end = middle;
+    }
+    let visible = children?.[first];
+    while (visible && !visible.classList.contains('block')) visible = visible.nextElementSibling;
     return visible ? { scrollTop: host.scrollTop, block: Number(visible.id.replace('block-', '')),
       offset: visible.getBoundingClientRect().top - top } : host.scrollTop;
   }
@@ -2025,7 +2034,13 @@ function App() {
     if (tab === 'Reader' && search) { searchScroll.current = mainScrollRef.current?.scrollTop || 0; return; }
     const id = paperRef.current.id;
     const key = tab === 'Original' ? `Original:${pageNumber}` : tab;
-    const offset = mainScrollRef.current?.scrollTop || 0;
+    const host = mainScrollRef.current;
+    const offset = host?.scrollTop || 0;
+    const watch = readerResize.current;
+    if (tab === 'Reader' && watch && host?.clientWidth === watch.width) {
+      watch.anchor = captureReaderSearchOrigin();
+      watch.generation = generation;
+    }
     scrollSaveTimer.current = setTimeout(() => {
       if (paperRef.current?.id !== id || generation !== readingRestoration.current || tab === 'Reader' && searchOrigin.current !== null) return;
       const host = mainScrollRef.current;
@@ -2484,19 +2499,25 @@ function App() {
   useLayoutEffect(() => {
     const host = mainScrollRef.current;
     if (tab !== 'Reader' || !host || !paper?.id || search) return;
-    let width = host.clientWidth;
+    const watch = { width: host.clientWidth, anchor: null, generation: null };
+    readerResize.current = watch;
     const observer = new ResizeObserver(() => {
-      const previous = width;
-      width = host.clientWidth;
-      if (previous === width || !width || restoringScroll.current || paperRef.current?.id !== paper.id) return;
-      const position = paperRef.current.position, anchor = position?.readerViewport;
-      if (anchor?.width !== previous || anchor.block !== position.block || anchor.scrollTop !== position.scrollByTab?.Reader) return;
+      const previous = watch.width;
+      watch.width = host.clientWidth;
+      if (previous === watch.width) return;
+      const recent = watch.generation === readingRestoration.current ? watch.anchor : null;
+      watch.anchor = null;
+      if (!watch.width || restoringScroll.current || paperRef.current?.id !== paper.id) return;
+      const position = paperRef.current.position, saved = position?.readerViewport;
+      const validSaved = saved?.width === previous && saved.block === position.block && saved.scrollTop === position.scrollByTab?.Reader;
+      const anchor = recent ?? (validSaved ? saved : null);
+      if (anchor === null) return;
       clearTimeout(scrollSaveTimer.current);
       restoreReaderSearchOrigin(anchor);
       persistRestoredReaderPosition();
     });
     observer.observe(host);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); readerResize.current = null; };
   }, [tab, paper?.id, search]);
   useLayoutEffect(() => {
     if (blockNavigation?.recordType !== 'paragraph' || tab !== 'Reader') return;
