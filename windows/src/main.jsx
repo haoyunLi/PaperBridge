@@ -1267,6 +1267,7 @@ function App() {
   const [glossarySaving, setGlossarySaving] = useState(false);
   const [glossaryError, setGlossaryError] = useState('');
   const [library, setLibrary] = useState([]);
+  const [archiveCleanup, setArchiveCleanup] = useState({ remaining: 0 });
   const [paper, setPaper] = useState(null);
   const expandedOverview = useMemo(() => new Set(), [paper?.id]);
   const paperRef = useRef(null);
@@ -2108,6 +2109,7 @@ function App() {
     api.bootstrap().then(async data => {
       settingsRef.current = data.settings; setSettings(data.settings); setAppVersion(data.version); setGlossary(data.glossary); setLibrary(data.library);
       setLibraryPersistenceWarning(data.libraryPersistenceWarning || '');
+      setArchiveCleanup({ remaining: data.pendingArchivedPdfs || 0 });
       if (data.library.length) {
         try { await loadPaper(data.library.some(item => item.id === data.lastPaperId) ? data.lastPaperId : data.library[0].id); }
         catch (cause) { setError(cause.message); }
@@ -3275,6 +3277,7 @@ function App() {
       openAIRefreshId.current = null;
       setOpenAIState(current => ({ ...current, consent: false, refreshing: false, models: [], status: '', error: '' }));
       const result = await api.clearData(includeArchivedPdfs);
+      setArchiveCleanup({ remaining: result?.pendingArchivedPdfs || 0 });
       setLookupCache(new Map());
       const data = await api.bootstrap();
       resetReadingHistory();
@@ -3289,8 +3292,27 @@ function App() {
       setStatus(includeArchivedPdfs
         ? `Removed saved workspaces and ${result.archivedPdfsRemoved} archived PDF ${result.archivedPdfsRemoved === 1 ? 'copy' : 'copies'}.`
         : 'Saved PaperBridge workspaces were removed. Original PDF copies were kept.');
-      setError(result?.pdfCleanupError ? `Workspace data was cleared. Retry removing the remaining archived PDFs in Local Data. ${result.pdfCleanupError}` : '');
+      setError(result?.pdfCleanupError ? 'Workspace data was cleared. ' + (result.pendingArchivedPdfs
+        ? 'Some archived files could not be removed. Close any PDF viewer using them, then retry in Settings → Local Data.'
+        : result.pdfCleanupError) : '');
     } catch (cause) { setError(`Could not clear saved data: ${cause.message}`); }
+  }
+  async function retryArchiveCleanup() {
+    if (taskRef.current || archiveCleanup.busy) return;
+    setArchiveCleanup(current => ({ ...current, busy: true, message: '' }));
+    try {
+      const result = await api.retryArchiveCleanup();
+      const removed = result.archivedPdfsRemoved;
+      let message = `Removed ${removed} archived PDF ${removed === 1 ? 'copy' : 'copies'}.`;
+      const kept = result.archivedPdfsKept;
+      if (kept) message += ` Kept ${kept} ${kept === 1 ? 'copy' : 'copies'} used by a saved paper or changed since the cleanup.`;
+      if (result.pdfCleanupError) message += result.pendingArchivedPdfs
+        ? ' Close any PDF viewer using the remaining files and retry.' : ' ' + result.pdfCleanupError;
+      setArchiveCleanup({ remaining: result.pendingArchivedPdfs || 0, message, error: Boolean(result.pdfCleanupError) });
+      if (!result.pdfCleanupError) setError(current => current.startsWith('Workspace data was cleared.') ? '' : current);
+    } catch (cause) {
+      setArchiveCleanup(current => ({ ...current, busy: false, message: cause.message, error: true }));
+    }
   }
   async function saveLibraryLabel(id, title, tags) {
     const label = libraryLabel(title, tags);
@@ -4113,7 +4135,7 @@ function App() {
       {modal === 'setup' && <SetupPanel key={taskSetup ? 'task' : 'manual'} settings={settings} progress={setupProgress} onSettings={updateSettings} onInstall={installLocalComponents}
         taskSetup={taskSetup} onChooseModels={() => openSettings(taskSetup)} />}
       {modal === 'settings' && <SettingsPanel key={taskSetup ? 'task' : `manual-${settingsSection}`} initialSection={settingsSection} settings={settings} onSettings={updateSettings} languages={languages} busy={Boolean(busy)} taskSetup={taskSetup}
-        onOnboarding={openOnboarding} onOpenSetup={() => openSetup()} onClearData={() => setModal('clearData')}
+        onOnboarding={openOnboarding} onOpenSetup={() => openSetup()} onClearData={() => setModal('clearData')} archiveCleanup={archiveCleanup} onRetryArchiveCleanup={retryArchiveCleanup}
         modelTools={{ models, ollamaError, pulling, cancelling: cancellingPull, progress: pullProgress, message: modelDownloadMessage, error: modelDownloadError,
           name: pullModel, onName: setPullModel, onRefresh: () => refreshModels(settingsRef.current), onDownload: downloadModel, onCancel: cancelModelDownload,
           onUse: useRecommendedModel, onRecommendation: model => { setPullModel(model.id); downloadModel(model.id, model); } }}

@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('paperBridge', {
   savePaper: paper => ipcRenderer.invoke('paper:save', paper),
   closeReady: () => ipcRenderer.send('app:close-ready'),
   closeCancelled: () => ipcRenderer.send('app:close-cancelled'),
+  retryArchiveCleanup: () => ipcRenderer.invoke('paper:retry-archive-cleanup'),
   clearData: includeArchivedPdfs => ipcRenderer.invoke('paper:clear-data', includeArchivedPdfs === true),
   loadPaper: id => ipcRenderer.invoke('paper:load', id),
   markPaperOpened: id => ipcRenderer.invoke('paper:mark-opened', id),

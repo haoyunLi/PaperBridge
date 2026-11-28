@@ -20,7 +20,7 @@ function Group({ title, children }) {
   return <section className="settings-section"><h3>{title}</h3>{children}</section>;
 }
 
-export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, taskSetup, initialSection = 'setup',
+export default function SettingsPanel({ settings, onSettings, languages, busy, onOnboarding, onOpenSetup, onClearData, archiveCleanup, onRetryArchiveCleanup, taskSetup, initialSection = 'setup',
   modelTools, openAITools, hardwareTools, updates }) {
   const [section, setSection] = useState(taskSetup ? 'models' : initialSection);
   const [memoryCheck, setMemoryCheck] = useState(0);
@@ -158,7 +158,13 @@ export default function SettingsPanel({ settings, onSettings, languages, busy, o
         <p>PaperBridge checks each in-app download against its SHA-256 checksum and the signed GitHub build record for the official Windows release. Windows may also ask you to confirm the publisher.</p>
         <a href="https://github.com/haoyunLi/PaperBridge/releases" target="_blank" rel="noreferrer">View release history</a>
       </Group></>}
-      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data also clears extracted text and figures. You can also remove PaperBridge’s archived PDF copies. PDFs outside the archive stay at their original locations. Manage the separately encrypted OpenAI key under Models.</p><button className="button danger" disabled={locked} onClick={onClearData}>Remove all saved PaperBridge data…</button></Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
+      {section === 'data' && <><Group title="Local workspace"><p>Papers, translations, notes, bookmarks, terminology and settings are saved in this Windows account. Removing saved data also clears extracted text and figures. You can also remove PaperBridge’s archived PDF copies. PDFs outside the archive stay at their original locations. Manage the separately encrypted OpenAI key under Models.</p><button className="button danger" disabled={locked || archiveCleanup.busy} onClick={onClearData}>Remove all saved PaperBridge data…</button>
+        {archiveCleanup.remaining > 0 && <div>
+          <p>{archiveCleanup.remaining} archived {archiveCleanup.remaining === 1 ? 'file is' : 'files are'} awaiting cleanup from your earlier request. Close any PDF viewer using these files before retrying.</p>
+          <button className="button outline" disabled={locked || archiveCleanup.busy} onClick={onRetryArchiveCleanup}>Retry archived PDF cleanup</button>
+        </div>}
+        {archiveCleanup.message && <p role={archiveCleanup.error ? 'alert' : 'status'}>{archiveCleanup.message}</p>}
+      </Group><Group title="Privacy"><p>Ollama requests stay on this PC. If OpenAI is selected and session permission is enabled, requested extracted text and relevant context are sent online; PDF files and image bytes are not uploaded. Clearing local data cannot recall text already sent.</p></Group></>}
     </div>
   </div>;
 }

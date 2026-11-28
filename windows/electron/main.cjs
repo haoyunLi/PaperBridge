@@ -275,6 +275,7 @@ function registerHandlers() {
     });
     return store.list();
   });
+  ipcMain.handle('paper:retry-archive-cleanup', () => store.retryArchiveCleanup());
   ipcMain.handle('paper:clear-data', (_event, includeArchivedPdfs) => {
     activeImportArchive = null;
     revokeOpenAIConsent();

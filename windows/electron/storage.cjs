@@ -6,6 +6,7 @@ const readingAppearanceDefaults = require('./reading-appearance.json');
 const { normalizeReadingAppearance } = require('./reading-appearance.mjs');
 const { clearSavedMineruResults } = require('./mineru-resources.cjs');
 const { clearPageArchives } = require('./pdf-page-archive.cjs');
+const { ArchiveCleanup } = require('./archive-cleanup.cjs');
 
 const defaults = {
   aiProvider: 'ollama',
@@ -163,30 +164,10 @@ function libraryEntryFromPaper(paper, existing, revision) {
   };
 }
 
-function removeArchivedPdfs(directory) {
-  let archivedPdfsRemoved = 0;
-  try {
-    const location = fs.lstatSync(directory, { throwIfNoEntry: false });
-    if (!location) return { archivedPdfsRemoved };
-    if (!location.isDirectory()) throw new Error('The PDF archive is not a local directory.');
-    for (const item of fs.readdirSync(directory, { withFileTypes: true })) {
-      if (!item.isFile()) continue;
-      const archived = /^[a-f0-9]{64}\.pdf$/.test(item.name);
-      const interrupted = /^[a-f0-9]{64}\.pdf\.\d+\.[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}\.tmp$/.test(item.name);
-      if (!archived && !interrupted) continue;
-      fs.unlinkSync(path.join(directory, item.name));
-      if (archived) archivedPdfsRemoved++;
-    }
-    return { archivedPdfsRemoved };
-  } catch (cause) {
-    // Workspace removal has committed. Allow a later clear to retry the remaining files.
-    return { archivedPdfsRemoved, pdfCleanupError: cause.message };
-  }
-}
-
 function createStore(root) {
   const papersDir = path.join(root, 'papers');
   const pdfDir = path.join(root, 'pdfs');
+  const archiveCleanup = new ArchiveCleanup(root, pdfDir, papersDir);
   const lastPaperFile = path.join(root, 'last-paper.json');
   const libraryIndexFile = path.join(root, 'library-index.json');
   let libraryPersistenceWarning = '';
@@ -315,8 +296,10 @@ function createStore(root) {
           if (!item.isDirectory() && pattern.test(item.name)) fs.unlinkSync(path.join(dir, item.name));
         }
       }
-      return includeArchivedPdfs === true ? removeArchivedPdfs(pdfDir) : { archivedPdfsRemoved: 0 };
+      return includeArchivedPdfs === true ? archiveCleanup.remove() : archiveCleanup.keepAll();
     },
+    pendingArchivedPdfs: () => archiveCleanup.pending().length,
+    retryArchiveCleanup: () => archiveCleanup.remove({ retry: true }),
     libraryPersistenceWarning() { return libraryPersistenceWarning; },
     librarySnapshot,
     list: () => librarySnapshot().library
@@ -326,7 +309,7 @@ function createStore(root) {
 function bootstrapSnapshot(store, version) {
   const { library, lastPaperId } = store.librarySnapshot();
   return { settings: store.settings(), glossary: store.glossary(), library, lastPaperId,
-    libraryPersistenceWarning: store.libraryPersistenceWarning(), version };
+    libraryPersistenceWarning: store.libraryPersistenceWarning(), pendingArchivedPdfs: store.pendingArchivedPdfs(), version };
 }
 
 module.exports = { createStore, defaults, safeId, readJson, writeJson, bootstrapSnapshot };
