@@ -111,7 +111,11 @@ async function run() {
       try {
         const { stdout } = await promisify(execFile)(powershell, ['-NoProfile', '-NonInteractive', '-STA', '-File', script], { windowsHide: true, timeout: 210000 });
         console.log(stdout);
-      } catch (error) { console.error(error.stdout); throw error; }
+      } catch (error) {
+        console.error(error.stdout);
+        if (!page.isClosed()) console.error('Update panel:', await settings.innerText().catch(() => 'closed'));
+        throw error;
+      }
     }
   } finally { if (app.process().exitCode === null) await app.close(); }
 }

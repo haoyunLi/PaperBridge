@@ -62,11 +62,19 @@ while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
     Start-Sleep -Milliseconds 400
 }
 if (!$finished) {
+    $trace = Join-Path (Split-Path $reportFile) 'windows-shell-open.json'
+    Write-Host ("ShellExecute result: " + (Get-Content -LiteralPath $trace -Raw))
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.ProcessName -match 'paperbridge|smartscreen|consent|openwith|rundll32|dllhost'
+    } | ForEach-Object { Write-Host "Process: $($_.ProcessName) | $($_.Id) | $($_.MainWindowTitle)" }
     $windows = [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children, [Windows.Automation.Condition]::TrueCondition)
     foreach ($candidate in $windows) {
         $owner = Get-Process -Id $candidate.Current.ProcessId -ErrorAction SilentlyContinue
         Write-Host "Window: $($owner.ProcessName) | $($candidate.Current.Name)"
-        if ($candidate.Current.Name -match 'Setup|Security|Windows protected|SmartScreen|Open File') {
+        $other = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants,
+            (New-Object Windows.Automation.PropertyCondition([Windows.Automation.AutomationElement]::ControlTypeProperty, [Windows.Automation.ControlType]::Window)))
+        foreach ($item in $other) { Write-Host "Owned dialog: $($item.Current.Name)" }
+        if ($candidate.Current.Name -match 'Setup|Security|Windows protected|SmartScreen|Open File' -or $owner.ProcessName -eq 'PaperBridge') {
             $labels = $candidate.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition)
             Write-Host (($labels | ForEach-Object { $_.Current.Name } | Where-Object { $_ } | Select-Object -First 25) -join ' | ')
         }
