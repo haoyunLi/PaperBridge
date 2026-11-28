@@ -77,7 +77,8 @@ async function run() {
     } finally { app = null; }
   };
   const launch = async () => {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
+    app = await electron.launch({ ...(executablePath && { executablePath }), args: [...(executablePath ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);
@@ -116,6 +117,7 @@ async function run() {
     } else if (response === 'delayed') {
       await waitFor(() => bounded('held metadata response', app.evaluate(() => typeof globalThis.releaseLibraryMetadata === 'function')), 'metadata response to be held');
       await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
+      await page.getByRole('dialog', { name: 'Paper Library', exact: true }).getByRole('button', { name: 'Close dialog', exact: true }).click();
       await page.locator('.sidebar-footer').getByRole('button', { name: 'Settings', exact: true }).click();
       await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor();
       await bounded('release metadata response', app.evaluate(() => { globalThis.releaseLibraryMetadata(); delete globalThis.releaseLibraryMetadata; }));
@@ -200,7 +202,7 @@ async function run() {
       await waitFor(() => bounded('first metadata reply held', app.evaluate(() => typeof globalThis.releaseMetadataOrdering === 'function')), 'first metadata write before its held reply');
       assert.equal(libraryIndex().entries[paperBId].libraryTitle, 'Intermediate label B');
       await page.getByRole('button', { name: 'Close dialog', exact: true }).click();
-      await page.locator('button[title="Open library"]').click();
+      await page.getByRole('dialog', { name: 'Paper Library', exact: true }).waitFor();
       await page.getByRole('button', { name: 'Edit label for Intermediate label B', exact: true }).click();
       await page.getByLabel('Title', { exact: true }).fill('Library label B');
       await page.getByLabel('Tags, separated by commas').fill('进度, test, 进度');

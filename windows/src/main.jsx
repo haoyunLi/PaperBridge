@@ -1085,7 +1085,7 @@ function filterLibraryEntries(entries, query) {
   return entries.filter(item => searchableText(`${item.name} ${(item.tags || []).join(' ')}`).includes(needle));
 }
 
-function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, setLibraryEdit, persistenceWarning }) {
+function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, onEditLabel, persistenceWarning }) {
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState('');
   const items = useMemo(() => filterLibraryEntries(entries, query), [entries, query]);
@@ -1102,10 +1102,10 @@ function LibraryView({ entries, query, setQuery, loadPaper, setModal, busy, setL
   return <>
     <p>Saved on this PC with each paper’s translations, notes, bookmarks, and reading position.</p>
     {persistenceWarning && <div role="alert"><Notice tone="error">{persistenceWarning}</Notice></div>}
-    <input placeholder="Search titles and tags" value={query} onChange={event => setQuery(event.target.value)} />
-    {items.map(item => <div className="library-entry" key={item.id} data-workspace-available={item.workspaceAvailable !== false}>
+    <input aria-label="Search titles and tags" placeholder="Search titles and tags" value={query} onChange={event => setQuery(event.target.value)} />
+    {items.map((item, index) => <div className="library-entry" key={item.id} data-library-id={item.id} data-workspace-available={item.workspaceAvailable !== false}>
       <button className="modal-list-row" disabled={busy || opening} onClick={() => openItem(item.id)}><BookOpen size={17} /><span><b>{item.name}</b><small>{item.workspaceAvailable === false ? 'Saved workspace unavailable · Reimport the original' : `${item.translatedCount ?? 0}/${item.blockCount} translated`}{item.lastOpened ? ` · Opened ${new Date(item.lastOpened).toLocaleDateString()}` : ''}{item.tags?.length ? ` · ${item.tags.join(', ')}` : ''}</small></span></button>
-      <button className="icon-button" aria-label={`Edit label for ${item.name}`} onClick={() => { setLibraryEdit({ id: item.id, name: item.name, tags: (item.tags || []).join(', ') }); setModal('libraryLabel'); }}><Pencil size={16} /></button>
+      <button className="icon-button" aria-label={`Edit label for ${item.name}`} onClick={event => onEditLabel(item, index, event.currentTarget.closest('.modal-body').scrollTop)}><Pencil size={16} /></button>
     </div>)}
     {!items.length && <p>{query ? 'No matching papers. Try another title or tag.' : 'No saved papers. Open a PDF or paste text to begin.'}</p>}
     {busy && <p>Finish or stop the current task before opening another paper.</p>}
@@ -1166,10 +1166,16 @@ function LibraryLabelEditor({ item, onSave, onSaved, onCancel }) {
       if (mounted.current) setError(cause.message);
     } finally { if (mounted.current) setSaving(false); }
   }
+  function saveOnEnter(event) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229 ||
+        event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    if (!event.repeat) void save();
+  }
   return <>
     <p>Only the library label changes; the original PDF stays unchanged. Labels remain available even when a saved workspace cannot be read.</p>
-    <label>Title<input value={title} disabled={saving} onChange={event => setTitle(event.target.value)} /></label>
-    <label>Tags, separated by commas<input value={tags} disabled={saving} onChange={event => setTags(event.target.value)} /></label>
+    <label>Title<input value={title} disabled={saving} onChange={event => setTitle(event.target.value)} onKeyDown={saveOnEnter} /></label>
+    <label>Tags, separated by commas<input value={tags} disabled={saving} onChange={event => setTags(event.target.value)} onKeyDown={saveOnEnter} /></label>
     {error && <div role="alert"><Notice tone="error">{error}</Notice></div>}
     <div className="row"><button className="button blue" disabled={saving || !trimLibraryText(title)} onClick={save}>{saving ? 'Saving…' : 'Save label'}</button><button className="button outline" onClick={onCancel}>Cancel</button></div>
   </>;
@@ -1403,9 +1409,10 @@ function App() {
   const [librarySearch, setLibrarySearch] = useState('');
   const [libraryDialogSearch, setLibraryDialogSearch] = useState('');
   useEffect(() => {
-    if (modal !== 'library' && modal !== 'libraryLabel') setLibraryDialogSearch('');
+    if (modal !== 'library' && modal !== 'libraryLabel') { setLibraryDialogSearch(''); libraryReturn.current = null; }
   }, [modal]);
   const [libraryEdit, setLibraryEdit] = useState(null);
+  const libraryReturn = useRef(null);
   const [libraryPersistenceWarning, setLibraryPersistenceWarning] = useState('');
   const libraryMetadataSaveChain = useRef(Promise.resolve());
   const libraryMetadataRequest = useRef(0);
@@ -1836,7 +1843,17 @@ function App() {
     setPdfComment({ ...comment, page });
     setModal('pdfComment');
   }
+  function editLibraryLabel(item, index, scrollTop) {
+    libraryReturn.current = { id: item.id, index, scrollTop };
+    setLibraryEdit({ id: item.id, name: item.name, tags: (item.tags || []).join(', ') });
+    setModal('libraryLabel');
+  }
+  function returnToLibrary() {
+    setLibraryEdit(null);
+    setModal(current => current === 'libraryLabel' ? 'library' : current);
+  }
   function dismissModal() {
+    if (modal === 'libraryLabel') { returnToLibrary(); return; }
     if (modal === 'paragraphEdit') { cancelParagraphEdit(); return; }
     if (modal === 'onboarding') { if (!onboardingBusyRef.current) finishOnboarding('skip'); return; }
     setModal('');
@@ -2250,7 +2267,20 @@ function App() {
         event.preventDefault(); (event.shiftKey ? last : first).focus();
       }
     };
-    dialog.focus();
+    if (modal === 'libraryLabel') dialog.querySelector('input')?.focus();
+    else if (modal === 'library' && libraryReturn.current) {
+      const { id, index, scrollTop } = libraryReturn.current;
+      libraryReturn.current = null;
+      const rows = [...dialog.querySelectorAll('.library-entry')];
+      const row = rows.find(node => node.dataset.libraryId === id) || rows[Math.min(index, rows.length - 1)];
+      const target = row?.querySelector('.icon-button') || dialog.querySelector('input');
+      dialog.querySelector('.modal-body').scrollTop = scrollTop;
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: 'nearest' });
+    } else {
+      libraryReturn.current = null;
+      dialog.focus();
+    }
     document.addEventListener('keydown', trap, true);
     return () => {
       document.removeEventListener('keydown', trap, true);
@@ -4224,7 +4254,7 @@ function App() {
     <aside id="research-inspector" className={`inspector ${compactInspector ? 'inspector-drawer' : 'inspector-sidebar'}`} inert={Boolean(modal)}><div className="inspector-title"><div><h2>Research Inspector</h2><small>Selection, explanation, highlights, and notes</small></div><div className="row"><button id="inspector-undo-annotation" className="icon-button" title="Undo last highlight or note change" disabled={!canUndoAnnotation} onClick={() => undoLastChange('annotations')}><Undo2 size={16} /></button><button className="icon-button" aria-label={compactInspector ? 'Close inspector drawer' : 'Hide inspector'} onClick={() => { void finishNoteEditing(); setInspector(false); }}>{compactInspector ? <X size={16} /> : <PanelRightClose size={16} />}</button></div></div><div className="inspector-body"><div className="inspector-primary">{selection ? <div className="inspector-scroll"><div className="inspector-section"><small className="selection-meta"><span>{isPdfScope(selection.scope) ? `${selection.scope === 'paperPdf' ? 'PAPER · EXACT PDF' : 'ORIGINAL PDF'} · ${pdfPageLabel(selection).toUpperCase()}` : selection.id ? `SELECTED TEXT · BLOCK ${selection.id}` : `SELECTED TEXT · ${selection.scope === 'paperArticle' ? 'PAPER' : annotationLabel(selection).split(' · ')[0].toUpperCase()}`}</span><span>{selection.kind === 'translation' ? 'TRANSLATION' : 'ORIGINAL'}</span></small><blockquote className={`inspector-selection-quote${selection.scope === 'paperArticle' ? ' paper-article-quote' : ''}`} data-side={selection.kind}><span className="inspector-quote-text">{selection.quote ?? selection.text}</span></blockquote><div className="action-grid"><button disabled={!!busy} onClick={() => runSelection('translate')}><Languages size={16} /> Translate</button><button disabled={!!busy} onClick={() => runSelection('explain')}><Sparkles size={16} /> Explain</button></div>{busy && taskRef.current?.kind === 'selection' && <div className="selection-lookup-busy" role="status"><span>{busy.label}</span><button onClick={cancelTask}>Cancel</button></div>}{!busy && selectionLookup.error && <p className="selection-lookup-message error" role="alert">{selectionLookup.error}</p>}{!busy && !selectionLookup.error && selectionLookup.status && <p className="selection-lookup-message">{selectionLookup.status}</p>}</div><SelectionResults results={selectionResults} /><div className="inspector-section"><small>HIGHLIGHT</small><HighlightControls activeColor={activeHighlightColor} onAdd={addHighlight} onRemove={removeSelectionHighlight} /></div><div className="inspector-section"><small>NOTE</small><textarea key={noteSelectionIdentity(paper.id, selection)} aria-label="Note for selected passage" aria-describedby="note-save-hint" placeholder="What should you remember?" value={noteDraft} onChange={event => updateNote(event.target.value, noteSelectionIdentity(paper.id, selection))} onBlur={() => void finishNoteEditing()} /><div className="note-save-actions"><span id="note-save-hint" className={workspaceSave.status === 'error' ? 'error' : undefined}>{workspaceSave.status === 'error' ? 'Not saved to disk' : workspaceSave.status === 'saving' ? 'Saving note…' : 'Notes save automatically'}</span><button className="button blue" onClick={saveNote}>{workspaceSave.status === 'error' ? 'Retry note save' : 'Save note'}</button></div></div><div className="inspector-section"><small>SAVED TERMINOLOGY</small><input placeholder="Approved translation" value={termDraft} disabled={glossarySaving} onChange={event => setTermDraft(event.target.value)} /><button className="button outline" disabled={glossarySaving || !trimLibraryText(termDraft)} onClick={addTerm}>Save term</button></div></div> : <div className="inspector-scroll"><p className="inspector-help">Select text in Paper, Reader, Original PDF, Overview summaries, or Full Translation to translate, explain, highlight, annotate, or save a term.</p>{paper && <><div className="inspector-section"><small>THIS PAPER</small><p>{paper.blocks.filter(block => block.bookmark).length} bookmarks · {paper.blocks.reduce((count, block) => count + (block.notes?.length || 0), 0) + (paper.pdfNotes?.length || 0) + (paper.viewNotes?.length || 0)} notes</p></div><div className="inspector-section"><small>QUICK ACTIONS</small><button className="inspector-link" onClick={openTranslationRange}>Choose translation range</button><button className="inspector-link" disabled={!canExport || !!busy} onClick={exportDefaultMarkdown}>{defaultExportLabel}</button><button className="inspector-link" onClick={() => openSettings()}>Local AI settings</button></div></>}</div>}</div><div className="inspector-supporting">{paper && (!selection || selection.scope === 'reader') && <ParagraphExplanation paper={paper} activeBlock={activeBlock} language={explanationLanguage} setLanguage={changeExplanationLanguage} result={paragraphExplanation} onExplain={explainBlock} busy={busy} />}{paper && <SavedAnnotations paper={paper} navigateBlockAnnotation={navigateBlockAnnotation} navigateView={navigateView} navigatePdf={navigatePdf} removeRecords={removeAnnotationRecords} />}</div></div></aside>
     {selection?.rect && !modal && !inspector && !focus && <QuickSelection selection={selection} results={selectionResults} busy={busy} lookupBusy={Boolean(busy && taskRef.current?.kind === 'selection')} lookup={selectionLookup} activeColor={activeHighlightColor} quickTermOpen={quickTermOpen} termDraft={termDraft} termSaving={glossarySaving} setTermDraft={setTermDraft} onTranslate={() => runSelection('translate')} onExplain={() => runSelection('explain')} onHighlight={addHighlight} onRemoveHighlight={removeSelectionHighlight} onOpenTerm={() => { setTermDraft(selectionResults.translate || ''); setQuickTermOpen(true); }} onSaveTerm={addTerm} onCancelTerm={() => { setQuickTermOpen(false); setTermDraft(''); }} onMore={() => { setInspector(true); setTimeout(() => document.querySelector('.inspector-section textarea')?.focus(), 0); }} onCancelTask={cancelTask} onClose={dismissQuickSelection} />}
     {modal === 'paragraphEdit' && edit && <ParagraphEditor key={edit.paperId + ':' + edit.id} edit={edit} onChange={updateParagraphDraft} onCancel={cancelParagraphEdit} onSave={saveEdit} busy={!!busy} />}
-    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) dismissModal(); }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
+    {modal && modal !== 'paragraphEdit' && <div className="modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) { event.preventDefault(); dismissModal(); } }}><div ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-busy={modal === 'onboarding' && onboardingFinishing} tabIndex={-1} className={`modal ${modal === 'onboarding' ? 'onboarding-modal' : modal === 'settings' ? 'settings-modal' : ''}`}><div className="modal-head"><h2 id="modal-title">{({ settings: 'Settings', setup: 'Local AI setup', onboarding: 'Getting Started', glossary: 'Saved Terminology', library: 'Paper Library', libraryLabel: 'Edit Library Label', more: 'More tools', range: 'Translation range', export: 'Export Options', clearData: 'Remove Saved Data', attachment: attachment.entry?.name, pdfComment: pdfComment?.kind })[modal]}</h2><button className="icon-button" aria-label="Close dialog" disabled={modal === 'onboarding' && (onboardingBusy || onboardingFinishing)} onClick={dismissModal}><X size={19} /></button></div>{modal === 'onboarding' && onboardingSaveError && <p className="onboarding-error" role="alert">{onboardingSaveError}</p>}<div className="modal-body" inert={modal === 'onboarding' && onboardingFinishing}>
       {modal === 'pdfComment' && pdfComment && <>
         <p className="muted">Page {pdfComment.page}{pdfComment.author && <> · {pdfComment.author}</>}</p>
         <p className="pdf-comment-body" dir="auto">{pdfComment.body}</p>
@@ -4242,8 +4272,8 @@ function App() {
         hardwareTools={{ hardware, mineruRuntime, checking: checkingHardware, onCheck: checkHardware, error: hardwareError }}
         updates={{ version: appVersion, checking: checkingUpdates, status: updateStatus, availableVersion: updateInfo?.latestVersion, downloadLabel: updateButtonLabel, downloadInApp: updateInfo?.downloadInApp, filePhase, fileMessage, onOpenInstaller: installAvailable ? () => openUpdateInstaller() : null, installerBusy: Boolean(busy || openingInstaller), onDownload: downloadUpdate, onViewRelease: openUpdateRelease, onSkip: skipUpdate, onCheck: () => checkForUpdates(false) }} />}
       {modal === 'glossary' && <SavedTerminology glossary={glossary} saving={glossarySaving} error={glossaryError} onRemove={removeTerm} />}
-      {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} setLibraryEdit={setLibraryEdit} persistenceWarning={libraryPersistenceWarning} />}
-      {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={() => { setModal(current => current === 'libraryLabel' ? 'library' : current); setLibraryEdit(null); }} onCancel={() => setModal('library')} />}
+      {modal === 'library' && <LibraryView entries={library} query={libraryDialogSearch} setQuery={setLibraryDialogSearch} loadPaper={loadPaper} setModal={setModal} busy={Boolean(busy)} onEditLabel={editLibraryLabel} persistenceWarning={libraryPersistenceWarning} />}
+      {modal === 'libraryLabel' && libraryEdit && <LibraryLabelEditor key={libraryEdit.id} item={libraryEdit} onSave={saveLibraryLabel} onSaved={returnToLibrary} onCancel={returnToLibrary} />}
       {modal === 'more' && <div className="menu-list">
         <button disabled={!paper} onClick={openTranslationRange}><Languages size={17} /> Translation Range</button>
         <button onClick={() => setModal('library')}><Library size={17} /> Paper Library</button>

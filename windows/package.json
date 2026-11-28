@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.127",
+  "version": "0.2.128",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -11,7 +11,7 @@
     "test:e2e": "node tests/e2e.cjs",
     "test:paper-settings-e2e": "node tests/paper-settings-e2e.cjs",
     "test:model-pull-e2e": "node tests/model-pull-e2e.cjs",
-    "test:last-opened-e2e": "node tests/last-opened-e2e.cjs",
+    "test:last-opened-e2e": "node tests/last-opened-e2e.cjs && node tests/library-edit-return-e2e.cjs",
     "test:reader-review-e2e": "node tests/reader-review-e2e.cjs",
     "test:reader-toolbar-e2e": "node tests/reader-toolbar-e2e.cjs",
     "test:paragraph-selection-e2e": "node tests/paragraph-selection-e2e.cjs && node tests/selection-edges-e2e.cjs",

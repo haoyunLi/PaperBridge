@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+资料库保存或取消标签编辑后，保留搜索、滚动与条目焦点。支持中文输入法确认候选和 Enter 保存。[打包版交互验证](tests/library-edit-return-e2e.cjs)
+
 Windows 首次窗口适配显示器实际工作区。在 300% 和 400% 缩放下，长标题、翻页和重启恢复已用打包版验证。[高缩放验收](tests/scaled-startup-e2e.cjs)
 
 在原 PDF 内使用 Ctrl+A 可选中整份文档的文字。四页校准记录的 Ctrl+C 逐字、逐行匹配 Mac，20 页论文可一键复制并保存跨页笔记。[原生对照与桌面测试](tests/pdf-select-all-e2e.cjs)
