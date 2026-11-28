@@ -20,6 +20,8 @@ foreach ($file in $files) {
 
 ## 允许运行后没有看到窗口
 
+从应用内打开安装包时，留意任务栏中 Windows 的确认窗口。确认后应出现安装向导。在向导最后保留 **Run PaperBridge** 并选 **Finish**，即可打开新版。两台干净的 Windows 机器分别验证了公开下载触发 SmartScreen，以及同一 SHA-256 的安装包完成升级、显示新版窗口并恢复旧论文的笔记和书签。[安装向导与新版启动验收](https://github.com/haoyunLi/PaperBridge/actions/runs/46107285516)
+
 在旧便携版中，如果临时目录很深，解包程序可能在显示阅读器前停住。0.2.101 修复了在本机复现的这个问题。发布验证会在带有空格与中文的深层临时目录中从公开便携包打开并显示一篇 PDF。[启动复查](WHOLE_APP_REVIEW.md)
 
 想先读一篇论文，可以在仓库首页选择 **Download Windows portable (.exe)**。确认下载的文件名以 `-x64-Portable.exe` 结尾，然后从文件资源管理器打开。首次引导里选 **Skip setup** 即可导入 PDF。若选择的是 `-x64-Setup.exe`，请先完成安装，再到开始菜单打开 **PaperBridge**。再次打开已启动的阅读器会把原窗口带到前台。请使用 0.2.36 或更新的便携版，较早版本重复打开时可能清理第一个窗口仍在使用的临时资源。[Windows 下载入口](https://github.com/haoyunLi/PaperBridge#windows-download-preview)

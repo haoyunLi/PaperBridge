@@ -19,6 +19,16 @@ async function run() {
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace,
       PORTABLE_EXECUTABLE_FILE: portable ? path.join(workspace, 'PaperBridge Portable.exe') : '' }, timeout: 30000 });
   let app;
+  const expectRevealed = async (readPath, expected) => {
+    const deadline = Date.now() + 10000;
+    let actual;
+    do {
+      actual = await app.evaluate(readPath);
+      if (actual !== undefined) break;
+      await new Promise(resolve => setTimeout(resolve, 40));
+    } while (Date.now() < deadline);
+    assert.equal(actual, expected, 'File Explorer received the reverified download');
+  };
   try {
     app = await launch();
     let page = await app.firstWindow();
@@ -189,7 +199,7 @@ async function run() {
     const savedFile = path.join(workspace, 'update-downloads', identity.portableName);
     assert.equal(fs.readFileSync(savedFile, 'utf8'), bytes);
     await page.evaluate(tag => window.paperBridge.revealUpdate(tag), identity.tag);
-    assert.equal(await app.evaluate(() => global.__revealed), savedFile);
+    await expectRevealed(() => global.__revealed, savedFile);
     await app.close(); app = null;
     app = await launch(true);
     await useFixtureVerifier(app);
@@ -236,7 +246,7 @@ async function run() {
     await install.click();
     await settings.getByText(/Windows blocked this installer/).waitFor();
     await settings.getByRole('button', { name: 'Show downloaded update', exact: true }).click();
-    assert.equal(await app.evaluate(() => global.__revealedSetup), installer);
+    await expectRevealed(() => global.__revealedSetup, installer);
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), 'windows-v99.0.0'), /current verified Setup/);
     fs.writeFileSync(installer, 'x'.repeat(bytes.length));
     await assert.rejects(page.evaluate(tag => window.paperBridge.openUpdateInstaller(tag), identity.tag), /no longer matches/);

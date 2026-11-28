@@ -153,6 +153,17 @@ test('PDF lines and manual paragraph merges retain punctuation spacing and annot
   assert.equal(merged.highlights[0].needsReview, false);
 });
 
+test('vertical columns read right to left within each band, keeping horizontal text and Latin spacing', async () => {
+  const { pageLines } = await import('../src/pdfLayout.mjs');
+  const vertical = (str, x, y, height) => ({ str, dir: 'ttb', transform: [12, 0, 0, 12, x, y], width: 12, height });
+  const horizontal = (str, y) => ({ str, dir: 'ltr', transform: [12, 0, 0, 12, 25, y], width: 94, height: 12 });
+  const items = [vertical('信 号 ︒', 80, 420, 36), vertical('源', 180, 407, 12), horizontal('Upper record', 475),
+    vertical('光', 180, 419, 12), vertical('pH 7', 80, 230, 48), horizontal('Lower record', 265),
+    vertical('測定︑再検査︒', 180, 226, 72), horizontal('End of record', 65)];
+  assert.deepEqual(pageLines({ items, styles: {} }, [0, 0, 240, 500]).map(line => line.text),
+    ['Upper record', '光源', '信号。', 'Lower record', '測定、再検査。', 'pH 7', 'End of record']);
+});
+
 test('PDF item reconstruction repairs spaced fragments without changing line geometry', async () => {
   const { pageLines } = await import('../src/pdfLayout.mjs');
   const { blocksFromLines } = await import('../src/text.mjs');

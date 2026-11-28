@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 竖排日文校准记录
+
+在 RX 7800 XT 上用 0.2.113 打包版导入两页竖排记录，留下书签和对照笔记。0.2.114 从同一原 PDF 创建的新副本准确分出五列日文和三行横排文字，全部对应 Mac PDFKit。4B 将「三回の測定でピーク位置は変化しなかった。」译成 “The peak positions did not change across the three measurements.”。用鼠标在原页纵向划选「三回の測定」并保存笔记，再从右列拖到中列记录跨列笔记。重开后，译文、原页笔记和 Reader 书签均可读取，旧副本的三段文本和原有批注仍在。[打包版测试](tests/vertical-pdf-e2e.cjs)
+
 ## 长论文文件名下的真实译文导出
 
 0.2.113 在 RX 7800 XT 上导入含长文件名的三页英中记录，4B 将 “The reference signal remained constant.” 译成「参考信号保持不变。」。同次读取 Ollama 报告显存 2,881,948,220 字节。此译文出现在单独保存的译文、双语和分析版，原文版保留原文。四个默认文件名各不相同，导出的原始 PDF 与导入文件逐字节相同。另用 20 页期刊论文比对 Mac 参考的 208 个已译段落。[四种导出](tests/export-names-e2e.cjs) · [期刊论文资源包](tests/pdf-journal-export-e2e.cjs)

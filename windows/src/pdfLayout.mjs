@@ -365,7 +365,83 @@ function journalSidebarBoundary(rows, width) {
   return leftRows.length >= 5 && mainRows.length >= 5 ? boundary : null;
 }
 
-export function pageLines(content, [left, bottom, right, top]) {
+function verticalText(value) {
+  const text = value.replaceAll('︒', '。').replaceAll('︑', '、');
+  const pieces = text.trim().split(' ');
+  // PDF.js can insert a space between every glyph of a vertically tracked CJK column.
+  return pieces.length >= 3 && pieces.every(piece => /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}々ー。、]$/u.test(piece))
+    ? pieces.join('') : text;
+}
+
+function verticalColumns(items, left, bottom) {
+  const columns = [];
+  const ordered = [...items].sort((a, b) => b.transform[4] - a.transform[4]);
+  for (const item of ordered) {
+    const x = item.transform[4] - left, y = item.transform[5] - bottom;
+    const width = item.width || Math.hypot(item.transform[0], item.transform[1]) || 1;
+    let column = columns.at(-1);
+    if (!column || Math.abs(column.x - x) > Math.min(column.width, width) * 0.4) {
+      column = { x, width, pieces: [] };
+      columns.push(column);
+    }
+    column.pieces.push({ item, y, end: y - item.height, text: verticalText(item.str) });
+  }
+  const lines = [];
+  for (const { x, width, pieces } of columns) {
+    let line;
+    for (const piece of pieces.sort((a, b) => b.y - a.y)) {
+      if (!line || line.bottom - piece.y > width * 1.5) {
+        line = { x, y: piece.y, bottom: piece.end, width, height: width, text: piece.text, items: [piece.item], independent: true, lane: 'spanning' };
+        lines.push(line);
+      } else {
+        const wordGap = line.bottom - piece.y > width * 0.2 && /[A-Za-z0-9]$/.test(line.text) && /^[A-Za-z0-9]/.test(piece.text);
+        line.text += (wordGap ? ' ' : '') + piece.text;
+        line.bottom = Math.min(line.bottom, piece.end);
+        line.items.push(piece.item);
+      }
+    }
+  }
+  return lines;
+}
+
+function insertVerticalColumns(horizontal, columns, yOf, entriesFor) {
+  columns.sort((a, b) => b.y - a.y);
+  const result = [];
+  let horizontalAt = 0;
+  for (let i = 0; i < columns.length;) {
+    const top = columns[i].y;
+    while (horizontalAt < horizontal.length && yOf(horizontal[horizontalAt]) > top) result.push(horizontal[horizontalAt++]);
+    // Overlapping columns belong to one right-to-left band. A later band restarts on the right.
+    const start = i;
+    let floor = columns[i++].bottom;
+    while (i < columns.length && columns[i].y > floor) floor = Math.min(floor, columns[i++].bottom);
+    for (const column of columns.slice(start, i).sort((a, b) => b.x - a.x || b.y - a.y)) {
+      for (const entry of entriesFor(column)) result.push(entry);
+    }
+  }
+  return result.concat(horizontal.slice(horizontalAt));
+}
+
+function hasVerticalText(item) { return item.dir === 'ttb' && item.str?.trim(); }
+
+export function pageLines(content, view) {
+  const vertical = content.items.filter(hasVerticalText);
+  if (!vertical.length) return horizontalPageLines(content, view);
+  const horizontal = horizontalPageLines({ ...content, items: content.items.filter(item => !hasVerticalText(item)) }, view);
+  return insertVerticalColumns(horizontal, verticalColumns(vertical, view[0], view[1]), line => line.y, column => [column]);
+}
+
+export function verticalSelectionContent(content, view) {
+  const vertical = content.items.filter(hasVerticalText);
+  // Leave marked-content wrappers paired if the caller explicitly requested tagged PDF text.
+  if (!vertical.length || content.items.some(item => typeof item.str !== 'string')) return content;
+  const horizontal = content.items.filter(item => !hasVerticalText(item));
+  const items = insertVerticalColumns(horizontal, verticalColumns(vertical, view[0], view[1]),
+    item => item.transform[5] - view[1], column => column.items);
+  return { ...content, items };
+}
+
+function horizontalPageLines(content, [left, bottom, right, top]) {
   const pageHeight = top - bottom;
   const width = right - left;
   const mid = width / 2;
