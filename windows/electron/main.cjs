@@ -18,7 +18,7 @@ const { findMineruMarkdown, readMineruMarkdown, readMineruPageHints, unpackMiner
 const { openPaperAttachment } = require('./paper-attachment.cjs');
 const { keepMineruResult, findPaperMineruMarkdown, removeMineruResult } = require('./mineru-resources.cjs');
 const { createMineruJobGuard } = require('./mineru-job.cjs');
-const { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
+const { writeBundle, writeBundleFacsimile, bundleWriteError, pageImageName, maximumPreviewPages, safeName } = require('./bundle.cjs');
 const { createPageArchive, validPageImage } = require('./pdf-page-archive.cjs');
 const { importPdfAsset, independentPdfAsset, selectIndependentPdfAsset } = require('./pdf-ingest.cjs');
 const { createUpdateChecker, releaseUrl, updateDownload } = require('./updates.cjs');
@@ -389,8 +389,10 @@ function registerHandlers() {
     if (cached && !png) return false;
     if (!validPageImage(png)) throw new Error('Invalid page image.');
     const pages = path.join(folder, 'pages');
-    fs.mkdirSync(pages, { recursive: true });
-    fs.writeFileSync(path.join(pages, pageImageName(pageNumber)), png);
+    try {
+      fs.mkdirSync(pages, { recursive: true });
+      writeFileAtomically(path.join(pages, pageImageName(pageNumber)), png);
+    } catch (error) { throw bundleWriteError(error, folder); }
     renderedPages.add(pageNumber);
     if (!cached) archive?.savePage(pageNumber, png);
     return true;
@@ -399,7 +401,8 @@ function registerHandlers() {
     const bundle = pageBundle(id, folder);
     if (!Number.isSafeInteger(pageCount) || pageCount < 0) throw new Error('Invalid PDF page count.');
     activeBundle = null;
-    writeBundleFacsimile(bundle, pageCount, stopped === true);
+    try { writeBundleFacsimile(bundle, pageCount, stopped === true); }
+    catch (error) { throw bundleWriteError(error, folder); }
     bundle.archive?.savePageCount(pageCount);
     if (completed === true && stopped !== true) revealBundle(bundle.folder);
   });

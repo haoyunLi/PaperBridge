@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.120",
+  "version": "0.2.121",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -53,6 +53,7 @@
     "test:pdf-legacy-notes-e2e": "node tests/pdf-legacy-notes-e2e.cjs",
     "test:long-pdf-selection-e2e": "node tests/long-pdf-selection-e2e.cjs",
     "test:pdf-journal-export-e2e": "node tests/pdf-journal-export-e2e.cjs --paper-code",
+    "test:interrupted-bundle-e2e": "node tests/interrupted-bundle-e2e.cjs",
     "test:export-names-e2e": "node tests/export-names-e2e.cjs",
     "test:scanned-original-e2e": "node tests/scanned-original-e2e.cjs && node tests/long-facsimile-e2e.cjs",
     "test:import-modes-e2e": "node tests/import-modes-e2e.cjs && node tests/pdf-drop-e2e.cjs",

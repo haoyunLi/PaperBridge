@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { writeFileAtomically, copyFileAtomically } = require('./atomic-file.cjs');
 const { decodePaperText, rewriteAssetUrls, visitLocalAssets, localAssetReference, assetFile, archivePathKey, isMarkdownFile, mineruResultManifest, maxMarkdownBytes } = require('./markdown-assets.cjs');
 const maximumPreviewPages = 120;
 // Keep the generated Markdown index usable even with an abnormally large PDF page count.
@@ -38,10 +39,22 @@ function uniqueFolder(parent, name) {
   throw new Error('Could not create a unique export folder.');
 }
 
+function bundleWriteError(error, folder) {
+  const detail = error.code === 'ENOSPC' ? 'There is not enough free space to finish the bundle. Free some space or choose another folder.'
+    : ['EACCES', 'EPERM', 'EBUSY'].includes(error.code) ? 'Windows could not write a bundle file. Close any app using it or choose a writable location.'
+    : error.message;
+  return new Error(detail + ' The export folder is ' + folder, { cause: error });
+}
+
 function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
   if (!Array.isArray(documents) || !documents.length) throw new Error('No Markdown documents to export.');
   const paperStem = path.parse(String(paper.name || 'PaperBridge')).name;
   const folder = uniqueFolder(parent, `${safeName(paperStem)}_PaperBridge`);
+  try { return writeBundleContents(folder, paper, documents, pdfPath, assetDirectory); }
+  catch (error) { throw bundleWriteError(error, folder); }
+}
+
+function writeBundleContents(folder, paper, documents, pdfPath, assetDirectory) {
   const assets = path.join(folder, 'assets');
   const assetNames = new Set();
   const missing = new Set();
@@ -71,7 +84,7 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
       return null;
     }
     // Links inside copied Markdown resolve relative to this tree without changing its bytes.
-    const destination = saveAsset('source/' + relative, file => fs.copyFileSync(asset.file, file));
+    const destination = saveAsset('source/' + relative, file => copyFileAtomically(asset.file, file));
     const url = destination.split('/').map(part => encodeURIComponent(part).replace(/[!'()*]/g,
       char => '%' + char.charCodeAt(0).toString(16).toUpperCase())).join('/');
     namedAssets.set(key, url);
@@ -88,7 +101,7 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
       const bytes = Buffer.from(encoded, 'base64');
       const digest = crypto.createHash('sha256').update(bytes).digest('hex');
       const ext = type.toLowerCase() === 'jpeg' ? 'jpg' : type.toLowerCase();
-      return saveAsset(`${digest}.${ext}`, file => fs.writeFileSync(file, bytes));
+      return saveAsset(`${digest}.${ext}`, file => writeFileAtomically(file, bytes));
     }
     if (paper.sourceMode !== 'mineru' && !source) return url;
     const reference = localAssetReference(url);
@@ -106,7 +119,7 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
     let name = `${stem}.md`;
     for (let i = 2; used.has(name.toLowerCase()); i++) name = `${stem}-${i}.md`;
     used.add(name.toLowerCase());
-    fs.writeFileSync(path.join(folder, name), rewriteAssetUrls(document.content, externalize, { includeLinks: true }), 'utf8');
+    writeFileAtomically(path.join(folder, name), rewriteAssetUrls(document.content, externalize, { includeLinks: true }));
     if (originalPdf && paper.facsimile && facsimileHeadings.has(document.kind)) {
       const heading = document.kind === 'translated' && typeof document.targetLanguage === 'string'
         && /^[A-Za-z]+(?: [A-Za-z]+)*$/.test(document.targetLanguage)
@@ -117,7 +130,7 @@ function writeBundle(parent, paper, documents, pdfPath, assetDirectory) {
   for (const [relative, file] of pendingMarkdown) {
     visitLocalAssets(decodePaperText(fs.readFileSync(file)), relative, copyNamedAsset);
   }
-  if (originalPdf) fs.copyFileSync(pdfPath, path.join(folder, 'original.pdf'));
+  if (originalPdf) copyFileAtomically(pdfPath, path.join(folder, 'original.pdf'));
   return { folder, documents: documents.length, assets: assetNames.size, missingAssetPaths: [...missing].sort(), unscannedMarkdownPaths, originalPdf, facsimileDocuments };
 }
 
@@ -148,18 +161,14 @@ function writeBundleFacsimile({ folder, facsimileDocuments, renderedPages }, pag
     }
   }
   const facsimile = ['# Original PDF facsimile', `> ${notice.join(' ')}`, '[Open the exact original PDF](original.pdf)', ...pages].join('\n\n');
-  fs.writeFileSync(path.join(folder, 'Original Pages.md'), `${facsimile}\n`, 'utf8');
+  writeFileAtomically(path.join(folder, 'Original Pages.md'), `${facsimile}\n`);
   for (const { name, heading } of facsimileDocuments) {
     const destination = path.join(folder, name);
     const body = fs.readFileSync(destination, 'utf8');
     const content = body.trim() ? body : '> No selectable text was found. Use an OCR parser to recover the text.';
     const combined = `${facsimile}\n\n---\n\n# ${heading}\n\n${content}${content.endsWith('\n') ? '' : '\n'}`;
-    const temporary = `${destination}.tmp`;
-    try {
-      fs.writeFileSync(temporary, combined, 'utf8');
-      fs.renameSync(temporary, destination);
-    } finally { fs.rmSync(temporary, { force: true }); }
+    writeFileAtomically(destination, combined);
   }
 }
 
-module.exports = { writeBundle, writeBundleFacsimile, pageImageName, maximumPreviewPages, safeName };
+module.exports = { writeBundle, writeBundleFacsimile, bundleWriteError, pageImageName, maximumPreviewPages, safeName };

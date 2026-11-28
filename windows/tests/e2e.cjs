@@ -662,13 +662,13 @@ async function run() {
     const failBundleWrite = name => app.evaluate((_electron, filename) => {
       const fs = process.getBuiltinModule('node:fs');
       const path = process.getBuiltinModule('node:path');
-      const write = fs.writeFileSync;
-      fs.writeFileSync = function (target, ...args) {
-        if (typeof target === 'string' && path.basename(target) === filename) {
-          fs.writeFileSync = write;
+      const rename = fs.renameSync;
+      fs.renameSync = function (staged, target) {
+        if (path.basename(target) === filename) {
+          fs.renameSync = rename;
           throw new Error(`Fixture cannot write ${filename}.`);
         }
-        return write.call(this, target, ...args);
+        return rename.call(this, staged, target);
       };
     }, name);
     await watchReveals();
