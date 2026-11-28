@@ -16,7 +16,7 @@ import { findNumberedAuthorBlock } from './authorByline.mjs';
 import { openPdf, extractPdf, renderPagePng } from './pdf.mjs';
 import { omitClippedFigureText } from './pdfFigureText.mjs';
 import { rotatedSelectionContent, usesPageRotation, verticalSelectionContent, wholePdfPageText } from './pdfLayout.mjs';
-import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
+import { isPdfScope, pdfAnnotationScope, validPdfSelection, pdfAnchorKey, pdfAnchors, canRecheckPdfPageGap, resolvedPdfOffset, samePdfSelection, storedPdfAnchors, pdfPageLabel, sourcePageLabel } from './pdfAnchors.mjs';
 import { replaceHighlight, visibleHighlightSpans } from './highlightSpans.mjs';
 import { blockMarkdown, isMarkdownView, markdownAnnotationOffset, matchingTextOffset, paperArticleAnchorAvailable, paperArticleSource, paperPassageVisibility, paperUsesMarkdown, sameTextAnchor, sameViewAnchor, selectionOffsets, textAnchorAvailable, validTextSelection } from './markdownAnchors.mjs';
 import { blocksFromText, practiceParagraphs, readingMap, chunkText, isHeading, isPdfListing, pdfFootnoteMarker } from './text.mjs';
@@ -661,10 +661,10 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     const verifiedAnchors = [];
     const ranges = [];
     for (const anchor of anchors) {
-      if (!Number.isInteger(anchor.page) || anchor.page < 1 || typeof anchor.text !== 'string') { onNavigationFailure(); return; }
+      if (!Number.isInteger(anchor.page) || anchor.page < 1 || anchor.page > pdf.numPages || typeof anchor.text !== 'string') { onNavigationFailure(); return; }
       const root = pdfLayerFor(host, anchor.page);
       if (!root) {
-        if (anchor.page > pdf.numPages || typeof statuses[anchor.page] === 'string') onNavigationFailure();
+        if (typeof statuses[anchor.page] === 'string') onNavigationFailure('unreadable');
         return;
       }
       const offset = resolvedPdfOffset(navigation, anchor, root.textContent);
@@ -674,6 +674,11 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
       ranges.push(range);
     }
     if (!ranges.length) { onNavigationFailure(); return; }
+    // The range also crosses scan-only or blank pages that have no saved text anchor.
+    for (let page = anchors[0].page + 1; page < anchors.at(-1).page; page++) {
+      if (typeof statuses[page] === 'string') { onNavigationFailure('unreadable'); return; }
+      if (!pdfLayerFor(host, page)) return;
+    }
     const first = ranges[0];
     const last = ranges.at(-1);
     const range = document.createRange();
@@ -804,9 +809,16 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     return () => host.removeEventListener('wheel', onWheel);
   }, [pdf]);
   function handlePdfShortcut(event) {
-    if (event.key === 'Escape' && selectThrough) {
-      event.preventDefault(); event.stopPropagation();
-      wholeSelection.cancel(); return;
+    if (event.key === 'Escape' && !event.nativeEvent.isComposing && scroller.current?.contains(event.target)) {
+      const selection = window.getSelection();
+      const inPdf = !selection.isCollapsed && scroller.current.contains(selection.anchorNode) && scroller.current.contains(selection.focusNode);
+      if (selectThrough || inPdf) {
+        event.preventDefault(); event.stopPropagation();
+        wholeSelection.cancel();
+        if (inPdf) selection.removeAllRanges();
+        onSelect(null);
+      }
+      return;
     }
     if (!event.ctrlKey || event.altKey || event.metaKey || event.isComposing || event.nativeEvent.isComposing) return;
     if (!event.shiftKey && selectThrough && scroller.current?.contains(event.target) && event.key.toLowerCase() === 'c') {
@@ -1258,7 +1270,7 @@ function SavedAnnotations({ paper, navigateBlockAnnotation, navigateView, naviga
         onContextMenu={event => openContext(event, entry, !event.clientX && !event.clientY)}
         onKeyDown={event => { if (event.key === 'ContextMenu' || event.shiftKey && event.key === 'F10') openContext(event, entry, true); }}>
         <button className="annotation-navigate" onClick={() => navigateRecord(primary, entry.records)}>
-          <b className="annotation-label">{entry.label}{entry.review ? ' · source changed, review needed' : ''}</b>
+          <b className="annotation-label">{entry.label}{entry.review ? primary.location === 'pdf' && canRecheckPdfPageGap(primary.item) ? ' · review needed, recheck original PDF' : ' · source changed, review needed' : ''}</b>
           {colors.length > 0 && <span className="annotation-colors">{colors.map(highlightColorName).join(', ')} highlight</span>}
           <span className="annotation-quote" title={entry.quote}>{entry.quote}</span>
           {entry.notes.map(ref => <small className="annotation-note" key={ref.key} title={ref.item.body}>{ref.item.body}</small>)}
@@ -1693,6 +1705,7 @@ function App() {
     }, { delay: manual || zoom != null ? 0 : 250, deferUndo: !manual });
   }
   function selectPdf(anchor, scope) {
+    if (!anchor) { setSelection(null); return; }
     return applyReadingSelection({ ...anchor, id: null, kind: 'source', scope });
   }
   function hideQuickSelection() {
@@ -3686,14 +3699,15 @@ function App() {
     setViewNavigation({ ...item, records, requestId: crypto.randomUUID() });
   }
   function navigatePdf(item) {
-    if (item.needsReview) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
+    const recheck = canRecheckPdfPageGap(item);
+    if (item.needsReview && !recheck) { setError('This saved PDF annotation needs review before it can be opened.'); return; }
     const scope = pdfAnnotationScope(item);
     const targetTab = scope === 'paperPdf' ? 'Paper' : 'Original';
     recordReadingJump(location => location.tab === targetTab && selectionRef.current?.scope === scope
       && samePdfSelection(item, selectionRef.current));
     setInspector(true); setTab(targetTab); setPageNumber(item.page);
     if (scope === 'paperPdf') setDisplayMode('source');
-    setPdfNavigation({ ...item, scope, id: crypto.randomUUID() });
+    setPdfNavigation({ ...item, needsReview: false, recheck, scope, id: crypto.randomUUID() });
     commitPaper(current => ({ ...current, position: { ...current.position, tab: targetTab, page: item.page, ...(scope === 'paperPdf' ? { displayMode: 'source' } : {}) } }));
   }
   function pdfNavigationReady(anchor) {
@@ -3701,12 +3715,13 @@ function App() {
     const next = { ...anchor, id: null, kind: 'source', scope, rect: null };
     const current = paperRef.current;
     const recovered = item => item.anchors == null && item.offset !== next.offset && samePdfSelection(item, pdfNavigation);
-    const needsUpdate = item => !item.needsReview && (
+    const verified = item => pdfNavigation.recheck && item.needsReview && samePdfSelection(item, next);
+    const needsUpdate = item => verified(item) || !item.needsReview && (
       recovered(item) ||
       (!item.quote && anchor.quote && highlightMatchesSelection(item, next)));
     if (current.pdfNotes?.some(needsUpdate) || current.pdfHighlights?.some(needsUpdate)) {
       const update = items => items?.map(item => needsUpdate(item) ? {
-        ...item, ...(recovered(item) && { offset: next.offset, anchors: storedPdfAnchors(next) }),
+        ...item, ...(verified(item) && { needsReview: false }), ...(recovered(item) && { offset: next.offset, anchors: storedPdfAnchors(next) }),
         ...(!item.quote && anchor.quote && { quote: anchor.quote })
       } : item);
       commitPaper(paper => ({ ...paper, pdfNotes: update(paper.pdfNotes), pdfHighlights: update(paper.pdfHighlights) }));
@@ -3715,7 +3730,12 @@ function App() {
     setNoteDraft(findSelectionNote(paperRef.current, next)?.body || '');
     setPdfNavigation(null);
   }
-  function pdfNavigationFailed() {
+  function pdfNavigationFailed(reason) {
+    if (reason === 'unreadable') {
+      setPdfNavigation(null);
+      setError('Could not read the original PDF page. Try opening the annotation again.');
+      return;
+    }
     const requested = pdfNavigation;
     if (requested) {
       const mark = item => (item.anchors == null) === (requested.anchors == null) && samePdfSelection(item, requested)

@@ -6,6 +6,14 @@ export function pdfAnchors(item) {
   return item ? [{ page: item.page, offset: item.offset, text: item.text, pageText: item.pageText }] : [];
 }
 
+export function canRecheckPdfPageGap(item) {
+  if (!item?.needsReview) return false;
+  const anchors = pdfAnchors(item);
+  return anchors.some((anchor, index) => index > 0 && anchor.page > anchors[index - 1].page + 1) &&
+    anchors.every((anchor, index) => Number.isSafeInteger(anchor.page) && anchor.page > (anchors[index - 1]?.page ?? 0) &&
+      Number.isSafeInteger(anchor.offset) && anchor.offset >= 0 && typeof anchor.text === 'string' && anchor.text.length > 0);
+}
+
 export function resolvedPdfOffset(item, anchor, pageText) {
   if (item.needsReview || typeof anchor.text !== 'string' || !anchor.text) return null;
   const { offset, text } = anchor;

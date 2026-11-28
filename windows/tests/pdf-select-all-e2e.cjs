@@ -13,13 +13,17 @@ async function run() {
   const workspace = fs.mkdtempSync(path.join(artifacts, 'pdf-select-all-'));
   const store = createStore(workspace);
   store.saveSettings({ ...defaults, onboardingCompletedVersion: 1, autoCheckUpdates: false, pdfExtractionMode: 'pdfOnly', inspectorOpen: true, quickLookupModel: 'translategemma:4b', sourceLanguage: 'English', targetLanguage: 'Simplified Chinese' });
-  const notebook = process.argv.includes('--notebook');
-  const file = notebook ? 'long-facsimile.pdf' : process.argv.includes('--short') ? 'rotated-spectrometer.pdf' : 'good-enough/article.pdf';
+  const notebook = process.argv.includes('--notebook'), mixed = process.argv.includes('--mixed');
+  let file = 'good-enough/article.pdf', count = 20;
+  if (notebook) { file = 'long-facsimile.pdf'; count = 125; }
+  else if (mixed) { file = 'mixed-spectrometer-log.pdf'; count = 6; }
+  else if (process.argv.includes('--short')) { file = 'rotated-spectrometer.pdf'; count = 4; }
+  const anchorPages = mixed ? [2, 5] : Array.from({ length: count }, (_, index) => index + 1);
+  const lastTextPage = anchorPages.at(-1);
   const source = notebook ? path.join(workspace, file) : path.join(__dirname, 'mac-parity', file);
   if (notebook) fs.writeFileSync(source, longFacsimile());
   const id = createHash('sha256').update(fs.readFileSync(source)).digest('hex');
   const reference = process.env.PAPERBRIDGE_MAC_REFERENCE && JSON.parse(fs.readFileSync(process.env.PAPERBRIDGE_MAC_REFERENCE)).pdfSelectAll?.find(item => item.file === file);
-  const count = notebook ? 125 : file.startsWith('rotated') ? 4 : 20;
   const earlyCopy = count > 4 && !process.argv.includes('--observe');
   const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
   const launch = () => electron.launch({ cwd: root, ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), '--user-data-dir=' + path.join(workspace, 'profile')],
@@ -47,9 +51,11 @@ async function run() {
           window.__earlyCopy = event.clipboardData.getData('text/plain'); event.preventDefault();
         }, { once: true });
       });
-      await host().press('Control+a'); await host().press('Escape');
-      await page.waitForFunction(() => document.querySelector('.pdf-continuous').getAttribute('aria-busy') === 'false');
-      assert.ok(await page.evaluate(() => getSelection().isCollapsed));
+      if (!mixed) {
+        await host().press('Control+a'); await host().press('Escape');
+        await page.waitForFunction(() => document.querySelector('.pdf-continuous').getAttribute('aria-busy') === 'false');
+        assert.ok(await page.evaluate(() => getSelection().isCollapsed));
+      }
     }
     await host().press('Control+a');
     if (earlyCopy) await host().press('Control+c');
@@ -63,14 +69,15 @@ async function run() {
     }
     if (process.env.PAPERBRIDGE_MAC_REFERENCE) {
       assert.equal(reference?.sha256, id);
-      assert.equal(reference.pages.length, count);
+      if (mixed) assert.deepEqual(reference.anchorPages, anchorPages);
+      else assert.equal(reference.pages.length, count);
       assert.ok(reference.copied?.trim());
     }
     await page.waitForFunction(count => {
       const host = document.querySelector('.pdf-continuous'), selection = getSelection();
       return host?.getAttribute('aria-busy') === 'false' && host.contains(selection.anchorNode) && host.contains(selection.focusNode) &&
         Number(selection.focusNode.parentElement?.closest('[data-pdf-page]')?.dataset.pdfPage) === count;
-    }, count, { timeout: 60000 });
+    }, lastTextPage, { timeout: 60000 });
     if (earlyCopy) await page.waitForFunction(() => window.__earlyCopy?.length > 0, null, { timeout: 6000 });
     console.log('Selected PDF pages', count);
     const canvases = await host().locator('canvas').evaluateAll(nodes => nodes.filter(n => n.width > 1 && n.height > 1).length);
@@ -83,7 +90,11 @@ async function run() {
     await page.waitForFunction(() => typeof window.__pdfCopy === 'string');
     const copied = await page.evaluate(() => window.__pdfCopy);
     fs.writeFileSync(path.join(workspace, 'copied-text.txt'), copied);
-    assert.ok(copied.length > (count === 20 ? 30000 : 350));
+    assert.ok(copied.length > (count === 20 ? 30000 : mixed ? 150 : 350));
+    if (mixed) {
+      assert.match(copied, /The initial signal was 12 counts\./);
+      assert.match(copied, /The final signal was 12 counts\./);
+    }
     if (count === 20) assert.match(copied, /20\s*\/\s*20/);
     if (notebook) {
       const lines = Array.from({ length: count }, (_, index) => 'Observation ' + (index + 1) + ' in the printed notebook.');
@@ -94,7 +105,7 @@ async function run() {
       await page.evaluate(() => { delete window.navigator.clipboard.write; });
     }
     assert.doesNotMatch(copied, /Research Inspector|Hide Document Sidebar|Exact original PDF · page/);
-    if ((count === 4 || notebook) && reference) {
+    if ((count === 4 || notebook || mixed) && reference) {
       assert.equal(copied.replace(/\r\n/g, '\n'), reference.copied.replace(/\r\n/g, '\n'));
     }
     if (process.env.GITHUB_ACTIONS === 'true') {
@@ -103,7 +114,19 @@ async function run() {
       assert.equal(data.replace(/\r\n/g, '\n'), copied);
     }
     console.log('Copied characters', copied.length);
-    if (process.argv.includes('--live')) {
+    if (mixed && process.argv.includes('--live')) {
+      const inspector = page.locator('.inspector');
+      await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
+      await inspector.getByText('Selection translated.', { exact: true }).waitFor({ timeout: 120000 });
+      const translation = await inspector.locator('.inspector-result.translate p').innerText();
+      const models = await (await fetch('http://127.0.0.1:11434/api/ps')).json();
+      const model = models.models.find(item => item.name === 'translategemma:4b');
+      console.log(JSON.stringify({ translation, sizeVram: model?.size_vram }));
+      assert.ok(model?.size_vram > 0);
+      assert.ok((translation.match(/12|十二/g) || []).length >= 2);
+      assert.match(translation, /(?:10|十)\s*分钟/); assert.match(translation, /三|3/);
+    }
+    if (!mixed && process.argv.includes('--live')) {
       const inspector = page.locator('.inspector');
       await inspector.getByRole('button', { name: 'Translate', exact: true }).click();
       await inspector.getByText('Selection translated.', { exact: true }).waitFor({ timeout: 180000 });
@@ -134,14 +157,46 @@ async function run() {
     }
     await page.locator('.inspector textarea').fill('Whole document reviewed.');
     await page.getByRole('button', { name: 'Save note', exact: true }).click();
-    await page.waitForFunction(async ({ id, count }) => (await window.paperBridge.loadPaper(id)).pdfNotes.some(note => note.anchors?.length === count), { id, count });
+    await page.waitForFunction(async ({ id, pages }) => (await window.paperBridge.loadPaper(id)).pdfNotes.some(note =>
+      JSON.stringify(note.anchors?.map(anchor => anchor.page)) === JSON.stringify(pages)), { id, pages: anchorPages });
     await app.close(); app = await launch(); page = await app.firstWindow();
     await openWorkspaceView(page, 'Original');
     await page.locator('.annotation-row').filter({ hasText: 'Whole document reviewed.' }).locator('.annotation-navigate').click();
     await page.waitForFunction(count => {
       const selection = getSelection();
       return Number(selection.focusNode?.parentElement?.closest('[data-pdf-page]')?.dataset.pdfPage) === count;
-    }, count, { timeout: 60000 });
+    }, lastTextPage, { timeout: 60000 });
+    if (mixed) {
+      await host().focus(); await host().press('Escape');
+      assert.ok(await page.evaluate(() => getSelection().isCollapsed), 'Escape clears the visible restored PDF selection');
+      assert.equal(await page.locator('.inspector-quote-text').count(), 0);
+      await app.close(); app = null;
+      const paper = store.paper(id);
+      const legacyFile = process.env.PAPERBRIDGE_TEST_GAP_NOTE;
+      const previous = legacyFile ? JSON.parse(fs.readFileSync(legacyFile, 'utf8')).pdfNotes[0] : { ...paper.pdfNotes[0], needsReview: true };
+      assert.equal(previous.needsReview, true);
+      assert.deepEqual(previous.anchors, paper.pdfNotes[0].anchors);
+      const changed = { ...previous, id: 'altered-quote', body: 'Changed PDF text', anchors: previous.anchors.map((item, index) =>
+        index === 0 ? { ...item, text: 'Different source' } : item) };
+      store.savePaper({ ...paper, pdfNotes: [previous, changed] });
+      app = await launch(); page = await app.firstWindow();
+      await openWorkspaceView(page, 'Original');
+      const annotations = page.locator('.annotation-row');
+      const good = annotations.filter({ hasText: 'Whole document reviewed.' });
+      await good.getByText(/review needed, recheck original PDF/).waitFor();
+      await good.locator('.annotation-navigate').click();
+      await page.waitForFunction(async id => {
+        const notes = (await window.paperBridge.loadPaper(id)).pdfNotes;
+        return !notes[0].needsReview && notes[1].needsReview;
+      }, id);
+      await annotations.filter({ hasText: 'Changed PDF text' }).locator('.annotation-navigate').click();
+      await page.getByText('The saved PDF text no longer matches its page ranges. The annotation was kept for review.').waitFor();
+      const reopened = store.paper(id).pdfNotes;
+      assert.equal(reopened[0].id, previous.id);
+      assert.deepEqual(reopened[0].anchors, previous.anchors);
+      assert.deepEqual(reopened[1], changed);
+      console.log(JSON.stringify({ legacy: Boolean(legacyFile), verifiedPages: previous.anchors.map(a => a.page), changedQuoteRetained: true }));
+    }
     if (count === 4) {
       await openWorkspaceView(page, 'Paper');
       await page.getByLabel('Paper display mode').selectOption('source');
@@ -163,6 +218,6 @@ async function run() {
     }).catch(() => null));
     await page.screenshot({ path: path.join(workspace, 'failure.png'), timeout: 3500 }).catch(() => {});
     throw error;
-  } finally { await app.close(); }
+  } finally { if (app) await app.close(); }
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

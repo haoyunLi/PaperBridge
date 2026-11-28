@@ -1,6 +1,6 @@
 {
   "name": "paperbridge-windows",
-  "version": "0.2.130",
+  "version": "0.2.131",
   "private": true,
   "description": "Local academic paper reader for Windows",
   "main": "electron/main.cjs",
@@ -22,7 +22,7 @@
     "test:reader-actions-e2e": "node tests/reader-actions-e2e.cjs",
     "test:quality-review-e2e": "node tests/quality-review-e2e.cjs",
     "test:vertical-pdf-e2e": "node tests/vertical-pdf-e2e.cjs",
-    "test:pdf-links-e2e": "node tests/pdf-links-e2e.cjs && node tests/pdf-named-actions-e2e.cjs && node tests/pdf-comments-e2e.cjs && node tests/pdf-select-all-e2e.cjs --short && node tests/pdf-select-all-e2e.cjs && node tests/pdf-select-all-e2e.cjs --notebook",
+    "test:pdf-links-e2e": "node tests/pdf-links-e2e.cjs && node tests/pdf-named-actions-e2e.cjs && node tests/pdf-comments-e2e.cjs && node tests/pdf-select-all-e2e.cjs --short && node tests/pdf-select-all-e2e.cjs && node tests/pdf-select-all-e2e.cjs --notebook && node tests/pdf-select-all-e2e.cjs --mixed",
     "test:bidi-pdf-e2e": "node tests/bidi-pdf-e2e.cjs",
     "test:rotated-pdf-e2e": "node tests/rotated-pdf-e2e.cjs",
     "test:clear-locked-workspace-e2e": "node tests/clear-locked-workspace-e2e.cjs",

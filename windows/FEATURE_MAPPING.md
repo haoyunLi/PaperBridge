@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+原文笔记可以跨过没有文字的扫描页和空白页。旧版因此提示复核的笔记，可以按原偏移重新核对引文并恢复定位。[打包版回归](tests/pdf-select-all-e2e.cjs)
+
 窄窗口重开论文时，正文标签可直接点击。Esc 可以收起手动打开的侧栏并保留搜索。另用同一份 125 页实验记录实测，两端原生复制文本逐字一致，Windows 可重开跨 125 页的笔记。[窄窗口](tests/overlapping-highlights-e2e.cjs) · [跨页笔记](tests/pdf-select-all-e2e.cjs)
 
 再次双击应用或恢复最小化窗口时，会找回落在所有显示器之外的阅读窗口。保留仍可拖动的跨屏窗口位置。[Windows 实机回归](tests/relaunch-visible-e2e.cjs)
