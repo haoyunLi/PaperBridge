@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 const textA = 'Abstract\n\nPaper A must remain visible while an unrelated PDF import is pending.';
 const textB = 'Abstract\n\nPaper B is the active workspace after the old PDF import was cancelled.';
@@ -83,7 +83,7 @@ async function verifyManualMineruPreservesDocumentOutputs(root, artifacts, pdfBy
     connectedTranslation: 'Full translation from the PDF text layer.', connectedBlocks: [{ id: 1, source: pdfBlock.text, output: 'Full translation from the PDF text layer.', status: 'ok' }],
     position: { block: 1, page: 1, tab: 'Paper', displayMode: 'bilingual' } }));
 
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
@@ -132,7 +132,7 @@ async function run() {
 
   const pdfBytes = samplePdf();
   const pdfId = crypto.createHash('sha256').update(pdfBytes).digest('hex');
-  const app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });

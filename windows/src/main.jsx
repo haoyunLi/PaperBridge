@@ -2455,7 +2455,15 @@ function App() {
     else if (name === 'library') setModal('library');
     else if (name === 'glossary') setModal('glossary');
     else if (name === 'summary') { if (paper) setTab('Summary'); }
-    else if (name === 'find') { if (paper) { setTab('Reader'); setTimeout(() => searchRef.current?.focus({ preventScroll: true }), 0); } }
+    else if (name === 'find' && paper) {
+      if (window.matchMedia('(max-width: 800px)').matches) setSidebar(false);
+      if (inspector && window.matchMedia('(max-height: 480px)').matches) {
+        void finishNoteEditing();
+        setInspector(false);
+      }
+      setTab('Reader');
+      setTimeout(() => searchRef.current?.focus({ preventScroll: true }), 0);
+    }
     else if (name === 'primaryTask') runPrimaryTask();
     else if (name === 'generateSummary') startSummaryFromMenu();
     else if (name === 'generateFullTranslation') startFullTranslationFromMenu();

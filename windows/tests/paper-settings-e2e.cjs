@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 const appearanceDefaults = require('../electron/reading-appearance.json');
 
 const modelA = 'paperbridge-test-a:1b';
@@ -125,7 +125,7 @@ async function run() {
 
   const paperPath = text => path.join(workspace, 'papers', `${paperId(text)}.json`);
   const readPaper = text => JSON.parse(fs.readFileSync(paperPath(text), 'utf8'));
-  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const launch = () => launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app, page;
   try {
     app = await launch();

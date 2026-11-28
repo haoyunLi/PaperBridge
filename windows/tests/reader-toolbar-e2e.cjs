@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -49,7 +49,7 @@ async function run() {
   fs.writeFileSync(paperPath, JSON.stringify(document));
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
   const launch = async () => {
-    const instance = await electron.launch({ args: ['.'], cwd: root,
+    const instance = await launchTestReader({ cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     await instance.firstWindow();
     await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1));
@@ -255,6 +255,39 @@ async function run() {
     await page.keyboard.press('ArrowRight');
     assert.equal(await mode('Original').evaluate(node => node.matches(':focus-visible')), true);
     await toolbarFits();
+    await page.emulateMedia({ forcedColors: 'none' });
+    await page.getByRole('button', { name: 'Focus Reading', exact: true }).click();
+    await page.setViewportSize({ width: 1280, height: 1120 });
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(4));
+    await page.waitForFunction(() => Math.abs(innerWidth - 320) <= 1 && Math.abs(innerHeight - 280) <= 1);
+    await toolbarFits();
+    const narrow = await page.evaluate(() => {
+      const title = document.querySelector('.header h1');
+      const controls = document.querySelector('.reader-top');
+      const undo = controls.querySelector('.undo-button');
+      const r = undo.getBoundingClientRect();
+      return { titleWidth: title.clientWidth, fullTitle: title.title, readingHeight: document.querySelector('.main-scroll').clientHeight,
+        undoVisible: undo.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) };
+    });
+    assert.ok(narrow.titleWidth >= 280 && narrow.readingHeight >= 50 && narrow.undoVisible, JSON.stringify(narrow));
+    assert.equal(narrow.fullTitle, document.name);
+    await mode('Translation').check();
+    await search().fill('检索目标');
+    await page.getByRole('button', { name: 'Clear search', exact: true }).click();
+    assert.equal(await search().inputValue(), '');
+    await toolbarFits();
+    await page.screenshot({ path: path.join(workspace, 'reader-400-percent.png') });
+    await page.getByRole('button', { name: 'Exit Focus Reading', exact: true }).click();
+    const closeSidebar = page.getByRole('button', { name: 'Close Document Sidebar', exact: true });
+    if (!await closeSidebar.isVisible()) await page.getByRole('button', { name: 'Show Document Sidebar', exact: true }).click();
+    await page.keyboard.press('Control+f');
+    await waitFor(() => search().evaluate(input => {
+      const b = input.getBoundingClientRect();
+      return document.activeElement === input && document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2) === input;
+    }), 'Find makes the search field visible and focused through compact overlays');
+    assert.equal(await closeSidebar.isVisible(), false);
+    await search().fill('检索目标');
+    assert.equal(await page.locator('.reader-list article').count(), 1);
     console.log(JSON.stringify({ passed: true, workspace, sizes: [1500, 1320, 980], checked: ['fixed toolbar', 'native radio keyboard', 'search clear and Escape', 'reflow origin', 'undo', 'deferred clear across tabs', 'deferred clear across display modes', 'filtered cross-tab history', 'filtered structural edit and undo', 'filtered restart', 'Find across tabs', '150% zoom', 'high contrast focus'] }));
   } catch (error) {
     if (page && !page.isClosed()) await page.screenshot({ path: path.join(workspace, 'failure.png') }).catch(() => {});

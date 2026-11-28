@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 const paperAId = 'a'.repeat(64);
 const paperBId = 'b'.repeat(64);
@@ -77,7 +77,7 @@ async function run() {
 
   let app, page, stage = 'existing auto-detect scenarios';
   const launch = async () => {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    app = await launchTestReader({ args: [`--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace,
         PAPERBRIDGE_TOOLS_ROOT: path.join(workspace, 'mock-tools') }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);

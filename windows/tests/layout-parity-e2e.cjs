@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function bounded(label, operation, timeout = 10000) {
   let timer;
@@ -131,8 +131,7 @@ async function run() {
     return host?.dataset.readingPaperId === expected && host.getAttribute('aria-busy') === 'false';
   }, id), 'current paper reading restoration completes');
   const launch = async () => {
-    const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
-    app = await electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root,
+    app = await launchTestReader({ cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded(`${phase}: firstWindow`, app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);

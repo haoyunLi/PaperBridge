@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 const { revealSidebarSource, openWorkspaceView } = require('./sidebar-controls.cjs');
 
 async function bounded(label, operation, timeout = 15000) {
@@ -97,7 +97,7 @@ async function run() {
     return host?.dataset.readingPaperId === id && host.getAttribute('aria-busy') === 'false';
   }, id);
   const launch = async () => {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    app = await launchTestReader({ args: [`--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);

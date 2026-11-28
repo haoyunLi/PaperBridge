@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -20,7 +20,7 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
   let app;
   try {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const page = await app.firstWindow();
     await page.locator('.welcome').waitFor({ timeout: 20000 });
     await page.evaluate(() => {

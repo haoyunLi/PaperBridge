@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## GitHub 便携版的光谱术语与否定句
+
+从 GitHub 下载的 0.2.138 便携版在本机 RX 7800 XT 上运行 TranslateGemma 4B。通过正常粘贴入口导入两段英文，并分别点击 Translate Paragraph。第一段采用保存的术语“谱线宽度”，保留了 77 K、0.08 nm、1.25 mA 和 2.50 mA，也保留了峰中心没有移动的结论。第二段译为“对照组在 532 纳米处未检测到任何信号。 12.5% 的差异并不能证明因果关系。”两次推理均报告 2,881,948,220 字节显存占用。这两段分别用时 12.7 秒和 4.5 秒。关闭并重启同一个公开 EXE 后，译文与书签都已恢复。[实测的 Windows 发布版本](https://github.com/haoyunLi/PaperBridge/releases/tag/windows-v0.2.138)
+
 ## 同一张 Group 4 传真在 DirectML 和 CPU 上的结果
 
 0.2.133 在 Parsing 设置显示与当前选项对应的实际解析设备。RX 7800 XT 上，Auto 显示 DirectML，切换兼容模式后显示 CPU。每次重启再打开同一张碳膜校准传真，都得到四个相同的内容块，记录 532 nm 峰值、三次重复后的峰位和图像。两次导入分别是 13.3 秒和 12.6 秒，属于这一张扫描件的单次测量。[实机设备切换](tests/live-ocr-device-switch.cjs)

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 const { createStore, defaults } = require('../electron/storage.cjs');
 
 async function run() {
@@ -19,8 +19,7 @@ async function run() {
 
   const executablePath = process.argv[2];
   const args = ['--user-data-dir=' + path.join(workspace, 'profile')];
-  if (!executablePath) args.unshift('.');
-  const app = await _electron.launch({ executablePath, args, cwd: root,
+  const app = await launchTestReader({ executablePath, args, cwd: root,
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace } });
   let exited = false;
   app.once('close', () => { exited = true; });

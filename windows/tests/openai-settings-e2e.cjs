@@ -2,7 +2,7 @@ const { revealSidebarSource } = require('./sidebar-controls.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
   const deadline = Date.now() + timeout;
@@ -25,8 +25,7 @@ async function run() {
   let page;
 
   async function launch() {
-    const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
-    app = await electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     await page.locator('.header').waitFor({ timeout: 20000 });
   }

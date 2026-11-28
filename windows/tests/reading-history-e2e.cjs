@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 function samplePdf() {
   const streams = [
@@ -148,7 +148,7 @@ async function run() {
   let app;
   let page;
   try {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 900 });
     await page.getByRole('button', { name: 'Overview', exact: true }).waitFor({ timeout: 20000 });

@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 const { revealSidebarSource, openPasteText, loadPastedText } = require('./sidebar-controls.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
@@ -97,7 +97,7 @@ async function run() {
 
   let app;
   try {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.getByRole('heading', { name: 'Heading parity fixture' }).waitFor({ timeout: 20000 });
@@ -235,7 +235,7 @@ async function run() {
     const settingsFile = path.join(workspace, 'settings.json');
     const savedSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
     fs.writeFileSync(settingsFile, JSON.stringify({ ...savedSettings, fontSize: 25, lineSpacing: null, lineHeight: 1.9 }));
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const reopened = await app.firstWindow();
     await reopened.setViewportSize({ width: 1320, height: 820 });
     await reopened.getByRole('heading', { name: 'Heading parity fixture' }).waitFor({ timeout: 20000 });

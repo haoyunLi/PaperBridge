@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 const model = 'paperbridge-reader-review:1b';
 const translated = '原位机制促进翻译质量，并检查准确的术语边界。';
@@ -131,7 +131,7 @@ async function run() {
 
   let app;
   let page;
-  const launch = () => electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+  const launch = () => launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   try {
     app = await launch();
     page = await app.firstWindow();

@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 const { setupPlan } = require('../electron/setup.cjs');
 
 async function waitFor(predicate, label, timeout = 10000) {
@@ -44,7 +44,7 @@ async function run() {
 
   let app;
   try {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 820 });
     await page.locator('.welcome').waitFor({ timeout: 20000 });

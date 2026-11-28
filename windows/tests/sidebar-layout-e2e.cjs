@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function bounded(label, operation, timeout) {
   let timer;
@@ -82,7 +82,7 @@ async function run() {
     fs.writeFileSync(path.join(workspace, name), Buffer.from(png, 'base64'));
   };
   try {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    app = await launchTestReader({ args: [`--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.on('pageerror', error => { rendererErrors.push(error.message); console.error(`Sidebar renderer error: ${error.stack || error}`); });

@@ -3,7 +3,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 async function waitFor(predicate, label, timeout = 15000) {
   const deadline = Date.now() + timeout;
@@ -76,7 +76,7 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'last-paper.json'), JSON.stringify({ id }));
   let app, page;
   const launch = async () => {
-    app = await electron.launch({ args: ['.'], cwd: root,
+    app = await launchTestReader({ cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     // All parser checks are read-only fixtures. Online generation is forbidden in this suite.

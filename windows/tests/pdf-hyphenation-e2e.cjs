@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 
 const sha256 = value => createHash('sha256').update(value).digest('hex');
 const ordinary = 'The natu- ral mea- sure lets our model out- perform the baseline and supports re- search.';
@@ -136,7 +136,7 @@ async function run() {
 
   let app, page;
   const launch = async () => {
-    app = await electron.launch({ args: ['.'], cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
+    app = await launchTestReader({ cwd: root, env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await app.firstWindow();
     await page.setViewportSize({ width: 1320, height: 900 });
   };

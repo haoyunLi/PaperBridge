@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const crypto = require('node:crypto');
-const { _electron: electron } = require('playwright-core');
+const { launchTestReader } = require('./launch-test-reader.cjs');
 const { clickTextOffset } = require('./reading-caret.cjs');
 
 function samplePdf(blank = false, variant = '', firstPage = '', rotation = 0, cropBoxes = []) {
@@ -73,8 +73,7 @@ async function run() {
   fs.writeFileSync(path.join(workspace, 'settings.json'), JSON.stringify({ ollamaBaseURL: `http://127.0.0.1:${ollama.address().port}`, pdfExtractionMode: 'pdfOnly', autoCheckUpdates: false, onboardingCompletedVersion: 1 }));
   const pdfPath = path.join(artifacts, 'practice.pdf');
   fs.writeFileSync(pdfPath, samplePdf());
-  const executablePath = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
-  const launch = () => electron.launch({ executablePath, args: executablePath ? [] : ['.'], cwd: root,
+  const launch = () => launchTestReader({ cwd: root,
     env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
   let app = await launch();
   try {
