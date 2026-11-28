@@ -1999,9 +1999,14 @@ function App() {
         const position = paperRef.current?.position;
         const view = tab === 'Paper' ? paperModeViewport(position, sourceMode, displayMode) : null;
         const saved = view ? view.scrollTop : tab === 'Reader' && search && !clearSearch ? searchScroll.current : position?.scrollByTab?.[key];
-        const origin = tab === 'Reader' && (!search || clearSearch) ? normalizeSearchOrigin(paperRef.current?.position?.readerSearchOrigin) : null;
+        const origin = tab === 'Reader' && (!search || clearSearch) ? normalizeSearchOrigin(position?.readerSearchOrigin) : null;
+        const readerAnchor = position?.readerViewport;
         if (origin !== null) {
           restoreReaderSearchOrigin(origin);
+          persistRestoredReaderPosition();
+        } else if (tab === 'Reader' && (!search || clearSearch) && host && readerAnchor &&
+            readerAnchor.block === position?.block && readerAnchor.scrollTop === saved && host.clientWidth !== readerAnchor.width) {
+          restoreReaderSearchOrigin(readerAnchor);
           persistRestoredReaderPosition();
         } else {
           const anchor = tab === 'Full Translation' ? position?.fullTranslationAnchor : view?.anchor;
@@ -2029,6 +2034,7 @@ function App() {
       const block = visible ? Number(visible.id.replace('block-', '')) : paperRef.current.position?.block;
       commitPaper(current => {
         const position = { ...current.position, block, scrollByTab: { ...current.position?.scrollByTab, [key]: offset } };
+        if (visible) position.readerViewport = { block, offset: visible.getBoundingClientRect().top - top, scrollTop: offset, width: host.clientWidth };
         if (tab === 'Full Translation') position.fullTranslationAnchor = capturePreviewAnchor(host);
         return { ...current, position: tab === 'Paper'
           ? storePaperViewport(position, paperArticleSource(current).mode, displayMode, offset, capturePreviewAnchor(host))
@@ -2040,7 +2046,9 @@ function App() {
     const origin = captureReaderSearchOrigin();
     commitPaper(current => {
       const { readerSearchOrigin: discarded, ...position } = current.position || {};
-      return { ...current, position: { ...position, ...(typeof origin === 'object' && { block: origin.block }),
+      return { ...current, position: { ...position, ...(typeof origin === 'object' && {
+        block: origin.block, readerViewport: { ...origin, width: mainScrollRef.current.clientWidth }
+      }),
         scrollByTab: { ...position.scrollByTab, Reader: typeof origin === 'number' ? origin : origin.scrollTop } } };
     });
   }
@@ -2473,6 +2481,23 @@ function App() {
     if (paper && !viewNavigation && !blockNavigation) return restoreMainScroll();
     publishReadingRestorationState();
   }, [tab, paper?.id, tab === 'Paper' ? displayMode : null]);
+  useLayoutEffect(() => {
+    const host = mainScrollRef.current;
+    if (tab !== 'Reader' || !host || !paper?.id || search) return;
+    let width = host.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const previous = width;
+      width = host.clientWidth;
+      if (previous === width || !width || restoringScroll.current || paperRef.current?.id !== paper.id) return;
+      const position = paperRef.current.position, anchor = position?.readerViewport;
+      if (anchor?.width !== previous || anchor.block !== position.block || anchor.scrollTop !== position.scrollByTab?.Reader) return;
+      clearTimeout(scrollSaveTimer.current);
+      restoreReaderSearchOrigin(anchor);
+      persistRestoredReaderPosition();
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [tab, paper?.id, search]);
   useLayoutEffect(() => {
     if (blockNavigation?.recordType !== 'paragraph' || tab !== 'Reader') return;
     const host = mainScrollRef.current;

@@ -161,14 +161,18 @@ async function run() {
       throw error;
     } finally { app = null; }
   };
-  const launch = async (paperId = id) => {
+  const launch = async (paperId = id, smallDesktop = false) => {
     const exe = process.env.PAPERBRIDGE_TEST_EXECUTABLE;
-    app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
+    app = await electron.launch({ ...(exe && { executablePath: exe }), args: [...(exe ? [] : ['.']), ...(smallDesktop ? ['--force-device-scale-factor=3'] : []), `--user-data-dir=${path.join(workspace, 'electron-profile')}`], cwd: root,
       env: { ...process.env, NODE_ENV: 'production', PAPERBRIDGE_WORKSPACE: workspace }, timeout: 30000 });
     page = await bounded('first Electron window', app.firstWindow(), 30000);
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
     await ready(paperId);
+    if (smallDesktop) {
+      await position(12); await selected(2);
+      console.log(JSON.stringify({ restoredTop: await firstVisible(), startupWidth: await page.evaluate(() => innerWidth), selected: 2 }));
+    }
     await bounded('native window size', app.evaluate(({ BrowserWindow }) => {
       const window = BrowserWindow.getAllWindows()[0];
       window.webContents.setZoomFactor(1); window.setContentSize(1500, 900); window.show(); window.focus();
@@ -224,6 +228,20 @@ async function run() {
     assert.equal(await page.locator('.document-outline [aria-current="location"]').count(), 0,
       'A selected body paragraph must not mark the containing viewport heading as selected');
     const offset12 = await scroll();
+    const relativeTop = () => page.locator('#block-12').evaluate(el => el.getBoundingClientRect().top - el.closest('.main-scroll').getBoundingClientRect().top);
+    const originalTop = await relativeTop();
+    if (process.argv.includes('--resize-reader')) {
+      stage('Window reflow keeps the same top paragraph and within-paragraph reading offset');
+      for (const width of [1016, 1500]) {
+        await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setContentSize(width, 900), width);
+        await page.waitForFunction(width => Math.abs(innerWidth - width) < 3, width);
+        await position(12); await selected(2);
+        const top = await relativeTop();
+        assert.ok(Math.abs(top - originalTop) < 2, JSON.stringify({ width, originalTop, top }));
+        console.log(JSON.stringify({ width, top, selected: 2, visible: 12, offset: await scroll() }));
+      }
+      assert.ok(Math.abs(await scroll() - offset12) < 2);
+    }
 
     stage('Current section follows viewport without changing the Inspector target');
     await page.getByRole('button', { name: 'Choose translation range', exact: true }).click();
@@ -237,9 +255,12 @@ async function run() {
     await openPaper(other, 3, 1);
     await openPaper(paper, 2, 12);
     assert.ok(Math.abs(await scroll() - offset12) < 2);
-    await close(); await launch();
+    await close(); await launch(id, process.argv.includes('--resize-reader'));
     await selected(2); await position(12); await explainTarget(2);
-    assert.ok(Math.abs(await scroll() - offset12) < 2);
+    const restoredTop = await relativeTop();
+    assert.ok(Math.abs(restoredTop - originalTop) < 2, JSON.stringify({ originalTop, restoredTop, scroll: await scroll() }));
+    if (!process.argv.includes('--resize-reader')) assert.ok(Math.abs(await scroll() - offset12) < 2);
+    console.log(JSON.stringify({ originalTop, restoredTop, selected: 2, visible: 12 }));
 
     stage('Explicit outline jump and Back/Forward restore both fields');
     await page.locator('.document-outline .outline-row[data-paragraph-id="19"]').click();

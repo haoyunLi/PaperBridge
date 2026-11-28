@@ -225,6 +225,7 @@ async function run() {
       await page.getByRole('button', { name: 'Save label', exact: true }).click();
       await waitFor(() => app.evaluate(() => typeof globalThis.__finishEditorLabelSave === 'function'), 'held library metadata save');
       await page.keyboard.press('Escape');
+      await page.getByRole('dialog', { name: 'Paper Library', exact: true }).getByRole('button', { name: 'Close dialog', exact: true }).click();
       await openEditor();
       await source().fill(draft);
       await app.evaluate(() => globalThis.__finishEditorLabelSave());

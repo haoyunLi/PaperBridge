@@ -1,5 +1,9 @@
 # Windows 全软件功能复查
 
+## 改变窗口尺寸后继续阅读
+
+在 1500 与 1016 像素宽的窗口间切换后，阅读器保留顶部段落和段内位置。从 832 像素宽的窗口重开时实测仍停在第 12 段，右侧仍解释第 2 段。缓存中已有的旧阅读记录也可打开。[阅读位置回归](tests/paragraph-selection-e2e.cjs)
+
 ## 在解析设置中确认实际设备
 
 切换 MinerU backend 后，Parsing 在同一处显示本次检测到的设备。在本机用同一份传真实测 Auto 选择 RX 7800 XT 的 DirectML；兼容模式使用 CPU。两种选择都能重启恢复并得到一致的文字。[真机对照](tests/live-ocr-device-switch.cjs)

@@ -11,7 +11,7 @@ const equal = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 const sourceKey = block => JSON.stringify([block.text, block.sourceMarkdown, block.heading, block.resource, block.page]);
 const sameSources = (left, right) => left.length === right.length && left.every((block, index) => sourceKey(block) === sourceKey(right[index]));
 const itemKey = item => item.id || JSON.stringify([item.kind, item.scope, item.page, item.offset, item.text, item.color]);
-const viewportFields = ['block', 'page', 'scrollByTab'];
+const viewportFields = ['block', 'page', 'scrollByTab', 'readerViewport'];
 
 function readingPositionSnapshot(position) {
   if (!position) return undefined;
@@ -47,6 +47,7 @@ export function remapPositionAfterStructureChange(position, beforeBlocks, afterB
   next.scrollByTab = Object.fromEntries(Object.entries(next.scrollByTab || {}).filter(([key]) =>
     key === 'Paper' || key.startsWith('Paper:') || key === 'Original' || key.startsWith('Original:') || key.startsWith('Pdf:')));
   delete next.readerSearchOrigin;
+  delete next.readerViewport;
   return next;
 }
 
