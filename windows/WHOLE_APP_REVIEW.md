@@ -1,5 +1,9 @@
 # Windows 全软件功能复查
 
+## 长论文文件名的 Markdown 导出
+
+0.2.112 从含中英文和表情的长文件名导出原文、译文、双语与分析笔记时，四次给出了相同的默认名称，截断点还留下半个表情符号。0.2.113 从名称中间缩短标题，保留完整字符以及末尾标明版本和语言的部分。四份 Markdown 在同一文件夹中分别保存，资源包保留 `_PaperBridge` 名称和逐字节相同的原 PDF。缺少旧译文语言记录时，双语阅读版默认以 `_bilingual_text.md` 结尾，带摘要和笔记的分析版使用 Mac 默认的 `_bilingual.md`。[公开应用工作流的桌面测试](tests/export-names-e2e.cjs) · [旧译文及重启](tests/legacy-output-language-e2e.cjs)
+
 ## 提取质量提示与重新提取的取消操作
 
 0.2.112 在 46 段实验记录里识别出 43 处疑似提取问题。旧版漏报 3 段、误报 2 段，均涉及从论文复制的不可见字符。新版对齐 Mac 对断词、未完成短语、数字碎片与句末标点的判断。展开 Overview 的第 40 条提示可跳到双语 Reader，后续段落也可单独对照原文并修正。重启后修正和书签均保留。[Mac 原生评估](https://github.com/haoyunLi/PaperBridge/actions/runs/46104750742) · [打包版操作](tests/quality-review-e2e.cjs)

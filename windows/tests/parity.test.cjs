@@ -447,7 +447,7 @@ test('bundle filenames are safe, case-insensitively unique and preserve generate
   const { writeBundle, writeBundleFacsimile, safeName } = require('../electron/bundle.cjs');
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'paperbridge-bundle-names-'));
   try {
-    for (const name of ['CON', 'prn', 'NUL.txt', 'com1', 'LPT9']) assert.equal(safeName(name), `_${name}`);
+    for (const name of ['CON', 'prn', 'NUL.txt', 'com1', 'LPT9', 'com¹.notes', 'LPT³']) assert.equal(safeName(name), `_${name}`);
     assert.equal(safeName('a<bad>:name?. . '), 'a-bad--name-');
     assert.equal(safeName('...'), 'PaperBridge');
     const pdf = path.join(parent, 'source.pdf');

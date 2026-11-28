@@ -12,10 +12,20 @@ const facsimileHeadings = new Map([
   ['full', 'Full translation of selectable text']
 ]);
 
+const filenameCharacters = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
 function safeName(name) {
-  const stem = String(name || 'PaperBridge').replace(/\.pdf$/i, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
-    .trim().slice(0, 90).replace(/[. ]+$/, '') || 'PaperBridge';
-  return /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(stem) ? `_${stem}` : stem;
+  let stem = String(name || 'PaperBridge').toWellFormed().replace(/\.pdf$/i, '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '-')
+    .trim().replace(/[. ]+$/, '') || 'PaperBridge';
+  if (/^(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i.test(stem)) stem = '_' + stem;
+  if (stem.length <= 90) return stem;
+  // Keep the opening title and the edition/language at the end within the existing path budget.
+  const characters = filenameCharacters.segment(stem);
+  const headEnd = characters.containing(55).index;
+  const tailLimit = stem.length - 34;
+  const tail = characters.containing(tailLimit);
+  const tailStart = tail.index === tailLimit ? tail.index : tail.index + tail.segment.length;
+  return stem.slice(0, headEnd) + '…' + stem.slice(tailStart);
 }
 
 function uniqueFolder(parent, name) {

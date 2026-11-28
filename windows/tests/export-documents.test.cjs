@@ -308,7 +308,7 @@ test('all eleven Mac language codes are deterministic and Chinese scripts stay d
 });
 
 test('old unknown, explicit unknown and mixed outputs retain text with generic language labels and names', async () => {
-  const [{ markdownDocuments }] = await modules;
+  const [{ markdownDocuments, markdownExportName }] = await modules;
   const legacy = { name: 'Old paper', sourceMode: 'mineru', blocks: [
     { id: 1, text: 'Old source.', sourceMarkdown: 'Old **source**.', status: 'ok', translation: '旧中文译文。' }
   ], connectedTranslation: '独立旧全文。', summary: { source: 'Old source summary.', target: '旧摘要。' } };
@@ -317,6 +317,8 @@ test('old unknown, explicit unknown and mixed outputs retain text with generic l
   { ...legacy, taskSettings: pair('Chinese') }]) {
     const before = structuredClone(paper);
     const docs = descriptors(markdownDocuments(paper, 'German'));
+    assert.equal(markdownExportName(paper, docs.bilingual), 'Old paper_bilingual_text');
+    assert.equal(markdownExportName(paper, docs.analysis), 'Old paper_bilingual');
     assert.equal(docs.translated.filename, 'paper_translation.md');
     assert.equal(docs.bilingual.filename, 'paper_bilingual.md');
     assert.equal(markdownDocuments(paper, 'German', 'full')[0].filename, 'paper_full_translation.md');

@@ -21,7 +21,9 @@ export function markdownExportName(paper, document) {
   const stem = basename.replace(/\.[^.]*$/, '') || 'PaperBridge';
   const suffix = document.kind === 'analysis' ? 'bilingual'
     : (document.filename || filenameFor(document.kind, null)).replace(/^paper_/, '').replace(/\.md$/i, '');
-  return `${stem}_${suffix}`;
+  // The native analysis export already uses "_bilingual". An unlabelled reading edition needs its own filename.
+  const edition = document.kind === 'bilingual' && suffix === 'bilingual' ? 'bilingual_text' : suffix;
+  return `${stem}_${edition}`;
 }
 
 function quoteTranslation(target, targetLanguage) {

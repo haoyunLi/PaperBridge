@@ -143,6 +143,9 @@ async function run() {
   };
   const verifyExports = async round => {
     const analysis = await exportSingle(round, 'Summary, sources and notes', 'Legacy multilingual_bilingual.md');
+    const readingEdition = await exportSingle(round, 'Bilingual Markdown', 'Legacy multilingual_bilingual_text.md');
+    assert.ok(readingEdition.includes(source) && readingEdition.includes(translation));
+    assert.notEqual(readingEdition, analysis);
     assert.match(analysis, /## Whole-paper summary \(English\)\n\nA known English summary\./);
     assert.match(analysis, /## Whole-paper summary \(French\)\n\nUn résumé français conservé\./);
     assert.match(analysis, /## Connected Full Translation\n\n这是独立保存的旧中文全文译文。/);

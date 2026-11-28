@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 长论文文件名下的真实译文导出
+
+0.2.113 在 RX 7800 XT 上导入含长文件名的三页英中记录，4B 将 “The reference signal remained constant.” 译成「参考信号保持不变。」。同次读取 Ollama 报告显存 2,881,948,220 字节。此译文出现在单独保存的译文、双语和分析版，原文版保留原文。四个默认文件名各不相同，导出的原始 PDF 与导入文件逐字节相同。另用 20 页期刊论文比对 Mac 参考的 208 个已译段落。[四种导出](tests/export-names-e2e.cjs) · [期刊论文资源包](tests/pdf-journal-export-e2e.cjs)
+
 ## 实验记录的提取质量检查及 PDF 副本取消
 
 RX 7800 XT 机器上的 0.2.112 打包版对 46 段实验记录给出 43 处提示。列表前 40 条、双语跳转、列表外段落的对照、修正及重启后的书签均经过桌面操作。重新提取时取消可以释放尚未保存的归档，重试成功后可正常读取该副本。另用公开 0.2.107 创建含既有笔记的三页论文，从新副本恢复第 2 页后，本机 4B 将原文译成 “After three repeated measurements, the peak position remained unchanged.”，旧论文的译文和批注仍可从资料库读取。[质量检查](tests/quality-review-e2e.cjs) · [既有论文恢复与翻译](tests/mixed-cid-recovery-e2e.cjs)
