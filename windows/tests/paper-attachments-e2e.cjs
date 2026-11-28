@@ -65,8 +65,8 @@ async function run() {
         await record('supplement-links.md', 'Reference PDF', 'systemPDF');
       }
       const caption = dialog.locator('figure > figcaption');
-      assert.deepEqual(await caption.allTextContents(), ['Reference response'], 'The printed image caption must be readable in each view.');
-      assert.equal(await caption.isVisible(), true);
+      assert.deepEqual(await caption.allTextContents(), ['Reference response', 'Local calibration panel']);
+      for (const element of await caption.all()) assert.equal(await element.isVisible(), true);
       await dialog.getByRole('img', { name: 'Reference response' }).evaluate(img => img.decode());
       assert.equal(await dialog.getByRole('img', { name: 'Reference response' }).evaluate(img => img.naturalWidth), 530);
       await dialog.getByRole('link', { name: 'Measurements CSV' }).click();

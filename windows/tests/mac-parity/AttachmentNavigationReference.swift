@@ -57,10 +57,12 @@ func nativeAttachmentLinks(fixtures: URL) throws -> [[String: String]] {
             observer.decision = nil
             let script = """
             if (name === 'Measurements CSV') {
-              const figure = document.querySelector('figure');
-              const caption = figure?.querySelector('figcaption');
-              if (caption?.innerText !== 'Reference response' || caption.offsetHeight === 0 ||
-                  figure.querySelector('img')?.alt !== caption.innerText) throw Error('Missing visible figure caption');
+              const image = document.querySelector('img[alt="Local calibration panel"]');
+              const caption = image?.closest('figure')?.querySelector('figcaption');
+              if (!caption || caption.textContent !== image.alt || !caption.getClientRects().length) {
+                throw Error('Missing same-directory figure caption: ' + document.body.innerText.slice(0, 300));
+              }
+              if (document.querySelector('img[alt="Reference response"]')) throw Error('Unexpected parent-relative image');
             }
             const link = [...document.links].find(a => a.textContent === name);
             if (!link) throw Error(name);
