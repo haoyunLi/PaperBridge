@@ -25,10 +25,32 @@ function Save-Step($message) {
     $report | Add-Member -MemberType NoteProperty -Name wizard -Value $wizard -Force
     $report | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $reportFile -Encoding UTF8
 }
-function Get-Controls($window, $controlType) {
-    $window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
-        Where-Object { $_.Current.ControlType.Id -eq $controlType.Id -and $_.Current.IsEnabled }
+# On Server 2025 the MSAA proxy can expose standard NSIS buttons as UIA panes.
+# Restrict button messages to native child buttons of the exact verified Setup process.
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class SetupButton {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder text, int capacity);
+    [DllImport("user32.dll")] static extern bool IsChild(IntPtr parent, IntPtr child);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern bool IsWindowEnabled(IntPtr h);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern IntPtr SendMessage(IntPtr h, uint message, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern bool PostMessage(IntPtr h, uint message, IntPtr w, IntPtr l);
+    public static bool Owned(IntPtr main, IntPtr child, uint process) {
+        uint pid;
+        var name = new StringBuilder(32);
+        return child != IntPtr.Zero && IsChild(main, child) && IsWindowEnabled(child) &&
+            GetWindowThreadProcessId(child, out pid) != 0 && pid == process &&
+            GetClassName(child, name, name.Capacity) != 0 && name.ToString() == "Button";
+    }
+    public static bool Checked(IntPtr h) { return SendMessage(h, 0x00F0, IntPtr.Zero, IntPtr.Zero).ToInt64() == 1; }
+    public static void Click(IntPtr h) {
+        if (!PostMessage(h, 0x00F5, IntPtr.Zero, IntPtr.Zero)) throw new InvalidOperationException("Could not activate Setup button");
+    }
 }
+"@
 if (!$ObservePublic) {
     Save-Step 'Opening the release build from the build artifact after verifying its public SHA-256'
     Start-Process -FilePath $setupPath -WindowStyle Normal
@@ -58,26 +80,26 @@ while ([DateTime]::UtcNow -lt $deadline -and !$finished) {
         Save-Step "Visible installer window: $($window.Current.Name)"
         if ($ObservePublic) { $wizard.result = 'public installer visible'; Save-Step 'The public Setup window is visible'; exit 0 }
     }
-    $scope = Get-Controls $window ([Windows.Automation.ControlType]::RadioButton) |
-        Where-Object { ($_.Current.Name -replace '&','') -match 'only for me|just for me|current user' } | Select-Object -First 1
-    if ($scope) {
-        $choice = $scope.GetCurrentPattern([Windows.Automation.SelectionItemPattern]::Pattern)
-        if (!$choice.Current.IsSelected) { $choice.Select() }
+    $buttons = @($window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
+        Where-Object { [SetupButton]::Owned($owner.MainWindowHandle, $_.Current.NativeWindowHandle, $owner.Id) })
+    $scope = $buttons | Where-Object { ($_.Current.Name -replace '&','') -match 'only for me|just for me|current user' } | Select-Object -First 1
+    if ($scope -and ![SetupButton]::Checked($scope.Current.NativeWindowHandle)) {
+        [SetupButton]::Click($scope.Current.NativeWindowHandle)
+        Start-Sleep -Milliseconds 250
+        continue
     }
-    $buttons = @(Get-Controls $window ([Windows.Automation.ControlType]::Button))
     $button = $buttons | Where-Object { ($_.Current.Name -replace '&','').Trim() -match '^(Next\s*>?|Install|Finish)$' } | Select-Object -First 1
     if (!$button) { Start-Sleep -Milliseconds 400; continue }
     $action = ($button.Current.Name -replace '&','').Trim()
     if ($action -eq $lastButton) { Start-Sleep -Milliseconds 350; continue }
     if ($action -eq 'Finish') {
-        $run = Get-Controls $window ([Windows.Automation.ControlType]::CheckBox) |
+        $run = $buttons |
             Where-Object { ($_.Current.Name -replace '&','') -match '^Run PaperBridge\b' } | Select-Object -First 1
         if (!$run) { throw 'The Finish page did not offer to run PaperBridge.' }
-        $checked = $run.GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState
-        if ($checked -ne [Windows.Automation.ToggleState]::On) { throw 'Run PaperBridge was not selected by default.' }
+        if (![SetupButton]::Checked($run.Current.NativeWindowHandle)) { throw 'Run PaperBridge was not selected by default.' }
         Save-Step 'Run PaperBridge was selected on the Finish page'
     }
-    $button.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+    [SetupButton]::Click($button.Current.NativeWindowHandle)
     Save-Step "Invoked $action in the verified installer"
     $lastButton = $action
     $finished = $action -eq 'Finish'
