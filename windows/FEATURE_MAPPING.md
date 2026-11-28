@@ -10,6 +10,8 @@ macOS 1.9.1 的 12 项新增行为单独记录在 [MAC_1_9_1_GAPS.md](MAC_1_9_1_
 
 macOS 1.9.2 / 1.10.0（`16e01ac`）的导入反馈、OpenAI 授权、加密 key、独立任务模型、结果变体与选区行为记录在 [1.10 增量映射](MAC_1_10_GAPS.md)，已列出的 **21 项对齐**。上面的 1.9 统计保留为历史基线。
 
+历史 111 项外另核对了原 PDF 中可操作的链接。0.2.122 对照 Mac 原生 PDFView 验证了四个内部跳转和一个 DOI，以及链接文字选区、阅读历史与重启恢复。[PDF 链接验收](tests/pdf-links-e2e.cjs)
+
 0.2.121 对照了 Mac 写入完整 Markdown 文件的行为，并在 Windows 验证了导出正文、PDF、PNG 或索引时中断和重试后的文件字节。[导出实测](tests/interrupted-bundle-e2e.cjs)
 
 0.2.120 实测清理遇到 Windows 文件锁、清理中途退出、重启恢复和默认保留 PDF。确认框会显示失败原因。[清理记录](WHOLE_APP_REVIEW.md)

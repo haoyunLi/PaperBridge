@@ -1,0 +1,17 @@
+.pdf-page-links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.pdf-page-links a {
+  position: absolute;
+  border-radius: 2px;
+}
+.pdf-page-links a.hovered, .pdf-page-links a:focus-visible {
+  outline: 2px solid #2165ad;
+  outline-offset: 1px;
+  background: rgb(71 145 223 / 10%);
+}
+.pdf-sheet.over-pdf-link, .pdf-sheet.over-pdf-link .textLayer span {
+  cursor: pointer;
+}

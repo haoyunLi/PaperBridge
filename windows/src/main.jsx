@@ -1,5 +1,7 @@
 import { trimLibraryText } from '../electron/library-metadata.mjs';
 import { taggedPdfText } from './pdfBidi.mjs';
+import { PdfPageLinks } from './PdfPageLinks.jsx';
+import { pdfLinkDestination } from './pdfLinks.mjs';
 import React, { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { documentLinkTarget, revealMarkdownTarget } from './markdownLinks.mjs';
@@ -403,7 +405,7 @@ function usePdfDocument(paper) {
 
 const eastAsianLetter = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
-function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, onSize, onReady }) {
+function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, onSize, onReady, onFollowLink }) {
   const canvas = useRef(null);
   const layer = useRef(null);
   const finishedLayer = useRef(null);
@@ -499,7 +501,8 @@ function PdfSheet({ pdf, number, width, facsimile, selectionOrder, annotations, 
     refreshRichHighlights();
     return () => { richHighlights.delete(key); refreshRichHighlights(); };
   }, [annotations, number, rendered]);
-  return <div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? 'Original PDF page ' + number : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}</div>;
+  return <div className="pdf-sheet"><canvas ref={canvas} aria-label={facsimile ? 'Original PDF page ' + number : undefined} role={facsimile ? 'img' : undefined} />{!facsimile && <div ref={layer} className="textLayer" />}
+    {!facsimile && onFollowLink && <PdfPageLinks pdf={pdf} number={number} onFollow={onFollowLink} />}</div>;
 }
 
 function pdfPageElement(host, page) {
@@ -554,7 +557,7 @@ function capturePdfRange(host, range) {
     anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
 }
 
-function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
+function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
   const { pdf, error } = usePdfDocument(paper);
   const scroller = useRef(null);
   const activePage = useRef(0);
@@ -564,6 +567,9 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
   const layoutWidth = useRef(0);
   const lastFitWidth = useRef(0);
   const lastWheelZoom = useRef(-Infinity);
+  const pendingLink = useRef(0);
+  const [linkError, setLinkError] = useState('');
+  useEffect(() => () => { pendingLink.current++; }, [pdf]);
   const scrollFrame = useRef(0);
   const scrollTimer = useRef(0);
   const lastJump = useRef(null);
@@ -712,7 +718,42 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     const captured = capturePdfRange(scroller.current, selection?.rangeCount ? selection.getRangeAt(0) : null);
     if (captured) onSelect(captured);
   }
+  async function followLink(link) {
+    const request = ++pendingLink.current;
+    setLinkError('');
+    if (link.url) { api.openPaperLink(link.url); return; }
+    try {
+      const target = await pdfLinkDestination(pdf, link.dest);
+      if (request !== pendingLink.current) return;
+      if (!target) throw Error('This PDF link has no available destination.');
+      const host = scroller.current, slot = pdfPageElement(host, target.page);
+      if (!host || !slot) return;
+      clearTimeout(scrollTimer.current);
+      cancelAnimationFrame(scrollFrame.current);
+      onLinkJump();
+      window.getSelection()?.removeAllRanges();
+      const fitScale = fitWidth / target.width;
+      let scale = target.scale;
+      if (target.fit === 'Fit' || target.fit === 'FitB') scale = Math.min(fitScale, host.clientHeight / target.height);
+      else if (target.fit === 'FitH' || target.fit === 'FitBH') scale = fitScale;
+      else if (target.fit === 'FitV' || target.fit === 'FitBV') scale = host.clientHeight / target.height;
+      else if (target.region?.width && target.region?.height) scale = Math.min(fitWidth / target.region.width, host.clientHeight / target.region.height);
+      const nextZoom = scale ? pdfZoomPercent(pdfFitZoom * scale / fitScale) : zoom;
+      const offset = target.y * fitScale;
+      activeOffset.current = offset;
+      const nextWidth = fitWidth * nextZoom / pdfFitZoom;
+      const left = target.x * nextWidth / target.width;
+      horizontalCenter.current = (left + host.clientWidth / 2) / nextWidth;
+      host.scrollTop = slot.offsetTop + offset * nextZoom / pdfFitZoom;
+      host.scrollLeft = slot.offsetLeft + left;
+      onPage(target.page, offset, true, nextZoom);
+    } catch {
+      if (request === pendingLink.current) setLinkError('This PDF link has no available destination.');
+    }
+  }
   function jump(number, boundary) {
+    pendingLink.current++;
+    setLinkError('');
     clearTimeout(scrollTimer.current);
     cancelAnimationFrame(scrollFrame.current);
     window.getSelection()?.removeAllRanges();
@@ -785,6 +826,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     </div></div>}
     {needsOCR && <ScanNotice page coverage={coverage} onParse={onOcr} onSetup={onSetup}
       onReader={coverage || paper.blocks.length ? () => onReader(currentPage) : null} />}
+    {linkError && <Notice tone="error">{linkError}</Notice>}
     {(error || typeof pageStatus === 'string') && <Notice tone="error">{error || pageStatus}</Notice>}
     {pdf && <div className="pdf-scroll pdf-continuous" ref={scroller} data-pdf-scope={scope} data-pdf-zoom={zoom} tabIndex={0} aria-label="Continuous original PDF"
       onScroll={handleScroll} onMouseDown={event => {
@@ -796,7 +838,7 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
         const mounted = number === currentPage || number >= start - 1 && number <= end + 1 ||
           number >= dragStart && number <= dragEnd || number >= selectFirst && number <= selectLast;
         return <div className="pdf-page-slot" data-pdf-page={number} key={number} style={{ width, minHeight: width * (sizes[number] || 1.294) }}>
-          {mounted && <PdfSheet pdf={pdf} number={number} width={width} selectionOrder={paper.pdfTaggedReadingOrder ? 'tagged' : paper.pdfRotatedReadingOrder ? 'page' : paper.pdfVerticalReadingOrder ? 'vertical' : null} annotations={annotations} onSize={onSize} onReady={onReady} />}
+          {mounted && <PdfSheet pdf={pdf} number={number} width={width} selectionOrder={paper.pdfTaggedReadingOrder ? 'tagged' : paper.pdfRotatedReadingOrder ? 'page' : paper.pdfVerticalReadingOrder ? 'vertical' : null} annotations={annotations} onSize={onSize} onReady={onReady} onFollowLink={followLink} />}
         </div>;
       })}
     </div>}
@@ -4064,7 +4106,7 @@ function App() {
             annotations={pdfAnnotationsFor(paper, 'paperPdf')}
             selected={selection?.scope === 'paperPdf' ? selection : null}
             navigation={pdfNavigation?.scope === 'paperPdf' ? pdfNavigation : null}
-            onPage={(...args) => changePdfPage('paperPdf', ...args)}
+            onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('paperPdf', ...args)}
             onScrollSelection={hideOffscreenLookup}
             onSelect={anchor => selectPdf(anchor, 'paperPdf')}
             onNavigate={pdfNavigationReady}
@@ -4106,7 +4148,7 @@ function App() {
           annotations={pdfAnnotationsFor(paper, 'pdf')}
           selected={selection?.scope === 'pdf' ? selection : null}
           navigation={pdfNavigation?.scope !== 'paperPdf' ? pdfNavigation : null}
-          onPage={(...args) => changePdfPage('pdf', ...args)}
+          onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('pdf', ...args)}
           onScrollSelection={hideOffscreenLookup}
           onSelect={anchor => selectPdf(anchor, 'pdf')}
           onNavigate={pdfNavigationReady}

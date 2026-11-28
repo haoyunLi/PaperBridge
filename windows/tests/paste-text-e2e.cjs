@@ -371,7 +371,8 @@ async function run() {
     await page.getByRole('tab', { name: 'Local Data', exact: true }).click();
     await page.getByRole('button', { name: 'Remove all saved PaperBridge data…', exact: true }).click();
     await page.getByRole('dialog', { name: 'Remove Saved Data', exact: true }).getByRole('button', { name: 'Remove saved data', exact: true }).click();
-    await page.getByText(/Could not clear saved data:.*Intentional paste reset failure/).waitFor();
+    await page.getByRole('dialog', { name: 'Remove Saved Data' }).getByRole('alert')
+      .filter({ hasText: /Could not clear saved data.*Intentional paste reset failure/ }).waitFor();
     assert.equal(await evaluateMain(() => globalThis.__pasteResetAttempts), 1);
     assert.equal(await currentId(), idC); assert.equal(await paste().locator('textarea').inputValue(), resetDraft);
     assert.deepEqual(readPaper(idC).blocks, beforeResetBlocks); assert.equal(hasNote(idA, newestNote), true);
