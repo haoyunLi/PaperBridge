@@ -38,7 +38,7 @@ jobs:
         run: |
           curl -fsSL --retry 3 https://arxiv.org/pdf/1512.03385 -o "$RUNNER_TEMP/resnet.pdf"
           (cd "$RUNNER_TEMP" && echo "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a  resnet.pdf" | shasum -a 256 -c -)
-          xcrun swift windows/tests/mac-paper-layout/ObserveColumnTable.swift "$RUNNER_TEMP/resnet.pdf" "$RUNNER_TEMP/column-table.json"
+          xcrun swift windows/tests/mac-paper-layout/ObserveColumnTable.swift "$RUNNER_TEMP/resnet.pdf" "$RUNNER_TEMP/column-table.json" windows/tests/mac-paper-layout/resnet-figure.json
       - uses: actions/upload-artifact@v4
         with:
           name: mac-paper-layout
