@@ -90,23 +90,48 @@ test('current drafts keep long web addresses intact and restore their exact raw 
   }
 });
 
+test('an explicit local retry divides a long batch after generation repeats or reaches its output limit', async () => {
+  const { connectedRetryExcerpts, localConnectedRetry } = await import('../src/connectedTranslation.mjs');
+  const author = 'Ana Díaz · Research Observatory';
+  const formula = '$$ R(t) = f(t)\n\n + c $$';
+  const source = '🔬 Observe the sample at 532 nm. '.repeat(65) + formula + '\r\n \r\n' + author +
+    '\n\n' + 'The readings remained stable. '.repeat(66).trimEnd();
+  const batch = { source };
+  for (const error of ["Error invoking remote method 'ollama:generate': Error: Ollama 500: prediction aborted, token repeat limit reached",
+    'Model response was cut off. Try a smaller paragraph.']) {
+    const saved = { source, status: 'failed', error };
+    const mode = localConnectedRetry(batch, saved, 'ollama');
+    assert.equal(mode, 'short');
+    const pieces = connectedRetryExcerpts(batch, mode, author);
+    assert.ok(pieces.length > 3);
+    assert.ok(pieces.every(piece => [...piece.source].length < 1100));
+    assert.equal(pieces.map(piece => piece.separator + piece.source).join(''), source);
+    assert.equal(pieces.find(piece => piece.preserve && piece.source === author)?.source, author);
+    assert.equal(pieces.filter(piece => piece.source.includes(formula)).length, 1);
+    assert.equal(localConnectedRetry(batch, saved, 'openai'), null);
+    assert.equal(localConnectedRetry({ source: 'Edited.' }, saved, 'ollama'), null);
+  }
+  assert.equal(localConnectedRetry(batch, { source, status: 'ok', retryShortExcerpts: true }, 'ollama'), null);
+  assert.equal(localConnectedRetry(batch, { source, status: 'failed', error: 'Connection lost' }, 'ollama'), null);
+});
+
 test('explicit local formula retries preserve paragraph separators and whole protected Markdown', async () => {
-  const { connectedRetryExcerpts, isLocalMarkupRetry, restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
+  const { connectedRetryExcerpts, localConnectedRetry, restoreConnectedExcerpt } = await import('../src/connectedTranslation.mjs');
   const { protectMarkdown } = await import('../src/prompts.mjs');
   const formula = '$$N = 6\n\nx = 9$$';
   const source = 'Intro '.repeat(170) + formula + '\r\n \r\n' + 'Next '.repeat(160) + '`sample`\n\nEnd.';
   const batch = { kind: 'translation', source };
   const failed = { ...batch, errorCode: 'PROTECTED_MARKDOWN_CHANGED', status: 'failed' };
-  const pieces = connectedRetryExcerpts(batch, isLocalMarkupRetry(batch, failed, 'ollama'));
+  const pieces = connectedRetryExcerpts(batch, localConnectedRetry(batch, failed, 'ollama'));
   assert.equal(pieces.length, 3);
   assert.equal(pieces.map(part => part.separator + part.source).join(''), source);
   assert.ok(pieces[0].source.endsWith(formula));
   assert.equal(pieces[1].separator, '\r\n \r\n');
   const legacy = { ...batch, status: 'failed', error: 'The model changed a protected formula, figure, or link. Retry this batch.' };
-  assert.equal(isLocalMarkupRetry(batch, legacy, 'ollama'), true);
+  assert.equal(localConnectedRetry(batch, legacy, 'ollama'), 'markup');
   for (const [saved, provider] of [[undefined, 'ollama'], [failed, 'openai'], [{ ...failed, source: 'Old' }, 'ollama'],
     [{ ...failed, status: 'ok' }, 'ollama'], [{ ...failed, errorCode: 'NETWORK' }, 'ollama']]) {
-    assert.equal(isLocalMarkupRetry(batch, saved, provider), false);
+    assert.equal(localConnectedRetry(batch, saved, provider), null);
   }
   const protectedFormula = protectMarkdown(formula);
   assert.throws(() => restoreConnectedExcerpt('Lost formula.', protectedFormula.tokens), { code: 'PROTECTED_MARKDOWN_CHANGED' });

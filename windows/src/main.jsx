@@ -45,7 +45,7 @@ import { modelSettingsPatch } from './modelCatalog.mjs';
 import { hasOllamaModel } from '../electron/ollama-models.mjs';
 import { activeAIModel, aiCacheNamespace, translationInstructions, aiTaskSetupIssue, isGlobalAIError, isOllamaMemoryError, isOllamaGenerationConnectionError } from './aiSettings.mjs';
 import { mineruImportStage } from './importProgress.mjs';
-import { connectedBatchVersion, connectedRetryExcerpts, isLocalMarkupRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
+import { connectedBatchVersion, connectedRetryExcerpts, localConnectedRetry, pendingConnectedBatches, planConnectedBatches, supportsConnectedBatchVersion, restoreConnectedExcerpt, translateAroundMarkup } from './connectedTranslation.mjs';
 import { filteredReaderBlocks, searchableText, searchKey } from './textSearch.mjs';
 import { canSaveTermSource, glossaryTermMatchesQuery, matchingGlossaryTerms, upsertGlossaryTerm } from './terminology.mjs';
 import './onboarding.css';
@@ -3367,7 +3367,7 @@ function App() {
         if (batch.status === 'ok') continue;
         requireActiveTask(token);
         setBusy({ label: `Translating full paper · batch ${done + 1} of ${translationCount}` });
-        const localRetry = isLocalMarkupRetry(batch, previous?.[index], config.aiProvider);
+        const localRetry = localConnectedRetry(batch, previous?.[index], config.aiProvider);
         try {
           const instructions = translationInstructions(config, config.targetLanguage, current.name, translationSystem(config.targetLanguage));
           let output = batch.pdfFootnoteMarker ? batch.pdfFootnoteMarker + ' ' : '';
@@ -3401,7 +3401,8 @@ function App() {
           if (isGlobalAIError(config.aiProvider, cause.message)) throw cause;
           batches[index] = { ...batch, status: 'failed', error: cause.message,
             ...(cause.code === 'PROTECTED_MARKDOWN_CHANGED' && { errorCode: cause.code }),
-            ...(localRetry && { retryProtectedMarkup: true }) };
+            ...(localRetry === 'markup' && { retryProtectedMarkup: true }),
+            ...(localRetry === 'short' && { retryShortExcerpts: true }) };
         }
         saveDraft(batches);
         setProgress({ done: ++done, total: translationCount });
@@ -4191,6 +4192,7 @@ function App() {
     ? aiTaskSetupIssue(settings, translationRoles, aiReadiness) : null;
   const pdfFacsimile = paper?.type === 'pdf' && paper.sourceMode !== 'mineru';
   const plainUnfinished = structuredFull ? [] : pendingConnectedBatches(paper);
+  const retriesInShorterPassages = plainUnfinished.some(batch => localConnectedRetry(batch, batch, settings?.aiProvider) === 'short');
   const fullTranslationNeedsWork = paper && (!paper.connectedTranslation || paper.connectedStale
     || plainUnfinished.length > 0 || (structuredFull && (!paper.connectedShared || unfinishedTranslationIds.length > 0)));
   const fullTranslationAction = !paper?.connectedTranslation ? 'Translate full paper'
@@ -4444,7 +4446,7 @@ function App() {
           {paper.connectedStale && <Notice tone="error">The source changed after this translation. Update it to match the current source.</Notice>}
           {structuredFull && paper.connectedShared && !paper.connectedStale && unfinishedTranslationIds.length > 0 &&
             <Notice>{unfinishedTranslationIds.length} unfinished block(s) shown in the original language.</Notice>}
-          {plainUnfinished.length > 0 && <Notice>{plainUnfinished.length} unfinished batch(es) shown in the original language. Completed batches are saved.</Notice>}
+          {plainUnfinished.length > 0 && <Notice>{plainUnfinished.length} unfinished batch(es) shown in the original language. Completed batches are saved.{retriesInShorterPassages && ' Resume uses shorter passages where the local model stopped generating.'}</Notice>}
           <div className={pdfFacsimile ? 'pdf-comparison' : undefined}>
             {pdfFacsimile && <PdfFacsimile paper={paper} pageNumber={pageNumber} onPage={changeFacsimilePage} onOriginal={() => navigateToTab('Original')} />}
             {paper.connectedTranslation ? <article className="document-preview" data-view-scope="fullTranslation" tabIndex={0} aria-label="Full translation text"

@@ -143,13 +143,17 @@ async function run() {
     assert.ok(uiExplanation.length > 20);
     await page.getByRole('button', { name: 'Overview', exact: true }).click();
     await page.getByRole('button', { name: 'Generate summary' }).click();
-    await page.locator('.summary-card').first().waitFor({ timeout: 60000 });
-    uiSummary = await page.locator('.summary-card').first().innerText();
+    const summaryCard = page.locator('.summary-card').first();
+    await summaryCard.or(page.locator('.notice.error:visible').first()).first().waitFor({ timeout: 600000 });
+    assert.deepEqual(await page.locator('.notice.error:visible').allInnerTexts(), []);
+    uiSummary = await summaryCard.innerText();
     assert.ok(uiSummary.length > 40);
     console.log(`PaperBridge summary claims: ${await page.locator('.evidence-claim').count()}`);
     await page.getByRole('button', { name: 'Full Translation', exact: true }).click();
     await page.getByRole('button', { name: 'Translate full paper' }).click();
-    await page.waitForFunction(() => document.body.innerText.includes('Connected full-paper translation saved.'), null, { timeout: 120000 });
+    await page.waitForFunction(() => document.body.innerText.includes('Connected full-paper translation saved.') ||
+      Boolean(document.querySelector('.notice.error')), null, { timeout: 600000 });
+    assert.deepEqual(await page.locator('.notice.error:visible').allInnerTexts(), []);
     await page.locator('.content-column .document-preview').waitFor();
     uiFullTranslation = await page.locator('.content-column .document-preview').innerText();
     assert.match(uiFullTranslation, /[\u3400-\u9fff]/);

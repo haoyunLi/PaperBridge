@@ -89,11 +89,13 @@ export function pendingConnectedBatches(paper) {
   return (paper.connectedBlocks || []).filter(batch => batch.kind === 'translation' && batch.status !== 'ok');
 }
 
-export function isLocalMarkupRetry(batch, saved, provider) {
-  // Older batches have the validation message but no machine-readable reason.
-  return provider === 'ollama' && saved?.source === batch.source && saved.status === 'failed' &&
-    (saved.retryProtectedMarkup === true || saved.errorCode === 'PROTECTED_MARKDOWN_CHANGED' ||
-     saved.error === 'The model changed a protected formula, figure, or link. Retry this batch.');
+export function localConnectedRetry(batch, saved, provider) {
+  if (provider !== 'ollama' || saved?.source !== batch.source || saved.status !== 'failed') return null;
+  // Existing drafts store Ollama's generation error as a message.
+  if (saved.retryShortExcerpts || /token repeat limit reached|model response was cut off/i.test(saved.error || '')) return 'short';
+  if (saved.retryProtectedMarkup === true || saved.errorCode === 'PROTECTED_MARKDOWN_CHANGED' ||
+      saved.error === 'The model changed a protected formula, figure, or link. Retry this batch.') return 'markup';
+  return null;
 }
 
 // On an explicit retry, smaller paragraph groups help local models keep every marker.
@@ -105,7 +107,8 @@ export function connectedRetryExcerpts(batch, localRetry, authorSource = '') {
 
   const { text, tokens } = protectSource(source);
   const retryMarkup = localRetry && tokens.length > 0;
-  if (!retryMarkup && !containsByline) return pieces;
+  const shorter = localRetry === 'short';
+  if (!shorter && !retryMarkup && !containsByline) return pieces;
   // Mask code and equations before looking for paragraph boundaries inside a batch.
   const paragraphs = text.split(/(\r?\n(?:[ \t]*\r?\n)+)/);
   const groups = [];
@@ -115,13 +118,25 @@ export function connectedRetryExcerpts(batch, localRetry, authorSource = '') {
   const isByline = piece => containsByline && restore(piece) === authorSource;
   let preserve = isByline(content);
   function flush() {
-    groups.push({ source: restore(content), separator, ...(preserve && { preserve: true }) });
+    if (!shorter || preserve || content.length <= 1000) {
+      groups.push({ source: restore(content), separator, ...(preserve && { preserve: true }) });
+      return;
+    }
+    // Match each masked excerpt back to its original span to keep the whitespace
+    // between translations and keep a protected formula or link in one request.
+    let end = 0;
+    for (const piece of sourceExcerpts(content, 1000)) {
+      const start = content.indexOf(piece, end);
+      groups.push({ source: restore(piece), separator: (end === 0 ? separator : '') + content.slice(end, start) });
+      end = start + piece.length;
+    }
+    if (end < content.length) groups.push({ source: content.slice(end), separator: '', preserve: true });
   }
   for (let i = 1; i < paragraphs.length; i += 2) {
     const gap = paragraphs[i], paragraph = paragraphs[i + 1];
     const marked = content.includes('__PAPERBRIDGE_TOKEN_') || paragraph.includes('__PAPERBRIDGE_TOKEN_');
     const nextIsByline = isByline(paragraph);
-    if (content && paragraph && (preserve || nextIsByline || (retryMarkup && (marked || content.length + gap.length + paragraph.length > 1200)))) {
+    if (content && paragraph && (preserve || nextIsByline || ((retryMarkup && marked) || ((shorter || retryMarkup) && content.length + gap.length + paragraph.length > 1200)))) {
       flush();
       content = paragraph;
       preserve = nextIsByline;

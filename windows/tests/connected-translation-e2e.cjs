@@ -38,6 +38,13 @@ async function run() {
     const prompt = JSON.parse(body).prompt;
     const excerpt = prompt.split('Paper excerpt:\n').at(-1);
     excerpts.push(excerpt);
+    if (excerpt.includes('Repeat-limit sample')) {
+      if (excerpt.length > 1000) {
+        response.statusCode = 500;
+        return response.end(JSON.stringify({ error: 'prediction aborted, token repeat limit reached' }));
+      }
+      return response.end(JSON.stringify({ response: '测量值保持在 532 nm。', done: true }));
+    }
     if (prompt.includes('Address fixture')) {
       const markers = excerpt.match(/__PAPERBRIDGE_TOKEN_\d+__/g) || [];
       return response.end(JSON.stringify({ response: '地址为' + markers.join('。其次是') + '。', done: true }));
@@ -371,6 +378,27 @@ async function run() {
       assert.match(request, /__PAPERBRIDGE_TOKEN_2__/);
       assert.doesNotMatch(request, /example\.org|\/data\b|\/readings\b/);
     }
+    const repeated = 'Repeat-limit sample measurements stayed at 532 nm. '.repeat(65).trim();
+    await (await openPasteText(page)).fill(repeated);
+    const repeatId = await loadPastedText(page, { view: 'Full Translation' });
+    await page.getByRole('button', { name: 'Translate full paper', exact: true }).click();
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'failed', repeatId);
+    await page.getByText(/Resume uses shorter passages where the local model stopped generating/).waitFor();
+    const failedRepeat = await page.evaluate(id => window.paperBridge.loadPaper(id), repeatId);
+    assert.equal(failedRepeat.connectedBlocks[0].output, repeated);
+    assert.match(failedRepeat.connectedBlocks[0].error, /token repeat limit reached/);
+    await app.close();
+    app = await launch();
+    page = await app.firstWindow();
+    const repeatOffset = excerpts.length;
+    await page.getByRole('button', { name: 'Resume unfinished batches', exact: true }).click();
+    await waitForPaperResult(async id => (await window.paperBridge.loadPaper(id)).connectedBlocks?.[0]?.status === 'ok', repeatId);
+    const smaller = excerpts.slice(repeatOffset);
+    assert.ok(smaller.length > 1 && smaller.every(text => text.length <= 1000));
+    assert.equal(smaller.join(' '), repeated);
+    const recovered = await page.evaluate(id => window.paperBridge.loadPaper(id), repeatId);
+    assert.ok(recovered.connectedBlocks[0].output.includes('532 nm'));
+    assert.equal(await page.getByText(/Resume uses shorter passages/).count(), 0);
     console.log('Connected translation verified: excerpt batching, references, unknown legacy resume, failed-batch original fallback, language variants, contradictory metadata surviving Resume/restart and clearing only after full regeneration.');
   } finally {
     heldResponse?.destroy();

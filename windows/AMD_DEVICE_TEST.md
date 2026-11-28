@@ -1,5 +1,13 @@
 # Windows AMD 真机回归
 
+## 恢复被本地模型中止的翻译批次
+
+15 页《Attention Is All You Need》的 PDF 文字层全文翻译中，TranslateGemma 4B 在一个 4,382 字符的批次上返回 `prediction aborted, token repeat limit reached`。保留旧版生成的失败存档，在 0.2.148 候选版点击「Resume unfinished batches」。应用按短段重新翻译这个批次，约 111 秒后保存了 1,934 字符的结果。随后停止任务并重开，译文逐字一致。Ollama 报告显存占用 2,881,948,220 字节。
+
+译文保留了 28.4、41.8、3.5、BLEU 和 WMT，开头授权声明里仍有重复的英文 `hereby hereby`。这一批的数值与恢复操作已经核对，术语和措辞仍需阅读时复核。[本地重试分段](src/connectedTranslation.mjs) · [回归测试](tests/connected-translation.test.cjs)
+
+随后从已恢复的第一批继续，余下十批耗时 14 分 41 秒。重开应用后，全部 11 批均已完成，第一批译文与继续前完全一致。「Full Translation Markdown」导出了 20,540 字符。便携导出包包含相同的译文正文、与原件 SHA-256 相同的 PDF，以及 15 张可由 Markdown 打开的页面图。逐一核对了 39 个直引原文块，包含编号 1–40 的参考文献。抽查训练集大小，4B 将 `4.5 million sentence pairs` 译为「450 万个句子对」，将 `36M sentences` 译为「3600 万个句子」。[全文翻译实测入口](tests/live-connected.cjs)
+
 ## 打包版的十五页论文导入
 
 在 RX 7800 XT 上从 Open PDF 导入 15 页《Attention Is All You Need》。MinerU 4.1.7 自动选择 DirectML，56.8 秒后得到 167 个 MinerU 内容块，另保留了 207 个 PDF 文字层内容块。检查了 Reader 中的正文和 Original PDF 中实际绘制的页面。显式设备回归会核对正在运行的 EXE 路径与打包状态。[论文导入实测](tests/live-mineru.cjs)
