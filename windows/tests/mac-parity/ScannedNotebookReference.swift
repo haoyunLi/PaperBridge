@@ -15,6 +15,26 @@ func nativeRasterSwatches(pdf: URL) throws -> [[Int]] {
     }
 }
 
+// Draw into a named sRGB bitmap so its samples can be compared directly with a browser canvas.
+@MainActor
+func nativeSRGBScale(pdf: URL) throws -> [[Int]] {
+    guard let page = PDFDocument(url: pdf)?.page(at: 0),
+          let space = CGColorSpace(name: CGColorSpace.sRGB) else { throw CocoaError(.fileReadCorruptFile) }
+    let width = 192, height = 96
+    var bytes = [UInt8](repeating: 255, count: width * height * 4)
+    return try bytes.withUnsafeMutableBytes { buffer in
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                     bytesPerRow: width * 4, space: space, bitmapInfo: bitmapInfo) else { throw CocoaError(.fileReadCorruptFile) }
+        page.draw(with: .mediaBox, to: context)
+        context.flush()
+        return [36, 96, 156].map { x in
+            let offset = (width * (height / 2) + x) * 4
+            return (0..<3).map { Int(buffer[offset + $0]) }
+        }
+    }
+}
+
 @MainActor
 func nativeLongFacsimile(pdf: URL) throws -> [String: Any] {
     let bytes = try Data(contentsOf: pdf)
