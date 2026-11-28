@@ -1,5 +1,9 @@
 # Windows 全软件功能复查
 
+## PDF 命令链接与跨行引用
+
+Windows 0.2.123 依次激活维修记录里的六个命令链接，页码为 1 → 2 → 4 → 3 → 4 → 3 → 1，与原生 PDFKit 一致。两段分开的引用共享一个键盘焦点。缩放和窗口变窄后，中间无关的文字也不会打开 DOI。[Mac 实测](https://github.com/haoyunLi/PaperBridge/actions/runs/46113818959) · [Windows 实测](tests/pdf-named-actions-e2e.cjs)
+
 ## 原 PDF 中的目录、交叉引用和 DOI
 
 用同一份四页仪器手册对照 Mac 和 Windows。Mac 原生 PDFView 执行了四个页内动作，取得一个 DOI 外链。0.2.121 在首页点击光谱和 DOI 都没有反应。0.2.122 在 Original 和 Paper 的原 PDF 模式下可以点击原页链接，目录跳到第 3 页的光谱读数或第 2 页的命名目标，返回目录也可用键盘 Enter。后退和前进恢复对应页，重启保留表格位置。外链经过应用现有的系统浏览器入口，测试记录了交接的准确 DOI，未请求外站。[Mac 原生动作](https://github.com/haoyunLi/PaperBridge/actions/runs/46113010777) · [Windows 打包版](tests/pdf-links-e2e.cjs)

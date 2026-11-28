@@ -1,5 +1,29 @@
 import { externalPaperURL } from '../electron/paper-link.mjs';
 
+const namedLinks = new Map([
+  ['FirstPage', 'First PDF page'], ['LastPage', 'Last PDF page'], ['NextPage', 'Next PDF page'],
+  ['PrevPage', 'Previous PDF page'], ['GoBack', 'Previous reading location'], ['GoForward', 'Next reading location']
+]);
+
+function pageArea(rect, viewport) {
+  const [x1, y1] = viewport.convertToViewportPoint(rect[0], rect[1]);
+  const [x2, y2] = viewport.convertToViewportPoint(rect[2], rect[3]);
+  const left = Math.max(0, Math.min(x1, x2) / viewport.width), top = Math.max(0, Math.min(y1, y2) / viewport.height);
+  const right = Math.min(1, Math.max(x1, x2) / viewport.width), bottom = Math.min(1, Math.max(y1, y2) / viewport.height);
+  return right > left && bottom > top ? { left, top, right, bottom } : null;
+}
+
+function linkAreas(points, viewport) {
+  const areas = [];
+  if (!points?.length || points.length % 8 !== 0) return areas;
+  // PDF.js supplies one normalized quadrilateral per linked fragment.
+  for (let i = 0; i < points.length; i += 8) {
+    const area = pageArea([points[i], points[i + 1], points[i + 6], points[i + 7]], viewport);
+    if (area) areas.push(area);
+  }
+  return areas;
+}
+
 export function pageLinks(annotations, viewport) {
   const links = [];
   for (const item of annotations) {
@@ -8,14 +32,13 @@ export function pageLinks(annotations, viewport) {
         item.rect.length !== 4 || !item.rect.every(Number.isFinite)) continue;
     const url = externalPaperURL(item.url);
     const dest = item.dest;
-    if (!url && typeof dest !== 'string' && !Array.isArray(dest)) continue;
-    const [x1, y1] = viewport.convertToViewportPoint(item.rect[0], item.rect[1]);
-    const [x2, y2] = viewport.convertToViewportPoint(item.rect[2], item.rect[3]);
-    const left = Math.max(0, Math.min(x1, x2) / viewport.width), top = Math.max(0, Math.min(y1, y2) / viewport.height);
-    const right = Math.min(1, Math.max(x1, x2) / viewport.width), bottom = Math.min(1, Math.max(y1, y2) / viewport.height);
-    if (right <= left || bottom <= top) continue;
-    const label = item.contentsObj?.str?.trim() || item.titleObj?.str?.trim() || url || 'Go to linked PDF location';
-    links.push({ id: item.id, label, url, dest, left, top, right, bottom });
+    const action = namedLinks.has(item.action) ? item.action : null;
+    if (!url && !action && typeof dest !== 'string' && !Array.isArray(dest)) continue;
+    const bounds = pageArea(item.rect, viewport);
+    if (!bounds) continue;
+    const areas = linkAreas(item.quadPoints, viewport);
+    const label = item.contentsObj?.str?.trim() || item.titleObj?.str?.trim() || url || namedLinks.get(action) || 'Go to linked PDF location';
+    links.push({ id: item.id, label, url, dest, action, ...bounds, areas: areas.length ? areas : [bounds] });
   }
   return links;
 }

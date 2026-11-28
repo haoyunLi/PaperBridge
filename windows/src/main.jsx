@@ -557,7 +557,7 @@ function capturePdfRange(host, range) {
     anchors: parts.map(({ page, offset, text, pageText }) => ({ page, offset, text, pageText })), rect: position };
 }
 
-function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
+function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations, selected, navigation, onPage, onLinkJump, onBack, onForward, onScrollSelection, onSelect, onNavigate, onNavigationFailure, onOcr, onSetup, onReader, onRecoverText, busy }) {
   const { pdf, error } = usePdfDocument(paper);
   const scroller = useRef(null);
   const activePage = useRef(0);
@@ -718,10 +718,18 @@ function PdfView({ paper, scope, pageNumber, position, restoreToken, annotations
     const captured = capturePdfRange(scroller.current, selection?.rangeCount ? selection.getRangeAt(0) : null);
     if (captured) onSelect(captured);
   }
-  async function followLink(link) {
+  async function followLink(link, fromPage) {
     const request = ++pendingLink.current;
     setLinkError('');
     if (link.url) { api.openPaperLink(link.url); return; }
+    if (link.action === 'GoBack') { onBack(); return; }
+    if (link.action === 'GoForward') { onForward(); return; }
+    if (link.action) {
+      const pages = { FirstPage: 1, LastPage: pdf.numPages, PrevPage: fromPage - 1, NextPage: fromPage + 1 };
+      const number = pages[link.action];
+      if (number >= 1 && number <= pdf.numPages && number !== fromPage) { onLinkJump(); jump(number); }
+      return;
+    }
     try {
       const target = await pdfLinkDestination(pdf, link.dest);
       if (request !== pendingLink.current) return;
@@ -4106,7 +4114,7 @@ function App() {
             annotations={pdfAnnotationsFor(paper, 'paperPdf')}
             selected={selection?.scope === 'paperPdf' ? selection : null}
             navigation={pdfNavigation?.scope === 'paperPdf' ? pdfNavigation : null}
-            onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('paperPdf', ...args)}
+            onBack={goBackInReading} onForward={goForwardInReading} onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('paperPdf', ...args)}
             onScrollSelection={hideOffscreenLookup}
             onSelect={anchor => selectPdf(anchor, 'paperPdf')}
             onNavigate={pdfNavigationReady}
@@ -4148,7 +4156,7 @@ function App() {
           annotations={pdfAnnotationsFor(paper, 'pdf')}
           selected={selection?.scope === 'pdf' ? selection : null}
           navigation={pdfNavigation?.scope !== 'paperPdf' ? pdfNavigation : null}
-          onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('pdf', ...args)}
+          onBack={goBackInReading} onForward={goForwardInReading} onLinkJump={recordReadingJump} onPage={(...args) => changePdfPage('pdf', ...args)}
           onScrollSelection={hideOffscreenLookup}
           onSelect={anchor => selectPdf(anchor, 'pdf')}
           onNavigate={pdfNavigationReady}

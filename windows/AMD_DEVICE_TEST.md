@@ -1,5 +1,9 @@
 # Windows AMD 真机回归
 
+## 20 页全文摘要与六条证据
+
+0.2.123 在 RX 7800 XT 重新导入《Good Enough Practices in Scientific Computing》，用本地 Qwen3 4B 和 TranslateGemma 4B 完成 11 批摘要，耗时 217 秒。六条引文逐字匹配原文，点击各条分别到达第 32、50、57、93、133、183 段，导出后仍保留来源。Ollama 报告两个模型分别在显存中占用 3,180,247,121 和 2,881,948,220 字节。[可重复的设备测试](tests/live-summary.cjs)
+
 ## 旋转页上的红色谱线
 
 0.2.116 在本机从旧版有波长笔记的光谱仪记录恢复出新副本。4B 将 “At 298 K the red line appeared at 633 nm.” 译成「在 298 K 下，红色线出现在 633 nm。」。重启后核对了温度、波长、译文与书签，并通过新旧笔记分别定位原 PDF 第二页的选区。[旋转页真机回归](tests/rotated-pdf-e2e.cjs)

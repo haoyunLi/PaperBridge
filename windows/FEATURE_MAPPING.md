@@ -1,5 +1,7 @@
 # PaperBridge macOS 1.10.0 与 Windows 0.2 功能逐项映射
 
+原 PDF 的命令链接已用同一份维修记录在 PDFKit 和 Windows 打包版核对。首页、末页、前后翻页和前后阅读位置均到达同一页。跨两行且中间隔有正文的 DOI 只响应两个引用片段。[实机对照](tests/pdf-named-actions-e2e.cjs)
+
 当前验收目标是功能与可执行操作的一对一对应；排版按 Windows 字体、窗口大小及显示缩放适配。Mac 的尺寸和间距作为设计参考，不以像素一致作为功能对齐的条件。
 
 截至 2026-11-27，固定基线共 111 项，**108 项对齐、3 项部分对齐**。RX 7800 XT 的 4B、12B 和 27B 都已实际翻译并重开保存的论文。4B 和 12B 另核对了温度、电压、统计学否定和 p 值。余项为 NVIDIA 真机解析、更新安装流程和 Windows 发布者签名。[模型对照实测](AMD_DEVICE_TEST.md)。此计数只覆盖表内功能。全新 Windows 从 GitHub 下载并打开了两种 EXE，看到了便携版解压提示和首次引导。旧客户端在保存书签与笔记后将已校验的新版安装包交给 Windows。[公开下载验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137692363583) · [应用内更新验收](https://github.com/haoyunLi/PaperBridge/actions/runs/45172227052/job/137694169199)

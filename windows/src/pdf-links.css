@@ -3,11 +3,12 @@
   inset: 0;
   pointer-events: none;
 }
-.pdf-page-links a {
+.pdf-page-links a, .pdf-page-links a span {
   position: absolute;
   border-radius: 2px;
 }
-.pdf-page-links a.hovered, .pdf-page-links a:focus-visible {
+.pdf-page-links a:focus-visible { outline: none; }
+.pdf-page-links a.hovered span, .pdf-page-links a:focus-visible span {
   outline: 2px solid #2165ad;
   outline-offset: 1px;
   background: rgb(71 145 223 / 10%);

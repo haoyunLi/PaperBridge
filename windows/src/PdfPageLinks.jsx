@@ -26,7 +26,7 @@ export function PdfPageLinks({ pdf, number, onFollow }) {
     function hit(event) {
       const box = layer.getBoundingClientRect();
       const x = (event.clientX - box.left) / box.width, y = (event.clientY - box.top) / box.height;
-      return links.find(link => x >= link.left && x <= link.right && y >= link.top && y <= link.bottom);
+      return links.find(link => link.areas.some(area => x >= area.left && x <= area.right && y >= area.top && y <= area.bottom));
     }
     function show(link) {
       if (link === over) return;
@@ -44,7 +44,7 @@ export function PdfPageLinks({ pdf, number, onFollow }) {
       if (!link || pressed?.link !== link || Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) > 5 ||
           !window.getSelection()?.isCollapsed) return;
       event.preventDefault();
-      follow.current(link);
+      follow.current(link, number);
     }
     sheet.addEventListener('pointermove', move); sheet.addEventListener('pointerleave', leave);
     sheet.addEventListener('pointerdown', down); sheet.addEventListener('click', click); sheet.addEventListener('auxclick', click);
@@ -53,12 +53,17 @@ export function PdfPageLinks({ pdf, number, onFollow }) {
       sheet.removeEventListener('pointermove', move); sheet.removeEventListener('pointerleave', leave);
       sheet.removeEventListener('pointerdown', down); sheet.removeEventListener('click', click); sheet.removeEventListener('auxclick', click);
     };
-  }, [links]);
+  }, [links, number]);
   if (!links.length) return null;
   return <div ref={overlay} className="pdf-page-links">
     {links.map(link => <a key={link.id} href={link.url || '#pdf-destination'} aria-label={link.label} title={link.label}
-      onClick={event => { event.preventDefault(); follow.current(link); }}
+      onClick={event => { event.preventDefault(); follow.current(link, number); }}
       style={{ left: link.left * 100 + '%', top: link.top * 100 + '%',
-        width: (link.right - link.left) * 100 + '%', height: (link.bottom - link.top) * 100 + '%' }} />)}
+        width: (link.right - link.left) * 100 + '%', height: (link.bottom - link.top) * 100 + '%' }}>
+      {link.areas.map((area, i) => <span key={i} style={{
+        left: (area.left - link.left) / (link.right - link.left) * 100 + '%', top: (area.top - link.top) / (link.bottom - link.top) * 100 + '%',
+        width: (area.right - area.left) / (link.right - link.left) * 100 + '%', height: (area.bottom - area.top) / (link.bottom - link.top) * 100 + '%'
+      }} />)}
+    </a>)}
   </div>;
 }
