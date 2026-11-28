@@ -73,6 +73,25 @@ func nativePdfLinks(fixtures: URL, namedActions: Bool = false) throws -> [String
 }
 
 @MainActor
+func nativePdfSelectAll(fixtures: URL) throws -> [[String: Any]] {
+    try [("rotated-spectrometer.pdf", 4), ("good-enough/article.pdf", 20)].map { filename, pageCount in
+        let file = fixtures.appendingPathComponent(filename)
+        let (window, view, document) = try showNativePdf(file, pages: pageCount)
+        defer { window.orderOut(nil); window.contentView = nil }
+        view.selectAll(nil)
+        guard let selection = view.currentSelection, let text = selection.string else { throw CocoaError(.fileReadCorruptFile) }
+        var result: [String: Any] = ["file": filename, "sha256": SHA256.hash(data: try Data(contentsOf: file)).map { String(format: "%02x", $0) }.joined(),
+            "pages": selection.pages.map { document.index(for: $0) + 1 }, "text": text,
+            "anchors": PDFDocumentView.anchors(for: selection, in: document).count]
+        if ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true" {
+            view.copy(nil)
+            result["copied"] = NSPasteboard.general.string(forType: .string)
+        }
+        return result
+    }
+}
+
+@MainActor
 func nativePdfComments(fixtures: URL) throws -> [String: Any] {
     let file = fixtures.appendingPathComponent("reviewed-calibration.pdf")
     let bytes = try Data(contentsOf: file)
