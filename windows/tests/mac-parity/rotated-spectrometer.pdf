@@ -1,0 +1,179 @@
+%PDF-1.3
+%“Œ‹ž ReportLab Generated PDF document (opensource)
+1 0 obj
+<<
+/F1 2 0 R /F2 3 0 R
+>>
+endobj
+2 0 obj
+<<
+/BaseFont /Helvetica /Encoding /WinAnsiEncoding /Name /F1 /Subtype /Type1 /Type /Font
+>>
+endobj
+3 0 obj
+<<
+/BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding /Name /F2 /Subtype /Type1 /Type /Font
+>>
+endobj
+4 0 obj
+<<
+/Contents 11 0 R /MediaBox [ 0 0 450 560 ] /Parent 10 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+5 0 obj
+<<
+/Contents 12 0 R /MediaBox [ 0 0 560 450 ] /Parent 10 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 90 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+6 0 obj
+<<
+/Contents 13 0 R /MediaBox [ 0 0 450 560 ] /Parent 10 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 180 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+7 0 obj
+<<
+/Contents 14 0 R /MediaBox [ 0 0 560 450 ] /Parent 10 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 270 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+8 0 obj
+<<
+/PageMode /UseNone /Pages 10 0 R /Type /Catalog
+>>
+endobj
+9 0 obj
+<<
+/Author (anonymous) /CreationDate (D:20000101000000+00'00') /Creator (anonymous) /Keywords () /ModDate (D:20000101000000+00'00') /Producer (ReportLab PDF Library - \(opensource\)) 
+  /Subject (unspecified) /Title (Spectrometer lamp records) /Trapped /False
+>>
+endobj
+10 0 obj
+<<
+/Count 4 /Kids [ 4 0 R 5 0 R 6 0 R 7 0 R ] /Type /Pages
+>>
+endobj
+11 0 obj
+<<
+/Length 355
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+1 0 0 1 0 0 cm
+.12 .18 .26 rg
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 318 Tm (The initial signal was 12 counts.) Tj T* ET
+BT /F2 21 Tf 25.2 TL ET
+BT 1 0 0 1 34 491 Tm (Lamp calibration) Tj T* ET
+.8 w
+n 34 475 m 418 475 l S
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 399 Tm (The detector warmed up for ten minutes.) Tj T* ET
+ 
+endstream
+endobj
+12 0 obj
+<<
+/Length 374
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+0 1 -1 0 560 0 cm
+.12 .18 .26 rg
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 318 Tm (The reference intensity remained constant.) Tj T* ET
+BT /F2 21 Tf 25.2 TL ET
+BT 1 0 0 1 34 491 Tm (Red laser measurement) Tj T* ET
+.8 w
+n 34 475 m 418 475 l S
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 399 Tm (At 298 K the red line appeared at 633 nm.) Tj T* ET
+ 
+endstream
+endobj
+13 0 obj
+<<
+/Length 360
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+-1 0 0 -1 450 560 cm
+.12 .18 .26 rg
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 318 Tm (At 77 K the peak shifted by 2 nm.) Tj T* ET
+BT /F2 21 Tf 25.2 TL ET
+BT 1 0 0 1 34 491 Tm (Cold measurement) Tj T* ET
+.8 w
+n 34 475 m 418 475 l S
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 399 Tm (The detector settled after 30 seconds.) Tj T* ET
+ 
+endstream
+endobj
+14 0 obj
+<<
+/Length 361
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+0 -1 1 0 0 450 cm
+.12 .18 .26 rg
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 318 Tm (The final signal was 12 counts.) Tj T* ET
+BT /F2 21 Tf 25.2 TL ET
+BT 1 0 0 1 34 491 Tm (Repeat measurement) Tj T* ET
+.8 w
+n 34 475 m 418 475 l S
+BT /F1 15 Tf 18 TL ET
+BT 1 0 0 1 34 399 Tm (Three independent runs used the same lamp.) Tj T* ET
+ 
+endstream
+endobj
+xref
+0 15
+0000000000 65535 f 
+0000000061 00000 n 
+0000000102 00000 n 
+0000000209 00000 n 
+0000000321 00000 n 
+0000000516 00000 n 
+0000000712 00000 n 
+0000000909 00000 n 
+0000001106 00000 n 
+0000001175 00000 n 
+0000001453 00000 n 
+0000001531 00000 n 
+0000001937 00000 n 
+0000002362 00000 n 
+0000002773 00000 n 
+trailer
+<<
+/ID 
+[<e74c39d2d99755209eebee73f00c66e0><e74c39d2d99755209eebee73f00c66e0>]
+% ReportLab generated PDF document -- digest (opensource)
+
+/Info 9 0 R
+/Root 8 0 R
+/Size 15
+>>
+startxref
+3185
+%%EOF
